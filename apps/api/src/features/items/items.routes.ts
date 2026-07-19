@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { db } from '../db';
-import { withTenant } from '../db/tenant';
-import { items } from '../db/schema';
+import { db } from '../../core/db';
+import { withTenant } from '../../core/db/tenant';
+import { items } from '../../core/db/schema';
 
 const router = Router();
 

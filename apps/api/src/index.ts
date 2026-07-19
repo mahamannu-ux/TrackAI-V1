@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { authenticateJWT } from './middleware/auth';
-import { tenantMiddleware } from './middleware/tenant';
-import itemsRouter from './routes/items';
+import { authenticateJWT } from './core/middleware/auth';
+import { tenantMiddleware } from './core/middleware/tenant';
+import itemsRouter from './features/items/items.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
