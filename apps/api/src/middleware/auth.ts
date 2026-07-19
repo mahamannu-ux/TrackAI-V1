@@ -2,15 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
 
-// Extend Express Request to include the decoded user payload (Kept exactly as you had it)
-declare global {
-  namespace Express {
-    interface Request {
-      user?: jwt.JwtPayload;
-    }
-  }
-}
-
 // Initialize the JWKS client to pull public keys directly from your Supabase instance
 const client = jwksClient({
   // Tries to pull from env, defaults to your specific project domain fallback
@@ -59,7 +50,7 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    req.user = decoded as jwt.JwtPayload;
+    req.user = decoded as Express.AuthenticatedUser;
     next();
   });
 

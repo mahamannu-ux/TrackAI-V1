@@ -13,13 +13,19 @@ export const ssoTenants = pgTable('sso_tenants', {
 });
 
 /**
+ * Shared ownership column for every tenant-scoped table.
+ * Using this helper gives tenant-owned tables the shape required by withTenant().
+ */
+export const tenantIdColumn = () =>
+  uuid('tenant_id').references(() => ssoTenants.id).notNull();
+
+/**
  * Items Table Schema (Updated for Data Isolation)
  */
 export const items = pgTable('items', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
-  // NEW: Every single item row is now locked to a specific enterprise customer UUID
-  tenantId: uuid('tenant_id').references(() => ssoTenants.id).notNull(),
+  tenantId: tenantIdColumn(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

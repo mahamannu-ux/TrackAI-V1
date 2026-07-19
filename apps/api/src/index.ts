@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { authenticateJWT } from './middleware/auth';
+import { tenantMiddleware } from './middleware/tenant';
 import itemsRouter from './routes/items';
 import dotenv from 'dotenv';
 
@@ -45,8 +46,9 @@ app.get('/health', (_req, res) => {
 // Protected API Routes
 // ---------------------------------------------------------------------------
 // All /api/* routes require a valid Supabase JWT.
-// The authenticateJWT middleware verifies the token before any route handler runs.
-app.use('/api/items', authenticateJWT, itemsRouter);
+// Authentication and tenant resolution apply to every protected API route, in order.
+app.use('/api', authenticateJWT, tenantMiddleware);
+app.use('/api/items', itemsRouter);
 
 
 // Fixed Error Handler
