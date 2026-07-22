@@ -4,6 +4,7 @@ import cors from 'cors';
 import { authenticateJWT } from './core/middleware/auth';
 import { tenantMiddleware } from './core/middleware/tenant';
 import itemsRouter from './features/items/items.routes';
+import scmRouter from './features/scm/scm.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
@@ -30,8 +31,11 @@ app.use(cors({
 }));
 
 
+// Webhooks need their exact bytes for HMAC validation and must be mounted
+// before the global JSON parser. GitHub may send JSON or form-encoded payloads.
+app.use('/api/v1/webhooks', express.raw({ type: '*/*', limit: '2mb' }), scmRouter);
 
-// Parse JSON request bodies
+// Parse regular application JSON after the raw webhook receiver.
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
