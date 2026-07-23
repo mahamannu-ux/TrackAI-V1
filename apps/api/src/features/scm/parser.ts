@@ -1,6 +1,6 @@
 export type SCMPayload = {
   provider: 'github' | 'gitlab' | 'bitbucket';
-  eventType: 'pr_opened' | 'pr_closed' | 'push';
+  eventType: 'pr_opened' | 'pr_updated' | 'pr_closed' | 'push';
   organization: string;
   repository: {
     externalId: string;
@@ -12,6 +12,10 @@ export type SCMPayload = {
     title: string;
     state: string;
     authorEmail: string;
+    headRef: string | null;
+    baseRef: string | null;
+    headSha: string | null;
+    mergeCommitSha: string | null;
   } | null;
 };
 
@@ -101,6 +105,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   const action = asString(bodyRecord.action);
   const eventType = action === 'opened'
     ? 'pr_opened'
+    : action === 'reopened' || action === 'synchronize'
+      ? 'pr_updated'
     : action === 'closed'
       ? 'pr_closed'
       : null;
@@ -115,6 +121,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   const externalId = asString(pullRequest.id);
   const title = asString(pullRequest.title);
   const state = asString(pullRequest.state);
+  const head = asRecord(pullRequest.head);
+  const base = asRecord(pullRequest.base);
   if (!externalId || !title || !state) return null;
 
   return {
@@ -145,7 +153,11 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
 
         // Default fallback if no tag is present
         return asString(pullRequest.author_email) ?? `${asString(author?.login) || 'unknown'}@github.user`;
-      })()
+      })(),
+      headRef: asString(head?.ref),
+      baseRef: asString(base?.ref),
+      headSha: asString(head?.sha),
+      mergeCommitSha: asString(pullRequest.merge_commit_sha),
     },
   };
 }

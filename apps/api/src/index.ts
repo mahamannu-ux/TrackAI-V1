@@ -5,6 +5,9 @@ import { authenticateJWT } from './core/middleware/auth';
 import { tenantMiddleware } from './core/middleware/tenant';
 import itemsRouter from './features/items/items.routes';
 import scmRouter from './features/scm/scm.routes';
+import telemetryIngestRouter from './features/telemetry/ingest.routes';
+import { authenticateMachine } from './core/middleware/machine-auth';
+import telemetryReadRouter from './features/telemetry/read.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
@@ -27,7 +30,7 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-TrackAI-Machine-ID'],
 }));
 
 
@@ -36,7 +39,11 @@ app.use(cors({
 app.use('/api/v1/webhooks', express.raw({ type: '*/*', limit: '2mb' }), scmRouter);
 
 // Parse regular application JSON after the raw webhook receiver.
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
+
+// Native Git AI worker uploads use tenant-bound machine credentials, not a
+// browser JWT. Keep this route outside the interactive /api middleware chain.
+app.use('/worker', authenticateMachine, telemetryIngestRouter);
 
 // ---------------------------------------------------------------------------
 // Health Check (unauthenticated)
@@ -53,6 +60,7 @@ app.get('/health', (_req, res) => {
 // Authentication and tenant resolution apply to every protected API route, in order.
 app.use('/api', authenticateJWT, tenantMiddleware);
 app.use('/api/items', itemsRouter);
+app.use('/api', telemetryReadRouter);
 
 
 // Fixed Error Handler

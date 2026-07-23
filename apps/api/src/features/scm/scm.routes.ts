@@ -9,6 +9,8 @@ import {
 } from '../../core/db/schema';
 import { verifyGitHubSignature } from './crypto';
 import { parseGitHubWebhook, type SCMPayload } from './parser';
+import { normalizeRepositoryUrl } from '../telemetry/repository-url';
+import { reconcileRepositoryPullRequests } from '../telemetry/service';
 
 const router = Router();
 
@@ -110,6 +112,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
           externalId: payload.repository.externalId,
           name: payload.repository.name,
           url: payload.repository.url,
+          normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
         })
         .onConflictDoUpdate({
           target: [
@@ -120,6 +123,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
           set: {
             name: payload.repository.name,
             url: payload.repository.url,
+            normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
           },
         })
         .returning({ id: scmRepositories.id });
@@ -141,6 +145,10 @@ router.post('/:provider', async (req: Request, res: Response) => {
             title: payload.pullRequest.title,
             state: payload.pullRequest.state,
             authorEmail: payload.pullRequest.authorEmail,
+            headRef: payload.pullRequest.headRef,
+            baseRef: payload.pullRequest.baseRef,
+            headSha: payload.pullRequest.headSha,
+            mergeCommitSha: payload.pullRequest.mergeCommitSha,
           })
           .onConflictDoUpdate({
             target: [
@@ -152,6 +160,10 @@ router.post('/:provider', async (req: Request, res: Response) => {
               title: payload.pullRequest.title,
               state: payload.pullRequest.state,
               authorEmail: payload.pullRequest.authorEmail,
+              headRef: payload.pullRequest.headRef,
+              baseRef: payload.pullRequest.baseRef,
+              headSha: payload.pullRequest.headSha,
+              mergeCommitSha: payload.pullRequest.mergeCommitSha,
               updatedAt: new Date(),
             },
           })
@@ -199,6 +211,10 @@ router.post('/:provider', async (req: Request, res: Response) => {
       ...storedRecords,
       payload,
     });
+
+    if (storedRecords.pullRequestId) {
+      await reconcileRepositoryPullRequests(tenant.id, storedRecords.repositoryId);
+    }
 
     res.status(200).json({ ok: true });
   } catch (error) {
