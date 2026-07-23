@@ -92,8 +92,8 @@ export type AuditedValue<T> = {
 };
 
 export type Repository = { id: string; provider: string; externalId: string; name: string; url: string; normalizedUrl: string | null; createdAt: string };
-export type PullRequest = { id: string; repositoryId: string; externalId: string; title: string; state: string; authorEmail: string; headRef: string | null; baseRef: string | null; headSha: string | null; mergeCommitSha: string | null; createdAt: string; updatedAt: string };
-export type Contributor = { id: string; repositoryId: string; name: string; email: string; machineId: string | null };
+export type PullRequest = { id: string; repositoryId: string; externalId: string; title: string; state: string; authorEmail: string | null; authorLogin: string | null; headRef: string | null; baseRef: string | null; headSha: string | null; mergeCommitSha: string | null; createdAt: string; updatedAt: string };
+export type Contributor = { id: string; repositoryId: string; name: string; email: string | null; machineId: string | null };
 export type SessionListItem = {
   id: string; externalSessionId: string; gitAiSessionId: string | null; displayName: string | null;
   agent: string; models: AuditedValue<string[]>; status: string; startedAt: string | null; endedAt: string | null;
@@ -107,6 +107,14 @@ export type CommitListItem = {
   unknownLines: number; sessionCount: number;
 };
 export type DashboardSummary = { organizationName: string; repositories: number; pullRequests: number; contributors: number; sessions: number; commits: number; finalAiLines: number; finalHumanLines: number };
+export type LifecycleValue = { value: number | null; availability: 'recorded' | 'unavailable'; evidenceTypes: string[] };
+export type LifecycleSummary = {
+  generated: LifecycleValue; committed: LifecycleValue; inPullRequests: LifecycleValue;
+  merged: LifecycleValue; production: LifecycleValue; mergedProxy: LifecycleValue;
+  reworked: LifecycleValue; churned: LifecycleValue; reworkByActor: Record<string, number>;
+  ratios: { generatedToCommitted: number | null; generatedToPullRequest: number | null; generatedToMerged: number | null; generatedToProduction: number | null };
+};
+export type LifecycleResponse = { summary: LifecycleSummary; scope: Record<string, unknown>; evidence: Record<string, number> };
 
 export const getRepositories = () => apiFetch<Repository[]>('/api/repositories');
 export const getPullRequests = () => apiFetch<PullRequest[]>('/api/pull-requests');
@@ -117,3 +125,4 @@ export const getCommits = () => apiFetch<CommitListItem[]>('/api/telemetry/commi
 export const getCommit = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/commits/${encodeURIComponent(id)}`);
 export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
 export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
+export const getLifecycle = (query = '') => apiFetch<LifecycleResponse>(`/api/metrics/lifecycle${query}`);

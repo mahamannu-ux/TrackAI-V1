@@ -15,7 +15,7 @@ export const EVENT_KIND = {
   rewriteCommitted: 7,
 } as const;
 
-function stringAt(map: SparseMap, position: number): string | null {
+export function stringAt(map: SparseMap, position: number): string | null {
   const value = map[String(position)];
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
@@ -114,6 +114,31 @@ export function decodeCommitValues(values: SparseMap) {
   };
 }
 
+export function decodeRewriteValues(values: SparseMap) {
+  const operationKind = stringAt(values, 15) ?? 'rewrite';
+  return {
+    ...decodeCommitValues(values),
+    operationKind,
+    originalCommitShas: stringArrayAt(values, 16),
+    subject: stringAt(values, 11) ?? `Rewrite: ${operationKind.replaceAll('_', ' ')}`,
+  };
+}
+
+export function decodeCheckpointValues(values: SparseMap) {
+  return {
+    checkpointTimestamp: numberAt(values, 0),
+    kind: stringAt(values, 1),
+    filePath: stringAt(values, 2),
+    linesAdded: numberAt(values, 3) ?? 0,
+    linesDeleted: numberAt(values, 4) ?? 0,
+    linesAddedSloc: numberAt(values, 5),
+    linesDeletedSloc: numberAt(values, 6),
+    externalToolUseId: stringAt(values, 7),
+    editKind: stringAt(values, 8),
+    checkpointType: stringAt(values, 9),
+  };
+}
+
 export function decodeSessionUsage(event: GitAiMetricEvent) {
   const raw = event.v['0'];
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -125,20 +150,30 @@ export function decodeSessionUsage(event: GitAiMetricEvent) {
     ? message.data as Record<string, unknown>
     : message;
   if (data.role !== 'assistant') return null;
-  const tokens = data.tokens && typeof data.tokens === 'object'
-    ? data.tokens as Record<string, unknown>
+  const tokenCandidate = data.tokens ?? data.usage;
+  const tokens = tokenCandidate && typeof tokenCandidate === 'object'
+    ? tokenCandidate as Record<string, unknown>
     : null;
   if (!tokens) return null;
   const cache = tokens.cache && typeof tokens.cache === 'object'
     ? tokens.cache as Record<string, unknown>
     : {};
   const numeric = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+  const model = typeof data.model === 'string'
+    ? data.model
+    : typeof data.modelID === 'string'
+      ? data.modelID
+      : data.model && typeof data.model === 'object'
+        && typeof (data.model as Record<string, unknown>).modelID === 'string'
+        ? (data.model as Record<string, unknown>).modelID as string
+        : null;
   return {
-    inputTokens: numeric(tokens.input),
-    outputTokens: numeric(tokens.output),
+    model,
+    inputTokens: numeric(tokens.input) ?? numeric(tokens.input_tokens),
+    outputTokens: numeric(tokens.output) ?? numeric(tokens.output_tokens),
     reasoningTokens: numeric(tokens.reasoning),
-    cacheReadTokens: numeric(cache.read),
-    cacheWriteTokens: numeric(cache.write),
+    cacheReadTokens: numeric(cache.read) ?? numeric(tokens.cache_read_input_tokens),
+    cacheWriteTokens: numeric(cache.write) ?? numeric(tokens.cache_creation_input_tokens),
     costAmount: numeric(data.cost),
     externalEventId: typeof event.v['1'] === 'string' ? event.v['1'] : null,
   };

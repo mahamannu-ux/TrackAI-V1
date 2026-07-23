@@ -8,6 +8,13 @@
       "when": 1784755051706,
       "tag": "0000_solid_annihilus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784820044820,
+      "tag": "0001_abandoned_rhodey",
+      "breakpoints": true
     }
   ]
 }

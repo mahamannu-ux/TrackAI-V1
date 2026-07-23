@@ -4,12 +4,19 @@ import { db } from '../../core/db';
 import { withTenant } from '../../core/db/tenant';
 import {
   aiCommitSessions,
+  aiCodeLifecycleEvents,
+  aiGenerationObservations,
   aiSessionRepositories,
   aiSessions,
   aiSessionUsage,
   scmCommitFiles,
+  scmCommitLineage,
   scmCommits,
   scmContributors,
+  scmDeployments,
+  scmMergeLineage,
+  scmProviderIdentities,
+  scmPullRequestCommitMemberships,
   scmPullRequestCommits,
   scmPullRequests,
   scmRepositories,
@@ -17,6 +24,7 @@ import {
   telemetryCorrections,
 } from '../../core/db/schema';
 import { applyAuditedValue } from './audit';
+import { calculateLifecycleSummary, fallbackSessionName } from './lifecycle';
 
 const router = Router();
 
@@ -57,7 +65,9 @@ function date(value: Date | null) {
 async function loadContext(tenantId: string) {
   const tenantDb = withTenant(db, tenantId);
   const [repositories, pullRequests, contributors, sessions, sessionRepositories,
-    usage, commits, files, commitSessions, pullRequestCommits, corrections] = await Promise.all([
+    usage, commits, files, commitSessions, pullRequestCommits, corrections,
+    generationObservations, lifecycleEvents, memberships, commitLineage,
+    mergeLineage, deployments] = await Promise.all([
     tenantDb.select(scmRepositories),
     tenantDb.select(scmPullRequests),
     tenantDb.select(scmContributors),
@@ -69,10 +79,18 @@ async function loadContext(tenantId: string) {
     tenantDb.select(aiCommitSessions),
     tenantDb.select(scmPullRequestCommits),
     tenantDb.select(telemetryCorrections),
+    tenantDb.select(aiGenerationObservations),
+    tenantDb.select(aiCodeLifecycleEvents),
+    tenantDb.select(scmPullRequestCommitMemberships),
+    tenantDb.select(scmCommitLineage),
+    tenantDb.select(scmMergeLineage),
+    tenantDb.select(scmDeployments),
   ]);
   return {
     repositories, pullRequests, contributors, sessions, sessionRepositories,
     usage, commits, files, commitSessions, pullRequestCommits,
+    generationObservations, lifecycleEvents, memberships, commitLineage,
+    mergeLineage, deployments,
     corrections: correctionMap(corrections),
   };
 }
@@ -96,6 +114,7 @@ router.get('/pull-requests', async (req, res, next) => {
     res.json(rows.map((row) => ({
       id: row.id, repositoryId: row.repositoryId, externalId: row.externalId,
       title: row.title, state: row.state, authorEmail: row.authorEmail,
+      authorLogin: row.authorLogin, authorProviderId: row.authorProviderId,
       headRef: row.headRef, baseRef: row.baseRef, headSha: row.headSha,
       mergeCommitSha: row.mergeCommitSha, createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -134,7 +153,8 @@ router.get('/telemetry/sessions', async (req, res, next) => {
         id: session.id,
         externalSessionId: session.externalSessionId,
         gitAiSessionId: session.gitAiSessionId,
-        displayName: session.displayName,
+        displayName: session.displayName
+          ?? fallbackSessionName(session.tool, session.startedAt, session.externalSessionId),
         agent: session.tool,
         models: audited(context.corrections, 'session', session.id, 'observedModels', session.observedModels),
         status: session.status,
@@ -164,7 +184,9 @@ router.get('/telemetry/sessions/:id', async (req, res, next) => {
       .filter((row) => row.sessionId === session.id).map((row) => row.repositoryId));
     res.json({
       id: session.id, externalSessionId: session.externalSessionId,
-      gitAiSessionId: session.gitAiSessionId, displayName: session.displayName,
+      gitAiSessionId: session.gitAiSessionId,
+      displayName: session.displayName
+        ?? fallbackSessionName(session.tool, session.startedAt, session.externalSessionId),
       agent: session.tool,
       models: audited(context.corrections, 'session', session.id, 'observedModels', session.observedModels),
       humanAuthor: session.humanAuthor, status: session.status,
@@ -172,7 +194,12 @@ router.get('/telemetry/sessions/:id', async (req, res, next) => {
       repositories: context.repositories.filter((row) => repositoryIds.has(row.id))
         .map((row) => ({ id: row.id, name: row.name, url: row.url })),
       finalAiLines: links.reduce((sum, row) => sum + row.observedAiLines, 0),
-      totalAiGeneratedLoc: { value: null, status: 'unavailable', reason: 'Gross generation semantics are deferred to Task2.' },
+      totalAiGeneratedLoc: (() => {
+        const rows = context.generationObservations.filter((row) => row.sessionId === session.id);
+        return rows.length
+          ? { value: rows.reduce((sum, row) => sum + row.generatedLines, 0), status: 'recorded', evidence: 'git_ai_checkpoint' }
+          : { value: null, status: 'unavailable', reason: 'No eligible checkpoint evidence was received.' };
+      })(),
       usage: context.usage.filter((row) => row.sessionId === session.id).map((row) => ({
         id: row.id, model: row.model, inputTokens: row.inputTokens,
         outputTokens: row.outputTokens, reasoningTokens: row.reasoningTokens,
@@ -222,7 +249,17 @@ router.get('/telemetry/commits/:id', async (req, res, next) => {
       finalAiLines: audited(context.corrections, 'commit', commit.id, 'observedAiLines', commit.observedAiLines),
       finalHumanLines: audited(context.corrections, 'commit', commit.id, 'observedHumanLines', commit.observedHumanLines),
       unknownLines: commit.observedUnknownLines,
-      totalAiGeneratedLoc: { value: null, status: 'unavailable', reason: 'Gross generation semantics are deferred to Task2.' },
+      totalAiGeneratedLoc: (() => {
+        const sessionIds = new Set(links.map((row) => row.sessionId));
+        const rows = context.generationObservations.filter((row) => sessionIds.has(row.sessionId ?? ''));
+        return rows.length
+          ? { value: rows.reduce((sum, row) => sum + row.generatedLines, 0), status: 'recorded', evidence: 'git_ai_checkpoint' }
+          : { value: null, status: 'unavailable', reason: 'No linked checkpoint evidence was received.' };
+      })(),
+      reachability: commit.reachability,
+      operationKind: commit.operationKind,
+      predecessors: context.commitLineage.filter((row) => row.successorCommitId === commit.id),
+      successors: context.commitLineage.filter((row) => row.predecessorCommitId === commit.id),
       files: context.files.filter((row) => row.commitId === commit.id).map((row) => ({
         id: row.id, path: row.path, observedAiLines: row.observedAiLines,
         observedHumanLines: row.observedHumanLines, observedUnknownLines: row.observedUnknownLines,
@@ -244,7 +281,10 @@ router.get('/pull-requests/:id/intelligence', async (req, res, next) => {
     const pullRequest = context.pullRequests.find((row) => row.id === req.params.id);
     if (!pullRequest) { res.status(404).json({ error: 'Pull request not found' }); return; }
     const prLinks = context.pullRequestCommits.filter((row) => row.pullRequestId === pullRequest.id);
-    const commitIds = new Set(prLinks.map((row) => row.commitId));
+    const memberships = context.memberships.filter((row) => row.pullRequestId === pullRequest.id);
+    const activeMemberships = memberships.filter((row) => row.active);
+    const commitIds = new Set((memberships.length > 0 ? activeMemberships : prLinks)
+      .map((row) => row.commitId));
     const commits = context.commits.filter((row) => commitIds.has(row.id));
     const sessionIds = new Set(context.commitSessions
       .filter((row) => commitIds.has(row.commitId)).map((row) => row.sessionId));
@@ -271,7 +311,150 @@ router.get('/pull-requests/:id/intelligence', async (req, res, next) => {
         cacheWrite: usage.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0),
       },
       costByUnit,
+      membership: {
+        source: memberships.length > 0 ? 'github_pr_commits_api' : 'legacy_inference',
+        current: activeMemberships.length,
+        removedHistorical: memberships.filter((row) => !row.active).length,
+      },
+      lifecycle: calculateLifecycleSummary([
+        ...context.lifecycleEvents.filter((row) => row.pullRequestId === pullRequest.id),
+        ...context.memberships.filter((row) => row.pullRequestId === pullRequest.id && row.active && pullRequest.state === 'open')
+          .map((membership) => ({
+            stage: 'in_pr',
+            lineCount: context.commits.find((commit) => commit.id === membership.commitId)?.observedAiLines ?? 0,
+            evidenceType: 'github_pr_commits_api',
+          })),
+      ]),
     });
+  } catch (error) { next(error); }
+});
+
+type LifecycleFilter = {
+  repositoryId?: string;
+  pullRequestId?: string;
+  contributorId?: string;
+  from?: Date;
+  to?: Date;
+};
+
+async function lifecycleForTenant(tenantId: string, filter: LifecycleFilter) {
+  const context = await loadContext(tenantId);
+  let repositoryIds = filter.repositoryId ? new Set([filter.repositoryId]) : null;
+  let pullRequestIds = filter.pullRequestId ? new Set([filter.pullRequestId]) : null;
+  if (filter.contributorId) {
+    const contributor = context.contributors.find((row) => row.id === filter.contributorId);
+    if (!contributor) return null;
+    repositoryIds = new Set([contributor.repositoryId]);
+    if (contributor.providerIdentityId) {
+      const providerIdentity = await withTenant(db, tenantId).select(
+        scmProviderIdentities,
+        eq(scmProviderIdentities.id, contributor.providerIdentityId),
+      );
+      pullRequestIds = new Set(context.pullRequests
+        .filter((row) => row.authorProviderId === providerIdentity[0]?.providerUserId)
+        .map((row) => row.id));
+    }
+  }
+  const inTime = (dateValue: Date) => (!filter.from || dateValue >= filter.from)
+    && (!filter.to || dateValue <= filter.to);
+  const scopedMemberships = context.memberships.filter((row) =>
+    !pullRequestIds || pullRequestIds.has(row.pullRequestId));
+  const scopedCommitIds = new Set(scopedMemberships.map((row) => row.commitId));
+  const scopedSessionIds = pullRequestIds
+    ? new Set(context.commitSessions.filter((row) => scopedCommitIds.has(row.commitId))
+      .map((row) => row.sessionId))
+    : null;
+  const lifecycleRows = context.lifecycleEvents.filter((row) =>
+    (!repositoryIds || repositoryIds.has(row.repositoryId))
+    && (!pullRequestIds || (row.pullRequestId !== null && pullRequestIds.has(row.pullRequestId)))
+    && inTime(row.occurredAt)
+    && row.stage !== 'generated');
+  const generationRows = context.generationObservations.filter((row) =>
+    (!repositoryIds || (row.repositoryId !== null && repositoryIds.has(row.repositoryId)))
+    && (!scopedSessionIds || (row.sessionId !== null && scopedSessionIds.has(row.sessionId)))
+    && inTime(row.generatedAt));
+  const openPullRequestIds = new Set(context.pullRequests
+    .filter((row) => row.state.toLowerCase() === 'open').map((row) => row.id));
+  const activeMemberships = context.memberships.filter((row) => row.active
+    && openPullRequestIds.has(row.pullRequestId)
+    && (!pullRequestIds || pullRequestIds.has(row.pullRequestId)));
+  const inPrRows = activeMemberships.map((membership) => ({
+    stage: 'in_pr',
+    lineCount: context.commits.find((commit) => commit.id === membership.commitId)?.observedAiLines ?? 0,
+    actorKind: null,
+    evidenceType: 'github_pr_commits_api',
+  }));
+  const committedRows = pullRequestIds ? scopedMemberships.map((membership) => ({
+    stage: 'committed',
+    lineCount: context.commits.find((commit) => commit.id === membership.commitId)?.observedAiLines ?? 0,
+    actorKind: null,
+    evidenceType: 'git_ai_authorship',
+  })) : [];
+  const summary = calculateLifecycleSummary([
+    ...generationRows.map((row) => ({
+      stage: 'generated', lineCount: row.generatedLines,
+      actorKind: 'ai', evidenceType: row.evidenceSource,
+    })),
+    ...lifecycleRows,
+    ...committedRows,
+    ...inPrRows,
+  ]);
+  return {
+    summary,
+    scope: {
+      repositoryIds: repositoryIds ? [...repositoryIds] : [],
+      pullRequestIds: pullRequestIds ? [...pullRequestIds] : [],
+      contributorId: filter.contributorId ?? null,
+      from: filter.from?.toISOString() ?? null,
+      to: filter.to?.toISOString() ?? null,
+    },
+    evidence: {
+      generationObservations: generationRows.length,
+      lifecycleEvents: lifecycleRows.length,
+      activePullRequestMemberships: activeMemberships.length,
+      deployments: context.deployments.filter((row) => !repositoryIds || repositoryIds.has(row.repositoryId)).length,
+    },
+  };
+}
+
+function optionalDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  const result = new Date(value);
+  return Number.isNaN(result.getTime()) ? undefined : result;
+}
+
+router.get('/metrics/lifecycle', async (req, res, next) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  try {
+    const result = await lifecycleForTenant(tenantId, {
+      repositoryId: typeof req.query.repositoryId === 'string' ? req.query.repositoryId : undefined,
+      pullRequestId: typeof req.query.pullRequestId === 'string' ? req.query.pullRequestId : undefined,
+      contributorId: typeof req.query.contributorId === 'string' ? req.query.contributorId : undefined,
+      from: optionalDate(req.query.from), to: optionalDate(req.query.to),
+    });
+    if (!result) { res.status(404).json({ error: 'Lifecycle scope not found' }); return; }
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+router.get('/repositories/:id/lifecycle', async (req, res, next) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  try { res.json(await lifecycleForTenant(tenantId, { repositoryId: req.params.id })); }
+  catch (error) { next(error); }
+});
+
+router.get('/pull-requests/:id/lifecycle', async (req, res, next) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  try { res.json(await lifecycleForTenant(tenantId, { pullRequestId: req.params.id })); }
+  catch (error) { next(error); }
+});
+
+router.get('/contributors/:id/lifecycle', async (req, res, next) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  try {
+    const result = await lifecycleForTenant(tenantId, { contributorId: req.params.id });
+    if (!result) { res.status(404).json({ error: 'Contributor not found' }); return; }
+    res.json(result);
   } catch (error) { next(error); }
 });
 

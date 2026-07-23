@@ -1,6 +1,6 @@
 export type SCMPayload = {
   provider: 'github' | 'gitlab' | 'bitbucket';
-  eventType: 'pr_opened' | 'pr_updated' | 'pr_closed' | 'push';
+  eventType: 'pr_opened' | 'pr_updated' | 'pr_closed' | 'push' | 'deployment_status';
   organization: string;
   repository: {
     externalId: string;
@@ -9,13 +9,34 @@ export type SCMPayload = {
   };
   pullRequest: {
     externalId: string;
+    number: number;
     title: string;
     state: string;
-    authorEmail: string;
+    authorEmail: string | null;
+    authorProviderId: string;
+    authorLogin: string;
     headRef: string | null;
     baseRef: string | null;
     headSha: string | null;
     mergeCommitSha: string | null;
+    mergedAt: string | null;
+  } | null;
+  push: {
+    ref: string;
+    beforeSha: string | null;
+    afterSha: string | null;
+    forced: boolean;
+    deleted: boolean;
+    commitShas: string[];
+  } | null;
+  deployment: {
+    externalId: string;
+    environment: string;
+    ref: string | null;
+    sha: string;
+    status: string;
+    production: boolean;
+    deployedAt: string;
   } | null;
 };
 
@@ -38,6 +59,10 @@ function asString(value: unknown): string | null {
   }
 
   return null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function readHeader(headers: unknown, name: string): string | null {
@@ -91,12 +116,48 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   if (!organization || !repository) return null;
 
   if (event === 'push') {
+    const commits = Array.isArray(bodyRecord.commits) ? bodyRecord.commits : [];
     return {
       provider: 'github',
       eventType: 'push',
       organization,
       repository,
       pullRequest: null,
+      push: {
+        ref: asString(bodyRecord.ref) ?? 'unknown',
+        beforeSha: asString(bodyRecord.before),
+        afterSha: asString(bodyRecord.after),
+        forced: bodyRecord.forced === true,
+        deleted: bodyRecord.deleted === true,
+        commitShas: commits.map(asRecord).filter(Boolean)
+          .map((commit) => asString(commit!.id)).filter((sha): sha is string => Boolean(sha)),
+      },
+      deployment: null,
+    };
+  }
+
+  if (event === 'deployment_status') {
+    const deployment = asRecord(bodyRecord.deployment);
+    const deploymentStatus = asRecord(bodyRecord.deployment_status);
+    const externalId = asString(deployment?.id);
+    const sha = asString(deployment?.sha);
+    const status = asString(deploymentStatus?.state);
+    if (!deployment || !deploymentStatus || !externalId || !sha || !status) return null;
+    const environment = asString(deployment.environment)
+      ?? asString(deploymentStatus.environment)
+      ?? 'unknown';
+    return {
+      provider: 'github', eventType: 'deployment_status', organization, repository,
+      pullRequest: null, push: null,
+      deployment: {
+        externalId,
+        environment,
+        ref: asString(deployment.ref),
+        sha,
+        status,
+        production: environment.toLowerCase() === 'production',
+        deployedAt: asString(deploymentStatus.created_at) ?? new Date().toISOString(),
+      },
     };
   }
 
@@ -119,11 +180,14 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   if (!pullRequest) return null;
 
   const externalId = asString(pullRequest.id);
+  const number = asNumber(pullRequest.number) ?? asNumber(bodyRecord.number);
   const title = asString(pullRequest.title);
   const state = asString(pullRequest.state);
   const head = asRecord(pullRequest.head);
   const base = asRecord(pullRequest.base);
-  if (!externalId || !title || !state) return null;
+  const authorProviderId = asString(author?.id);
+  const authorLogin = asString(author?.login);
+  if (!externalId || number === null || !title || !state || !authorProviderId || !authorLogin) return null;
 
   return {
     provider: 'github',
@@ -132,32 +196,20 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
     repository,
     pullRequest: {
       externalId,
+      number,
       title,
       state,
-      /*
-      // Secure Fallback: GitHub hides email addresses in webhook data blocks
       authorEmail: asString(pullRequest.author_email)
-        ?? asString(author?.email)
-        ?? `${asString(author?.login) || 'unknown'}@github.user`,
-        */
-      authorEmail: (() => {
-        const lowerTitle = title.toLowerCase();
-
-        // COMPANY A SIMULATION TRIGGERS
-        if (lowerTitle.includes('dev1-a')) return 'user1custA@purpletealabs.net';
-        if (lowerTitle.includes('dev2-a')) return 'user2custA@purpletealabs.net';
-
-        // COMPANY B SIMULATION TRIGGERS
-        if (lowerTitle.includes('dev1-b')) return 'user1custB@customer-b-oidc.com';
-        if (lowerTitle.includes('dev2-b')) return 'user2custB@customer-b-oidc.com';
-
-        // Default fallback if no tag is present
-        return asString(pullRequest.author_email) ?? `${asString(author?.login) || 'unknown'}@github.user`;
-      })(),
+        ?? asString(author?.email),
+      authorProviderId,
+      authorLogin,
       headRef: asString(head?.ref),
       baseRef: asString(base?.ref),
       headSha: asString(head?.sha),
       mergeCommitSha: asString(pullRequest.merge_commit_sha),
+      mergedAt: asString(pullRequest.merged_at),
     },
+    push: null,
+    deployment: null,
   };
 }
