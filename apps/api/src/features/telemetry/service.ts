@@ -4,10 +4,13 @@ import { db } from '../../core/db';
 import { withTenant } from '../../core/db/tenant';
 import {
   aiCommitSessions,
+  aiCodeLifecycleEvents,
+  aiGenerationObservations,
   aiSessionRepositories,
   aiSessions,
   aiSessionUsage,
   scmCommitFiles,
+  scmCommitLineage,
   scmCommits,
   scmPullRequestCommits,
   scmPullRequests,
@@ -18,13 +21,16 @@ import {
 import { parseAuthorshipNote } from './authorship-note';
 import {
   decodeAttributes,
+  decodeCheckpointValues,
   decodeCommitValues,
+  decodeRewriteValues,
   decodeSessionUsage,
   EVENT_KIND,
   validateMetricEvent,
 } from './decoder';
 import { repositoryIdentity, normalizeRepositoryUrl } from './repository-url';
 import { selectPullRequestMatch } from './pr-matching';
+import { fallbackSessionName } from './lifecycle';
 import type {
   DecodedAttributes,
   GitAiMetricEvent,
@@ -140,6 +146,8 @@ async function ensureSession(
       externalSessionId: identity.externalId,
       gitAiSessionId: identity.internalId,
       tool: identity.tool,
+      displayName: existing?.displayName
+        ?? fallbackSessionName(identity.tool, startedAt, identity.externalId),
       observedModels,
       humanAuthor: identity.humanAuthor,
       status,
@@ -209,7 +217,9 @@ async function normalizeCommit(
   if (!attrs.repoUrl || !attrs.commitSha) return;
   const tenantDb = withTenant(db, tenantId);
   const repository = await ensureRepository(tenantId, attrs.repoUrl);
-  const values = decodeCommitValues(event.v);
+  const values = event.e === EVENT_KIND.rewriteCommitted
+    ? decodeRewriteValues(event.v)
+    : { ...decodeCommitValues(event.v), operationKind: 'commit', originalCommitShas: [] };
   const parsedNote = parseAuthorshipNote(values.authorshipNote);
   const author = parseAuthor(attrs.author);
   const noteAiLines = parsedNote.files.reduce((total, file) => total + file.aiLines, 0);
@@ -229,6 +239,8 @@ async function normalizeCommit(
       authorEmail: author.email,
       subject: values.subject,
       body: values.body,
+      operationKind: values.operationKind,
+      patchId: values.patchId,
       authoredAt,
       committedAt,
       diffAddedLines: values.addedLines,
@@ -244,6 +256,10 @@ async function normalizeCommit(
       branch: attrs.branch,
       subject: values.subject,
       body: values.body,
+      operationKind: values.operationKind,
+      patchId: values.patchId,
+      reachability: 'reachable',
+      lastSeenAt: committedAt,
       committedAt,
       diffAddedLines: values.addedLines,
       diffDeletedLines: values.deletedLines,
@@ -255,6 +271,55 @@ async function normalizeCommit(
     },
   );
   if (!commit) throw new Error('Commit upsert failed');
+
+  await tenantDb.insertDoNothing(
+    aiCodeLifecycleEvents,
+    {
+      repositoryId: repository.id,
+      commitId: commit.id,
+      stage: 'committed',
+      lineCount: aiLines,
+      evidenceType: 'git_ai_authorship',
+      evidenceRef: `commit:${commit.id}`,
+      occurredAt: committedAt,
+    },
+    [aiCodeLifecycleEvents.tenantId, aiCodeLifecycleEvents.stage, aiCodeLifecycleEvents.evidenceRef],
+  );
+
+  for (const predecessorSha of values.originalCommitShas) {
+    const [predecessor] = await tenantDb.select(
+      scmCommits,
+      and(eq(scmCommits.repositoryId, repository.id), eq(scmCommits.sha, predecessorSha)),
+    );
+    await tenantDb.insertDoNothing(
+      scmCommitLineage,
+      {
+        repositoryId: repository.id,
+        predecessorCommitId: predecessor?.id ?? null,
+        predecessorSha,
+        successorCommitId: commit.id,
+        successorSha: commit.sha,
+        operationKind: values.operationKind,
+        evidenceSource: 'git_ai_rewrite_event',
+        confidence: 100,
+        observedAt: committedAt,
+      },
+      [
+        scmCommitLineage.tenantId,
+        scmCommitLineage.repositoryId,
+        scmCommitLineage.predecessorSha,
+        scmCommitLineage.successorSha,
+        scmCommitLineage.operationKind,
+      ],
+    );
+    if (predecessor) {
+      await tenantDb.update(
+        scmCommits,
+        { reachability: 'superseded', lastSeenAt: committedAt },
+        eq(scmCommits.id, predecessor.id),
+      );
+    }
+  }
 
   for (const file of parsedNote.files) {
     await tenantDb.upsert(
@@ -321,8 +386,13 @@ async function normalizeSessionEvent(
   attrs: DecodedAttributes,
   sourceEventId: string,
 ) {
-  const identity = sessionIdentityFromAttrs(attrs);
-  if (!identity) return;
+  const usage = event.e === EVENT_KIND.sessionEvent ? decodeSessionUsage(event) : null;
+  const decodedIdentity = sessionIdentityFromAttrs(attrs);
+  if (!decodedIdentity) return;
+  const identity = {
+    ...decodedIdentity,
+    model: decodedIdentity.model ?? usage?.model ?? null,
+  };
   const repository = attrs.repoUrl ? await ensureRepository(tenantId, attrs.repoUrl) : null;
   const session = await ensureSession(
     tenantId,
@@ -331,7 +401,6 @@ async function normalizeSessionEvent(
     repository?.id,
   );
   if (event.e !== EVENT_KIND.sessionEvent) return;
-  const usage = decodeSessionUsage(event);
   if (!usage) return;
   const tenantDb = withTenant(db, tenantId);
   const evidenceKey = usage.externalEventId
@@ -341,7 +410,7 @@ async function normalizeSessionEvent(
     aiSessionUsage,
     {
       sessionId: session.id,
-      model: attrs.model,
+      model: usage.model ?? attrs.model,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       reasoningTokens: usage.reasoningTokens,
@@ -367,6 +436,60 @@ async function normalizeSessionEvent(
   );
 }
 
+async function normalizeCheckpoint(
+  tenantId: string,
+  event: GitAiMetricEvent,
+  attrs: DecodedAttributes,
+  sourceEventId: string,
+) {
+  const checkpoint = decodeCheckpointValues(event.v);
+  if (checkpoint.kind !== 'ai_agent' && checkpoint.kind !== 'ai_tab') return;
+  const generatedLines = checkpoint.linesAddedSloc ?? checkpoint.linesAdded;
+  if (generatedLines <= 0) return;
+  const repository = attrs.repoUrl ? await ensureRepository(tenantId, attrs.repoUrl) : null;
+  const identity = sessionIdentityFromAttrs(attrs);
+  const rawTimestamp = checkpoint.checkpointTimestamp;
+  const generatedAt = rawTimestamp
+    ? new Date(rawTimestamp > 10_000_000_000 ? rawTimestamp : rawTimestamp * 1000)
+    : eventDate(event.t);
+  const session = identity
+    ? await ensureSession(tenantId, identity, generatedAt, repository?.id)
+    : null;
+  const tenantDb = withTenant(db, tenantId);
+  await tenantDb.insertDoNothing(
+    aiGenerationObservations,
+    {
+      sessionId: session?.id ?? null,
+      repositoryId: repository?.id ?? null,
+      sourceEventId,
+      traceId: attrs.traceId,
+      model: attrs.model,
+      filePath: checkpoint.filePath,
+      generatedLines,
+      acceptedLines: null,
+      generatedAt,
+      evidenceSource: 'git_ai_checkpoint',
+    },
+    [aiGenerationObservations.tenantId, aiGenerationObservations.sourceEventId],
+  );
+  if (repository) {
+    await tenantDb.insertDoNothing(
+      aiCodeLifecycleEvents,
+      {
+        repositoryId: repository.id,
+        sessionId: session?.id ?? null,
+        stage: 'generated',
+        lineCount: generatedLines,
+        actorKind: 'ai',
+        evidenceType: 'git_ai_checkpoint',
+        evidenceRef: `checkpoint:${sourceEventId}`,
+        occurredAt: generatedAt,
+      },
+      [aiCodeLifecycleEvents.tenantId, aiCodeLifecycleEvents.stage, aiCodeLifecycleEvents.evidenceRef],
+    );
+  }
+}
+
 async function normalizeEvent(
   tenantId: string,
   event: GitAiMetricEvent,
@@ -379,10 +502,13 @@ async function normalizeEvent(
   }
   if (
     event.e === EVENT_KIND.agentUsage
-    || event.e === EVENT_KIND.checkpoint
     || event.e === EVENT_KIND.sessionEvent
   ) {
     await normalizeSessionEvent(tenantId, event, attrs, sourceEventId);
+  }
+  if (event.e === EVENT_KIND.checkpoint) {
+    await normalizeSessionEvent(tenantId, event, attrs, sourceEventId);
+    await normalizeCheckpoint(tenantId, event, attrs, sourceEventId);
   }
 }
 

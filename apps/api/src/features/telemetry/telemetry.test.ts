@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeAttributes, decodeSessionUsage, validateMetricEvent, validateMetricsBatch } from './decoder';
+import { decodeAttributes, decodeCheckpointValues, decodeRewriteValues, decodeSessionUsage, validateMetricEvent, validateMetricsBatch } from './decoder';
 import { normalizeRepositoryUrl } from './repository-url';
 import { parseAuthorshipNote } from './authorship-note';
 import { parseIngestTokenMap, resolveTenantForToken } from '../../core/middleware/machine-auth';
 import { parseGitHubWebhook } from '../scm/parser';
 import { selectPullRequestMatch } from './pr-matching';
 import { applyAuditedValue } from './audit';
+import { calculateLifecycleSummary, diffCommitMembership, fallbackSessionName } from './lifecycle';
 
 test('decodes sparse Git AI positions without shifting missing values', () => {
   const attrs = decodeAttributes({ '1': 'git@github.com:Acme/Repo.git', '20': 'opencode', '21': 'model-x', '23': 'external-1', '24': 's_internal' });
@@ -23,8 +24,8 @@ test('accepts future event kinds for immutable raw preservation', () => {
 });
 
 test('decodes provider usage while preserving unavailable categories as null', () => {
-  const usage = decodeSessionUsage({ t: 1, e: 5, a: {}, v: { '0': { role: 'assistant', tokens: { input: 10, output: 4, cache: { read: 7 } }, cost: 0.5 } } });
-  assert.deepEqual(usage, { inputTokens: 10, outputTokens: 4, reasoningTokens: null,
+  const usage = decodeSessionUsage({ t: 1, e: 5, a: {}, v: { '0': { role: 'assistant', modelID: 'deepseek-v4', tokens: { input: 10, output: 4, cache: { read: 7 } }, cost: 0.5 } } });
+  assert.deepEqual(usage, { model: 'deepseek-v4', inputTokens: 10, outputTokens: 4, reasoningTokens: null,
     cacheReadTokens: 7, cacheWriteTokens: null, costAmount: 0.5, externalEventId: null });
 });
 
@@ -54,13 +55,68 @@ test('machine token map resolves a tenant and rejects unknown keys', () => {
 test('GitHub PR parser captures refs and SHAs for synchronize events', () => {
   const parsed = parseGitHubWebhook({ 'x-github-event': 'pull_request' }, {
     action: 'synchronize', repository: { id: 1, name: 'repo', html_url: 'https://github.com/acme/repo', owner: { login: 'acme' } },
-    pull_request: { id: 2, title: 'Update', state: 'open', user: { login: 'dev' },
+    number: 17,
+    pull_request: { id: 2, number: 17, title: 'Update dev1-a', state: 'open', user: { id: 99, login: 'dev' },
       head: { ref: 'feature', sha: 'abc' }, base: { ref: 'main', sha: 'def' }, merge_commit_sha: 'merge' },
   });
   assert.equal(parsed?.eventType, 'pr_updated');
   assert.equal(parsed?.pullRequest?.headRef, 'feature');
   assert.equal(parsed?.pullRequest?.headSha, 'abc');
   assert.equal(parsed?.pullRequest?.mergeCommitSha, 'merge');
+  assert.equal(parsed?.pullRequest?.authorProviderId, '99');
+  assert.equal(parsed?.pullRequest?.authorLogin, 'dev');
+  assert.equal(parsed?.pullRequest?.authorEmail, null);
+});
+
+test('rewrite events preserve operation and predecessor SHAs without Untitled labels', () => {
+  const rewrite = decodeRewriteValues({ '2': 4, '5': [3], '15': 'cherry_pick', '16': ['old-a'] });
+  assert.equal(rewrite.operationKind, 'cherry_pick');
+  assert.deepEqual(rewrite.originalCommitShas, ['old-a']);
+  assert.equal(rewrite.subject, 'Rewrite: cherry pick');
+});
+
+test('checkpoint decoding uses SLOC for gross generation evidence', () => {
+  const checkpoint = decodeCheckpointValues({ '1': 'ai_agent', '2': 'src/a.ts', '3': 8, '5': 5 });
+  assert.equal(checkpoint.kind, 'ai_agent');
+  assert.equal(checkpoint.linesAdded, 8);
+  assert.equal(checkpoint.linesAddedSloc, 5);
+});
+
+test('lifecycle metrics keep unavailable distinct from zero and production from proxy', () => {
+  const summary = calculateLifecycleSummary([
+    { stage: 'generated', lineCount: 90, evidenceType: 'checkpoint' },
+    { stage: 'committed', lineCount: 10, evidenceType: 'note' },
+    { stage: 'merged_proxy', lineCount: 8, evidenceType: 'default_branch_proxy' },
+    { stage: 'reworked', lineCount: 2, actorKind: 'human', evidenceType: 'diff' },
+  ]);
+  assert.equal(summary.ratios.generatedToCommitted, 9);
+  assert.equal(summary.production.value, null);
+  assert.equal(summary.mergedProxy.value, 8);
+  assert.equal(summary.reworkByActor.human, 2);
+});
+
+test('session fallback names are deterministic and contain no prompt text', () => {
+  assert.equal(
+    fallbackSessionName('codex', new Date('2026-07-23T00:00:00Z'), 'external-session-id'),
+    'codex session · 2026-07-23 · external',
+  );
+});
+
+test('PR membership snapshots preserve removed commits instead of erasing history', () => {
+  assert.deepEqual(diffCommitMembership(['a', 'b'], ['b', 'c']), {
+    added: ['c'], retained: ['b'], removed: ['a'],
+  });
+});
+
+test('deployment status parser distinguishes production evidence', () => {
+  const parsed = parseGitHubWebhook({ 'x-github-event': 'deployment_status' }, {
+    repository: { id: 1, name: 'repo', html_url: 'https://github.com/acme/repo', owner: { login: 'acme' } },
+    deployment: { id: 7, environment: 'production', ref: 'main', sha: 'abc' },
+    deployment_status: { state: 'success', created_at: '2026-07-23T01:00:00Z' },
+  });
+  assert.equal(parsed?.eventType, 'deployment_status');
+  assert.equal(parsed?.deployment?.production, true);
+  assert.equal(parsed?.deployment?.status, 'success');
 });
 
 test('PR matching uses SHA, then branch, and rejects ambiguous author matches', () => {
