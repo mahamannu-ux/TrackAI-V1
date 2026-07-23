@@ -47,6 +47,38 @@ export function withTenant(database: typeof db, tenantId: string) {
       return database.insert(table).values(tenantValues).returning();
     },
 
+    insertDoNothing<TTable extends TenantScopedTable>(
+      table: TTable,
+      values: TenantInsert<TTable>,
+      conflictTarget: AnyPgColumn[],
+    ) {
+      const tenantValues = { ...values, tenantId } as TTable['$inferInsert'];
+      return database
+        .insert(table)
+        .values(tenantValues)
+        .onConflictDoNothing({ target: conflictTarget as any })
+        .returning();
+    },
+
+    upsert<TTable extends TenantScopedTable>(
+      table: TTable,
+      values: TenantInsert<TTable>,
+      conflictTarget: AnyPgColumn[],
+      updateValues: Partial<TenantInsert<TTable>>,
+    ) {
+      const tenantValues = { ...values, tenantId } as TTable['$inferInsert'];
+      const { tenantId: _ignoredTenantId, ...safeUpdateValues } = updateValues as
+        Partial<TenantInsert<TTable>> & { tenantId?: unknown };
+      return database
+        .insert(table)
+        .values(tenantValues)
+        .onConflictDoUpdate({
+          target: conflictTarget as any,
+          set: safeUpdateValues as any,
+        })
+        .returning();
+    },
+
     update<TTable extends TenantScopedTable>(
       table: TTable,
       values: Partial<TenantInsert<TTable>>,

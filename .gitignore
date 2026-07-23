@@ -108,7 +108,12 @@ out/
 
 # Drizzle
 drizzle/
+!apps/api/drizzle/
+!apps/api/drizzle/**
 
 # Docker
 *.tar
 
+# Local database recovery artifacts must never be committed.
+backup.sql
+*.dump

@@ -9,6 +9,7 @@ declare global {
     interface Request {
       user?: AuthenticatedUser;
       tenantId?: string;
+      machineId?: string;
     }
   }
 }

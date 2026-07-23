@@ -82,3 +82,38 @@ export async function createItem(name: string): Promise<Item> {
     body: JSON.stringify({ name }),
   });
 }
+
+export type AuditedValue<T> = {
+  observedValue: T;
+  auditedValue: T;
+  corrected: boolean;
+  correctionReason: string | null;
+  evidenceRef: string | null;
+};
+
+export type Repository = { id: string; provider: string; externalId: string; name: string; url: string; normalizedUrl: string | null; createdAt: string };
+export type PullRequest = { id: string; repositoryId: string; externalId: string; title: string; state: string; authorEmail: string; headRef: string | null; baseRef: string | null; headSha: string | null; mergeCommitSha: string | null; createdAt: string; updatedAt: string };
+export type Contributor = { id: string; repositoryId: string; name: string; email: string; machineId: string | null };
+export type SessionListItem = {
+  id: string; externalSessionId: string; gitAiSessionId: string | null; displayName: string | null;
+  agent: string; models: AuditedValue<string[]>; status: string; startedAt: string | null; endedAt: string | null;
+  repositories: Array<{ id: string; name: string; url: string }>; commitCount: number; finalAiLines: number;
+  totalTokens: number | null; usageAvailability: string;
+};
+export type CommitListItem = {
+  id: string; sha: string; subject: string; branch: string | null; repository: { id: string; name: string } | null;
+  authorName: string | null; authorEmail: string | null; committedAt: string | null; diffAddedLines: number;
+  diffDeletedLines: number; finalAiLines: AuditedValue<number>; finalHumanLines: AuditedValue<number>;
+  unknownLines: number; sessionCount: number;
+};
+export type DashboardSummary = { organizationName: string; repositories: number; pullRequests: number; contributors: number; sessions: number; commits: number; finalAiLines: number; finalHumanLines: number };
+
+export const getRepositories = () => apiFetch<Repository[]>('/api/repositories');
+export const getPullRequests = () => apiFetch<PullRequest[]>('/api/pull-requests');
+export const getContributors = () => apiFetch<Contributor[]>('/api/contributors');
+export const getSessions = () => apiFetch<SessionListItem[]>('/api/telemetry/sessions');
+export const getSession = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/sessions/${encodeURIComponent(id)}`);
+export const getCommits = () => apiFetch<CommitListItem[]>('/api/telemetry/commits');
+export const getCommit = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/commits/${encodeURIComponent(id)}`);
+export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
+export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
