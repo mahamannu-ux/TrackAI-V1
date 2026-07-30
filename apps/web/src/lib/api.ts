@@ -92,37 +92,64 @@ export type AuditedValue<T> = {
 };
 
 export type Repository = { id: string; provider: string; externalId: string; name: string; url: string; normalizedUrl: string | null; createdAt: string };
-export type PullRequest = { id: string; repositoryId: string; externalId: string; title: string; state: string; authorEmail: string | null; authorLogin: string | null; headRef: string | null; baseRef: string | null; headSha: string | null; mergeCommitSha: string | null; createdAt: string; updatedAt: string };
+export type PullRequest = { id: string; repositoryId: string; externalId: string; title: string; state: string; authorEmail: string | null; authorLogin: string | null; headRef: string | null; baseRef: string | null; headSha: string | null; mergeCommitSha: string | null; mergedAt: string | null; createdAt: string; updatedAt: string };
 export type Contributor = { id: string; repositoryId: string; name: string; email: string | null; machineId: string | null };
+export type TelemetryModel = { key: string; tool: string; model: string | null };
 export type SessionListItem = {
   id: string; externalSessionId: string; gitAiSessionId: string | null; displayName: string | null;
   agent: string; models: AuditedValue<string[]>; status: string; startedAt: string | null; endedAt: string | null;
-  repositories: Array<{ id: string; name: string; url: string }>; commitCount: number; finalAiLines: number;
+  repositories: Array<{ id: string; name: string; url: string }>;
+  commitCount: number; retainedCommitCount: number; historicalCommitCount: number; finalAiLines: number;
   totalTokens: number | null; usageAvailability: string;
 };
 export type CommitListItem = {
   id: string; sha: string; subject: string; branch: string | null; repository: { id: string; name: string } | null;
   authorName: string | null; authorEmail: string | null; committedAt: string | null; diffAddedLines: number;
   diffDeletedLines: number; finalAiLines: AuditedValue<number>; finalHumanLines: AuditedValue<number>;
-  unknownLines: number; sessionCount: number;
+  unknownLines: number; sessionCount: number; reachability: string; operationKind: string;
 };
-export type DashboardSummary = { organizationName: string; repositories: number; pullRequests: number; contributors: number; sessions: number; commits: number; finalAiLines: number; finalHumanLines: number };
-export type LifecycleValue = { value: number | null; availability: 'recorded' | 'unavailable'; evidenceTypes: string[] };
+export type DashboardSummary = { organizationName: string; repositories: number; pullRequests: number; contributors: number; sessions: number; commits: number; retainedCommits: number; historicalCommits: number; finalAiLines: number; finalHumanLines: number };
+export type LifecycleValue = {
+  value: number | null;
+  observedValue?: number | null;
+  availability: 'recorded' | 'partial' | 'unavailable';
+  evidenceTypes: string[];
+  reason?: string;
+};
 export type LifecycleSummary = {
   generated: LifecycleValue; committed: LifecycleValue; inPullRequests: LifecycleValue;
   merged: LifecycleValue; production: LifecycleValue; mergedProxy: LifecycleValue;
   reworked: LifecycleValue; churned: LifecycleValue; reworkByActor: Record<string, number>;
   ratios: { generatedToCommitted: number | null; generatedToPullRequest: number | null; generatedToMerged: number | null; generatedToProduction: number | null };
 };
-export type LifecycleResponse = { summary: LifecycleSummary; scope: Record<string, unknown>; evidence: Record<string, number> };
+export type LifecycleResponse = {
+  summary: LifecycleSummary;
+  totals: { sessions: number; commits: number; finalAiLines: number; finalHumanLines: number };
+  generationCoverage: { complete: boolean; requiredCommitCount: number; coveredCommitCount: number; missingCommitIds: string[] };
+  scope: Record<string, unknown>;
+  evidence: Record<string, number>;
+};
+export type EvidenceFlowNode = {
+  id: string; sequence: number; timestamp: string;
+  type: 'developer_prompt' | 'agent_thinking' | 'agent_response' | 'tool_call' | 'tool_result' | 'commit';
+  model: string | null; content: string | null; toolName?: string;
+  arguments?: unknown; result?: unknown;
+  linkageQuality: 'exact' | 'time-window' | 'unresolved'; availabilityReason?: string;
+};
+export type EvidenceFlowResponse = {
+  provider: string; status: 'recorded' | 'unavailable'; reason: string | null;
+  developmentOnly?: boolean; correlation?: string; nodes: EvidenceFlowNode[];
+};
 
 export const getRepositories = () => apiFetch<Repository[]>('/api/repositories');
 export const getPullRequests = () => apiFetch<PullRequest[]>('/api/pull-requests');
 export const getContributors = () => apiFetch<Contributor[]>('/api/contributors');
+export const getModels = () => apiFetch<TelemetryModel[]>('/api/telemetry/models');
 export const getSessions = () => apiFetch<SessionListItem[]>('/api/telemetry/sessions');
 export const getSession = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/sessions/${encodeURIComponent(id)}`);
 export const getCommits = () => apiFetch<CommitListItem[]>('/api/telemetry/commits');
 export const getCommit = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/commits/${encodeURIComponent(id)}`);
+export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowResponse>(`/api/telemetry/commits/${encodeURIComponent(id)}/evidence-flow`);
 export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
 export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
 export const getLifecycle = (query = '') => apiFetch<LifecycleResponse>(`/api/metrics/lifecycle${query}`);

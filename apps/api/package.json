@@ -4,13 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npm test && tsc",
     "start": "node dist/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "seed:task1": "tsx src/features/telemetry/task1-seed.ts",
     "reset:task2": "tsx src/features/telemetry/task2-reset.ts",
+    "rebuild:generation": "tsx src/features/telemetry/task2-generation-rebuild.ts",
+    "rebuild:lifecycle": "tsx src/features/telemetry/task2-lifecycle-rebuild.ts",
+    "rebuild:model-lifecycle": "tsx src/features/telemetry/task2-model-rebuild.ts",
     "test": "node --import tsx --test src/features/telemetry/telemetry.test.ts"
   },
   "dependencies": {

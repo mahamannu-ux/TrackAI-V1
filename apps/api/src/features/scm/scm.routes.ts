@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import {
   scmContributors,
@@ -13,8 +13,18 @@ import { verifyGitHubSignature } from './crypto';
 import { parseGitHubWebhook, type SCMPayload } from './parser';
 import { normalizeRepositoryUrl } from '../telemetry/repository-url';
 import { reconcileRepositoryPullRequests } from '../telemetry/service';
-import { githubReadConfigured, listPullRequestCommits } from './github-app';
-import { recordDeployment, recordMergeLineage, recordPullRequestSnapshot } from './lifecycle-service';
+import {
+  getRepositoryCommit,
+  getRepositoryCommitFirstParentChain,
+  githubReadConfigured,
+  listPullRequestCommits,
+} from './github-app';
+import {
+  recordDeployment,
+  recordMergeLineage,
+  recordPullRequestSnapshot,
+  recordPushedCommit,
+} from './lifecycle-service';
 
 const router = Router();
 
@@ -108,29 +118,61 @@ router.post('/:provider', async (req: Request, res: Response) => {
     }
 
     const storedRecords = await db.transaction(async (transaction) => {
-      const [repository] = await transaction
-        .insert(scmRepositories)
-        .values({
-          tenantId: tenant.id,
-          provider: payload.provider,
-          externalId: payload.repository.externalId,
-          name: payload.repository.name,
-          url: payload.repository.url,
-          normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
-        })
-        .onConflictDoUpdate({
-          target: [
-            scmRepositories.tenantId,
-            scmRepositories.provider,
-            scmRepositories.externalId,
-          ],
-          set: {
+      const normalizedUrl = normalizeRepositoryUrl(payload.repository.url);
+      const [existingRepository] = await transaction
+        .select({ id: scmRepositories.id })
+        .from(scmRepositories)
+        .where(and(
+          eq(scmRepositories.tenantId, tenant.id),
+          or(
+            normalizedUrl
+              ? eq(scmRepositories.normalizedUrl, normalizedUrl)
+              : undefined,
+            and(
+              eq(scmRepositories.provider, payload.provider),
+              eq(scmRepositories.externalId, payload.repository.externalId),
+            ),
+          ),
+        ))
+        .limit(1);
+
+      const repositoryValues = {
+        tenantId: tenant.id,
+        provider: payload.provider,
+        externalId: payload.repository.externalId,
+        name: payload.repository.name,
+        url: payload.repository.url,
+        normalizedUrl,
+      };
+
+      const [repository] = existingRepository
+        ? await transaction
+          .update(scmRepositories)
+          .set({
+            provider: payload.provider,
+            externalId: payload.repository.externalId,
             name: payload.repository.name,
             url: payload.repository.url,
-            normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
-          },
-        })
-        .returning({ id: scmRepositories.id });
+            normalizedUrl,
+          })
+          .where(eq(scmRepositories.id, existingRepository.id))
+          .returning({ id: scmRepositories.id })
+        : await transaction
+          .insert(scmRepositories)
+          .values(repositoryValues)
+          .onConflictDoUpdate({
+            target: [
+              scmRepositories.tenantId,
+              scmRepositories.provider,
+              scmRepositories.externalId,
+            ],
+            set: {
+              name: payload.repository.name,
+              url: payload.repository.url,
+              normalizedUrl,
+            },
+          })
+          .returning({ id: scmRepositories.id });
 
       if (!repository) {
         throw new Error('Repository upsert did not return a record');
@@ -249,28 +291,54 @@ router.post('/:provider', async (req: Request, res: Response) => {
 
     if (storedRecords.pullRequestId) {
       await reconcileRepositoryPullRequests(tenant.id, storedRecords.repositoryId);
+      let pullRequestCommits = null;
       if (payload.pullRequest && githubReadConfigured()) {
-        const commits = await listPullRequestCommits(
+        pullRequestCommits = await listPullRequestCommits(
           payload.organization,
           payload.repository.name,
           payload.pullRequest.number,
         );
-        if (commits) {
+        if (pullRequestCommits) {
           await recordPullRequestSnapshot({
             tenantId: tenant.id,
             repositoryId: storedRecords.repositoryId,
             pullRequestId: storedRecords.pullRequestId,
             headSha: payload.pullRequest.headSha,
-            commits,
+            commits: pullRequestCommits,
           });
         }
       }
       if (payload.eventType === 'pr_closed' && payload.pullRequest?.mergeCommitSha && payload.pullRequest.mergedAt) {
+        const resultCommit = githubReadConfigured()
+          ? await getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            payload.pullRequest.mergeCommitSha,
+          )
+          : null;
+        const sourceCommitEvidence = pullRequestCommits
+          ? (await Promise.all(pullRequestCommits.map((commit) => getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            commit.sha,
+          )))).filter((commit) => commit !== null)
+          : undefined;
+        const resultFirstParentChain = githubReadConfigured() && pullRequestCommits
+          ? await getRepositoryCommitFirstParentChain(
+            payload.organization,
+            payload.repository.name,
+            payload.pullRequest.mergeCommitSha,
+            pullRequestCommits.length,
+          )
+          : undefined;
         await recordMergeLineage({
           tenantId: tenant.id,
           repositoryId: storedRecords.repositoryId,
           pullRequestId: storedRecords.pullRequestId,
           resultSha: payload.pullRequest.mergeCommitSha,
+          resultCommit,
+          sourceCommitEvidence,
+          resultFirstParentChain,
           mergedAt: new Date(payload.pullRequest.mergedAt),
         });
       }
@@ -286,16 +354,46 @@ router.post('/:provider', async (req: Request, res: Response) => {
       });
     }
 
-    if (payload.push?.afterSha) {
-      await db.update(scmCommits).set({
-        reachability: payload.push.deleted ? 'unreachable' : 'reachable',
-        lastSeenAt: new Date(),
-        updatedAt: new Date(),
-      }).where(and(
-        eq(scmCommits.tenantId, tenant.id),
-        eq(scmCommits.repositoryId, storedRecords.repositoryId),
-        eq(scmCommits.sha, payload.push.afterSha),
-      ));
+    if (payload.push) {
+      const observedAt = new Date();
+      const branch = payload.push.ref.startsWith('refs/heads/')
+        ? payload.push.ref.slice('refs/heads/'.length)
+        : payload.push.ref;
+      const pushedShas = [...new Set([
+        ...payload.push.commitShas,
+        payload.push.afterSha,
+      ])].filter((sha): sha is string => Boolean(sha) && !/^0+$/.test(sha as string));
+
+      if (!payload.push.deleted && githubReadConfigured()) {
+        for (const sha of pushedShas) {
+          const commit = await getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            sha,
+          );
+          if (commit) {
+            await recordPushedCommit({
+              tenantId: tenant.id,
+              repositoryId: storedRecords.repositoryId,
+              branch,
+              commit,
+              observedAt,
+            });
+          }
+        }
+      } else {
+        for (const sha of pushedShas) {
+          await db.update(scmCommits).set({
+            reachability: payload.push.deleted ? 'unreachable' : 'reachable',
+            lastSeenAt: observedAt,
+            updatedAt: observedAt,
+          }).where(and(
+            eq(scmCommits.tenantId, tenant.id),
+            eq(scmCommits.repositoryId, storedRecords.repositoryId),
+            eq(scmCommits.sha, sha),
+          ));
+        }
+      }
     }
 
     res.status(200).json({ ok: true });

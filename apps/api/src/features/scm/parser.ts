@@ -136,15 +136,17 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
     };
   }
 
-  if (event === 'deployment_status') {
+  if (event === 'deployment' || event === 'deployment_status') {
     const deployment = asRecord(bodyRecord.deployment);
-    const deploymentStatus = asRecord(bodyRecord.deployment_status);
+    const deploymentStatus = event === 'deployment_status'
+      ? asRecord(bodyRecord.deployment_status)
+      : null;
     const externalId = asString(deployment?.id);
     const sha = asString(deployment?.sha);
-    const status = asString(deploymentStatus?.state);
-    if (!deployment || !deploymentStatus || !externalId || !sha || !status) return null;
+    const status = asString(deploymentStatus?.state) ?? (event === 'deployment' ? 'created' : null);
+    if (!deployment || !externalId || !sha || !status) return null;
     const environment = asString(deployment.environment)
-      ?? asString(deploymentStatus.environment)
+      ?? asString(deploymentStatus?.environment)
       ?? 'unknown';
     return {
       provider: 'github', eventType: 'deployment_status', organization, repository,
@@ -156,7 +158,9 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
         sha,
         status,
         production: environment.toLowerCase() === 'production',
-        deployedAt: asString(deploymentStatus.created_at) ?? new Date().toISOString(),
+        deployedAt: asString(deploymentStatus?.created_at)
+          ?? asString(deployment.created_at)
+          ?? new Date().toISOString(),
       },
     };
   }
@@ -182,7 +186,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   const externalId = asString(pullRequest.id);
   const number = asNumber(pullRequest.number) ?? asNumber(bodyRecord.number);
   const title = asString(pullRequest.title);
-  const state = asString(pullRequest.state);
+  const mergedAt = asString(pullRequest.merged_at);
+  const state = mergedAt ? 'merged' : asString(pullRequest.state);
   const head = asRecord(pullRequest.head);
   const base = asRecord(pullRequest.base);
   const authorProviderId = asString(author?.id);
@@ -207,7 +212,7 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
       baseRef: asString(base?.ref),
       headSha: asString(head?.sha),
       mergeCommitSha: asString(pullRequest.merge_commit_sha),
-      mergedAt: asString(pullRequest.merged_at),
+      mergedAt,
     },
     push: null,
     deployment: null,

@@ -8,6 +8,13 @@ export type GitHubCommit = {
     committer?: { date?: string };
   };
   author?: { id?: number; login?: string } | null;
+  parents?: Array<{ sha: string }>;
+  files?: Array<{
+    filename: string;
+    previous_filename?: string;
+    status: string;
+    patch?: string;
+  }>;
 };
 
 type CachedToken = { value: string; expiresAt: number };
@@ -101,6 +108,30 @@ export async function listPullRequestCommits(owner: string, repository: string, 
     if (batch === null) return null;
     commits.push(...batch);
     if (batch.length < 100) break;
+  }
+  return commits;
+}
+
+export async function getRepositoryCommit(owner: string, repository: string, sha: string) {
+  return githubGet<GitHubCommit>(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/commits/${encodeURIComponent(sha)}`,
+    owner,
+  );
+}
+
+export async function getRepositoryCommitFirstParentChain(
+  owner: string,
+  repository: string,
+  sha: string,
+  limit: number,
+) {
+  const commits: GitHubCommit[] = [];
+  let currentSha: string | null = sha;
+  while (currentSha && commits.length < limit) {
+    const commit = await getRepositoryCommit(owner, repository, currentSha);
+    if (!commit) break;
+    commits.push(commit);
+    currentSha = commit.parents?.[0]?.sha ?? null;
   }
   return commits;
 }

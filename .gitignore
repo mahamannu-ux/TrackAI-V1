@@ -116,4 +116,5 @@ drizzle/
 
 # Local database recovery artifacts must never be committed.
 backup.sql
+backup*.sql
 *.dump

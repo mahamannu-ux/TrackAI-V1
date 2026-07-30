@@ -254,6 +254,28 @@ export const aiCommitSessions = pgTable('ai_commit_sessions', {
   ).on(table.tenantId, table.commitId, table.sessionId),
 }));
 
+/** Final retained AI attribution grouped by the originating tool/model. */
+export const aiCommitModelAttributions = pgTable('ai_commit_model_attributions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  commitId: uuid('commit_id').references(() => scmCommits.id).notNull(),
+  sessionId: uuid('session_id').references(() => aiSessions.id),
+  internalSessionId: text('internal_session_id'),
+  tool: text('tool').notNull(),
+  model: text('model'),
+  modelKey: text('model_key').notNull(),
+  observedAiLines: integer('observed_ai_lines').notNull().default(0),
+  evidenceType: text('evidence_type').notNull(),
+  evidenceRef: text('evidence_ref').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantCommitModelUnique: unique('ai_commit_model_attributions_tenant_commit_model_key')
+    .on(table.tenantId, table.commitId, table.modelKey),
+  tenantModelIndex: index('ai_commit_model_attributions_tenant_model_idx')
+    .on(table.tenantId, table.modelKey),
+}));
+
 export const scmPullRequestCommits = pgTable('scm_pull_request_commits', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
@@ -393,6 +415,33 @@ export const aiCodeLifecycleEvents = pgTable('ai_code_lifecycle_events', {
 }, (table) => ({
   tenantLifecycleEvidenceUnique: unique('ai_code_lifecycle_events_tenant_stage_evidence_key')
     .on(table.tenantId, table.stage, table.evidenceRef),
+}));
+
+/** Model-specific projection; aggregate lifecycle evidence remains authoritative. */
+export const aiModelLifecycleEvents = pgTable('ai_model_lifecycle_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  repositoryId: uuid('repository_id').references(() => scmRepositories.id).notNull(),
+  sessionId: uuid('session_id').references(() => aiSessions.id),
+  commitId: uuid('commit_id').references(() => scmCommits.id),
+  pullRequestId: uuid('pull_request_id').references(() => scmPullRequests.id),
+  tool: text('tool').notNull(),
+  model: text('model'),
+  modelKey: text('model_key').notNull(),
+  stage: text('stage').notNull(),
+  lineCount: integer('line_count').notNull(),
+  actorKind: text('actor_kind'),
+  actorModelKey: text('actor_model_key'),
+  evidenceType: text('evidence_type').notNull(),
+  evidenceRef: text('evidence_ref').notNull(),
+  confidence: integer('confidence').notNull().default(100),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantModelLifecycleUnique: unique('ai_model_lifecycle_events_tenant_stage_evidence_key')
+    .on(table.tenantId, table.stage, table.evidenceRef),
+  tenantModelLifecycleIndex: index('ai_model_lifecycle_events_tenant_model_idx')
+    .on(table.tenantId, table.modelKey, table.occurredAt),
 }));
 
 /** Stable provider identity, deliberately separate from optional email evidence. */

@@ -15,6 +15,13 @@
       "when": 1784820044820,
       "tag": "0001_abandoned_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785092540798,
+      "tag": "0002_hard_hellfire_club",
+      "breakpoints": true
     }
   ]
 }

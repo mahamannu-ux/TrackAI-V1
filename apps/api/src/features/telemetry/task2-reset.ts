@@ -3,14 +3,17 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../core/db';
 import {
   aiCodeLifecycleEvents,
+  aiCommitModelAttributions,
   aiCommitSessions,
   aiGenerationObservations,
   aiSessionRepositories,
   aiSessions,
   aiSessionUsage,
+  aiModelLifecycleEvents,
   scmCommitFiles,
   scmCommitLineage,
   scmCommits,
+  scmBranches,
   scmContributors,
   scmDeployments,
   scmMergeLineage,
@@ -18,6 +21,7 @@ import {
   scmPullRequestCommitMemberships,
   scmPullRequestCommits,
   scmPullRequestSnapshots,
+  scmPullRequests,
   ssoTenants,
   telemetryCorrections,
   telemetryIngestBatches,
@@ -32,6 +36,7 @@ const args = new Map(process.argv.slice(2).map((arg) => {
 }));
 const domain = args.get('tenant-domain')?.trim().toLowerCase();
 const confirmed = args.get('confirm') === 'RESET_TASK2';
+const includeScmHistory = args.get('include-scm-history') === 'true';
 if (!domain) throw new Error('--tenant-domain=<domain> is required');
 
 const [tenant] = await db.select({ id: ssoTenants.id, domain: ssoTenants.domain })
@@ -39,6 +44,7 @@ const [tenant] = await db.select({ id: ssoTenants.id, domain: ssoTenants.domain 
 if (!tenant) throw new Error(`No tenant found for ${domain}`);
 
 const tables = [
+  aiModelLifecycleEvents,
   aiCodeLifecycleEvents,
   tenantIdentityLinks,
   scmContributors,
@@ -47,6 +53,7 @@ const tables = [
   scmPullRequestSnapshots,
   scmPullRequestCommits,
   scmCommitLineage,
+  aiCommitModelAttributions,
   aiCommitSessions,
   aiSessionUsage,
   aiGenerationObservations,
@@ -59,15 +66,17 @@ const tables = [
   telemetryMetricEvents,
   telemetryIngestBatches,
   scmProviderIdentities,
+  ...(includeScmHistory ? [scmBranches, scmPullRequests] : []),
 ] as const;
 const tableNames = [
-  'ai_code_lifecycle_events', 'tenant_identity_links', 'scm_contributors',
+  'ai_model_lifecycle_events', 'ai_code_lifecycle_events', 'tenant_identity_links', 'scm_contributors',
   'scm_merge_lineage', 'scm_pull_request_commit_memberships', 'scm_pull_request_snapshots',
-  'scm_pull_request_commits', 'scm_commit_lineage', 'ai_commit_sessions',
+  'scm_pull_request_commits', 'scm_commit_lineage', 'ai_commit_model_attributions', 'ai_commit_sessions',
   'ai_session_usage', 'ai_generation_observations', 'ai_session_repositories',
   'scm_deployments', 'scm_commit_files', 'telemetry_corrections',
   'scm_commits', 'ai_sessions', 'telemetry_metric_events',
   'telemetry_ingest_batches', 'scm_provider_identities',
+  ...(includeScmHistory ? ['scm_branches', 'scm_pull_requests'] : []),
 ] as const;
 
 const counts: Record<string, number> = {};
@@ -77,9 +86,10 @@ for (const [index, table] of tables.entries()) {
 }
 
 if (!confirmed) {
-  console.log(JSON.stringify({ dryRun: true, tenant: tenant.domain, preserved: [
-    'sso_tenants', 'authentication identities', 'scm_repositories', 'scm_pull_requests',
-  ], wouldDelete: counts, next: `rerun with --confirm=RESET_TASK2` }, null, 2));
+  console.log(JSON.stringify({ dryRun: true, tenant: tenant.domain, includeScmHistory, preserved: [
+    'sso_tenants', 'authentication identities', 'scm_repositories',
+    ...(includeScmHistory ? [] : ['scm_pull_requests', 'scm_branches']),
+  ], wouldDelete: counts, next: `rerun with --confirm=RESET_TASK2${includeScmHistory ? ' --include-scm-history=true' : ''}` }, null, 2));
   return;
 }
 
