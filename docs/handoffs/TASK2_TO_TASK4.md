@@ -19,7 +19,7 @@ must never be expanded back into a second tracker.
 
 | Repository | Remote | Branch | Immutable checkpoint SHA | Clean and pushed |
 |---|---|---|---|---|
-| TrackAI-v1 | `https://github.com/mahamannu-ux/TrackAI-V1.git` | `feature/task2-lifecycle-metrics` | `c16af4cde56526f9604f959fc697414cae100aa4` | Local clean; final handoff commit/push pending |
+| TrackAI-v1 | `https://github.com/mahamannu-ux/TrackAI-V1.git` | `feature/task2-lifecycle-metrics` | `c16af4cde56526f9604f959fc697414cae100aa4` | ✅ Clean and pushed; handoff recorded by `c5012e4fff653d2cdf32a19797125875a86d5947` |
 | Git AI OSS | `https://github.com/mahamannu-ux/git-ai.git` | `feature/task2-lifecycle-metrics` | `a77081cba79c836472f6e00facf7eed6f432ed99` | ✅ Clean and pushed |
 
 ## Working-directory map
@@ -185,8 +185,8 @@ both trackers before merging.
 
 ## Reproducibility and secret-safety gate
 
-- [ ] Every checkpoint SHA exists locally and on its documented remote.
-- [ ] Both Task2 worktrees are clean.
+- [x] Every checkpoint SHA exists locally and on its documented remote.
+- [x] Both Task2 worktrees are clean at their recorded checkpoints.
 - [x] Fresh API tests and production builds pass.
 - [x] Git AI focused tests and required live checks pass.
 - [x] Migration state matches the running Supabase schema.
