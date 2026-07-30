@@ -4,16 +4,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
-  getCommit, getCommits, getContributors, getDashboardSummary,
-  getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
+  getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
+  getLifecycle,
+  getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
   getSessions, type CommitListItem, type Contributor, type DashboardSummary,
-  type PullRequest, type Repository, type SessionListItem,
+  type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
+  type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
 
-type View = 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors';
+type View = 'lifecycle' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors';
 type Detail = { kind: 'session' | 'commit' | 'pullRequest'; data: Record<string, any> } | null;
 
 const navigation: Array<{ id: View; label: string }> = [
+  { id: 'lifecycle', label: 'Code Lifecycle' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'commits', label: 'Commits' },
   { id: 'pullRequests', label: 'Pull Requests' },
@@ -42,21 +45,112 @@ function TableShell({ headers, children }: { headers: string[]; children: React.
   return <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-slate-800 bg-slate-950/50 text-xs uppercase tracking-wider text-slate-500"><tr>{headers.map((header) => <th key={header} className="px-5 py-3 font-medium">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-800">{children}</tbody></table></div></div>;
 }
 
+function ratio(value: number | null) {
+  return value === null ? 'Unavailable' : `${value.toFixed(value >= 10 ? 0 : 1)}:1`;
+}
+
+function lifecycleQuery(scopeKey: string) {
+  if (scopeKey === 'tenant') return '';
+  const separator = scopeKey.indexOf(':');
+  const kind = scopeKey.slice(0, separator);
+  const id = scopeKey.slice(separator + 1);
+  const parameter = kind === 'repository'
+    ? 'repositoryId'
+    : kind === 'pullRequest'
+      ? 'pullRequestId'
+      : kind === 'model'
+        ? 'modelKey'
+        : 'contributorId';
+  return `?${parameter}=${encodeURIComponent(id)}`;
+}
+
+function LifecycleFlow({ data }: { data: LifecycleResponse | null }) {
+  const summary = data?.summary;
+  const stages = [
+    ['Generated', summary?.generated],
+    ['Committed', summary?.committed],
+    ['In current PRs', summary?.inPullRequests],
+    ['Merged', summary?.merged],
+    ['Production', summary?.production],
+  ] as const;
+  const maximum = Math.max(1, ...stages.map(([, value]) => value?.value ?? 0));
+  return <div className="space-y-6">
+    <div className="grid grid-cols-4 gap-3">
+      <Metric label="Generated : Committed" value={ratio(summary?.ratios.generatedToCommitted ?? null)} />
+      <Metric label="Generated : PR" value={ratio(summary?.ratios.generatedToPullRequest ?? null)} />
+      <Metric label="Generated : Merged" value={ratio(summary?.ratios.generatedToMerged ?? null)} />
+      <Metric label="Generated : Production" value={ratio(summary?.ratios.generatedToProduction ?? null)} />
+    </div>
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+      <div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Code lifecycle</h2><p className="mt-1 text-sm text-slate-500">Gross generation flowing toward customer production</p></div><Badge tone="violet">Evidence-aware</Badge></div>
+      <div className="mt-7 grid grid-cols-5 gap-4">
+        {stages.map(([label, value], index) => <div key={label} className="relative">
+          <div className="flex h-64 items-end rounded-lg border border-slate-800 bg-slate-950/70 p-2">
+            <div className="w-full rounded-md bg-gradient-to-t from-violet-600 to-cyan-400 transition-all" style={{ height: `${Math.max(value?.value ? 8 : 2, ((value?.value ?? 0) / maximum) * 100)}%` }} />
+          </div>
+          {index < stages.length - 1 && <div className="absolute -right-4 top-1/2 z-10 text-lg text-slate-600">→</div>}
+          <div className="mt-3 text-sm font-medium text-slate-300">{label}</div>
+          <div className="mt-1 text-2xl font-semibold text-white">{compact(value?.value ?? null)}</div>
+          {value?.availability === 'partial' && <div className="mt-1 text-xs text-amber-300">Observed partial evidence: {compact(value.observedValue ?? null)}</div>}
+          <div className="mt-1 text-xs text-slate-600">{value?.evidenceTypes.join(', ') || 'No evidence'}</div>
+        </div>)}
+      </div>
+      {summary?.production.availability !== 'recorded' && summary?.mergedProxy.availability === 'recorded' && <div className="mt-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-200">Production is unavailable. {compact(summary.mergedProxy.value)} AI lines are merged to the default branch and shown only as a proxy.</div>}
+      <div className="mt-6 grid grid-cols-2 gap-3"><Metric label="Reworked" value={compact(summary?.reworked.value ?? null)} /><Metric label="Production churn" value={compact(summary?.churned.value ?? null)} /></div>
+    </div>
+  </div>;
+}
+
+function EvidenceNode({ node }: { node: EvidenceFlowNode }) {
+  const label = {
+    developer_prompt: 'Developer prompt', agent_thinking: 'Agent thinking',
+    agent_response: 'Agent response', tool_call: `Tool call · ${node.toolName ?? 'unknown'}`,
+    tool_result: `Tool result · ${node.toolName ?? 'unknown'}`, commit: 'Commit',
+  }[node.type];
+  const detail = node.type === 'tool_call' ? node.arguments
+    : node.type === 'tool_result' ? node.result : node.content;
+  return <div className="border-l border-violet-500/30 pl-4"><div className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-violet-200">{label}</span><span className="text-xs text-slate-600">{date(node.timestamp)}</span></div><div className="mt-1 text-xs text-slate-500">{node.model ?? 'No model'} · {node.linkageQuality}</div>{detail !== null && detail !== undefined && <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2)}</pre>}{node.availabilityReason && <div className="mt-2 text-xs text-amber-300">{node.availabilityReason}</div>}</div>;
+}
+
+function EvidenceFlow({ flow }: { flow: EvidenceFlowResponse }) {
+  const rendered: React.ReactNode[] = [];
+  for (let index = 0; index < flow.nodes.length;) {
+    if (flow.nodes[index].type !== 'tool_call' && flow.nodes[index].type !== 'tool_result') {
+      rendered.push(<EvidenceNode key={flow.nodes[index].id} node={flow.nodes[index]} />); index += 1; continue;
+    }
+    const group: EvidenceFlowNode[] = [];
+    while (index < flow.nodes.length && (flow.nodes[index].type === 'tool_call' || flow.nodes[index].type === 'tool_result')) group.push(flow.nodes[index++]);
+    const calls = group.filter((node) => node.type === 'tool_call').length;
+    rendered.push(<details key={`tools:${group[0].id}`} className="rounded-lg border border-slate-800 p-3"><summary className="cursor-pointer text-sm text-cyan-200">{calls} tool {calls === 1 ? 'call' : 'calls'}</summary><div className="mt-4 space-y-4">{group.map((node) => <EvidenceNode key={node.id} node={node} />)}</div></details>);
+  }
+  return <div className="space-y-4">{rendered}</div>;
+}
+
 function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: () => void; openLinked: (kind: 'session' | 'commit', id: string) => void }) {
+  const [evidence, setEvidence] = useState<EvidenceFlowResponse | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  useEffect(() => { setEvidence(null); setEvidenceError(null); }, [detail?.data?.id]);
   if (!detail) return null;
   const data = detail.data;
   const usage = Array.isArray(data.usage) ? data.usage : [];
   const tokenTotal = usage.reduce((sum: number, row: any) => sum + (row.inputTokens ?? 0) + (row.outputTokens ?? 0) + (row.reasoningTokens ?? 0) + (row.cacheReadTokens ?? 0) + (row.cacheWriteTokens ?? 0), 0);
+  const generatedAiLoc = data.totalAiGeneratedLoc?.value ?? null;
   return <div className="fixed inset-0 z-50 flex justify-end bg-black/60" onClick={close}>
     <aside className="h-full w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-950 p-7 shadow-2xl" onClick={(event) => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-4"><div><div className="text-xs uppercase tracking-[0.2em] text-violet-400">{detail.kind} intelligence</div><h2 className="mt-2 text-2xl font-semibold text-white">{data.displayName ?? data.subject ?? data.pullRequest?.title ?? 'Details'}</h2></div><button onClick={close} className="rounded-lg border border-slate-700 px-3 py-2 text-slate-300">Close</button></div>
       <div className="mt-6 grid grid-cols-2 gap-3">
-        {detail.kind === 'session' && <><Metric label="External session" value={<span className="text-sm">{data.externalSessionId}</span>} /><Metric label="Git AI correlation" value={<span className="text-sm">{data.gitAiSessionId ?? 'Unavailable'}</span>} /><Metric label="Final AI LoC" value={data.finalAiLines ?? 0} /><Metric label="Total tokens" value={compact(usage.length ? tokenTotal : null)} /></>}
-        {detail.kind === 'commit' && <><Metric label="Commit" value={<span className="text-sm">{data.sha?.slice(0, 12)}</span>} /><Metric label="Branch" value={data.branch ?? 'Unavailable'} /><Metric label="Final AI attribution" value={data.finalAiLines?.auditedValue ?? 0} /><Metric label="Human attribution" value={data.finalHumanLines?.auditedValue ?? 0} /></>}
+        {detail.kind === 'session' && <><Metric label="External session" value={<span className="text-sm">{data.externalSessionId}</span>} /><Metric label="Git AI correlation" value={<span className="text-sm">{data.gitAiSessionId ?? 'Unavailable'}</span>} /><Metric label="Generated AI LoC" value={compact(generatedAiLoc)} /><Metric label="Retained in commits" value={data.finalAiLines ?? 0} /><Metric label="Total tokens" value={compact(usage.length ? tokenTotal : null)} /></>}
+        {detail.kind === 'commit' && <><Metric label="Commit" value={<span className="text-sm">{data.sha?.slice(0, 12)}</span>} /><Metric label="Branch" value={data.branch ?? 'Unavailable'} /><Metric label="Final AI attribution" value={data.finalAiLines?.auditedValue ?? 0} /><Metric label="Human attribution" value={data.finalHumanLines?.auditedValue ?? 0} /><Metric label="Diff added / deleted" value={`${data.diffAddedLines ?? 0} / ${data.diffDeletedLines ?? 0}`} /><Metric label="Reworked generated LoC" value={compact(data.rework?.value ?? null)} /><Metric label="Lifecycle" value={<span className="text-sm">{data.reachability ?? 'Observed'} · {data.operationKind ?? 'commit'}</span>} /><Metric label="Unknown attribution" value={data.unknownLines ?? 0} /></>}
         {detail.kind === 'pullRequest' && <><Metric label="Commits" value={data.commits?.length ?? 0} /><Metric label="Sessions" value={data.sessions?.length ?? 0} /><Metric label="Final AI attribution" value={data.finalAiLines ?? 0} /><Metric label="Human attribution" value={data.finalHumanLines ?? 0} /></>}
       </div>
-      {detail.kind !== 'pullRequest' && <div className="mt-6 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-200"><strong>Total AI Generated LoC:</strong> Unavailable. Gross-generation semantics are deferred to Task2.</div>}
+      {detail.kind === 'session' && <div className={`mt-6 rounded-xl border p-4 text-sm ${data.totalAiGeneratedLoc?.status === 'recorded' ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-200' : 'border-amber-500/20 bg-amber-500/5 text-amber-200'}`}><strong>Session lifecycle:</strong> {compact(generatedAiLoc)} AI lines generated; {data.finalAiLines ?? 0} currently retained in commits. Uncommitted generation remains valuable evidence but is not final commit attribution.</div>}
+      {detail.kind === 'commit' && <div className={`mt-6 rounded-xl border p-4 text-sm ${data.totalAiGeneratedLoc?.status === 'recorded' ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-200' : 'border-amber-500/20 bg-amber-500/5 text-amber-200'}`}><strong>AI Generated LoC:</strong> {compact(generatedAiLoc)}. {data.totalAiGeneratedLoc?.status === 'partial' && <>Observed partial evidence: {compact(data.totalAiGeneratedLoc?.observedValue ?? null)}. </>}{data.totalAiGeneratedLoc?.reason ?? 'Derived from eligible checkpoint evidence.'}</div>}
+      {detail.kind === 'commit' && data.rework?.availability === 'recorded' && <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-200"><strong>Rework actors:</strong> {Object.entries(data.rework.byActor ?? {}).map(([actor, lines]) => `${actor} ${lines}`).join(' · ')}. Evidence: {data.rework.evidenceTypes?.join(', ') || 'Unavailable'}.</div>}
+      {detail.kind === 'commit' && <section className="mt-7"><div className="flex items-center justify-between"><div><h3 className="font-semibold text-white">Evidence flow</h3><p className="mt-1 text-xs text-amber-300">Development-only local provider evidence</p></div>{!evidence && <button disabled={evidenceLoading} onClick={() => { setEvidenceLoading(true); setEvidenceError(null); void getCommitEvidenceFlow(data.id).then(setEvidence).catch((cause) => setEvidenceError(cause instanceof Error ? cause.message : 'Evidence unavailable')).finally(() => setEvidenceLoading(false)); }} className="rounded-lg border border-violet-500/40 px-3 py-2 text-sm text-violet-200 disabled:opacity-50">{evidenceLoading ? 'Loading…' : 'Load evidence'}</button>}</div>{evidenceError && <div className="mt-3 rounded-lg border border-amber-500/20 p-3 text-sm text-amber-200">{evidenceError}</div>}{evidence && <div className="mt-4">{evidence.status === 'recorded' ? <EvidenceFlow flow={evidence} /> : <div className="rounded-lg border border-slate-800 p-3 text-sm text-slate-400">{evidence.reason}</div>}</div>}</section>}
       {usage.length > 0 && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Usage evidence</h3><div className="space-y-2">{usage.map((row: any) => <div key={row.id} className="rounded-lg border border-slate-800 p-4 text-sm text-slate-300"><div className="flex justify-between"><span>{row.model ?? 'Unknown model'}</span><Badge tone={row.availability === 'recorded' ? 'green' : 'amber'}>{row.availability}</Badge></div><div className="mt-2 text-slate-500">Input {compact(row.inputTokens)} · Output {compact(row.outputTokens)} · Cache {compact(row.cacheReadTokens)} · {row.costAmount ?? '—'} {row.costUnit ?? ''}</div><div className="mt-1 text-xs text-slate-600">Evidence: {row.evidenceSource}</div></div>)}</div></section>}
+      {detail.kind === 'pullRequest' && data.membership && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">PR membership evidence</h3><div className="grid grid-cols-3 gap-3"><Metric label="Active commits" value={data.membership.current ?? 0} /><Metric label="Removed historical" value={data.membership.removedHistorical ?? 0} /><Metric label="Source" value={<span className="text-sm">{data.membership.source ?? 'Unavailable'}</span>} /></div></section>}
+      {detail.kind === 'pullRequest' && data.mergeResult && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Merge result</h3><button onClick={() => openLinked('commit', data.mergeResult.id)} className="block w-full rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 text-left text-sm text-slate-300 hover:border-violet-400"><span className="font-mono text-violet-300">{data.mergeResult.sha?.slice(0, 12)}</span> {data.mergeResult.subject}<span className="ml-2 text-xs text-slate-500">{data.mergeResult.operationKind}</span></button></section>}
       {Array.isArray(data.commits) && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Commits</h3><div className="space-y-2">{data.commits.map((row: any) => <button key={row.id} onClick={() => openLinked('commit', row.id)} className="block w-full rounded-lg border border-slate-800 p-3 text-left text-sm text-slate-300 hover:border-violet-500/50"><span className="font-mono text-violet-300">{row.sha?.slice(0, 8)}</span> {row.subject}</button>)}</div></section>}
       {Array.isArray(data.sessions) && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Sessions</h3><div className="space-y-2">{data.sessions.map((row: any) => <button key={row.id} onClick={() => openLinked('session', row.id)} className="block w-full rounded-lg border border-slate-800 p-3 text-left text-sm text-slate-300 hover:border-violet-500/50">{row.externalSessionId} · {row.agent}</button>)}</div></section>}
       {detail.kind === 'session' && <section className="mt-7"><h3 className="font-semibold text-white">Deferred raw analytics</h3><div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-500">{['Traces', 'Checkpoints', 'Tool calls', 'Prompts'].map((label) => <div key={label} className="rounded-lg border border-dashed border-slate-800 p-3">{label}: Task2</div>)}</div></section>}
@@ -69,12 +163,15 @@ export default function DashboardPage() {
   const [view, setView] = useState<View>('sessions');
   const [query, setQuery] = useState('');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [lifecycle, setLifecycle] = useState<LifecycleResponse | null>(null);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [pullRequests, setPullRequests] = useState<PullRequest[]>([]);
   const [contributors, setContributors] = useState<Contributor[]>([]);
+  const [models, setModels] = useState<TelemetryModel[]>([]);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [commits, setCommits] = useState<CommitListItem[]>([]);
   const [detail, setDetail] = useState<Detail>(null);
+  const [lifecycleScope, setLifecycleScope] = useState('tenant');
   const [email, setEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,15 +180,16 @@ export default function DashboardPage() {
   const refresh = useCallback(async (initial = false) => {
     try {
       if (initial) setLoading(true);
-      const [summaryData, repositoryData, pullRequestData, contributorData, sessionData, commitData] = await Promise.all([
-        getDashboardSummary(), getRepositories(), getPullRequests(), getContributors(), getSessions(), getCommits(),
+      const [summaryData, repositoryData, pullRequestData, contributorData, modelData, sessionData, commitData, lifecycleData] = await Promise.all([
+        getDashboardSummary(), getRepositories(), getPullRequests(), getContributors(), getModels(), getSessions(), getCommits(), getLifecycle(lifecycleQuery(lifecycleScope)),
       ]);
       setSummary(summaryData); setRepositories(repositoryData); setPullRequests(pullRequestData);
-      setContributors(contributorData); setSessions(sessionData); setCommits(commitData);
+      setContributors(contributorData); setModels(modelData); setSessions(sessionData); setCommits(commitData);
+      setLifecycle(lifecycleData);
       setLastUpdated(new Date()); setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Failed to load dashboard data.'); }
     finally { if (initial) setLoading(false); }
-  }, []);
+  }, [lifecycleScope]);
 
   useEffect(() => {
     let active = true;
@@ -108,6 +206,9 @@ export default function DashboardPage() {
   const matches = (values: Array<string | null | undefined>) => values.some((value) => value?.toLowerCase().includes(query.toLowerCase()));
   const filteredSessions = useMemo(() => sessions.filter((row) => matches([row.externalSessionId, row.displayName, row.agent, ...row.models.auditedValue])), [sessions, query]);
   const filteredCommits = useMemo(() => commits.filter((row) => matches([row.sha, row.subject, row.authorEmail, row.repository?.name])), [commits, query]);
+  const visibleTotals = view === 'lifecycle' && lifecycle?.totals
+    ? lifecycle.totals
+    : summary;
 
   async function openDetail(kind: 'session' | 'commit' | 'pullRequest', id: string) {
     const data = kind === 'session' ? await getSession(id) : kind === 'commit' ? await getCommit(id) : await getPullRequestIntelligence(id);
@@ -121,24 +222,25 @@ export default function DashboardPage() {
   return <div className="min-h-screen bg-slate-950 text-slate-200">
     <aside className="fixed inset-y-0 left-0 w-64 border-r border-slate-800 bg-slate-950 p-5">
       <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 font-bold text-white">T</div><div><div className="font-semibold text-white">TrackAI</div><div className="text-xs text-slate-500">Telemetry intelligence</div></div></div>
-      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : contributors.length}</span></button>)}</nav>
+      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'lifecycle' ? 'Live' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : contributors.length}</span></button>)}</nav>
       <div className="absolute bottom-5 left-5 right-5 border-t border-slate-800 pt-4"><div className="truncate text-xs text-slate-500">{email}</div><button onClick={signOut} className="mt-2 text-xs text-slate-400 hover:text-white">Sign out</button></div>
     </aside>
     <main className="ml-64 min-h-screen p-8">
-      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/><button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
+      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/><button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
       {error && <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
-      <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={summary?.sessions ?? 0}/><Metric label="Commits" value={summary?.commits ?? 0}/><Metric label="Final AI lines" value={summary?.finalAiLines ?? 0}/><Metric label="Human lines" value={summary?.finalHumanLines ?? 0}/></div>
+      <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>
       <section className="mt-7">
-        {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Commits', 'Tokens', 'Status']}>
-          {filteredSessions.sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('session', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.displayName ?? 'Unnamed session'}</div><div className="mt-1 font-mono text-xs text-slate-500">{row.externalSessionId}</div></td><td className="px-5 py-4"><div>{row.agent}</div><div className="text-xs text-slate-500">{row.models.auditedValue.join(', ') || 'Unknown'} {row.models.corrected && <Badge tone="violet">corrected</Badge>}</div></td><td className="px-5 py-4 text-slate-400">{row.repositories.map((repo) => repo.name).join(', ') || '—'}</td><td className="px-5 py-4">{row.commitCount}</td><td className="px-5 py-4">{compact(row.totalTokens)}</td><td className="px-5 py-4"><Badge tone={row.status === 'shipped' ? 'green' : 'amber'}>{row.status}</Badge></td></tr>)}</TableShell>}
-        {view === 'commits' && <TableShell headers={['Commit', 'Repository', 'Author', 'Sessions', 'Final AI', 'Human']}>
-          {filteredCommits.sort((a, b) => (b.committedAt ?? '').localeCompare(a.committedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('commit', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.subject}</div><div className="mt-1 font-mono text-xs text-violet-400">{row.sha.slice(0, 9)}</div></td><td className="px-5 py-4 text-slate-400">{row.repository?.name ?? '—'}</td><td className="px-5 py-4 text-slate-400">{row.authorEmail ?? row.authorName ?? '—'}</td><td className="px-5 py-4">{row.sessionCount}</td><td className="px-5 py-4">{row.finalAiLines.auditedValue} {row.finalAiLines.corrected && <Badge tone="violet">audited</Badge>}</td><td className="px-5 py-4">{row.finalHumanLines.auditedValue}</td></tr>)}</TableShell>}
+        {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
+        {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>
+          {filteredSessions.sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('session', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.displayName ?? 'Unnamed session'}</div><div className="mt-1 font-mono text-xs text-slate-500">{row.externalSessionId}</div></td><td className="px-5 py-4"><div>{row.agent}</div><div className="text-xs text-slate-500">{row.models.auditedValue.join(', ') || 'Unknown'} {row.models.corrected && <Badge tone="violet">corrected</Badge>}</div></td><td className="px-5 py-4 text-slate-400">{row.repositories.map((repo) => repo.name).join(', ') || '—'}</td><td className="px-5 py-4">{row.retainedCommitCount} / {row.historicalCommitCount}</td><td className="px-5 py-4">{compact(row.totalTokens)}</td><td className="px-5 py-4"><Badge tone={row.status === 'shipped' ? 'green' : 'amber'}>{row.status}</Badge></td></tr>)}</TableShell>}
+        {view === 'commits' && <TableShell headers={['Commit', 'Repository', 'Author', 'Lifecycle', 'Sessions', 'Final AI', 'Human']}>
+          {filteredCommits.sort((a, b) => (b.committedAt ?? '').localeCompare(a.committedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('commit', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.subject}</div><div className="mt-1 font-mono text-xs text-violet-400">{row.sha.slice(0, 9)}</div></td><td className="px-5 py-4 text-slate-400">{row.repository?.name ?? '—'}</td><td className="px-5 py-4 text-slate-400">{row.authorEmail ?? row.authorName ?? '—'}</td><td className="px-5 py-4"><Badge tone={row.reachability === 'superseded' || row.reachability === 'unreachable' ? 'amber' : row.reachability === 'pull_request' || row.reachability === 'reachable' ? 'green' : 'slate'}>{row.reachability === 'pull_request' ? 'active in PR' : row.reachability}</Badge><div className="mt-1 text-xs text-slate-500">{row.operationKind}</div></td><td className="px-5 py-4">{row.sessionCount}</td><td className="px-5 py-4">{row.finalAiLines.auditedValue} {row.finalAiLines.corrected && <Badge tone="violet">audited</Badge>}</td><td className="px-5 py-4">{row.finalHumanLines.auditedValue}</td></tr>)}</TableShell>}
         {view === 'pullRequests' && <TableShell headers={['Pull request', 'Repository', 'Author', 'Branch', 'State', 'Updated']}>
-          {pullRequests.filter((row) => matches([row.title, row.authorEmail, row.headRef])).map((row) => <tr key={row.id} onClick={() => void openDetail('pullRequest', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4 font-medium text-white">{row.title}</td><td className="px-5 py-4 text-slate-400">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-400">{row.authorEmail}</td><td className="px-5 py-4">{row.headRef ?? '—'}</td><td className="px-5 py-4"><Badge tone={row.state === 'open' ? 'green' : 'slate'}>{row.state}</Badge></td><td className="px-5 py-4 text-slate-500">{date(row.updatedAt)}</td></tr>)}</TableShell>}
+          {pullRequests.filter((row) => matches([row.title, row.authorEmail, row.authorLogin, row.headRef])).map((row) => <tr key={row.id} onClick={() => void openDetail('pullRequest', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4 font-medium text-white">{row.title}</td><td className="px-5 py-4 text-slate-400">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-400">{row.authorLogin ?? row.authorEmail ?? '—'}</td><td className="px-5 py-4">{row.headRef ?? '—'}</td><td className="px-5 py-4"><Badge tone={row.state === 'open' ? 'green' : row.state === 'merged' ? 'violet' : 'slate'}>{row.state}</Badge></td><td className="px-5 py-4 text-slate-500">{date(row.updatedAt)}</td></tr>)}</TableShell>}
         {view === 'repositories' && <TableShell headers={['Repository', 'Provider', 'Canonical URL', 'External ID']}>
           {repositories.filter((row) => matches([row.name, row.url, row.provider])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4">{row.provider}</td><td className="px-5 py-4 text-slate-400"><a href={row.url} target="_blank" rel="noreferrer" className="hover:text-violet-300">{row.normalizedUrl ?? row.url}</a></td><td className="px-5 py-4 text-slate-500">{row.externalId}</td></tr>)}</TableShell>}
         {view === 'contributors' && <TableShell headers={['Contributor', 'Email', 'Repository', 'Machine']}>
-          {contributors.filter((row) => matches([row.name, row.email])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4 text-slate-400">{row.email}</td><td className="px-5 py-4">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-500">{row.machineId ?? '—'}</td></tr>)}</TableShell>}
+          {contributors.filter((row) => matches([row.name, row.email])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4 text-slate-400">{row.email ?? 'Not provided by GitHub'}</td><td className="px-5 py-4">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-500">{row.machineId ?? '—'}</td></tr>)}</TableShell>}
       </section>
     </main>
     <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} />

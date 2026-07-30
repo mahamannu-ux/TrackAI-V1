@@ -1,5 +1,5 @@
 export type MatchableCommit = { sha: string; branch: string | null; authorEmail: string | null };
-export type MatchablePullRequest = { id: string; headSha: string | null; mergeCommitSha: string | null; headRef: string | null; authorEmail: string; state: string };
+export type MatchablePullRequest = { id: string; headSha: string | null; mergeCommitSha: string | null; headRef: string | null; authorEmail: string | null; state: string };
 
 export function selectPullRequestMatch(commit: MatchableCommit, pullRequests: MatchablePullRequest[]) {
   const exact = pullRequests.filter((row) => row.headSha === commit.sha || row.mergeCommitSha === commit.sha);
@@ -12,7 +12,7 @@ export function selectPullRequestMatch(commit: MatchableCommit, pullRequests: Ma
   }
   if (commit.authorEmail) {
     const author = pullRequests.filter((row) => row.state.toLowerCase() === 'open'
-      && row.authorEmail.toLowerCase() === commit.authorEmail!.toLowerCase());
+      && row.authorEmail?.toLowerCase() === commit.authorEmail!.toLowerCase());
     if (author.length === 1) return { pullRequest: author[0], method: 'author', confidence: 60 };
   }
   return null;

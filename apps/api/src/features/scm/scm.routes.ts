@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
-import { sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import {
   scmContributors,
+  scmCommits,
   scmPullRequests,
+  scmProviderIdentities,
   scmRepositories,
   ssoTenants,
 } from '../../core/db/schema';
@@ -11,6 +13,18 @@ import { verifyGitHubSignature } from './crypto';
 import { parseGitHubWebhook, type SCMPayload } from './parser';
 import { normalizeRepositoryUrl } from '../telemetry/repository-url';
 import { reconcileRepositoryPullRequests } from '../telemetry/service';
+import {
+  getRepositoryCommit,
+  getRepositoryCommitFirstParentChain,
+  githubReadConfigured,
+  listPullRequestCommits,
+} from './github-app';
+import {
+  recordDeployment,
+  recordMergeLineage,
+  recordPullRequestSnapshot,
+  recordPushedCommit,
+} from './lifecycle-service';
 
 const router = Router();
 
@@ -104,29 +118,61 @@ router.post('/:provider', async (req: Request, res: Response) => {
     }
 
     const storedRecords = await db.transaction(async (transaction) => {
-      const [repository] = await transaction
-        .insert(scmRepositories)
-        .values({
-          tenantId: tenant.id,
-          provider: payload.provider,
-          externalId: payload.repository.externalId,
-          name: payload.repository.name,
-          url: payload.repository.url,
-          normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
-        })
-        .onConflictDoUpdate({
-          target: [
-            scmRepositories.tenantId,
-            scmRepositories.provider,
-            scmRepositories.externalId,
-          ],
-          set: {
+      const normalizedUrl = normalizeRepositoryUrl(payload.repository.url);
+      const [existingRepository] = await transaction
+        .select({ id: scmRepositories.id })
+        .from(scmRepositories)
+        .where(and(
+          eq(scmRepositories.tenantId, tenant.id),
+          or(
+            normalizedUrl
+              ? eq(scmRepositories.normalizedUrl, normalizedUrl)
+              : undefined,
+            and(
+              eq(scmRepositories.provider, payload.provider),
+              eq(scmRepositories.externalId, payload.repository.externalId),
+            ),
+          ),
+        ))
+        .limit(1);
+
+      const repositoryValues = {
+        tenantId: tenant.id,
+        provider: payload.provider,
+        externalId: payload.repository.externalId,
+        name: payload.repository.name,
+        url: payload.repository.url,
+        normalizedUrl,
+      };
+
+      const [repository] = existingRepository
+        ? await transaction
+          .update(scmRepositories)
+          .set({
+            provider: payload.provider,
+            externalId: payload.repository.externalId,
             name: payload.repository.name,
             url: payload.repository.url,
-            normalizedUrl: normalizeRepositoryUrl(payload.repository.url),
-          },
-        })
-        .returning({ id: scmRepositories.id });
+            normalizedUrl,
+          })
+          .where(eq(scmRepositories.id, existingRepository.id))
+          .returning({ id: scmRepositories.id })
+        : await transaction
+          .insert(scmRepositories)
+          .values(repositoryValues)
+          .onConflictDoUpdate({
+            target: [
+              scmRepositories.tenantId,
+              scmRepositories.provider,
+              scmRepositories.externalId,
+            ],
+            set: {
+              name: payload.repository.name,
+              url: payload.repository.url,
+              normalizedUrl,
+            },
+          })
+          .returning({ id: scmRepositories.id });
 
       if (!repository) {
         throw new Error('Repository upsert did not return a record');
@@ -142,13 +188,17 @@ router.post('/:provider', async (req: Request, res: Response) => {
             tenantId: tenant.id,
             repositoryId: repository.id,
             externalId: payload.pullRequest.externalId,
+            number: payload.pullRequest.number,
             title: payload.pullRequest.title,
             state: payload.pullRequest.state,
             authorEmail: payload.pullRequest.authorEmail,
+            authorProviderId: payload.pullRequest.authorProviderId,
+            authorLogin: payload.pullRequest.authorLogin,
             headRef: payload.pullRequest.headRef,
             baseRef: payload.pullRequest.baseRef,
             headSha: payload.pullRequest.headSha,
             mergeCommitSha: payload.pullRequest.mergeCommitSha,
+            mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
           })
           .onConflictDoUpdate({
             target: [
@@ -160,10 +210,14 @@ router.post('/:provider', async (req: Request, res: Response) => {
               title: payload.pullRequest.title,
               state: payload.pullRequest.state,
               authorEmail: payload.pullRequest.authorEmail,
+              authorProviderId: payload.pullRequest.authorProviderId,
+              authorLogin: payload.pullRequest.authorLogin,
+              number: payload.pullRequest.number,
               headRef: payload.pullRequest.headRef,
               baseRef: payload.pullRequest.baseRef,
               headSha: payload.pullRequest.headSha,
               mergeCommitSha: payload.pullRequest.mergeCommitSha,
+              mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
               updatedAt: new Date(),
             },
           })
@@ -172,26 +226,49 @@ router.post('/:provider', async (req: Request, res: Response) => {
         pullRequestId = pullRequest?.id ?? null;
       }
 
-      if (payload.eventType === 'pr_opened' && payload.pullRequest) {
-        const authorEmail = payload.pullRequest.authorEmail.trim().toLowerCase();
-        const contributorName = authorEmail.split('@')[0] || authorEmail;
+      if (payload.pullRequest) {
+        const [identity] = await transaction
+          .insert(scmProviderIdentities)
+          .values({
+            tenantId: tenant.id,
+            provider: payload.provider,
+            providerUserId: payload.pullRequest.authorProviderId,
+            login: payload.pullRequest.authorLogin,
+            displayName: payload.pullRequest.authorLogin,
+            email: payload.pullRequest.authorEmail?.trim().toLowerCase() ?? null,
+          })
+          .onConflictDoUpdate({
+            target: [
+              scmProviderIdentities.tenantId,
+              scmProviderIdentities.provider,
+              scmProviderIdentities.providerUserId,
+            ],
+            set: {
+              login: payload.pullRequest.authorLogin,
+              email: payload.pullRequest.authorEmail?.trim().toLowerCase() ?? null,
+              updatedAt: new Date(),
+            },
+          })
+          .returning({ id: scmProviderIdentities.id });
 
         const [contributor] = await transaction
           .insert(scmContributors)
           .values({
             tenantId: tenant.id,
             repositoryId: repository.id,
-            name: contributorName,
-            email: authorEmail,
+            name: payload.pullRequest.authorLogin,
+            email: payload.pullRequest.authorEmail?.trim().toLowerCase() ?? null,
+            providerIdentityId: identity?.id ?? null,
           })
           .onConflictDoUpdate({
             target: [
               scmContributors.tenantId,
               scmContributors.repositoryId,
-              scmContributors.email,
+              scmContributors.providerIdentityId,
             ],
             set: {
-              name: contributorName,
+              name: payload.pullRequest.authorLogin,
+              email: payload.pullRequest.authorEmail?.trim().toLowerCase() ?? null,
             },
           })
           .returning({ id: scmContributors.id });
@@ -214,6 +291,109 @@ router.post('/:provider', async (req: Request, res: Response) => {
 
     if (storedRecords.pullRequestId) {
       await reconcileRepositoryPullRequests(tenant.id, storedRecords.repositoryId);
+      let pullRequestCommits = null;
+      if (payload.pullRequest && githubReadConfigured()) {
+        pullRequestCommits = await listPullRequestCommits(
+          payload.organization,
+          payload.repository.name,
+          payload.pullRequest.number,
+        );
+        if (pullRequestCommits) {
+          await recordPullRequestSnapshot({
+            tenantId: tenant.id,
+            repositoryId: storedRecords.repositoryId,
+            pullRequestId: storedRecords.pullRequestId,
+            headSha: payload.pullRequest.headSha,
+            commits: pullRequestCommits,
+          });
+        }
+      }
+      if (payload.eventType === 'pr_closed' && payload.pullRequest?.mergeCommitSha && payload.pullRequest.mergedAt) {
+        const resultCommit = githubReadConfigured()
+          ? await getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            payload.pullRequest.mergeCommitSha,
+          )
+          : null;
+        const sourceCommitEvidence = pullRequestCommits
+          ? (await Promise.all(pullRequestCommits.map((commit) => getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            commit.sha,
+          )))).filter((commit) => commit !== null)
+          : undefined;
+        const resultFirstParentChain = githubReadConfigured() && pullRequestCommits
+          ? await getRepositoryCommitFirstParentChain(
+            payload.organization,
+            payload.repository.name,
+            payload.pullRequest.mergeCommitSha,
+            pullRequestCommits.length,
+          )
+          : undefined;
+        await recordMergeLineage({
+          tenantId: tenant.id,
+          repositoryId: storedRecords.repositoryId,
+          pullRequestId: storedRecords.pullRequestId,
+          resultSha: payload.pullRequest.mergeCommitSha,
+          resultCommit,
+          sourceCommitEvidence,
+          resultFirstParentChain,
+          mergedAt: new Date(payload.pullRequest.mergedAt),
+        });
+      }
+    }
+
+    if (payload.deployment) {
+      await recordDeployment({
+        tenantId: tenant.id,
+        repositoryId: storedRecords.repositoryId,
+        provider: payload.provider,
+        ...payload.deployment,
+        deployedAt: new Date(payload.deployment.deployedAt),
+      });
+    }
+
+    if (payload.push) {
+      const observedAt = new Date();
+      const branch = payload.push.ref.startsWith('refs/heads/')
+        ? payload.push.ref.slice('refs/heads/'.length)
+        : payload.push.ref;
+      const pushedShas = [...new Set([
+        ...payload.push.commitShas,
+        payload.push.afterSha,
+      ])].filter((sha): sha is string => Boolean(sha) && !/^0+$/.test(sha as string));
+
+      if (!payload.push.deleted && githubReadConfigured()) {
+        for (const sha of pushedShas) {
+          const commit = await getRepositoryCommit(
+            payload.organization,
+            payload.repository.name,
+            sha,
+          );
+          if (commit) {
+            await recordPushedCommit({
+              tenantId: tenant.id,
+              repositoryId: storedRecords.repositoryId,
+              branch,
+              commit,
+              observedAt,
+            });
+          }
+        }
+      } else {
+        for (const sha of pushedShas) {
+          await db.update(scmCommits).set({
+            reachability: payload.push.deleted ? 'unreachable' : 'reachable',
+            lastSeenAt: observedAt,
+            updatedAt: observedAt,
+          }).where(and(
+            eq(scmCommits.tenantId, tenant.id),
+            eq(scmCommits.repositoryId, storedRecords.repositoryId),
+            eq(scmCommits.sha, sha),
+          ));
+        }
+      }
     }
 
     res.status(200).json({ ok: true });

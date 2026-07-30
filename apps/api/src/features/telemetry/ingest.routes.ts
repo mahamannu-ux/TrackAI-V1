@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { validateMetricsBatch } from './decoder';
-import { ingestMetricsBatch } from './service';
+import { ingestMetricsBatch, validateBatchRepositoryScope } from './service';
 
 const router = Router();
 
@@ -19,6 +19,14 @@ router.post('/metrics/upload', async (req: Request, res: Response) => {
   }
 
   try {
+    const scopeErrors = await validateBatchRepositoryScope(req.tenantId, batch);
+    if (scopeErrors.length > 0) {
+      // Acknowledge indexed poison events without retaining their raw payload
+      // in the wrong tenant. Task4 adds durable quarantine and partial-batch
+      // processing; Task2 deliberately fails the complete batch closed.
+      res.status(200).json({ errors: scopeErrors });
+      return;
+    }
     const errors = await ingestMetricsBatch(req.tenantId, batch);
     res.status(200).json({ errors });
   } catch (error) {
