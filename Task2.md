@@ -6,6 +6,7 @@ Last updated: **2026-07-30**
 Cross-task tracker: [`TASK4.md`](TASK4.md)
 Post-E13 handoff: [`docs/handoffs/TASK2_TO_TASK4.md`](docs/handoffs/TASK2_TO_TASK4.md)
 Portfolio roadmap: [`ROUGH_ROADMAP.md`](ROUGH_ROADMAP.md)
+Git AI patch inventory: [`docs/GIT_AI_TASK2_CHANGES.md`](docs/GIT_AI_TASK2_CHANGES.md)
 
 Task3 is retired. Its completed dashboard/schema work belongs to Task1;
 lifecycle correctness belongs here; delivery, security and policy belong to
