@@ -1,6 +1,6 @@
 # Task2 → Task4 Handoff
 
-**Status:** Task2 implementation checkpoints recorded; final TrackAI branch push pending.
+**Status:** Task2 merged into TrackAI `main`; ready for isolated Task4 worktrees.
 
 This document—not either Codex conversation—is the cross-task source of truth.
 Verify the recorded immutable evidence before creating the Task4 worktrees.
@@ -22,6 +22,10 @@ must never be expanded back into a second tracker.
 | TrackAI-v1 | `https://github.com/mahamannu-ux/TrackAI-V1.git` | `feature/task2-lifecycle-metrics` | `c16af4cde56526f9604f959fc697414cae100aa4` | ✅ Clean and pushed; handoff recorded by `c5012e4fff653d2cdf32a19797125875a86d5947` |
 | Git AI OSS | `https://github.com/mahamannu-ux/git-ai.git` | `feature/task2-lifecycle-metrics` | `a77081cba79c836472f6e00facf7eed6f432ed99` | ✅ Clean and pushed |
 
+TrackAI PR #2 merged as `f59a915d1f937c4545449c1d5198f17bbe9967ca`.
+The human-readable Git AI patch inventory is
+[`docs/GIT_AI_TASK2_CHANGES.md`](../GIT_AI_TASK2_CHANGES.md).
+
 ## Working-directory map
 
 | Purpose | Directory / branch |
@@ -33,6 +37,33 @@ must never be expanded back into a second tracker.
 | Task4 Git AI | Not yet created · planned `feature/task4-client-hardening` |
 
 Task4 must never use or mutate a Task2 worktree.
+
+## Collaboration and working style
+
+The following practices made the lifecycle lab reliable and should be retained
+by the Task4 agent:
+
+- Always state the exact absolute directory/repository before commands. There
+  are several similarly named worktrees and the wrong one can look healthy.
+- Work one bounded runbook step at a time. Give copy/paste-ready commands, the
+  expected result and what the user should report before moving on.
+- Explain unfamiliar behavior in simple language and distinguish “expected,”
+  “known limitation” and “defect.” Do not treat a green command as proof that a
+  customer-facing metric is semantically correct.
+- Prefer short tables, stable task/test IDs, and 🟢/🟡/🔴 status marks. Keep one
+  canonical tracker and update it as implementation and live verification occur.
+- Use dry-run-first commands for resets, rebuilds, backfills and migrations.
+  Never apply a migration, delete test evidence or rotate/revoke a credential
+  without an explicit review/confirmation step.
+- Combine automated tests with small live Company A/Company B experiments.
+  The user can run long local Cargo/build checks; use focused tests while
+  iterating and reserve full suites for checkpoint/release gates.
+- Ask for only the output needed to decide the next step. Exact totals, SHAs and
+  error text are valuable; huge successful payloads usually are not.
+- Preserve honest states: observed versus audited, merged proxy versus deployed,
+  zero versus `Unavailable`, and exact versus confidence-based linkage.
+- Never print or commit API keys, private keys, webhook secrets, raw provider
+  databases or customer prompt content.
 
 ## Architecture and telemetry flow
 

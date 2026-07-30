@@ -1,13 +1,15 @@
 # Task4 — Robustness, Security, Administration and Operations
 
 **Authoritative Task4 tracker**
-Last updated: **2026-07-26**
+Last updated: **2026-07-30**
 
 Task4 begins from the documented post-E13 Task2 checkpoint. Task2 continues
 to own lifecycle metric truth; Task4 owns reliable delivery, credentials,
 repository policy, administration, retention and operations. The authoritative
 cross-task context is `docs/handoffs/TASK2_TO_TASK4.md`.
 The broader program dependency map is maintained in [`ROUGH_ROADMAP.md`](ROUGH_ROADMAP.md).
+Git AI’s maintained Task2 patch inventory is
+[`docs/GIT_AI_TASK2_CHANGES.md`](docs/GIT_AI_TASK2_CHANGES.md).
 
 ## Status legend
 
@@ -61,6 +63,20 @@ Items may be designed in parallel inside a wave, but implementation advances
 only after its listed dependencies have stable contracts. The 5.8 tests run
 incrementally and are repeated as mandatory release gates after Wave 5.
 
+## Brief regression watchlist
+
+| Task4 surface | Likely regression | How the agent and user avoid it |
+|---|---|---|
+| Keys/encryption (Wave 1) | Existing ingestion or GitHub App access stops after rotation, or secrets leak into logs/browser responses. | Version ciphertext, support staged rotation, test old/new/wrong keys, scan logs and Git before every checkpoint. |
+| Tenant routing/grants (Waves 1–2) | A valid key accepts the wrong repository, or a queued Company B event is delivered as Company A. | Bind tenant/repository when queued; rerun both A→B and B→A negative tests after every policy change. |
+| Dedup/order/retry/backfill (Waves 2–3) | Duplicate, stale or lost events change Generated, Committed, Reworked or token totals. | Keep raw evidence immutable; replay identical/out-of-order/partial batches and reconcile golden totals before/after restart. |
+| Admin/retention/export (Waves 4–5) | SSO/RLS isolation breaks, or cleanup/export rewrites observed history. | Use protected tenant-scoped APIs, dry runs and backups; retain audited overlays and prove export/restore totals exactly. |
+| Shared schema/ingestion/UI | Task4 infrastructure accidentally changes Task2 metric meaning or `Unavailable` semantics. | Compare against Task2 fixtures and lifecycle equations; stop and coordinate any shared-contract change before merging. |
+
+At the end of every wave, rerun the smallest affected release gate plus Company
+A/B isolation. At the final gate, repeat the complete lifecycle suite rather
+than relying only on unit tests from individual waves.
+
 ## Task ownership and integration contract
 
 | Task | Owns |
@@ -73,8 +89,8 @@ Task2 and Task4 use separate branches and worktrees. Shared-surface changes are
 integrated only at documented checkpoint commits; neither task overwrites or
 copies uncommitted changes from the other worktree.
 
-Task4 does **not** wait for T2.14, remaining T2.21 trends/deep links, T2.22,
-T2.23 or T2.24 to become green. It preserves their contracts while independently
+Task4 does **not** wait for T2.14, remaining T2.21 trends/deep links or T2.22.
+T2.23 and T2.24 are green; Task4 preserves their contracts while independently
 implementing delivery, security, repository policy and operations hardening.
 
 ## Security and portability invariants
@@ -92,9 +108,9 @@ implementing delivery, security, repository policy and operations hardening.
 
 ## Readiness to open the separate Task4 Codex task
 
-- [ ] E13 is complete and reflected in the canonical Task2 tracker.
-- [ ] TrackAI Task2 checkpoint is committed, pushed and clean.
-- [ ] Git AI Task2 checkpoint is committed, pushed and clean.
-- [ ] `docs/handoffs/TASK2_TO_TASK4.md` contains exact immutable SHAs.
-- [ ] The handoff passes its secret scan and reproducibility review.
+- [x] E13 is complete for the accepted scope and reflected in the canonical Task2 tracker.
+- [x] TrackAI Task2 checkpoint is committed, pushed, merged and clean.
+- [x] Git AI Task2 checkpoint is committed, pushed and clean.
+- [x] `docs/handoffs/TASK2_TO_TASK4.md` contains exact immutable SHAs.
+- [x] The handoff passes its secret scan and reproducibility review.
 - [ ] Dedicated Task4 branches/worktrees are created from those SHAs.
