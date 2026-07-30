@@ -1,10 +1,10 @@
 # Task2 → Task4 Handoff
 
-**Status:** Active handoff preparation; final immutable checkpoint SHAs remain pending.
+**Status:** Task2 implementation checkpoints recorded; final TrackAI branch push pending.
 
 This document—not either Codex conversation—is the cross-task source of truth.
-Complete every `TBD after E13` field with immutable evidence before creating the
-Task4 worktrees. Never place tokens, client secrets, private keys, webhook
+Verify the recorded immutable evidence before creating the Task4 worktrees.
+Never place tokens, client secrets, private keys, webhook
 secrets or master keys here.
 
 ## Tracker authority
@@ -19,8 +19,8 @@ must never be expanded back into a second tracker.
 
 | Repository | Remote | Branch | Immutable checkpoint SHA | Clean and pushed |
 |---|---|---|---|---|
-| TrackAI-v1 | `https://github.com/mahamannu-ux/TrackAI-V1.git` | `feature/task2-lifecycle-metrics` | **TBD after E13** | ☐ |
-| Git AI OSS | **TBD after E13: record configured GitHub remote** | `feature/task2-lifecycle-metrics` | **TBD after E13** | ☐ |
+| TrackAI-v1 | `https://github.com/mahamannu-ux/TrackAI-V1.git` | `feature/task2-lifecycle-metrics` | `c16af4cde56526f9604f959fc697414cae100aa4` | Local clean; final handoff commit/push pending |
+| Git AI OSS | `https://github.com/mahamannu-ux/git-ai.git` | `feature/task2-lifecycle-metrics` | `a77081cba79c836472f6e00facf7eed6f432ed99` | ✅ Clean and pushed |
 
 ## Working-directory map
 
@@ -29,8 +29,8 @@ must never be expanded back into a second tracker.
 | Task2 TrackAI | `/Users/manishmahajan/Documents/Codex/2026-07-21/hi/outputs/Task1/TrackAI-v1-task1` · `feature/task2-lifecycle-metrics` |
 | Task2 Git AI | `/Users/manishmahajan/Documents/Codex/2026-07-21/hi/outputs/Task2/git-ai-task2` · `feature/task2-lifecycle-metrics` |
 | Task2 lab | `/Users/manishmahajan/Documents/Codex/2026-07-21/hi/outputs/git-ai-teamz-lab-vscode` |
-| Task4 TrackAI | **TBD after E13** · `feature/task4-hardening` |
-| Task4 Git AI | **TBD after E13** · `feature/task4-client-hardening` |
+| Task4 TrackAI | Not yet created · planned `feature/task4-hardening` |
+| Task4 Git AI | Not yet created · planned `feature/task4-client-hardening` |
 
 Task4 must never use or mutate a Task2 worktree.
 
@@ -53,9 +53,13 @@ must not redefine Task2 metric semantics without an explicit cross-task change.
 
 ## Database and migration state
 
-- Latest generated TrackAI migration: **TBD after E13**
-- Supabase migrations manually applied through: **TBD after E13**
-- Schema drift check/result: **TBD after E13**
+- Latest generated TrackAI migration: `apps/api/drizzle/0002_hard_hellfire_club.sql`
+- Supabase migrations manually applied through: migration journal row `3`
+  (`f8b901fa8cfee1fee5a653973ff7bc12ba2434e2b37a7d45e3333ed784b429db`).
+- Schema verification: `ai_commit_model_attributions` and
+  `ai_model_lifecycle_events` exist with RLS enabled. The applied E15 model
+  rebuild reconciled Generated 1,193, Committed 917, Merged/Production 572 and
+  Reworked 135.
 - Backup location and timestamp: record locally, but do not commit a database
   dump or credentials.
 - Existing observed rows remain immutable; Task4 migrations must not rewrite
@@ -79,7 +83,12 @@ its value:
 - Proposed Task4 `MASTER_ENCRYPTION_KEY`
 - Any Git AI API base URL, API key and repository allowlist configuration names
 
-Final post-E13 configuration matrix: **TBD after E13**.
+Post-E13 configuration: TrackAI API/web use their local untracked environment
+files; Git AI uses a local API base URL, tenant-bound API key and repository
+allowlist. The GitHub App is installed for `mahamannu-ai` and
+`customer-b-corp-ai`; public-read fallback is disabled. T2.24 additionally
+requires the development-only evidence flag and an absolute read-only OpenCode
+database path. No values are recorded in Git.
 
 ## Tenant and SCM test topology
 
@@ -105,49 +114,59 @@ here before Task4 starts.
 - Rework preserves the modifying actor. Missing evidence is not zero.
 - Observed evidence is immutable; audited corrections are explicit overlays.
 
-Canonical Task2 tracker and final post-E13 changes: **TBD after E13**.
+Canonical Task2 tracker: `Task2.md` at TrackAI implementation checkpoint
+`c16af4cde56526f9604f959fc697414cae100aa4`. The duplicate external Task2 file
+is an archived pointer only.
 
 ## Verification evidence
 
-Complete after E13:
-
-- TrackAI API test command and result: **TBD after E13**
-- TrackAI API/web production build commands and results: **TBD after E13**
-- Git AI formatting/unit/integration commands and results: **TBD after E13**
-- E13a OpenCode model-switch result: **TBD after E13**
-- E13b Codex result: **TBD after E13**
-- E13c Antigravity result or explicitly documented blocker: **TBD after E13**
-- Tenant-isolation regression result: **TBD after E13**
+- TrackAI API: 42 tests passed and the API TypeScript build passed.
+- TrackAI web: production build, lint and type checking passed.
+- Git AI: formatting and `cargo check --tests` passed. The long integration run
+  passed 3,218 tests and exposed four focused regressions; after correction,
+  all eight commit-metadata recovery tests and both Claude latest-checkpoint
+  tests passed. The known-model split regression also passed. A second complete
+  80-minute integration run was intentionally not required for this checkpoint.
+- VS Code/Antigravity extension: `npm run compile` and `npm run lint` passed.
+- E13a: one OpenCode conversation retained distinct DeepSeek and Nemotron model
+  segments without overwriting attribution.
+- E13b: standalone native Codex acceptance is explicitly superseded for this
+  milestone, not represented as completed by GPT-OSS.
+- E13c: Antigravity live attribution passed with Gemini 3.5 Flash, Claude Sonnet
+  4.6 and GPT-OSS 120B; token evidence remains unavailable.
+- Tenant isolation: both login directions passed. A Company B repository event
+  carrying a Company A key was rejected before raw storage as unenrolled.
 
 ## Known defects and deferred work
 
 The post-E13 owner must reconcile this section with the canonical Task2 and
 Task4 matrices. Current known boundaries include:
 
-- Whole-file deletion may produce no editor checkpoint.
-- Explicit soft/mixed/hard reset operations may produce no Git AI rewrite event;
-  identical recommits can be inferred, but an abandoned hard-reset tip cannot.
-- Complete Generated-LoC evidence coverage and line-identity retention remain
-  Task2 work.
+- Whole-file deletion attribution is supported when an agent checkpoint exists;
+  provider/editor paths that emit no checkpoint remain an evidence limitation.
+- Reset/recommit and deletion-only revert flows are implemented and live-tested.
+  A reset with no later successor evidence remains historically observable but
+  cannot be assigned a successor operation without guessing.
 - Durable tenant-bound queueing, explicit repository grants, quarantine,
   encryption, retention/export and operations monitoring remain Task4 work.
-- **TBD after E13:** add any model/provider-specific findings.
 - T2.11e: some Copilot conversations/models emit no token-bearing usage span;
   TrackAI must retain `Unavailable` until late usage can be correlated and deduplicated.
-- T2.11f: Git AI now counts `h_` working-tree ranges as human and presents
-  `KnownHuman` checkpoints as human. The focused fixture still needs a local
-  daemon run plus one live manual-edit verification before the tracker turns green.
-- T2.17 still needs live two-commit rebase-merge and divergent single-commit
-  rewritten-merge acceptance without lifecycle/session duplication.
+- T2.11f is complete: focused tests and live human addition/deletion verification
+  both passed with zero Unknown additions.
+- T2.11g: Antigravity exposes model/edit evidence but no token-bearing usage
+  events through the current adapter.
+- T2.17 is complete: two-commit rebase and divergent single-commit rewritten
+  merge acceptance passed without lifecycle/session duplication.
 - T2.24 raw content is a development-only on-demand prototype. Production
   persistence, encryption, authorization, redaction, retention and search belong
   to Task4/Task5.
 
 ## Explicit Task4 non-dependencies
 
-Task4 may begin without T2.14, remaining T2.21 trends/deep links, T2.22,
-T2.23 or T2.24 being green. Task4 must preserve their data contracts but does
-not wait for their compatibility, visualization or live-acceptance work.
+Task4 may begin without T2.14, remaining T2.21 trends/deep links or T2.22.
+T2.23 and T2.24 are green, but their production expansion still belongs to the
+later policy/security and Evidence Explorer programs. Task4 must preserve these
+data contracts and does not wait for deferred compatibility or visualization work.
 
 ## Shared-file conflict map
 
@@ -168,11 +187,12 @@ both trackers before merging.
 
 - [ ] Every checkpoint SHA exists locally and on its documented remote.
 - [ ] Both Task2 worktrees are clean.
-- [ ] Fresh API tests and production builds pass.
-- [ ] Git AI focused tests and required live checks pass.
-- [ ] Migration state matches the running Supabase schema.
-- [ ] `rg` secret scan finds no token/private-key/secret values in tracked docs.
-- [ ] A fresh reader can start API/web and explain the telemetry flow using only
+- [x] Fresh API tests and production builds pass.
+- [x] Git AI focused tests and required live checks pass.
+- [x] Migration state matches the running Supabase schema.
+- [x] `rg` secret scan finds no real token/private-key/secret values in tracked
+      docs; `.env.example` contains only a visibly elided private-key placeholder.
+- [x] A fresh reader can start API/web and explain the telemetry flow using only
       repository documentation.
 - [ ] Task4 worktrees are created only after all prior boxes are checked.
 

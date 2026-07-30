@@ -1,7 +1,7 @@
 # Task2 — Lifecycle Metrics and SCM Correctness
 
 **Authoritative Task2 tracker**
-Last updated: **2026-07-27**
+Last updated: **2026-07-30**
 
 Cross-task tracker: [`TASK4.md`](TASK4.md)
 Post-E13 handoff: [`docs/handoffs/TASK2_TO_TASK4.md`](docs/handoffs/TASK2_TO_TASK4.md)
@@ -94,6 +94,11 @@ product pass.
 The core lifecycle-correctness milestone through E15 is complete: generation,
 commit, PR, merge, deployment, rework, reset/recommit and revert semantics have
 all passed automated and live acceptance from a clean telemetry slate.
+
+Final checkpoint verification also corrected four integration regressions
+found by the long Git AI suite: all eight commit-metadata recovery tests and
+both Claude latest-checkpoint tests now pass, while known-to-known model switches
+remain distinct.
 
 Non-green rows are deliberately separated into two groups:
 
