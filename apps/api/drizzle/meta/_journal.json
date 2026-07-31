@@ -22,6 +22,13 @@
       "when": 1785092540798,
       "tag": "0002_hard_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785457918619,
+      "tag": "0003_lean_prima",
+      "breakpoints": true
     }
   ]
 }

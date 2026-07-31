@@ -1,12 +1,13 @@
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq, getTableColumns, type SQL } from 'drizzle-orm';
 import type {
+  AnyPgTable,
   AnyPgColumn,
   PgTable,
   PgUpdateSetSource,
 } from 'drizzle-orm/pg-core';
 import { db } from './index';
 
-type TenantScopedTable = PgTable & {
+type TenantScopedTable = AnyPgTable & {
   tenantId: AnyPgColumn<{ data: string }>;
 };
 
@@ -30,8 +31,11 @@ export function withTenant(database: typeof db, tenantId: string) {
   return {
     select<TTable extends TenantScopedTable>(table: TTable, condition?: SQL) {
       return database
-        .select()
-        .from(table)
+        .select(getTableColumns(table))
+        // Drizzle 0.45's generic subquery guard cannot reduce this conditional
+        // for a tenant-scoped table type, even though this helper accepts only
+        // PostgreSQL tables. Narrowing the argument preserves runtime behavior.
+        .from(table as PgTable)
         .where(tenantWhere(table, condition));
     },
 

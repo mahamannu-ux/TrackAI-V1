@@ -1,4 +1,6 @@
 import {
+  check,
+  foreignKey,
   bigint,
   boolean,
   index,
@@ -11,6 +13,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * Multi-Tenant Master Registry Table
@@ -61,6 +64,142 @@ export const scmRepositories = pgTable('scm_repositories', {
   tenantNormalizedUrlUnique: unique(
     'scm_repositories_tenant_id_normalized_url_key',
   ).on(table.tenantId, table.normalizedUrl),
+  tenantIdIdUnique: unique('scm_repositories_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+}));
+
+/** Developer installations enrolled by a tenant administrator. */
+export const developerMachines = pgTable('developer_machines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  installationId: text('installation_id').notNull(),
+  displayName: text('display_name').notNull(),
+  platform: text('platform'),
+  status: text('status').notNull().default('active'),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantInstallationUnique: unique('developer_machines_tenant_installation_key')
+    .on(table.tenantId, table.installationId),
+  tenantIdIdUnique: unique('developer_machines_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  statusCheck: check('developer_machines_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+}));
+
+/** Opaque machine credentials; plaintext tokens are returned once and never stored. */
+export const machineCredentials = pgTable('machine_credentials', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  keyId: text('key_id').notNull().unique(),
+  secretHash: text('secret_hash').notNull(),
+  status: text('status').notNull().default('active'),
+  rotatedFromCredentialId: uuid('rotated_from_credential_id'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  tenantIdIdUnique: unique('machine_credentials_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantMachineForeignKey: foreignKey({
+    name: 'machine_credentials_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  rotatedFromForeignKey: foreignKey({
+    name: 'machine_credentials_rotated_from_fk',
+    columns: [table.tenantId, table.rotatedFromCredentialId],
+    foreignColumns: [table.tenantId, table.id],
+  }),
+  tenantMachineStatusIndex: index('machine_credentials_tenant_machine_status_idx')
+    .on(table.tenantId, table.machineId, table.status),
+  statusCheck: check('machine_credentials_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+  hashCheck: check('machine_credentials_secret_hash_check',
+    sql`${table.secretHash} ~ '^[a-f0-9]{64}$'`),
+}));
+
+/** Tenant-owned registry entry for an approved canonical repository. */
+export const repositoryEnrollments = pgTable('repository_enrollments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  repositoryId: uuid('repository_id').notNull(),
+  status: text('status').notNull().default('active'),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).defaultNow().notNull(),
+  effectiveUntil: timestamp('effective_until', { withTimezone: true }),
+  enrolledBy: text('enrolled_by').notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantRepositoryUnique: unique('repository_enrollments_tenant_repository_key')
+    .on(table.tenantId, table.repositoryId),
+  tenantIdIdUnique: unique('repository_enrollments_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'repository_enrollments_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  statusCheck: check('repository_enrollments_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+  intervalCheck: check('repository_enrollments_interval_check',
+    sql`${table.effectiveUntil} is null or ${table.effectiveUntil} > ${table.effectiveFrom}`),
+}));
+
+/** Effective machine-to-repository grants. Rows are retained after revocation. */
+export const machineRepositoryGrants = pgTable('machine_repository_grants', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  enrollmentId: uuid('enrollment_id').notNull(),
+  branchPatterns: jsonb('branch_patterns').$type<string[]>().notNull().default([]),
+  status: text('status').notNull().default('active'),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).defaultNow().notNull(),
+  effectiveUntil: timestamp('effective_until', { withTimezone: true }),
+  grantedBy: text('granted_by').notNull(),
+  reason: text('reason'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantMachineForeignKey: foreignKey({
+    name: 'machine_repository_grants_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantEnrollmentForeignKey: foreignKey({
+    name: 'machine_repository_grants_tenant_enrollment_fk',
+    columns: [table.tenantId, table.enrollmentId],
+    foreignColumns: [repositoryEnrollments.tenantId, repositoryEnrollments.id],
+  }),
+  tenantMachineStatusIndex: index('machine_repository_grants_tenant_machine_status_idx')
+    .on(table.tenantId, table.machineId, table.status),
+  tenantEnrollmentStatusIndex: index('machine_repository_grants_tenant_enrollment_status_idx')
+    .on(table.tenantId, table.enrollmentId, table.status),
+  statusCheck: check('machine_repository_grants_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+  intervalCheck: check('machine_repository_grants_interval_check',
+    sql`${table.effectiveUntil} is null or ${table.effectiveUntil} > ${table.effectiveFrom}`),
+}));
+
+/** Append-only security administration audit trail. */
+export const securityAuditEvents = pgTable('security_audit_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  actorType: text('actor_type').notNull(),
+  actorId: text('actor_id').notNull(),
+  action: text('action').notNull(),
+  targetType: text('target_type').notNull(),
+  targetId: text('target_id').notNull(),
+  details: jsonb('details').notNull().default({}),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantOccurredAtIndex: index('security_audit_events_tenant_occurred_at_idx')
+    .on(table.tenantId, table.occurredAt),
 }));
 
 /**
@@ -537,6 +676,11 @@ export type NewItem = typeof items.$inferInsert;
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type SCMRepository = typeof scmRepositories.$inferSelect;
 export type NewSCMRepository = typeof scmRepositories.$inferInsert;
+export type DeveloperMachine = typeof developerMachines.$inferSelect;
+export type MachineCredential = typeof machineCredentials.$inferSelect;
+export type RepositoryEnrollment = typeof repositoryEnrollments.$inferSelect;
+export type MachineRepositoryGrant = typeof machineRepositoryGrants.$inferSelect;
+export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
 export type SCMPullRequest = typeof scmPullRequests.$inferSelect;
 export type NewSCMPullRequest = typeof scmPullRequests.$inferInsert;
 export type SCMContributor = typeof scmContributors.$inferSelect;

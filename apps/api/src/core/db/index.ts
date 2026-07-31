@@ -16,7 +16,7 @@ import * as schema from './schema';
 // instance (e.g., a VM, managed service, or container).
 // ---------------------------------------------------------------------------
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 

@@ -3,6 +3,14 @@ import { NextFunction, Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { ssoTenants } from '../db/schema';
+import {
+  isManagedMachineCredential,
+  resolveManagedMachineCredential,
+} from '../security/managed-machine-auth';
+import {
+  lookupManagedMachineCredential,
+  recordManagedMachineUse,
+} from '../security/machine-security-service';
 
 type TokenTenantMap = Record<string, string>;
 
@@ -41,6 +49,24 @@ export async function authenticateMachine(
   const apiKey = req.get('x-api-key');
   if (!apiKey) {
     res.status(401).json({ error: 'Missing X-API-Key' });
+    return;
+  }
+
+  if (isManagedMachineCredential(apiKey)) {
+    try {
+      const identity = await resolveManagedMachineCredential(apiKey, lookupManagedMachineCredential);
+      if (!identity) {
+        res.status(401).json({ error: 'Invalid X-API-Key' });
+        return;
+      }
+      await recordManagedMachineUse(identity);
+      req.tenantId = identity.tenantId;
+      req.machineId = identity.machineId;
+      next();
+    } catch {
+      console.error('Failed to resolve managed machine credential');
+      res.status(503).json({ error: 'Ingestion authentication is unavailable' });
+    }
     return;
   }
 

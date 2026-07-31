@@ -14,12 +14,15 @@
     "rebuild:generation": "tsx src/features/telemetry/task2-generation-rebuild.ts",
     "rebuild:lifecycle": "tsx src/features/telemetry/task2-lifecycle-rebuild.ts",
     "rebuild:model-lifecycle": "tsx src/features/telemetry/task2-model-rebuild.ts",
-    "test": "node --import tsx --test src/features/telemetry/telemetry.test.ts"
+    "verify:task4-wave1-live": "tsx src/core/security/task4-wave1-live-verify.ts",
+    "verify:task4-machine-lifecycle-live": "tsx src/core/security/task4-machine-lifecycle-live-verify.ts",
+    "verify:task4-envelope-live": "tsx src/core/security/task4-envelope-live-verify.ts",
+    "test": "node --import tsx --test src/features/telemetry/telemetry.test.ts src/core/security/security.test.ts src/core/db/tenant.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "0.45.2",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^4.1.0",
@@ -31,7 +34,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.10",
-    "drizzle-kit": "^0.30.0",
+    "drizzle-kit": "0.31.10",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

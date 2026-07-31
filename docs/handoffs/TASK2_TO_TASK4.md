@@ -111,7 +111,8 @@ its value:
 - `GITHUB_ALLOW_PUBLIC_READ`
 - `TRACKAI_DEV_EVIDENCE_ENABLED` — local T2.24 prototype only; ignored in production
 - `TRACKAI_OPENCODE_DB_PATH` — absolute local read-only provider DB path
-- Proposed Task4 `MASTER_ENCRYPTION_KEY`
+- Task4 `MASTER_ENCRYPTION_KEY_ACTIVE_VERSION`
+- Task4 `MASTER_ENCRYPTION_KEYS_JSON`
 - Any Git AI API base URL, API key and repository allowlist configuration names
 
 Post-E13 configuration: TrackAI API/web use their local untracked environment
