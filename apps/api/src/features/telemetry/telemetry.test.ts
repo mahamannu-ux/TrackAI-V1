@@ -34,6 +34,7 @@ import { repositoryIsInTenantScope } from './repository-scope';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey } from './model-lifecycle';
 import { evidenceFlowEnabled, normalizeOpenCodeEvidence } from './opencode-evidence';
 import {
+  evaluateManagedMachineIngestionPolicy,
   partitionAuthorizedMetricsBatch,
   remapAuthorizedUploadErrors,
   validateManagedMachineRepositoryScope,
@@ -48,6 +49,46 @@ import {
   providerEventFingerprint,
   providerProjectionIdentity,
 } from '../scm/provider-event';
+import { evaluateEvidenceWatermark } from './watermark-policy';
+
+test('enrollment watermarks separate current delayed backfill and rejected evidence', () => {
+  const watermarks = {
+    generationSessionFrom: new Date('2026-07-31T10:00:00Z'),
+    commitNoteFrom: new Date('2026-07-01T00:00:00Z'),
+  };
+  const receivedAt = new Date('2026-07-31T10:10:00Z');
+  const event = (time: string, kind: number) => ({
+    t: Math.floor(new Date(time).getTime() / 1000), e: kind, v: {}, a: {},
+  });
+
+  assert.equal(evaluateEvidenceWatermark({
+    event: event('2026-07-31T10:09:00Z', 5), watermarks, receivedAt,
+  }).arrivalClass, 'current');
+  assert.equal(evaluateEvidenceWatermark({
+    event: event('2026-07-31T10:01:00Z', 5), watermarks, receivedAt,
+  }).arrivalClass, 'delayed');
+  assert.equal(evaluateEvidenceWatermark({
+    event: event('2026-07-30T12:00:00Z', 5), watermarks, receivedAt,
+  }).arrivalClass, 'rejected');
+  assert.equal(evaluateEvidenceWatermark({
+    event: event('2026-07-30T12:00:00Z', 5), watermarks, receivedAt,
+    authorization: {
+      evidenceFamily: 'generation_session',
+      occurredFrom: new Date('2026-07-30T00:00:00Z'),
+      occurredUntil: new Date('2026-07-30T23:59:59Z'),
+      expiresAt: new Date('2026-07-31T11:00:00Z'),
+    },
+  }).arrivalClass, 'backfill');
+  assert.equal(evaluateEvidenceWatermark({
+    event: event('2026-06-30T23:59:59Z', 1), watermarks, receivedAt,
+    authorization: {
+      evidenceFamily: 'generation_session',
+      occurredFrom: new Date('2026-06-01T00:00:00Z'),
+      occurredUntil: new Date('2026-06-30T23:59:59Z'),
+      expiresAt: new Date('2026-07-31T11:00:00Z'),
+    },
+  }).arrivalClass, 'rejected');
+});
 
 test('decodes sparse Git AI positions without shifting missing values', () => {
   const attrs = decodeAttributes({ '1': 'git@github.com:Acme/Repo.git', '20': 'opencode', '21': 'model-x', '23': 'external-1', '24': 's_internal' });
@@ -142,6 +183,48 @@ test('managed machine scope enforces repository and branch for every metric even
     { index: 2, error: 'Machine repository or branch grant is not active' },
     { index: 3, error: 'Repository is required for managed machine telemetry' },
     { index: 4, error: 'Repository URL is invalid' },
+  ]);
+});
+
+test('managed ingestion policy applies family watermarks and exact backfill authorization', async () => {
+  const batch = validateMetricsBatch({
+    v: 1,
+    events: [
+      { t: 110, e: 5, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'main' } },
+      { t: 90, e: 5, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'main' } },
+      { t: 190, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'main' } },
+      { t: 210, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'main' } },
+    ],
+  });
+  const decision = await evaluateManagedMachineIngestionPolicy(batch, async () => ({
+    enrollmentId: 'enrollment-a',
+    generationSessionEvidenceFrom: new Date(100_000),
+    commitNoteEvidenceFrom: new Date(200_000),
+    backfillAuthorizations: [{
+      id: 'generation-backfill-a',
+      evidenceFamily: 'generation_session',
+      occurredFrom: new Date(80_000),
+      occurredUntil: new Date(99_000),
+      expiresAt: new Date(300_000),
+    }],
+  }), new Date(250_000));
+
+  assert.deepEqual(decision.errors, [
+    { index: 2, error: 'Evidence predates the repository enrollment watermark' },
+  ]);
+  assert.deepEqual(decision.labels, [
+    {
+      index: 0, enrollmentId: 'enrollment-a', evidenceFamily: 'generation_session',
+      arrivalClass: 'current', backfillAuthorizationId: null,
+    },
+    {
+      index: 1, enrollmentId: 'enrollment-a', evidenceFamily: 'generation_session',
+      arrivalClass: 'backfill', backfillAuthorizationId: 'generation-backfill-a',
+    },
+    {
+      index: 3, enrollmentId: 'enrollment-a', evidenceFamily: 'commit_note',
+      arrivalClass: 'current', backfillAuthorizationId: null,
+    },
   ]);
 });
 

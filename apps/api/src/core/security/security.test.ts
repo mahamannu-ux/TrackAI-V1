@@ -12,7 +12,12 @@ import { resolveManagedMachineCredential } from './managed-machine-auth';
 import { loadMasterKeyring } from './master-key';
 import { repositoryGrantAllows } from './repository-grant';
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { providerEventDeliveries, providerProjectionCursors } from '../db/schema';
+import {
+  providerEventDeliveries,
+  providerProjectionCursors,
+  repositoryBackfillAuthorizations,
+  repositoryEnrollments,
+} from '../db/schema';
 
 function encodedKey(): string {
   return randomBytes(32).toString('base64');
@@ -191,4 +196,24 @@ test('provider delivery ledger and projection cursor persist portable idempotenc
   assert.equal(delivery.uniqueConstraints.length, 1);
   assert.equal(delivery.indexes.length, 2);
   assert.equal(cursor.uniqueConstraints.length, 1);
+});
+
+test('repository enrollment persists independent watermarks and bounded backfill approvals', () => {
+  const enrollment = getTableConfig(repositoryEnrollments);
+  const authorization = getTableConfig(repositoryBackfillAuthorizations);
+  const enrollmentColumns = new Set(enrollment.columns.map((column) => column.name));
+  const authorizationColumns = new Set(authorization.columns.map((column) => column.name));
+
+  assert.equal(enrollmentColumns.has('generation_session_evidence_from'), true);
+  assert.equal(enrollmentColumns.has('commit_note_evidence_from'), true);
+  assert.deepEqual([...authorizationColumns].sort(), [
+    'authorized_by', 'created_at', 'enrollment_id', 'evidence_family', 'expires_at', 'id',
+    'occurred_from', 'occurred_until', 'reason', 'revoked_at', 'status', 'tenant_id',
+  ].sort());
+  for (const column of authorizationColumns) {
+    assert.equal(/secret|token|api_key|private_key/.test(column), false);
+  }
+  assert.equal(authorization.foreignKeys.length, 2);
+  assert.equal(authorization.indexes.length, 1);
+  assert.equal(authorization.checks.length, 3);
 });

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { validateMetricsBatch } from './decoder';
-import { ingestMetricsBatch, validateBatchRepositoryScope } from './service';
+import { ingestMetricsBatch, validateBatchIngestionPolicy } from './service';
 import {
   partitionAuthorizedMetricsBatch,
   remapAuthorizedUploadErrors,
@@ -27,16 +27,21 @@ router.post('/metrics/upload', async (req: Request, res: Response) => {
   }
 
   try {
-    const scopeErrors = await validateBatchRepositoryScope(
+    const policy = await validateBatchIngestionPolicy(
       req.tenantId,
       batch,
       req.managedMachineCredential ? req.machineId : undefined,
     );
-    const authorized = partitionAuthorizedMetricsBatch(batch, scopeErrors);
+    const authorized = partitionAuthorizedMetricsBatch(batch, policy.errors);
+    const labelsByOriginalIndex = new Map(policy.labels.map((label) => [label.index, label]));
+    const authorizedLabels = authorized.originalIndexes.flatMap((originalIndex, index) => {
+      const label = labelsByOriginalIndex.get(originalIndex);
+      return label ? [{ ...label, index }] : [];
+    });
     const ingestErrors = authorized.batch.events.length > 0
-      ? await ingestMetricsBatch(req.tenantId, authorized.batch)
+      ? await ingestMetricsBatch(req.tenantId, authorized.batch, authorizedLabels)
       : [];
-    const errors = remapAuthorizedUploadErrors(scopeErrors, ingestErrors, authorized);
+    const errors = remapAuthorizedUploadErrors(policy.errors, ingestErrors, authorized);
     res.status(200).json({ errors });
   } catch (error) {
     console.error('Git AI metrics ingestion failed');

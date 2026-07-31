@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     console.log('credentials=would-revoke-with-machines');
     console.log('grants=would-revoke');
     console.log('enrollments=would-revoke');
+    console.log('backfill_authorizations=would-revoke-with-enrollments');
     console.log('runtime_files=would-remove');
     console.log('audit_history=would-retain');
     console.log('cleanup=dry-run-complete');
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
   console.log('credentials=revoked');
   console.log('grants=revoked');
   console.log('enrollments=revoked');
+  console.log('backfill_authorizations=revoked-with-enrollments');
   console.log('machines=revoked');
   console.log('local_keyring=removed');
   console.log('audit_history=retained');

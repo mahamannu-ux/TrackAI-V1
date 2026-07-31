@@ -50,8 +50,11 @@ import {
 } from './lifecycle';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey, splitModelKey } from './model-lifecycle';
 import { repositoryIsInTenantScope } from './repository-scope';
-import { machineCanAccessRepository } from '../../core/security/repository-security-service';
-import { validateManagedMachineRepositoryScope } from './repository-enforcement';
+import { machineRepositoryIngestionPolicy } from '../../core/security/repository-security-service';
+import {
+  evaluateManagedMachineIngestionPolicy,
+  type MetricIngestionLabel,
+} from './repository-enforcement';
 import type {
   DecodedAttributes,
   GitAiMetricEvent,
@@ -61,11 +64,25 @@ import type {
 
 export type UploadError = { index: number; error: string };
 
+export interface BatchIngestionPolicy {
+  errors: UploadError[];
+  labels: MetricIngestionLabel[];
+}
+
 export async function validateBatchRepositoryScope(
   tenantId: string,
   batch: GitAiMetricsBatch,
   machineId?: string,
 ): Promise<UploadError[]> {
+  return (await validateBatchIngestionPolicy(tenantId, batch, machineId)).errors;
+}
+
+export async function validateBatchIngestionPolicy(
+  tenantId: string,
+  batch: GitAiMetricsBatch,
+  machineId?: string,
+  receivedAt = new Date(),
+): Promise<BatchIngestionPolicy> {
   const tenantDb = withTenant(db, tenantId);
   const tenantRepositories = await tenantDb.select(scmRepositories);
   if (machineId) {
@@ -79,12 +96,12 @@ export async function validateBatchRepositoryScope(
         }
       }),
     );
-    return validateManagedMachineRepositoryScope(batch, async (normalizedUrl, branch) => {
+    return evaluateManagedMachineIngestionPolicy(batch, async (normalizedUrl, branch) => {
       const repositoryId = repositoryByNormalizedUrl.get(normalizedUrl);
       return repositoryId
-        ? machineCanAccessRepository({ tenantId, machineId, repositoryId, branch })
-        : false;
-    });
+        ? machineRepositoryIngestionPolicy({ tenantId, machineId, repositoryId, branch, now: receivedAt })
+        : null;
+    }, receivedAt);
   }
 
   const [tenant] = await db
@@ -131,7 +148,7 @@ export async function validateBatchRepositoryScope(
     }
   });
 
-  return errors;
+  return { errors, labels: [] };
 }
 
 function fingerprint(value: unknown): string {
@@ -1344,6 +1361,7 @@ async function normalizeEvent(
 export async function ingestMetricsBatch(
   tenantId: string,
   batch: GitAiMetricsBatch,
+  policyLabels: MetricIngestionLabel[] = [],
 ): Promise<UploadError[]> {
   const tenantDb = withTenant(db, tenantId);
   const payloadHash = fingerprint(batch);
@@ -1366,6 +1384,7 @@ export async function ingestMetricsBatch(
   if (!storedBatch) return [];
 
   const errors: UploadError[] = [];
+  const policyLabelByIndex = new Map(policyLabels.map((label) => [label.index, label]));
   for (let index = 0; index < batch.events.length; index += 1) {
     let event: GitAiMetricEvent;
     try {
@@ -1375,6 +1394,7 @@ export async function ingestMetricsBatch(
       continue;
     }
     const eventFingerprint = fingerprint(event);
+    const policyLabel = policyLabelByIndex.get(index);
     const [storedEvent] = await tenantDb.insertDoNothing(
       telemetryMetricEvents,
       {
@@ -1384,6 +1404,10 @@ export async function ingestMetricsBatch(
         eventKind: event.e,
         eventTimestamp: eventDate(event.t),
         rawEvent: event,
+        enrollmentId: policyLabel?.enrollmentId,
+        evidenceFamily: policyLabel?.evidenceFamily ?? 'legacy_unclassified',
+        arrivalClass: policyLabel?.arrivalClass ?? 'legacy_unclassified',
+        backfillAuthorizationId: policyLabel?.backfillAuthorizationId,
         normalizationStatus: 'pending',
       },
       [telemetryMetricEvents.tenantId, telemetryMetricEvents.eventFingerprint],

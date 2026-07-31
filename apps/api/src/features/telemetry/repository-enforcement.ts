@@ -1,6 +1,11 @@
 import { decodeAttributes, validateMetricEvent } from './decoder';
 import { normalizeRepositoryUrl } from './repository-url';
 import type { GitAiMetricsBatch } from './types';
+import {
+  evaluateEvidenceWatermark,
+  type EvidenceArrivalClass,
+  type EvidenceFamily,
+} from './watermark-policy';
 
 export type RepositoryGrantLookup = (
   normalizedRepository: string,
@@ -8,6 +13,32 @@ export type RepositoryGrantLookup = (
 ) => Promise<boolean>;
 
 export type RepositoryScopeError = { index: number; error: string };
+
+export interface ManagedRepositoryIngestionPolicy {
+  enrollmentId: string;
+  generationSessionEvidenceFrom: Date;
+  commitNoteEvidenceFrom: Date;
+  backfillAuthorizations: Array<{
+    id: string;
+    evidenceFamily: 'generation_session' | 'commit_note';
+    occurredFrom: Date;
+    occurredUntil: Date;
+    expiresAt: Date;
+  }>;
+}
+
+export interface MetricIngestionLabel {
+  index: number;
+  enrollmentId: string;
+  evidenceFamily: EvidenceFamily;
+  arrivalClass: Exclude<EvidenceArrivalClass, 'rejected'>;
+  backfillAuthorizationId: string | null;
+}
+
+export interface ManagedMachineIngestionDecision {
+  errors: RepositoryScopeError[];
+  labels: MetricIngestionLabel[];
+}
 
 export interface AuthorizedMetricsPartition {
   batch: GitAiMetricsBatch;
@@ -50,6 +81,78 @@ export async function validateManagedMachineRepositoryScope(
     }
   }
   return errors;
+}
+
+export async function evaluateManagedMachineIngestionPolicy(
+  batch: GitAiMetricsBatch,
+  policyLookup: (
+    normalizedRepository: string,
+    branch: string | null,
+  ) => Promise<ManagedRepositoryIngestionPolicy | null>,
+  receivedAt = new Date(),
+): Promise<ManagedMachineIngestionDecision> {
+  const errors: RepositoryScopeError[] = [];
+  const labels: MetricIngestionLabel[] = [];
+  for (const [index, rawEvent] of batch.events.entries()) {
+    let event;
+    try {
+      event = validateMetricEvent(rawEvent);
+    } catch {
+      continue;
+    }
+    const attributes = decodeAttributes(event.a);
+    if (!attributes.repoUrl) {
+      errors.push({ index, error: 'Repository is required for managed machine telemetry' });
+      continue;
+    }
+    let normalizedRepository: string;
+    try {
+      normalizedRepository = normalizeRepositoryUrl(attributes.repoUrl);
+    } catch {
+      errors.push({ index, error: 'Repository URL is invalid' });
+      continue;
+    }
+    const policy = await policyLookup(normalizedRepository, attributes.branch);
+    if (!policy) {
+      errors.push({ index, error: 'Machine repository or branch grant is not active' });
+      continue;
+    }
+    const baseInput = {
+      event,
+      watermarks: {
+        generationSessionFrom: policy.generationSessionEvidenceFrom,
+        commitNoteFrom: policy.commitNoteEvidenceFrom,
+      },
+      receivedAt,
+    };
+    let decision = evaluateEvidenceWatermark(baseInput);
+    let backfillAuthorizationId: string | null = null;
+    if (decision.arrivalClass === 'rejected') {
+      for (const authorization of policy.backfillAuthorizations) {
+        const candidate = evaluateEvidenceWatermark({
+          ...baseInput,
+          authorization,
+        });
+        if (candidate.arrivalClass === 'backfill') {
+          decision = candidate;
+          backfillAuthorizationId = authorization.id;
+          break;
+        }
+      }
+    }
+    if (decision.arrivalClass === 'rejected') {
+      errors.push({ index, error: 'Evidence predates the repository enrollment watermark' });
+      continue;
+    }
+    labels.push({
+      index,
+      enrollmentId: policy.enrollmentId,
+      evidenceFamily: decision.family,
+      arrivalClass: decision.arrivalClass,
+      backfillAuthorizationId,
+    });
+  }
+  return { errors, labels };
 }
 
 function validatedErrorIndexes(

@@ -130,6 +130,10 @@ export const repositoryEnrollments = pgTable('repository_enrollments', {
   repositoryId: uuid('repository_id').notNull(),
   status: text('status').notNull().default('active'),
   effectiveFrom: timestamp('effective_from', { withTimezone: true }).defaultNow().notNull(),
+  generationSessionEvidenceFrom: timestamp('generation_session_evidence_from', { withTimezone: true })
+    .defaultNow().notNull(),
+  commitNoteEvidenceFrom: timestamp('commit_note_evidence_from', { withTimezone: true })
+    .defaultNow().notNull(),
   effectiveUntil: timestamp('effective_until', { withTimezone: true }),
   enrolledBy: text('enrolled_by').notNull(),
   reason: text('reason'),
@@ -149,6 +153,39 @@ export const repositoryEnrollments = pgTable('repository_enrollments', {
     sql`${table.status} in ('active', 'revoked')`),
   intervalCheck: check('repository_enrollments_interval_check',
     sql`${table.effectiveUntil} is null or ${table.effectiveUntil} > ${table.effectiveFrom}`),
+}));
+
+/** Explicit, bounded approval to ingest evidence older than an enrollment watermark. */
+export const repositoryBackfillAuthorizations = pgTable('repository_backfill_authorizations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  enrollmentId: uuid('enrollment_id').notNull(),
+  evidenceFamily: text('evidence_family').notNull(),
+  occurredFrom: timestamp('occurred_from', { withTimezone: true }).notNull(),
+  occurredUntil: timestamp('occurred_until', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  status: text('status').notNull().default('active'),
+  authorizedBy: text('authorized_by').notNull(),
+  reason: text('reason').notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('repository_backfill_authorizations_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantEnrollmentForeignKey: foreignKey({
+    name: 'repository_backfill_authorizations_tenant_enrollment_fk',
+    columns: [table.tenantId, table.enrollmentId],
+    foreignColumns: [repositoryEnrollments.tenantId, repositoryEnrollments.id],
+  }),
+  tenantEnrollmentStatusIndex: index(
+    'repository_backfill_authorizations_tenant_enrollment_status_idx',
+  ).on(table.tenantId, table.enrollmentId, table.status, table.expiresAt),
+  familyCheck: check('repository_backfill_authorizations_family_check',
+    sql`${table.evidenceFamily} in ('generation_session', 'commit_note')`),
+  statusCheck: check('repository_backfill_authorizations_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+  intervalCheck: check('repository_backfill_authorizations_interval_check',
+    sql`${table.occurredUntil} >= ${table.occurredFrom}`),
 }));
 
 /** Effective machine-to-repository grants. Rows are retained after revocation. */
@@ -256,6 +293,10 @@ export const telemetryMetricEvents = pgTable('telemetry_metric_events', {
   eventKind: integer('event_kind').notNull(),
   eventTimestamp: timestamp('event_timestamp', { withTimezone: true }).notNull(),
   rawEvent: jsonb('raw_event').notNull(),
+  enrollmentId: uuid('enrollment_id'),
+  evidenceFamily: text('evidence_family').notNull().default('legacy_unclassified'),
+  arrivalClass: text('arrival_class').notNull().default('legacy_unclassified'),
+  backfillAuthorizationId: uuid('backfill_authorization_id'),
   normalizationStatus: text('normalization_status').notNull().default('pending'),
   normalizationError: text('normalization_error'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -266,6 +307,27 @@ export const telemetryMetricEvents = pgTable('telemetry_metric_events', {
   tenantKindTimestampIndex: index(
     'telemetry_metric_events_tenant_kind_timestamp_idx',
   ).on(table.tenantId, table.eventKind, table.eventTimestamp),
+  tenantEnrollmentForeignKey: foreignKey({
+    name: 'telemetry_metric_events_tenant_enrollment_fk',
+    columns: [table.tenantId, table.enrollmentId],
+    foreignColumns: [repositoryEnrollments.tenantId, repositoryEnrollments.id],
+  }),
+  tenantBackfillAuthorizationForeignKey: foreignKey({
+    name: 'telemetry_metric_events_tenant_backfill_authorization_fk',
+    columns: [table.tenantId, table.backfillAuthorizationId],
+    foreignColumns: [
+      repositoryBackfillAuthorizations.tenantId,
+      repositoryBackfillAuthorizations.id,
+    ],
+  }),
+  evidenceFamilyCheck: check('telemetry_metric_events_evidence_family_check',
+    sql`${table.evidenceFamily} in (
+      'generation_session', 'commit_note', 'operational', 'legacy_unclassified'
+    )`),
+  arrivalClassCheck: check('telemetry_metric_events_arrival_class_check',
+    sql`${table.arrivalClass} in (
+      'current', 'delayed', 'backfill', 'legacy_unclassified'
+    )`),
 }));
 
 /** Immutable provider webhook deliveries retained for idempotency and audit. */
@@ -731,6 +793,7 @@ export type NewSCMRepository = typeof scmRepositories.$inferInsert;
 export type DeveloperMachine = typeof developerMachines.$inferSelect;
 export type MachineCredential = typeof machineCredentials.$inferSelect;
 export type RepositoryEnrollment = typeof repositoryEnrollments.$inferSelect;
+export type RepositoryBackfillAuthorization = typeof repositoryBackfillAuthorizations.$inferSelect;
 export type MachineRepositoryGrant = typeof machineRepositoryGrants.$inferSelect;
 export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
 export type SCMPullRequest = typeof scmPullRequests.$inferSelect;

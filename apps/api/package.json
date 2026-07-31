@@ -24,6 +24,11 @@
     "verify:task4-wave2-client-preflight": "tsx src/features/telemetry/task4-wave2-client-preflight.ts",
     "verify:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-verify.ts",
     "verify:task4-wave2-client-http-negative": "tsx src/features/telemetry/task4-wave2-client-http-negative-verify.ts",
+    "verify:task4-wave3-migration-dry-run": "tsx src/features/telemetry/task4-wave3-migration-dry-run.ts",
+    "verify:task4-wave3-schema": "tsx src/features/telemetry/task4-wave3-schema-verify.ts",
+    "verify:task4-wave3-watermark-live": "tsx src/features/telemetry/task4-wave3-watermark-live-verify.ts",
+    "authorize:task4-wave3-backfill": "tsx src/features/telemetry/task4-wave3-backfill-authorize.ts",
+    "serve:task4-wave3-client-fault": "tsx src/features/telemetry/task4-wave3-client-fault-server.ts",
     "setup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-setup.ts",
     "cleanup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-cleanup.ts",
     "test": "node --import tsx --test src/features/telemetry/telemetry.test.ts src/core/security/security.test.ts src/core/db/tenant.test.ts"

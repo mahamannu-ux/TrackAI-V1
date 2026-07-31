@@ -3,6 +3,7 @@ import { db } from '../db';
 import {
   developerMachines,
   machineRepositoryGrants,
+  repositoryBackfillAuthorizations,
   repositoryEnrollments,
   scmRepositories,
   securityAuditEvents,
@@ -16,7 +17,24 @@ export interface EnrollRepositoryInput {
   reason?: string;
   effectiveFrom?: Date;
   effectiveUntil?: Date;
+  generationSessionEvidenceFrom?: Date;
+  commitNoteEvidenceFrom?: Date;
 }
+
+export interface AuthorizeRepositoryBackfillInput {
+  tenantId: string;
+  enrollmentId: string;
+  evidenceFamily: 'generation_session' | 'commit_note';
+  occurredFrom: Date;
+  occurredUntil: Date;
+  expiresAt: Date;
+  actorId: string;
+  reason: string;
+  now?: Date;
+}
+
+const MAX_BACKFILL_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
+const MAX_BACKFILL_AUTHORIZATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface GrantRepositoryInput {
   tenantId: string;
@@ -38,6 +56,12 @@ function validateInterval(from: Date, until?: Date): void {
 export async function enrollRepository(input: EnrollRepositoryInput) {
   const effectiveFrom = input.effectiveFrom ?? new Date();
   validateInterval(effectiveFrom, input.effectiveUntil);
+  const generationSessionEvidenceFrom = input.generationSessionEvidenceFrom ?? effectiveFrom;
+  const commitNoteEvidenceFrom = input.commitNoteEvidenceFrom ?? effectiveFrom;
+  if (generationSessionEvidenceFrom.getTime() < effectiveFrom.getTime()
+    || commitNoteEvidenceFrom.getTime() < effectiveFrom.getTime()) {
+    throw new Error('Enrollment watermarks cannot predate policy activation');
+  }
   return db.transaction(async (transaction) => {
     const [repository] = await transaction.select({ id: scmRepositories.id })
       .from(scmRepositories).where(and(
@@ -46,29 +70,121 @@ export async function enrollRepository(input: EnrollRepositoryInput) {
       )).limit(1);
     if (!repository) throw new Error('Tenant repository was not found');
 
-    const [enrollment] = await transaction.insert(repositoryEnrollments).values({
-      tenantId: input.tenantId,
-      repositoryId: input.repositoryId,
-      effectiveFrom,
-      effectiveUntil: input.effectiveUntil,
-      enrolledBy: input.actorId,
-      reason: input.reason,
-    }).returning();
+    const [existing] = await transaction.select({
+      id: repositoryEnrollments.id,
+      status: repositoryEnrollments.status,
+    }).from(repositoryEnrollments).where(and(
+      eq(repositoryEnrollments.tenantId, input.tenantId),
+      eq(repositoryEnrollments.repositoryId, input.repositoryId),
+    )).limit(1);
+    if (existing?.status === 'active') {
+      throw new Error('Repository is already actively enrolled');
+    }
+    const [enrollment] = existing
+      ? await transaction.update(repositoryEnrollments).set({
+        status: 'active',
+        effectiveFrom,
+        generationSessionEvidenceFrom,
+        commitNoteEvidenceFrom,
+        effectiveUntil: input.effectiveUntil,
+        enrolledBy: input.actorId,
+        reason: input.reason,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(repositoryEnrollments.tenantId, input.tenantId),
+        eq(repositoryEnrollments.id, existing.id),
+        eq(repositoryEnrollments.status, 'revoked'),
+      )).returning()
+      : await transaction.insert(repositoryEnrollments).values({
+        tenantId: input.tenantId,
+        repositoryId: input.repositoryId,
+        effectiveFrom,
+        generationSessionEvidenceFrom,
+        commitNoteEvidenceFrom,
+        effectiveUntil: input.effectiveUntil,
+        enrolledBy: input.actorId,
+        reason: input.reason,
+      }).returning();
+    if (!enrollment) throw new Error('Repository enrollment state changed during update');
     await transaction.insert(securityAuditEvents).values({
       tenantId: input.tenantId,
       actorType: 'tenant_admin',
       actorId: input.actorId,
-      action: 'repository.enrolled',
+      action: existing ? 'repository.reenrolled' : 'repository.enrolled',
       targetType: 'repository_enrollment',
       targetId: enrollment.id,
       details: {
         repositoryId: input.repositoryId,
         effectiveFrom: effectiveFrom.toISOString(),
+        generationSessionEvidenceFrom: generationSessionEvidenceFrom.toISOString(),
+        commitNoteEvidenceFrom: commitNoteEvidenceFrom.toISOString(),
         effectiveUntil: input.effectiveUntil?.toISOString() ?? null,
         reason: input.reason ?? null,
       },
     });
     return enrollment;
+  });
+}
+
+export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBackfillInput) {
+  const now = input.now ?? new Date();
+  if (!input.reason.trim()) throw new Error('Backfill authorization reason is required');
+  if (input.occurredUntil.getTime() < input.occurredFrom.getTime()) {
+    throw new Error('Backfill occurredUntil must not precede occurredFrom');
+  }
+  if (input.occurredUntil.getTime() - input.occurredFrom.getTime() > MAX_BACKFILL_WINDOW_MS) {
+    throw new Error('Backfill window cannot exceed 31 days');
+  }
+  if (input.expiresAt.getTime() <= now.getTime()
+    || input.expiresAt.getTime() - now.getTime() > MAX_BACKFILL_AUTHORIZATION_TTL_MS) {
+    throw new Error('Backfill authorization must expire within 24 hours');
+  }
+
+  return db.transaction(async (transaction) => {
+    const [enrollment] = await transaction.select({
+      id: repositoryEnrollments.id,
+      generationSessionEvidenceFrom: repositoryEnrollments.generationSessionEvidenceFrom,
+      commitNoteEvidenceFrom: repositoryEnrollments.commitNoteEvidenceFrom,
+    }).from(repositoryEnrollments).where(and(
+      eq(repositoryEnrollments.tenantId, input.tenantId),
+      eq(repositoryEnrollments.id, input.enrollmentId),
+      eq(repositoryEnrollments.status, 'active'),
+    )).limit(1);
+    if (!enrollment) throw new Error('Active repository enrollment was not found');
+    const watermark = input.evidenceFamily === 'generation_session'
+      ? enrollment.generationSessionEvidenceFrom
+      : enrollment.commitNoteEvidenceFrom;
+    if (input.occurredUntil.getTime() >= watermark.getTime()) {
+      throw new Error('Backfill window must end before its enrollment watermark');
+    }
+
+    const [authorization] = await transaction.insert(repositoryBackfillAuthorizations).values({
+      tenantId: input.tenantId,
+      enrollmentId: input.enrollmentId,
+      evidenceFamily: input.evidenceFamily,
+      occurredFrom: input.occurredFrom,
+      occurredUntil: input.occurredUntil,
+      expiresAt: input.expiresAt,
+      authorizedBy: input.actorId,
+      reason: input.reason.trim(),
+    }).returning();
+    await transaction.insert(securityAuditEvents).values({
+      tenantId: input.tenantId,
+      actorType: 'tenant_admin',
+      actorId: input.actorId,
+      action: 'repository_backfill.authorized',
+      targetType: 'repository_backfill_authorization',
+      targetId: authorization.id,
+      details: {
+        enrollmentId: input.enrollmentId,
+        evidenceFamily: input.evidenceFamily,
+        occurredFrom: input.occurredFrom.toISOString(),
+        occurredUntil: input.occurredUntil.toISOString(),
+        expiresAt: input.expiresAt.toISOString(),
+        reason: input.reason.trim(),
+      },
+    });
+    return authorization;
   });
 }
 
@@ -162,14 +278,22 @@ export async function revokeRepositoryEnrollment(
   reason: string,
 ): Promise<void> {
   await db.transaction(async (transaction) => {
+    const revokedAt = new Date();
     const [enrollment] = await transaction.update(repositoryEnrollments).set({
-      status: 'revoked', updatedAt: new Date(),
+      status: 'revoked', updatedAt: revokedAt,
     }).where(and(
       eq(repositoryEnrollments.tenantId, tenantId),
       eq(repositoryEnrollments.id, enrollmentId),
       eq(repositoryEnrollments.status, 'active'),
     )).returning({ id: repositoryEnrollments.id, repositoryId: repositoryEnrollments.repositoryId });
     if (!enrollment) throw new Error('Active repository enrollment was not found');
+    await transaction.update(repositoryBackfillAuthorizations).set({
+      status: 'revoked', revokedAt,
+    }).where(and(
+      eq(repositoryBackfillAuthorizations.tenantId, tenantId),
+      eq(repositoryBackfillAuthorizations.enrollmentId, enrollmentId),
+      eq(repositoryBackfillAuthorizations.status, 'active'),
+    ));
     await transaction.insert(securityAuditEvents).values({
       tenantId,
       actorType: 'tenant_admin',
@@ -189,6 +313,29 @@ export async function machineCanAccessRepository(input: {
   branch: string | null;
   now?: Date;
 }): Promise<boolean> {
+  return Boolean(await machineRepositoryIngestionPolicy(input));
+}
+
+export interface MachineRepositoryIngestionPolicy {
+  enrollmentId: string;
+  generationSessionEvidenceFrom: Date;
+  commitNoteEvidenceFrom: Date;
+  backfillAuthorizations: Array<{
+    id: string;
+    evidenceFamily: 'generation_session' | 'commit_note';
+    occurredFrom: Date;
+    occurredUntil: Date;
+    expiresAt: Date;
+  }>;
+}
+
+export async function machineRepositoryIngestionPolicy(input: {
+  tenantId: string;
+  machineId: string;
+  repositoryId: string;
+  branch: string | null;
+  now?: Date;
+}): Promise<MachineRepositoryIngestionPolicy | null> {
   const now = input.now ?? new Date();
   const rows = await db.select({
     tenantId: machineRepositoryGrants.tenantId,
@@ -198,6 +345,9 @@ export async function machineCanAccessRepository(input: {
     branchPatterns: machineRepositoryGrants.branchPatterns,
     effectiveFrom: machineRepositoryGrants.effectiveFrom,
     effectiveUntil: machineRepositoryGrants.effectiveUntil,
+    enrollmentId: repositoryEnrollments.id,
+    generationSessionEvidenceFrom: repositoryEnrollments.generationSessionEvidenceFrom,
+    commitNoteEvidenceFrom: repositoryEnrollments.commitNoteEvidenceFrom,
   }).from(machineRepositoryGrants).innerJoin(developerMachines, and(
     eq(developerMachines.tenantId, machineRepositoryGrants.tenantId),
     eq(developerMachines.id, machineRepositoryGrants.machineId),
@@ -217,5 +367,29 @@ export async function machineCanAccessRepository(input: {
     lte(machineRepositoryGrants.effectiveFrom, now),
     or(isNull(machineRepositoryGrants.effectiveUntil), gt(machineRepositoryGrants.effectiveUntil, now)),
   ));
-  return rows.some((grant) => repositoryGrantAllows(grant, { ...input, now }));
+  const grant = rows.find((candidate) => repositoryGrantAllows(candidate, { ...input, now }));
+  if (!grant) return null;
+  const backfillAuthorizations = await db.select({
+    id: repositoryBackfillAuthorizations.id,
+    evidenceFamily: repositoryBackfillAuthorizations.evidenceFamily,
+    occurredFrom: repositoryBackfillAuthorizations.occurredFrom,
+    occurredUntil: repositoryBackfillAuthorizations.occurredUntil,
+    expiresAt: repositoryBackfillAuthorizations.expiresAt,
+  }).from(repositoryBackfillAuthorizations).where(and(
+    eq(repositoryBackfillAuthorizations.tenantId, input.tenantId),
+    eq(repositoryBackfillAuthorizations.enrollmentId, grant.enrollmentId),
+    eq(repositoryBackfillAuthorizations.status, 'active'),
+    gt(repositoryBackfillAuthorizations.expiresAt, now),
+  ));
+  return {
+    enrollmentId: grant.enrollmentId,
+    generationSessionEvidenceFrom: grant.generationSessionEvidenceFrom,
+    commitNoteEvidenceFrom: grant.commitNoteEvidenceFrom,
+    backfillAuthorizations: backfillAuthorizations.flatMap((authorization) => (
+      authorization.evidenceFamily === 'generation_session'
+        || authorization.evidenceFamily === 'commit_note'
+        ? [{ ...authorization, evidenceFamily: authorization.evidenceFamily }]
+        : []
+    )),
+  };
 }
