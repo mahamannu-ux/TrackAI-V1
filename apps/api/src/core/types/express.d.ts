@@ -10,6 +10,7 @@ declare global {
       user?: AuthenticatedUser;
       tenantId?: string;
       machineId?: string;
+      managedMachineCredential?: boolean;
     }
   }
 }

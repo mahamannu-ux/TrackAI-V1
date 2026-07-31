@@ -25,6 +25,17 @@ import {
   recordPullRequestSnapshot,
   recordPushedCommit,
 } from './lifecycle-service';
+import {
+  claimProviderDelivery,
+  completeProviderDelivery,
+  projectProviderDelivery,
+  releaseProviderDeliveryForRetry,
+} from './provider-delivery-store';
+import {
+  normalizeProviderDeliveryId,
+  providerEventFingerprint,
+  providerProjectionIdentity,
+} from './provider-event';
 
 const router = Router();
 
@@ -45,6 +56,45 @@ function decodeWebhookBody(rawBody: string, contentType: string): unknown | null
   } catch {
     return null;
   }
+}
+
+function parseProviderOccurredAt(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const occurredAt = new Date(value);
+  return Number.isFinite(occurredAt.getTime()) ? occurredAt : null;
+}
+
+interface StoredWebhookRecords {
+  repositoryId: string;
+  pullRequestId: string | null;
+  contributorId: string | null;
+}
+
+async function loadProjectedWebhookRecords(
+  tenantId: string,
+  payload: SCMPayload,
+): Promise<StoredWebhookRecords> {
+  const [repository] = await db.select({ id: scmRepositories.id })
+    .from(scmRepositories).where(and(
+      eq(scmRepositories.tenantId, tenantId),
+      eq(scmRepositories.provider, payload.provider),
+      eq(scmRepositories.externalId, payload.repository.externalId),
+    )).limit(1);
+  if (!repository) throw new Error('Projected repository was not found');
+
+  let pullRequestId: string | null = null;
+  if (payload.pullRequest) {
+    const [pullRequest] = await db.select({ id: scmPullRequests.id })
+      .from(scmPullRequests).where(and(
+        eq(scmPullRequests.tenantId, tenantId),
+        eq(scmPullRequests.repositoryId, repository.id),
+        eq(scmPullRequests.externalId, payload.pullRequest.externalId),
+      )).limit(1);
+    if (!pullRequest) throw new Error('Projected pull request was not found');
+    pullRequestId = pullRequest.id;
+  }
+
+  return { repositoryId: repository.id, pullRequestId, contributorId: null };
 }
 
 /**
@@ -104,6 +154,26 @@ router.post('/:provider', async (req: Request, res: Response) => {
     return;
   }
 
+  const deliveryId = normalizeProviderDeliveryId(req.get('x-github-delivery'));
+  if (!deliveryId) {
+    res.status(400).json({ error: 'Missing or invalid provider delivery ID' });
+    return;
+  }
+  if (typeof webhookBody !== 'object' || webhookBody === null || Array.isArray(webhookBody)) {
+    res.status(400).json({ error: 'Malformed webhook body' });
+    return;
+  }
+  const rawEvent = webhookBody as Record<string, unknown>;
+  const fingerprint = providerEventFingerprint(provider, payload.eventType, rawEvent);
+  const occurredAt = parseProviderOccurredAt(payload.providerOccurredAt);
+  const projectionIdentity = providerProjectionIdentity(payload);
+  let retryRelease: {
+    tenantId: string;
+    recordId: string;
+    leaseStartedAt: Date;
+    stage: 'received' | 'projected';
+  } | null = null;
+
   try {
     const [tenant] = await db
       .select({ id: ssoTenants.id })
@@ -117,7 +187,49 @@ router.post('/:provider', async (req: Request, res: Response) => {
       return;
     }
 
-    const storedRecords = await db.transaction(async (transaction) => {
+    const claim = await claimProviderDelivery({
+      tenantId: tenant.id,
+      provider,
+      deliveryId,
+      eventType: payload.eventType,
+      fingerprint,
+      providerOccurredAt: occurredAt,
+      rawEvent,
+    });
+    if (claim.outcome === 'retry') {
+      res.set('Retry-After', '5');
+      res.status(503).json({ error: 'SCM webhook processing is in progress' });
+      return;
+    }
+    if (claim.outcome === 'acknowledge') {
+      console.log('Acknowledged SCM webhook', {
+        tenantId: tenant.id, provider, deliveryId, outcome: claim.reason,
+      });
+      res.status(200).json({ ok: true, outcome: claim.reason });
+      return;
+    }
+
+    retryRelease = {
+      tenantId: tenant.id,
+      recordId: claim.recordId,
+      leaseStartedAt: claim.leaseStartedAt,
+      stage: claim.action === 'resume' ? 'projected' : 'received',
+    };
+
+    let storedRecords: StoredWebhookRecords;
+    if (claim.action === 'resume') {
+      storedRecords = await loadProjectedWebhookRecords(tenant.id, payload);
+    } else {
+      const projection = await projectProviderDelivery({
+        tenantId: tenant.id,
+        provider,
+        deliveryId,
+        recordId: claim.recordId,
+        leaseStartedAt: claim.leaseStartedAt,
+        fingerprint,
+        occurredAt,
+        identity: projectionIdentity,
+      }, async (transaction) => {
       const normalizedUrl = normalizeRepositoryUrl(payload.repository.url);
       const [existingRepository] = await transaction
         .select({ id: scmRepositories.id })
@@ -276,17 +388,30 @@ router.post('/:provider', async (req: Request, res: Response) => {
         contributorId = contributor?.id ?? null;
       }
 
-      return {
+        return {
         repositoryId: repository.id,
         pullRequestId,
         contributorId,
-      };
-    });
+        };
+      });
+
+      if (projection.outcome === 'acknowledge') {
+        retryRelease = null;
+        console.log('Acknowledged SCM webhook', {
+          tenantId: tenant.id, provider, deliveryId, outcome: projection.reason,
+        });
+        res.status(200).json({ ok: true, outcome: projection.reason });
+        return;
+      }
+      storedRecords = projection.value;
+      retryRelease.stage = 'projected';
+    }
 
     console.log('Stored SCM webhook', {
       tenantId: tenant.id,
       ...storedRecords,
-      payload,
+      provider,
+      deliveryId,
     });
 
     if (storedRecords.pullRequestId) {
@@ -396,10 +521,38 @@ router.post('/:provider', async (req: Request, res: Response) => {
       }
     }
 
-    res.status(200).json({ ok: true });
+    const completed = await completeProviderDelivery({
+      tenantId: tenant.id,
+      recordId: retryRelease.recordId,
+      leaseStartedAt: retryRelease.leaseStartedAt,
+    });
+    if (!completed) throw new Error('Provider delivery completion lease was lost');
+    retryRelease = null;
+    res.status(200).json({ ok: true, outcome: 'applied' });
   } catch (error) {
-    console.error('Failed to process SCM webhook:', error);
-    res.status(500).json({ error: 'Failed to process SCM webhook' });
+    const release = retryRelease;
+    if (release) {
+      try {
+        await releaseProviderDeliveryForRetry({
+          ...release,
+          errorCode: release.stage === 'received'
+            ? 'projection_failed'
+            : 'enrichment_failed',
+        });
+      } catch {
+        console.error('Failed to release SCM webhook processing lease', {
+          provider, deliveryId, stage: release.stage,
+        });
+      }
+    }
+    console.error('Failed to process SCM webhook', {
+      provider,
+      deliveryId,
+      stage: release?.stage ?? 'unclaimed',
+      errorType: error instanceof Error ? error.name : 'unknown',
+    });
+    res.set('Retry-After', '5');
+    res.status(503).json({ error: 'Temporary failure processing SCM webhook' });
   }
 });
 

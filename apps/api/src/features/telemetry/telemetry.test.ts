@@ -33,6 +33,21 @@ import { githubCommitMetadata, inferMergeMethod, mapRebasedResultCommits, unique
 import { repositoryIsInTenantScope } from './repository-scope';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey } from './model-lifecycle';
 import { evidenceFlowEnabled, normalizeOpenCodeEvidence } from './opencode-evidence';
+import {
+  partitionAuthorizedMetricsBatch,
+  remapAuthorizedUploadErrors,
+  validateManagedMachineRepositoryScope,
+} from './repository-enforcement';
+import {
+  classifyProviderProjectionEvent,
+  classifyProviderDeliveryState,
+  classifyProviderDeliveryCollision,
+  normalizeProviderDeliveryId,
+  planProviderDeliveryClaim,
+  providerDeliveryCanBeClaimed,
+  providerEventFingerprint,
+  providerProjectionIdentity,
+} from '../scm/provider-event';
 
 test('decodes sparse Git AI positions without shifting missing values', () => {
   const attrs = decodeAttributes({ '1': 'git@github.com:Acme/Repo.git', '20': 'opencode', '21': 'model-x', '23': 'external-1', '24': 's_internal' });
@@ -97,6 +112,216 @@ test('repository scope blocks cross-tenant native telemetry after a key switch',
     enrolled,
     'mahamannu-ai',
   ), false);
+});
+
+test('managed machine scope enforces repository and branch for every metric event', async () => {
+  const checked: Array<[string, string | null]> = [];
+  const batch = validateMetricsBatch({
+    v: 1,
+    events: [
+      { t: 1, e: 1, v: {}, a: { '1': 'git@github.com:Company-A/repo.git', '5': 'main' } },
+      { t: 2, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'secret' } },
+      { t: 3, e: 1, v: {}, a: { '1': 'https://github.com/company-b/repo', '5': 'main' } },
+      { t: 4, e: 1, v: {}, a: { '5': 'main' } },
+      { t: 5, e: 1, v: {}, a: { '1': 'not-a-repository', '5': 'main' } },
+    ],
+  });
+
+  const errors = await validateManagedMachineRepositoryScope(batch, async (repository, branch) => {
+    checked.push([repository, branch]);
+    return repository === 'github.com/company-a/repo' && branch === 'main';
+  });
+
+  assert.deepEqual(checked, [
+    ['github.com/company-a/repo', 'main'],
+    ['github.com/company-a/repo', 'secret'],
+    ['github.com/company-b/repo', 'main'],
+  ]);
+  assert.deepEqual(errors, [
+    { index: 1, error: 'Machine repository or branch grant is not active' },
+    { index: 2, error: 'Machine repository or branch grant is not active' },
+    { index: 3, error: 'Repository is required for managed machine telemetry' },
+    { index: 4, error: 'Repository URL is invalid' },
+  ]);
+});
+
+test('scope partition preserves original indexes for partial ingestion results', () => {
+  const batch = validateMetricsBatch({
+    v: 1,
+    events: [
+      { t: 1, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo' } },
+      { t: 2, e: 1, v: {}, a: { '1': 'https://github.com/company-b/repo' } },
+      { t: 3, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo' } },
+      { t: 4, e: 1, v: {}, a: {} },
+    ],
+  });
+  const scopeErrors = [
+    { index: 1, error: 'repository denied' },
+    { index: 3, error: 'repository required' },
+  ];
+
+  const partition = partitionAuthorizedMetricsBatch(batch, scopeErrors);
+  assert.deepEqual(partition.originalIndexes, [0, 2]);
+  assert.deepEqual(partition.batch.events.map((event) => event.t), [1, 3]);
+  assert.deepEqual(
+    remapAuthorizedUploadErrors(scopeErrors, [{ index: 1, error: 'event invalid' }], partition),
+    [
+      { index: 1, error: 'repository denied' },
+      { index: 2, error: 'event invalid' },
+      { index: 3, error: 'repository required' },
+    ],
+  );
+});
+
+test('provider event fingerprint is stable across object key order and changes with evidence', () => {
+  const left = providerEventFingerprint('github', 'pr_updated', {
+    repository: { id: 10, name: 'repo' }, action: 'synchronize', number: 7,
+  });
+  const reordered = providerEventFingerprint('github', 'pr_updated', {
+    number: 7, action: 'synchronize', repository: { name: 'repo', id: 10 },
+  });
+  const changed = providerEventFingerprint('github', 'pr_updated', {
+    number: 8, action: 'synchronize', repository: { name: 'repo', id: 10 },
+  });
+
+  assert.match(left, /^[a-f0-9]{64}$/);
+  assert.equal(left, reordered);
+  assert.notEqual(left, changed);
+});
+
+test('provider projection ordering retains stale and conflicting evidence without regressing state', () => {
+  const current = {
+    occurredAt: new Date('2026-07-31T10:00:00Z'),
+    fingerprint: 'b'.repeat(64),
+  };
+  assert.equal(classifyProviderProjectionEvent(current, {
+    occurredAt: new Date('2026-07-31T10:00:01Z'), fingerprint: 'c'.repeat(64),
+  }), 'apply');
+  assert.equal(classifyProviderProjectionEvent(current, {
+    occurredAt: new Date('2026-07-31T09:59:59Z'), fingerprint: 'a'.repeat(64),
+  }), 'stale');
+  assert.equal(classifyProviderProjectionEvent(current, {
+    occurredAt: new Date('2026-07-31T10:00:00Z'), fingerprint: 'b'.repeat(64),
+  }), 'duplicate');
+  assert.equal(classifyProviderProjectionEvent(current, {
+    occurredAt: new Date('2026-07-31T10:00:00Z'), fingerprint: 'd'.repeat(64),
+  }), 'conflict');
+  assert.equal(classifyProviderProjectionEvent(current, {
+    occurredAt: null, fingerprint: 'e'.repeat(64),
+  }), 'unsequenced');
+  assert.equal(classifyProviderProjectionEvent(null, {
+    occurredAt: null, fingerprint: 'f'.repeat(64),
+  }), 'unsequenced');
+});
+
+test('provider delivery state distinguishes retry, resume, and terminal acknowledgement', () => {
+  assert.equal(classifyProviderDeliveryState(null), 'process');
+  assert.equal(classifyProviderDeliveryState('received'), 'retry');
+  assert.equal(classifyProviderDeliveryState('failed'), 'retry');
+  assert.equal(classifyProviderDeliveryState('projected'), 'resume');
+  for (const status of ['applied', 'duplicate', 'stale', 'conflict', 'unsequenced'] as const) {
+    assert.equal(classifyProviderDeliveryState(status), 'acknowledge');
+  }
+});
+
+test('provider delivery claim permits new, failed, and expired work without racing active work', () => {
+  const now = new Date('2026-07-31T10:00:00Z');
+  const active = new Date('2026-07-31T09:59:30Z');
+  const expired = new Date('2026-07-31T09:54:59Z');
+
+  assert.equal(providerDeliveryCanBeClaimed(null, null, now), true);
+  assert.equal(providerDeliveryCanBeClaimed('failed', active, now), true);
+  assert.equal(providerDeliveryCanBeClaimed('received', active, now), false);
+  assert.equal(providerDeliveryCanBeClaimed('received', expired, now), true);
+  assert.equal(providerDeliveryCanBeClaimed('projected', active, now), false);
+  assert.equal(providerDeliveryCanBeClaimed('projected', expired, now), true);
+  assert.equal(providerDeliveryCanBeClaimed('applied', expired, now), false);
+});
+
+test('provider delivery IDs accept canonical opaque IDs and reject unsafe input', () => {
+  assert.equal(normalizeProviderDeliveryId(' 01234567-89ab-cdef-0123-456789abcdef '),
+    '01234567-89ab-cdef-0123-456789abcdef');
+  assert.equal(normalizeProviderDeliveryId('delivery_17.example:retry'),
+    'delivery_17.example:retry');
+  assert.equal(normalizeProviderDeliveryId(undefined), null);
+  assert.equal(normalizeProviderDeliveryId('contains whitespace'), null);
+  assert.equal(normalizeProviderDeliveryId('a'.repeat(256)), null);
+});
+
+test('provider delivery claim plan distinguishes ownership, retry, resume, and terminal states', () => {
+  const now = new Date('2026-07-31T10:00:00Z');
+  const active = new Date('2026-07-31T09:59:30Z');
+  const expired = new Date('2026-07-31T09:54:59Z');
+
+  assert.deepEqual(planProviderDeliveryClaim(null, null, now),
+    { action: 'process', claim: true });
+  assert.deepEqual(planProviderDeliveryClaim('received', active, now),
+    { action: 'retry', claim: false });
+  assert.deepEqual(planProviderDeliveryClaim('received', expired, now),
+    { action: 'process', claim: true });
+  assert.deepEqual(planProviderDeliveryClaim('failed', active, now),
+    { action: 'process', claim: true });
+  assert.deepEqual(planProviderDeliveryClaim('projected', active, now),
+    { action: 'retry', claim: false });
+  assert.deepEqual(planProviderDeliveryClaim('projected', expired, now),
+    { action: 'resume', claim: true });
+  assert.deepEqual(planProviderDeliveryClaim('stale', expired, now),
+    { action: 'acknowledge', claim: false });
+});
+
+test('provider delivery collision distinguishes retry, deduplication, and conflicting evidence', () => {
+  const existing = { deliveryId: 'delivery-1', fingerprint: 'a'.repeat(64) };
+  assert.equal(classifyProviderDeliveryCollision(existing, existing), 'same');
+  assert.equal(classifyProviderDeliveryCollision(existing, {
+    deliveryId: 'delivery-2', fingerprint: existing.fingerprint,
+  }), 'duplicate');
+  assert.equal(classifyProviderDeliveryCollision(existing, {
+    deliveryId: existing.deliveryId, fingerprint: 'b'.repeat(64),
+  }), 'conflict');
+  assert.equal(classifyProviderDeliveryCollision(existing, {
+    deliveryId: 'delivery-2', fingerprint: 'b'.repeat(64),
+  }), 'unrelated');
+});
+
+test('provider projection identity separates PRs, branches, and deployments', () => {
+  const repository = {
+    id: 1, name: 'repo', html_url: 'https://github.com/acme/repo', owner: { login: 'acme' },
+  };
+  const pullRequest = parseGitHubWebhook({ 'x-github-event': 'pull_request' }, {
+    action: 'synchronize', repository,
+    pull_request: {
+      id: 2, number: 17, title: 'Change', state: 'open', updated_at: '2026-07-31T10:00:00Z',
+      user: { id: 99, login: 'dev' }, head: { ref: 'feature', sha: 'abc' },
+      base: { ref: 'main', sha: 'def' },
+    },
+  });
+  const mainPush = parseGitHubWebhook({ 'x-github-event': 'push' }, {
+    repository, ref: 'refs/heads/main', before: 'a', after: 'b', commits: [],
+    head_commit: { timestamp: '2026-07-31T10:00:00Z' },
+  });
+  const featurePush = parseGitHubWebhook({ 'x-github-event': 'push' }, {
+    repository, ref: 'refs/heads/feature', before: 'a', after: 'c', commits: [],
+    head_commit: { timestamp: '2026-07-31T10:00:01Z' },
+  });
+  const deployment = parseGitHubWebhook({ 'x-github-event': 'deployment_status' }, {
+    repository,
+    deployment: { id: 7, environment: 'production', ref: 'main', sha: 'b' },
+    deployment_status: { state: 'success', created_at: '2026-07-31T10:00:02Z' },
+  });
+
+  assert.ok(pullRequest && mainPush && featurePush && deployment);
+  assert.deepEqual(providerProjectionIdentity(pullRequest), {
+    projectionType: 'pull_request', projectionKey: '1:2',
+  });
+  assert.deepEqual(providerProjectionIdentity(mainPush), {
+    projectionType: 'branch', projectionKey: '1:refs/heads/main',
+  });
+  assert.deepEqual(providerProjectionIdentity(featurePush), {
+    projectionType: 'branch', projectionKey: '1:refs/heads/feature',
+  });
+  assert.deepEqual(providerProjectionIdentity(deployment), {
+    projectionType: 'deployment', projectionKey: '1:7',
+  });
 });
 
 test('parses Git Notes ranges and customer-visible external session identity', () => {

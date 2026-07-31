@@ -1,6 +1,7 @@
 export type SCMPayload = {
   provider: 'github' | 'gitlab' | 'bitbucket';
   eventType: 'pr_opened' | 'pr_updated' | 'pr_closed' | 'push' | 'deployment_status';
+  providerOccurredAt?: string | null;
   organization: string;
   repository: {
     externalId: string;
@@ -117,9 +118,11 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
 
   if (event === 'push') {
     const commits = Array.isArray(bodyRecord.commits) ? bodyRecord.commits : [];
+    const headCommit = asRecord(bodyRecord.head_commit);
     return {
       provider: 'github',
       eventType: 'push',
+      providerOccurredAt: asString(headCommit?.timestamp),
       organization,
       repository,
       pullRequest: null,
@@ -150,6 +153,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
       ?? 'unknown';
     return {
       provider: 'github', eventType: 'deployment_status', organization, repository,
+      providerOccurredAt: asString(deploymentStatus?.created_at)
+        ?? asString(deployment.created_at),
       pullRequest: null, push: null,
       deployment: {
         externalId,
@@ -197,6 +202,7 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
   return {
     provider: 'github',
     eventType,
+    providerOccurredAt: asString(pullRequest.updated_at),
     organization,
     repository,
     pullRequest: {

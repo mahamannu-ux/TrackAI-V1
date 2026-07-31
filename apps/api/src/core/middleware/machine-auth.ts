@@ -62,6 +62,7 @@ export async function authenticateMachine(
       await recordManagedMachineUse(identity);
       req.tenantId = identity.tenantId;
       req.machineId = identity.machineId;
+      req.managedMachineCredential = true;
       next();
     } catch {
       console.error('Failed to resolve managed machine credential');
@@ -96,6 +97,7 @@ export async function authenticateMachine(
     }
     req.tenantId = tenant.id;
     req.machineId = req.get('x-trackai-machine-id') ?? undefined;
+    req.managedMachineCredential = false;
     next();
   } catch (error) {
     console.error('Failed to resolve ingestion tenant');

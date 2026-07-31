@@ -50,6 +50,8 @@ import {
 } from './lifecycle';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey, splitModelKey } from './model-lifecycle';
 import { repositoryIsInTenantScope } from './repository-scope';
+import { machineCanAccessRepository } from '../../core/security/repository-security-service';
+import { validateManagedMachineRepositoryScope } from './repository-enforcement';
 import type {
   DecodedAttributes,
   GitAiMetricEvent,
@@ -62,8 +64,29 @@ export type UploadError = { index: number; error: string };
 export async function validateBatchRepositoryScope(
   tenantId: string,
   batch: GitAiMetricsBatch,
+  machineId?: string,
 ): Promise<UploadError[]> {
   const tenantDb = withTenant(db, tenantId);
+  const tenantRepositories = await tenantDb.select(scmRepositories);
+  if (machineId) {
+    const repositoryByNormalizedUrl = new Map(
+      tenantRepositories.flatMap((repository) => {
+        if (repository.normalizedUrl) return [[repository.normalizedUrl, repository.id] as const];
+        try {
+          return [[normalizeRepositoryUrl(repository.url), repository.id] as const];
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return validateManagedMachineRepositoryScope(batch, async (normalizedUrl, branch) => {
+      const repositoryId = repositoryByNormalizedUrl.get(normalizedUrl);
+      return repositoryId
+        ? machineCanAccessRepository({ tenantId, machineId, repositoryId, branch })
+        : false;
+    });
+  }
+
   const [tenant] = await db
     .select({ scmOrgIdentifier: ssoTenants.scmOrgIdentifier })
     .from(ssoTenants)
@@ -72,7 +95,7 @@ export async function validateBatchRepositoryScope(
   if (!tenant) throw new Error('Telemetry tenant is not registered');
 
   const enrolledRepositories = new Set(
-    (await tenantDb.select(scmRepositories))
+    tenantRepositories
       .map((repository) => repository.normalizedUrl)
       .filter((value): value is string => Boolean(value)),
   );

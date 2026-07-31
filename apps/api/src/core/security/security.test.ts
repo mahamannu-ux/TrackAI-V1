@@ -11,6 +11,8 @@ import {
 import { resolveManagedMachineCredential } from './managed-machine-auth';
 import { loadMasterKeyring } from './master-key';
 import { repositoryGrantAllows } from './repository-grant';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import { providerEventDeliveries, providerProjectionCursors } from '../db/schema';
 
 function encodedKey(): string {
   return randomBytes(32).toString('base64');
@@ -166,4 +168,27 @@ test('managed credentials reject a wrong secret and revoked machine', async () =
   assert.equal(await resolveManagedMachineCredential(issued.plaintext, async () => ({
     ...record, machineStatus: 'revoked', machineRevokedAt: new Date(),
   })), null);
+});
+
+test('provider delivery ledger and projection cursor persist portable idempotency state', () => {
+  const delivery = getTableConfig(providerEventDeliveries);
+  const cursor = getTableConfig(providerProjectionCursors);
+  const deliveryColumns = new Set(delivery.columns.map((column) => column.name));
+  const cursorColumns = new Set(cursor.columns.map((column) => column.name));
+
+  assert.deepEqual([...deliveryColumns].sort(), [
+    'delivery_id', 'error_code', 'event_fingerprint', 'event_type', 'id',
+    'processed_at', 'processing_started_at', 'processing_status', 'provider', 'provider_occurred_at',
+    'raw_event', 'received_at', 'repository_id', 'tenant_id',
+  ].sort());
+  assert.deepEqual([...cursorColumns].sort(), [
+    'id', 'last_delivery_id', 'last_event_fingerprint', 'last_provider_occurred_at',
+    'projection_key', 'projection_type', 'provider', 'tenant_id', 'updated_at',
+  ].sort());
+  for (const column of [...deliveryColumns, ...cursorColumns]) {
+    assert.equal(/secret|token|api_key|private_key/.test(column), false);
+  }
+  assert.equal(delivery.uniqueConstraints.length, 1);
+  assert.equal(delivery.indexes.length, 2);
+  assert.equal(cursor.uniqueConstraints.length, 1);
 });

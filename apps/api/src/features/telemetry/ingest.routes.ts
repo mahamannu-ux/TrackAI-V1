@@ -1,12 +1,20 @@
 import { Router, Request, Response } from 'express';
 import { validateMetricsBatch } from './decoder';
 import { ingestMetricsBatch, validateBatchRepositoryScope } from './service';
+import {
+  partitionAuthorizedMetricsBatch,
+  remapAuthorizedUploadErrors,
+} from './repository-enforcement';
 
 const router = Router();
 
 router.post('/metrics/upload', async (req: Request, res: Response) => {
   if (!req.tenantId) {
     res.status(503).json({ error: 'Tenant context was not initialized' });
+    return;
+  }
+  if (req.managedMachineCredential && !req.machineId) {
+    res.status(503).json({ error: 'Managed machine context was not initialized' });
     return;
   }
 
@@ -19,15 +27,16 @@ router.post('/metrics/upload', async (req: Request, res: Response) => {
   }
 
   try {
-    const scopeErrors = await validateBatchRepositoryScope(req.tenantId, batch);
-    if (scopeErrors.length > 0) {
-      // Acknowledge indexed poison events without retaining their raw payload
-      // in the wrong tenant. Task4 adds durable quarantine and partial-batch
-      // processing; Task2 deliberately fails the complete batch closed.
-      res.status(200).json({ errors: scopeErrors });
-      return;
-    }
-    const errors = await ingestMetricsBatch(req.tenantId, batch);
+    const scopeErrors = await validateBatchRepositoryScope(
+      req.tenantId,
+      batch,
+      req.managedMachineCredential ? req.machineId : undefined,
+    );
+    const authorized = partitionAuthorizedMetricsBatch(batch, scopeErrors);
+    const ingestErrors = authorized.batch.events.length > 0
+      ? await ingestMetricsBatch(req.tenantId, authorized.batch)
+      : [];
+    const errors = remapAuthorizedUploadErrors(scopeErrors, ingestErrors, authorized);
     res.status(200).json({ errors });
   } catch (error) {
     console.error('Git AI metrics ingestion failed');

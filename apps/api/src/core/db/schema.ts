@@ -268,6 +268,58 @@ export const telemetryMetricEvents = pgTable('telemetry_metric_events', {
   ).on(table.tenantId, table.eventKind, table.eventTimestamp),
 }));
 
+/** Immutable provider webhook deliveries retained for idempotency and audit. */
+export const providerEventDeliveries = pgTable('provider_event_deliveries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  repositoryId: uuid('repository_id'),
+  provider: text('provider').notNull(),
+  deliveryId: text('delivery_id').notNull(),
+  eventType: text('event_type').notNull(),
+  eventFingerprint: text('event_fingerprint').notNull(),
+  providerOccurredAt: timestamp('provider_occurred_at', { withTimezone: true }),
+  rawEvent: jsonb('raw_event').notNull(),
+  processingStatus: text('processing_status').notNull().default('received'),
+  processingStartedAt: timestamp('processing_started_at', { withTimezone: true }),
+  errorCode: text('error_code'),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, (table) => ({
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'provider_event_deliveries_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  tenantProviderDeliveryUnique: unique(
+    'provider_event_deliveries_tenant_provider_delivery_key',
+  ).on(table.tenantId, table.provider, table.deliveryId),
+  tenantProviderFingerprintIndex: index(
+    'provider_event_deliveries_tenant_provider_fingerprint_idx',
+  ).on(table.tenantId, table.provider, table.eventFingerprint),
+  tenantReceivedAtIndex: index('provider_event_deliveries_tenant_received_at_idx')
+    .on(table.tenantId, table.receivedAt),
+  statusCheck: check('provider_event_deliveries_status_check', sql`${table.processingStatus} in (
+    'received', 'projected', 'applied', 'duplicate', 'stale', 'conflict', 'unsequenced', 'failed'
+  )`),
+}));
+
+/** Last authoritative version applied to each mutable provider projection. */
+export const providerProjectionCursors = pgTable('provider_projection_cursors', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  provider: text('provider').notNull(),
+  projectionType: text('projection_type').notNull(),
+  projectionKey: text('projection_key').notNull(),
+  lastProviderOccurredAt: timestamp('last_provider_occurred_at', { withTimezone: true }),
+  lastEventFingerprint: text('last_event_fingerprint').notNull(),
+  lastDeliveryId: text('last_delivery_id').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantProviderProjectionUnique: unique(
+    'provider_projection_cursors_tenant_provider_projection_key',
+  ).on(table.tenantId, table.provider, table.projectionType, table.projectionKey),
+}));
+
 /** Git commits normalized from Git AI commit and rewrite events. */
 export const scmCommits = pgTable('scm_commits', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -689,6 +741,8 @@ export type SCMBranch = typeof scmBranches.$inferSelect;
 export type NewSCMBranch = typeof scmBranches.$inferInsert;
 export type TelemetryIngestBatch = typeof telemetryIngestBatches.$inferSelect;
 export type TelemetryMetricEvent = typeof telemetryMetricEvents.$inferSelect;
+export type ProviderEventDelivery = typeof providerEventDeliveries.$inferSelect;
+export type ProviderProjectionCursor = typeof providerProjectionCursors.$inferSelect;
 export type SCMCommit = typeof scmCommits.$inferSelect;
 export type SCMCommitFile = typeof scmCommitFiles.$inferSelect;
 export type AISession = typeof aiSessions.$inferSelect;
