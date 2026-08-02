@@ -35,6 +35,30 @@ export const ssoTenants = pgTable('sso_tenants', {
 export const tenantIdColumn = () =>
   uuid('tenant_id').references(() => ssoTenants.id).notNull();
 
+/** Explicit authorization for protected tenant-administration actions. */
+export const tenantAdminMemberships = pgTable('tenant_admin_memberships', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  subject: text('subject').notNull(),
+  email: text('email'),
+  role: text('role').$type<'tenant_admin' | 'tenant_auditor'>().notNull(),
+  status: text('status').$type<'active' | 'revoked'>().notNull().default('active'),
+  grantedBy: text('granted_by').notNull(),
+  grantedAt: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  tenantSubjectUnique: unique('tenant_admin_memberships_tenant_subject_key')
+    .on(table.tenantId, table.subject),
+  tenantIdIdUnique: unique('tenant_admin_memberships_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantRoleStatusIndex: index('tenant_admin_memberships_tenant_role_status_idx')
+    .on(table.tenantId, table.role, table.status),
+  roleCheck: check('tenant_admin_memberships_role_check',
+    sql`${table.role} in ('tenant_admin', 'tenant_auditor')`),
+  statusCheck: check('tenant_admin_memberships_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+}));
+
 /**
  * Items Table Schema (Updated for Data Isolation)
  */
@@ -75,7 +99,7 @@ export const developerMachines = pgTable('developer_machines', {
   installationId: text('installation_id').notNull(),
   displayName: text('display_name').notNull(),
   platform: text('platform'),
-  status: text('status').notNull().default('active'),
+  status: text('status').$type<'active' | 'revoked'>().notNull().default('active'),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -96,7 +120,7 @@ export const machineCredentials = pgTable('machine_credentials', {
   machineId: uuid('machine_id').notNull(),
   keyId: text('key_id').notNull().unique(),
   secretHash: text('secret_hash').notNull(),
-  status: text('status').notNull().default('active'),
+  status: text('status').$type<'active' | 'revoked'>().notNull().default('active'),
   rotatedFromCredentialId: uuid('rotated_from_credential_id'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -237,6 +261,74 @@ export const securityAuditEvents = pgTable('security_audit_events', {
 }, (table) => ({
   tenantOccurredAtIndex: index('security_audit_events_tenant_occurred_at_idx')
     .on(table.tenantId, table.occurredAt),
+}));
+
+/** Tenant ownership and least-privilege metadata for one GitHub App installation. */
+export const githubAppInstallations = pgTable('github_app_installations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  providerHost: text('provider_host').notNull().default('github.com'),
+  appId: text('app_id').notNull(),
+  installationExternalId: text('installation_external_id').notNull(),
+  accountLogin: text('account_login').notNull(),
+  permissions: jsonb('permissions').$type<Record<string, string>>().notNull().default({}),
+  subscribedEvents: jsonb('subscribed_events').$type<string[]>().notNull().default([]),
+  status: text('status').$type<'active' | 'revoked'>().notNull().default('active'),
+  createdBy: text('created_by').notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('github_app_installations_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  providerInstallationUnique: unique('github_app_installations_provider_external_key')
+    .on(table.providerHost, table.installationExternalId),
+  tenantAccountUnique: unique('github_app_installations_tenant_provider_account_key')
+    .on(table.tenantId, table.providerHost, table.accountLogin),
+  tenantStatusIndex: index('github_app_installations_tenant_status_idx')
+    .on(table.tenantId, table.status),
+  statusCheck: check('github_app_installations_status_check',
+    sql`${table.status} in ('active', 'revoked')`),
+}));
+
+/** Immutable encrypted GitHub App credential versions retained across rotation. */
+export const githubAppCredentialVersions = pgTable('github_app_credential_versions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  installationId: uuid('installation_id').notNull(),
+  encryptedCredential: jsonb('encrypted_credential').$type<Record<string, unknown>>().notNull(),
+  masterKeyVersion: text('master_key_version').notNull(),
+  credentialFingerprint: text('credential_fingerprint').notNull(),
+  status: text('status').$type<'active' | 'retiring' | 'revoked'>().notNull().default('active'),
+  rotatedFromCredentialId: uuid('rotated_from_credential_id'),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).defaultNow().notNull(),
+  effectiveUntil: timestamp('effective_until', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('github_app_credential_versions_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  installationFingerprintUnique: unique('github_app_credential_versions_installation_fingerprint_key')
+    .on(table.tenantId, table.installationId, table.credentialFingerprint),
+  tenantInstallationForeignKey: foreignKey({
+    name: 'github_app_credential_versions_tenant_installation_fk',
+    columns: [table.tenantId, table.installationId],
+    foreignColumns: [githubAppInstallations.tenantId, githubAppInstallations.id],
+  }),
+  rotatedFromForeignKey: foreignKey({
+    name: 'github_app_credential_versions_rotated_from_fk',
+    columns: [table.tenantId, table.rotatedFromCredentialId],
+    foreignColumns: [table.tenantId, table.id],
+  }),
+  tenantInstallationStatusIndex: index('github_app_credential_versions_tenant_installation_status_idx')
+    .on(table.tenantId, table.installationId, table.status, table.effectiveFrom),
+  statusCheck: check('github_app_credential_versions_status_check',
+    sql`${table.status} in ('active', 'retiring', 'revoked')`),
+  intervalCheck: check('github_app_credential_versions_interval_check',
+    sql`${table.effectiveUntil} is null or ${table.effectiveUntil} > ${table.effectiveFrom}`),
+  fingerprintCheck: check('github_app_credential_versions_fingerprint_check',
+    sql`${table.credentialFingerprint} ~ '^[a-f0-9]{64}$'`),
 }));
 
 /**
@@ -788,6 +880,7 @@ export const scmBranches = pgTable('scm_branches', {
 export type Item = typeof items.$inferSelect;
 export type NewItem = typeof items.$inferInsert;
 export type Tenant = typeof ssoTenants.$inferSelect;
+export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
 export type SCMRepository = typeof scmRepositories.$inferSelect;
 export type NewSCMRepository = typeof scmRepositories.$inferInsert;
 export type DeveloperMachine = typeof developerMachines.$inferSelect;
@@ -796,6 +889,8 @@ export type RepositoryEnrollment = typeof repositoryEnrollments.$inferSelect;
 export type RepositoryBackfillAuthorization = typeof repositoryBackfillAuthorizations.$inferSelect;
 export type MachineRepositoryGrant = typeof machineRepositoryGrants.$inferSelect;
 export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
+export type GitHubAppInstallation = typeof githubAppInstallations.$inferSelect;
+export type GitHubAppCredentialVersion = typeof githubAppCredentialVersions.$inferSelect;
 export type SCMPullRequest = typeof scmPullRequests.$inferSelect;
 export type NewSCMPullRequest = typeof scmPullRequests.$inferInsert;
 export type SCMContributor = typeof scmContributors.$inferSelect;

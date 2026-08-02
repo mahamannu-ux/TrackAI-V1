@@ -1,4 +1,5 @@
 import { createSign } from 'crypto';
+import { loadGitHubAppRuntimeCredentials } from '../../core/security/github-app-security-service';
 
 export type GitHubCommit = {
   sha: string;
@@ -24,10 +25,7 @@ function base64Url(value: string | Buffer): string {
   return Buffer.from(value).toString('base64url');
 }
 
-function appJwt(): string | null {
-  const appId = process.env.GITHUB_APP_ID;
-  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  if (!appId || !privateKey) return null;
+export function appJwt(appId: string, privateKey: string): string {
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = base64Url(JSON.stringify({ iat: now - 30, exp: now + 540, iss: appId }));
@@ -51,31 +49,67 @@ function installationIdFor(owner: string): string | null {
   return process.env.GITHUB_APP_INSTALLATION_ID ?? null;
 }
 
-async function installationToken(owner: string): Promise<string | null> {
+async function installationToken(tenantId: string, owner: string): Promise<string | null> {
+  const managed = await loadGitHubAppRuntimeCredentials(tenantId, owner);
+  for (const credential of managed) {
+    const cacheKey = `${tenantId}:${credential.installationId}`;
+    const cachedToken = cachedTokens.get(cacheKey);
+    if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
+    const response = await fetch(
+      `https://api.github.com/app/installations/${credential.installationExternalId}/access_tokens`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${appJwt(credential.appId, credential.privateKey)}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'TrackAI',
+        },
+      },
+    );
+    if (!response.ok) {
+      if ((response.status === 401 || response.status === 403) && credential.status === 'active') {
+        continue;
+      }
+      throw new Error(`GitHub installation token failed (${response.status})`);
+    }
+    const data = await response.json() as { token: string; expires_at: string };
+    cachedTokens.set(cacheKey, {
+      value: data.token,
+      expiresAt: new Date(data.expires_at).getTime(),
+    });
+    return data.token;
+  }
+
+  // Transitional Task2 environment adapter. It is used only when the owner is
+  // explicitly bound to an installation; Wave 4 managed records take priority.
+  const installationId = installationIdFor(owner);
+  if (!installationId) return null;
   const explicit = process.env.GITHUB_APP_INSTALLATION_TOKEN;
   if (explicit) return explicit;
-  const installationId = installationIdFor(owner);
-  const cachedToken = installationId ? cachedTokens.get(installationId) : null;
+  const appId = process.env.GITHUB_APP_ID;
+  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (!appId || !privateKey) return null;
+  const cacheKey = `legacy:${owner.toLowerCase()}:${installationId}`;
+  const cachedToken = cachedTokens.get(cacheKey);
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
-  const jwt = appJwt();
-  if (!installationId || !jwt) return null;
   const response = await fetch(`https://api.github.com/app/installations/${installationId}/access_tokens`, {
     method: 'POST',
     headers: {
       Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${jwt}`,
+      Authorization: `Bearer ${appJwt(appId, privateKey)}`,
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'TrackAI',
     },
   });
   if (!response.ok) throw new Error(`GitHub installation token failed (${response.status})`);
   const data = await response.json() as { token: string; expires_at: string };
-  cachedTokens.set(installationId, { value: data.token, expiresAt: new Date(data.expires_at).getTime() });
+  cachedTokens.set(cacheKey, { value: data.token, expiresAt: new Date(data.expires_at).getTime() });
   return data.token;
 }
 
-async function githubGet<T>(path: string, owner: string): Promise<T | null> {
-  const token = await installationToken(owner);
+async function githubGet<T>(path: string, tenantId: string, owner: string): Promise<T | null> {
+  const token = await installationToken(tenantId, owner);
   if (!token && process.env.GITHUB_ALLOW_PUBLIC_READ !== 'true') return null;
   const response = await fetch(`https://api.github.com${path}`, {
     headers: {
@@ -89,20 +123,17 @@ async function githubGet<T>(path: string, owner: string): Promise<T | null> {
   return response.json() as Promise<T>;
 }
 
-export function githubReadConfigured(): boolean {
-  return Boolean(
-    process.env.GITHUB_APP_INSTALLATION_TOKEN
-    || (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY
-      && (process.env.GITHUB_APP_INSTALLATION_ID || process.env.GITHUB_APP_INSTALLATIONS_JSON))
-    || process.env.GITHUB_ALLOW_PUBLIC_READ === 'true',
-  );
-}
-
-export async function listPullRequestCommits(owner: string, repository: string, number: number) {
+export async function listPullRequestCommits(
+  tenantId: string,
+  owner: string,
+  repository: string,
+  number: number,
+) {
   const commits: GitHubCommit[] = [];
   for (let page = 1; page <= 3; page += 1) {
     const batch = await githubGet<GitHubCommit[]>(
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/pulls/${number}/commits?per_page=100&page=${page}`,
+      tenantId,
       owner,
     );
     if (batch === null) return null;
@@ -112,14 +143,21 @@ export async function listPullRequestCommits(owner: string, repository: string, 
   return commits;
 }
 
-export async function getRepositoryCommit(owner: string, repository: string, sha: string) {
+export async function getRepositoryCommit(
+  tenantId: string,
+  owner: string,
+  repository: string,
+  sha: string,
+) {
   return githubGet<GitHubCommit>(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/commits/${encodeURIComponent(sha)}`,
+    tenantId,
     owner,
   );
 }
 
 export async function getRepositoryCommitFirstParentChain(
+  tenantId: string,
   owner: string,
   repository: string,
   sha: string,
@@ -128,7 +166,7 @@ export async function getRepositoryCommitFirstParentChain(
   const commits: GitHubCommit[] = [];
   let currentSha: string | null = sha;
   while (currentSha && commits.length < limit) {
-    const commit = await getRepositoryCommit(owner, repository, currentSha);
+    const commit = await getRepositoryCommit(tenantId, owner, repository, currentSha);
     if (!commit) break;
     commits.push(commit);
     currentSha = commit.parents?.[0]?.sha ?? null;

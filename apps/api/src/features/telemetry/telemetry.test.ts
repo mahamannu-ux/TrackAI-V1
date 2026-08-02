@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkpointDeletionMatchesCommitFiles, decodeAiAuthoredDeletionLines, decodeAttributes, decodeCheckpointValues, decodeDeletionFilePaths, decodeOtelUsage, decodeRewriteValues, decodeSessionUsage, validateMetricEvent, validateMetricsBatch } from './decoder';
-import { normalizeRepositoryUrl } from './repository-url';
+import { canonicalRepositoryUrl, normalizeRepositoryUrl } from './repository-url';
 import { parseAuthorshipNote } from './authorship-note';
 import { parseIngestTokenMap, resolveTenantForToken } from '../../core/middleware/machine-auth';
 import { parseGitHubWebhook } from '../scm/parser';
@@ -140,6 +140,13 @@ test('normalizes HTTPS, SSH and SCP repository URLs identically', () => {
   assert.equal(normalizeRepositoryUrl('ssh://git@github.com/mahamannu-ai/git-ai-teamz-lab'), expected);
 });
 
+test('canonical repository URL includes the HTTPS scheme required by the Git AI client', () => {
+  assert.equal(
+    canonicalRepositoryUrl('github.com/Mahamannu-AI/git-ai-teamz-lab.git'),
+    'https://github.com/mahamannu-ai/git-ai-teamz-lab',
+  );
+});
+
 test('repository scope blocks cross-tenant native telemetry after a key switch', () => {
   const enrolled = new Set(['github.com/mahamannu-ux/trackai-v1']);
   assert.equal(repositoryIsInTenantScope(
@@ -196,18 +203,24 @@ test('managed ingestion policy applies family watermarks and exact backfill auth
       { t: 210, e: 1, v: {}, a: { '1': 'https://github.com/company-a/repo', '5': 'main' } },
     ],
   });
-  const decision = await evaluateManagedMachineIngestionPolicy(batch, async () => ({
-    enrollmentId: 'enrollment-a',
-    generationSessionEvidenceFrom: new Date(100_000),
-    commitNoteEvidenceFrom: new Date(200_000),
-    backfillAuthorizations: [{
-      id: 'generation-backfill-a',
-      evidenceFamily: 'generation_session',
-      occurredFrom: new Date(80_000),
-      occurredUntil: new Date(99_000),
-      expiresAt: new Date(300_000),
-    }],
-  }), new Date(250_000));
+  let policyLookups = 0;
+  const decision = await evaluateManagedMachineIngestionPolicy(batch, async () => {
+    policyLookups += 1;
+    return {
+      enrollmentId: 'enrollment-a',
+      generationSessionEvidenceFrom: new Date(100_000),
+      commitNoteEvidenceFrom: new Date(200_000),
+      backfillAuthorizations: [{
+        id: 'generation-backfill-a',
+        evidenceFamily: 'generation_session',
+        occurredFrom: new Date(80_000),
+        occurredUntil: new Date(99_000),
+        expiresAt: new Date(300_000),
+      }],
+    };
+  }, new Date(250_000));
+
+  assert.equal(policyLookups, 1);
 
   assert.deepEqual(decision.errors, [
     { index: 2, error: 'Evidence predates the repository enrollment watermark' },

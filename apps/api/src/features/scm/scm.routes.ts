@@ -16,7 +16,6 @@ import { reconcileRepositoryPullRequests } from '../telemetry/service';
 import {
   getRepositoryCommit,
   getRepositoryCommitFirstParentChain,
-  githubReadConfigured,
   listPullRequestCommits,
 } from './github-app';
 import {
@@ -417,8 +416,9 @@ router.post('/:provider', async (req: Request, res: Response) => {
     if (storedRecords.pullRequestId) {
       await reconcileRepositoryPullRequests(tenant.id, storedRecords.repositoryId);
       let pullRequestCommits = null;
-      if (payload.pullRequest && githubReadConfigured()) {
+      if (payload.pullRequest) {
         pullRequestCommits = await listPullRequestCommits(
+          tenant.id,
           payload.organization,
           payload.repository.name,
           payload.pullRequest.number,
@@ -434,22 +434,23 @@ router.post('/:provider', async (req: Request, res: Response) => {
         }
       }
       if (payload.eventType === 'pr_closed' && payload.pullRequest?.mergeCommitSha && payload.pullRequest.mergedAt) {
-        const resultCommit = githubReadConfigured()
-          ? await getRepositoryCommit(
-            payload.organization,
-            payload.repository.name,
-            payload.pullRequest.mergeCommitSha,
-          )
-          : null;
+        const resultCommit = await getRepositoryCommit(
+          tenant.id,
+          payload.organization,
+          payload.repository.name,
+          payload.pullRequest.mergeCommitSha,
+        );
         const sourceCommitEvidence = pullRequestCommits
           ? (await Promise.all(pullRequestCommits.map((commit) => getRepositoryCommit(
+            tenant.id,
             payload.organization,
             payload.repository.name,
             commit.sha,
           )))).filter((commit) => commit !== null)
           : undefined;
-        const resultFirstParentChain = githubReadConfigured() && pullRequestCommits
+        const resultFirstParentChain = pullRequestCommits
           ? await getRepositoryCommitFirstParentChain(
+            tenant.id,
             payload.organization,
             payload.repository.name,
             payload.pullRequest.mergeCommitSha,
@@ -489,9 +490,10 @@ router.post('/:provider', async (req: Request, res: Response) => {
         payload.push.afterSha,
       ])].filter((sha): sha is string => Boolean(sha) && !/^0+$/.test(sha as string));
 
-      if (!payload.push.deleted && githubReadConfigured()) {
+      if (!payload.push.deleted) {
         for (const sha of pushedShas) {
           const commit = await getRepositoryCommit(
+            tenant.id,
             payload.organization,
             payload.repository.name,
             sha,
@@ -504,6 +506,16 @@ router.post('/:provider', async (req: Request, res: Response) => {
               commit,
               observedAt,
             });
+          } else {
+            await db.update(scmCommits).set({
+              reachability: 'reachable',
+              lastSeenAt: observedAt,
+              updatedAt: observedAt,
+            }).where(and(
+              eq(scmCommits.tenantId, tenant.id),
+              eq(scmCommits.repositoryId, storedRecords.repositoryId),
+              eq(scmCommits.sha, sha),
+            ));
           }
         }
       } else {

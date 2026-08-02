@@ -28,6 +28,14 @@ export function branchPatternIsValid(pattern: string): boolean {
   return firstWildcard === -1 || (pattern.endsWith('/*') && firstWildcard === pattern.length - 1);
 }
 
+export function normalizeRepositoryBranchPatterns(patterns: readonly string[]): string[] {
+  const normalized = [...new Set(patterns.map(pattern => pattern.trim()))];
+  if (normalized.some(pattern => !branchPatternIsValid(pattern))) {
+    throw new Error('Branch patterns must be exact names or a prefix ending in /*');
+  }
+  return normalized;
+}
+
 function branchMatches(patterns: readonly string[], branch: string | null): boolean {
   if (patterns.length === 0) return true;
   if (!branch || patterns.some((pattern) => !branchPatternIsValid(pattern))) return false;

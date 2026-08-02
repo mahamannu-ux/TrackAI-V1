@@ -3,10 +3,12 @@ import { db } from '../db';
 import {
   developerMachines,
   machineCredentials,
+  machineRepositoryGrants,
   securityAuditEvents,
 } from '../db/schema';
 import { createMachineCredential } from './machine-credential';
 import type { StoredManagedMachineCredential } from './managed-machine-auth';
+import { validateMachineCredentialIssuance } from './admin-lifecycle-policy';
 
 export interface RegisterMachineInput {
   tenantId: string;
@@ -89,19 +91,19 @@ export async function issueMachineCredential(input: IssueMachineCredentialInput)
         eq(developerMachines.tenantId, input.tenantId),
         eq(developerMachines.id, input.machineId),
         eq(developerMachines.status, 'active'),
-      )).limit(1);
+      )).limit(1).for('update');
     if (!machine) throw new Error('Active developer machine was not found');
 
-    if (input.rotatedFromCredentialId) {
-      const [previous] = await transaction.select({ id: machineCredentials.id })
-        .from(machineCredentials).where(and(
-          eq(machineCredentials.tenantId, input.tenantId),
-          eq(machineCredentials.machineId, input.machineId),
-          eq(machineCredentials.id, input.rotatedFromCredentialId),
-          eq(machineCredentials.status, 'active'),
-        )).limit(1);
-      if (!previous) throw new Error('Active credential to rotate was not found');
-    }
+    const activeCredentials = await transaction.select({
+      id: machineCredentials.id,
+      rotatedFromCredentialId: machineCredentials.rotatedFromCredentialId,
+    }).from(machineCredentials).where(and(
+      eq(machineCredentials.tenantId, input.tenantId),
+      eq(machineCredentials.machineId, input.machineId),
+      eq(machineCredentials.status, 'active'),
+    ));
+
+    validateMachineCredentialIssuance(activeCredentials, input.rotatedFromCredentialId);
 
     const created = createMachineCredential();
     const [credential] = await transaction.insert(machineCredentials).values({
@@ -187,6 +189,13 @@ export async function revokeDeveloperMachine(
       eq(machineCredentials.machineId, machineId),
       eq(machineCredentials.status, 'active'),
     ));
+    const revokedGrants = await transaction.update(machineRepositoryGrants).set({
+      status: 'revoked', revokedAt,
+    }).where(and(
+      eq(machineRepositoryGrants.tenantId, tenantId),
+      eq(machineRepositoryGrants.machineId, machineId),
+      eq(machineRepositoryGrants.status, 'active'),
+    )).returning({ id: machineRepositoryGrants.id });
     await transaction.insert(securityAuditEvents).values({
       tenantId,
       actorType: 'tenant_admin',
@@ -194,7 +203,11 @@ export async function revokeDeveloperMachine(
       action: 'machine.revoked',
       targetType: 'developer_machine',
       targetId: machine.id,
-      details: { reason, credentialsRevoked: true },
+      details: {
+        reason,
+        credentialsRevoked: true,
+        repositoryGrantsRevoked: revokedGrants.length,
+      },
     });
   });
 }

@@ -11,6 +11,7 @@ declare global {
       tenantId?: string;
       machineId?: string;
       managedMachineCredential?: boolean;
+      adminRole?: 'tenant_admin' | 'tenant_auditor';
     }
   }
 }

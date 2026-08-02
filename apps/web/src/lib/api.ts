@@ -141,6 +141,62 @@ export type EvidenceFlowResponse = {
   developmentOnly?: boolean; correlation?: string; nodes: EvidenceFlowNode[];
 };
 
+export type AdminContext = {
+  tenantId: string;
+  subject: string;
+  email: string | null;
+  membership: null | {
+    id: string;
+    role: 'tenant_admin' | 'tenant_auditor';
+    status: 'active' | 'revoked';
+    revokedAt: string | null;
+  };
+};
+
+export type AdminMachineResources = {
+  machines: Array<{
+    id: string; installationId: string; displayName: string; platform: string | null;
+    status: 'active' | 'revoked'; lastSeenAt: string | null; revokedAt: string | null;
+    createdAt: string; updatedAt: string;
+  }>;
+  credentials: Array<{
+    id: string; machineId: string; keyId: string; status: 'active' | 'revoked';
+    rotatedFromCredentialId: string | null; issuedAt: string; expiresAt: string | null;
+    lastUsedAt: string | null; revokedAt: string | null;
+  }>;
+};
+
+export type AdminRepositoryResources = {
+  repositories: Repository[];
+  enrollments: Array<{
+    id: string; repositoryId: string; status: 'active' | 'revoked'; effectiveFrom: string;
+    generationSessionEvidenceFrom: string; commitNoteEvidenceFrom: string;
+    effectiveUntil: string | null; reason: string | null; createdAt: string; updatedAt: string;
+  }>;
+  grants: Array<{
+    id: string; machineId: string; enrollmentId: string; branchPatterns: string[];
+    status: 'active' | 'revoked'; effectiveFrom: string; effectiveUntil: string | null;
+    reason: string | null; revokedAt: string | null; createdAt: string;
+  }>;
+};
+
+export type AdminBackfillResources = { authorizations: Array<{
+  id: string; enrollmentId: string; evidenceFamily: 'generation_session' | 'commit_note';
+  occurredFrom: string; occurredUntil: string; expiresAt: string; status: 'active' | 'revoked';
+  authorizedBy: string; reason: string; revokedAt: string | null; createdAt: string;
+}> };
+
+export type AdminGitHubResources = { installations: Array<{
+  id: string; providerHost: string; appId: string; installationExternalId: string;
+  accountLogin: string; permissions: Record<string, string>; subscribedEvents: string[];
+  status: 'active' | 'revoked'; revokedAt: string | null; createdAt: string; updatedAt: string;
+}> };
+
+export type AdminAuditResources = { events: Array<{
+  id: string; actorType: string; actorId: string; action: string; targetType: string;
+  targetId: string; details: Record<string, unknown>; occurredAt: string;
+}> };
+
 export const getRepositories = () => apiFetch<Repository[]>('/api/repositories');
 export const getPullRequests = () => apiFetch<PullRequest[]>('/api/pull-requests');
 export const getContributors = () => apiFetch<Contributor[]>('/api/contributors');
@@ -153,3 +209,90 @@ export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowRespon
 export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
 export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
 export const getLifecycle = (query = '') => apiFetch<LifecycleResponse>(`/api/metrics/lifecycle${query}`);
+export const getAdminContext = () => apiFetch<AdminContext>('/api/admin/context');
+export const getAdminMachines = () => apiFetch<AdminMachineResources>('/api/admin/machines');
+export const getAdminRepositoryPolicies = () => apiFetch<AdminRepositoryResources>('/api/admin/repository-policies');
+export const getAdminBackfillAuthorizations = () => apiFetch<AdminBackfillResources>('/api/admin/backfill-authorizations');
+export const getAdminGitHubInstallations = () => apiFetch<AdminGitHubResources>('/api/admin/github-app/installations');
+export const getAdminAudit = (limit = 100) => apiFetch<AdminAuditResources>(`/api/admin/audit?limit=${limit}`);
+
+export const registerAdminMachine = (input: {
+  installationId: string; displayName: string; platform?: string;
+}) => apiFetch<{ machine: AdminMachineResources['machines'][number] }>('/api/admin/machines', {
+  method: 'POST', body: JSON.stringify(input),
+});
+
+export const issueAdminMachineCredential = (
+  machineId: string,
+  rotatedFromCredentialId?: string,
+) => apiFetch<{ credential: {
+  id: string; machineId: string; keyId: string; plaintext: string;
+  issuedAt: string; expiresAt: string | null;
+} }>(`/api/admin/machines/${encodeURIComponent(machineId)}/credentials`, {
+  method: 'POST',
+  body: JSON.stringify({ rotatedFromCredentialId }),
+});
+
+export const revokeAdminMachineCredential = (credentialId: string, reason: string) => (
+  apiFetch<{ ok: true }>(`/api/admin/machine-credentials/${encodeURIComponent(credentialId)}/revoke`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  })
+);
+
+export const revokeAdminMachine = (machineId: string, reason: string) => (
+  apiFetch<{ ok: true }>(`/api/admin/machines/${encodeURIComponent(machineId)}/revoke`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  })
+);
+
+export const enrollAdminRepository = (repositoryId: string, reason: string) => (
+  apiFetch<{ enrollment: AdminRepositoryResources['enrollments'][number] }>('/api/admin/repository-enrollments', {
+    method: 'POST', body: JSON.stringify({ repositoryId, reason }),
+  })
+);
+
+export const revokeAdminRepositoryEnrollment = (enrollmentId: string, reason: string) => (
+  apiFetch<{ ok: true }>(`/api/admin/repository-enrollments/${encodeURIComponent(enrollmentId)}/revoke`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  })
+);
+
+export const grantAdminMachineRepository = (input: {
+  machineId: string; enrollmentId: string; branchPatterns: string[]; reason: string;
+}) => apiFetch<{ grant: AdminRepositoryResources['grants'][number] }>('/api/admin/repository-grants', {
+  method: 'POST', body: JSON.stringify(input),
+});
+
+export const revokeAdminMachineRepositoryGrant = (grantId: string, reason: string) => (
+  apiFetch<{ ok: true }>(`/api/admin/repository-grants/${encodeURIComponent(grantId)}/revoke`, {
+    method: 'POST', body: JSON.stringify({ reason }),
+  })
+);
+
+export const replaceAdminMachineRepositoryGrantBranchScope = (
+  grantId: string,
+  branchPatterns: string[],
+  reason: string,
+) => apiFetch<{ grant: AdminRepositoryResources['grants'][number] }>(
+  `/api/admin/repository-grants/${encodeURIComponent(grantId)}/branch-scope`,
+  { method: 'POST', body: JSON.stringify({ branchPatterns, reason }) },
+);
+
+export const authorizeAdminRepositoryBackfill = (input: {
+  enrollmentId: string;
+  evidenceFamily: 'generation_session' | 'commit_note';
+  occurredFrom: string;
+  occurredUntil: string;
+  expiresAt: string;
+  reason: string;
+}) => apiFetch<{ authorization: AdminBackfillResources['authorizations'][number] }>(
+  '/api/admin/backfill-authorizations',
+  { method: 'POST', body: JSON.stringify(input) },
+);
+
+export const revokeAdminRepositoryBackfill = (authorizationId: string, reason: string) => (
+  apiFetch<{ ok: true }>(
+    `/api/admin/backfill-authorizations/${encodeURIComponent(authorizationId)}/revoke`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  )
+);

@@ -27,6 +27,11 @@ export function normalizeRepositoryUrl(value: string): string {
   return `${host.toLowerCase()}/${normalizedPath}`;
 }
 
+/** Canonical transport-safe repository URL used by the Git AI delivery policy. */
+export function canonicalRepositoryUrl(value: string): string {
+  return `https://${normalizeRepositoryUrl(value)}`;
+}
+
 export function repositoryIdentity(value: string) {
   const normalizedUrl = normalizeRepositoryUrl(value);
   const [host, ...pathParts] = normalizedUrl.split('/');
@@ -36,7 +41,7 @@ export function repositoryIdentity(value: string) {
       : host === 'bitbucket.org' ? 'bitbucket' : 'git';
   return {
     normalizedUrl,
-    canonicalUrl: `https://${normalizedUrl}`,
+    canonicalUrl: canonicalRepositoryUrl(normalizedUrl),
     provider,
     name,
     externalId: `telemetry:${createHash('sha256').update(normalizedUrl).digest('hex')}`,

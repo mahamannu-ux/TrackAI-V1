@@ -8,6 +8,7 @@ import scmRouter from './features/scm/scm.routes';
 import telemetryIngestRouter from './features/telemetry/ingest.routes';
 import { authenticateMachine } from './core/middleware/machine-auth';
 import telemetryReadRouter from './features/telemetry/read.routes';
+import adminRouter from './features/admin/admin.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
@@ -61,6 +62,7 @@ app.get('/health', (_req, res) => {
 app.use('/api', authenticateJWT, tenantMiddleware);
 app.use('/api/items', itemsRouter);
 app.use('/api', telemetryReadRouter);
+app.use('/api/admin', adminRouter);
 
 
 // Fixed Error Handler

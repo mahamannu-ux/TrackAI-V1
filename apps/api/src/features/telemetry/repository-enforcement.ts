@@ -93,6 +93,7 @@ export async function evaluateManagedMachineIngestionPolicy(
 ): Promise<ManagedMachineIngestionDecision> {
   const errors: RepositoryScopeError[] = [];
   const labels: MetricIngestionLabel[] = [];
+  const policyByScope = new Map<string, Promise<ManagedRepositoryIngestionPolicy | null>>();
   for (const [index, rawEvent] of batch.events.entries()) {
     let event;
     try {
@@ -112,7 +113,13 @@ export async function evaluateManagedMachineIngestionPolicy(
       errors.push({ index, error: 'Repository URL is invalid' });
       continue;
     }
-    const policy = await policyLookup(normalizedRepository, attributes.branch);
+    const scopeKey = JSON.stringify([normalizedRepository, attributes.branch]);
+    let policyPromise = policyByScope.get(scopeKey);
+    if (!policyPromise) {
+      policyPromise = policyLookup(normalizedRepository, attributes.branch);
+      policyByScope.set(scopeKey, policyPromise);
+    }
+    const policy = await policyPromise;
     if (!policy) {
       errors.push({ index, error: 'Machine repository or branch grant is not active' });
       continue;

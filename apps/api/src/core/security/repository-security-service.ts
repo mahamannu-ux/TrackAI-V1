@@ -8,7 +8,8 @@ import {
   scmRepositories,
   securityAuditEvents,
 } from '../db/schema';
-import { branchPatternIsValid, repositoryGrantAllows } from './repository-grant';
+import { normalizeRepositoryBranchPatterns, repositoryGrantAllows } from './repository-grant';
+import { validateBackfillAuthorizationWindow } from './admin-lifecycle-policy';
 
 export interface EnrollRepositoryInput {
   tenantId: string;
@@ -33,9 +34,6 @@ export interface AuthorizeRepositoryBackfillInput {
   now?: Date;
 }
 
-const MAX_BACKFILL_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
-const MAX_BACKFILL_AUTHORIZATION_TTL_MS = 24 * 60 * 60 * 1000;
-
 export interface GrantRepositoryInput {
   tenantId: string;
   machineId: string;
@@ -45,6 +43,14 @@ export interface GrantRepositoryInput {
   reason?: string;
   effectiveFrom?: Date;
   effectiveUntil?: Date;
+}
+
+export interface ReplaceRepositoryGrantBranchScopeInput {
+  tenantId: string;
+  grantId: string;
+  branchPatterns: string[];
+  actorId: string;
+  reason: string;
 }
 
 function validateInterval(from: Date, until?: Date): void {
@@ -128,17 +134,6 @@ export async function enrollRepository(input: EnrollRepositoryInput) {
 
 export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBackfillInput) {
   const now = input.now ?? new Date();
-  if (!input.reason.trim()) throw new Error('Backfill authorization reason is required');
-  if (input.occurredUntil.getTime() < input.occurredFrom.getTime()) {
-    throw new Error('Backfill occurredUntil must not precede occurredFrom');
-  }
-  if (input.occurredUntil.getTime() - input.occurredFrom.getTime() > MAX_BACKFILL_WINDOW_MS) {
-    throw new Error('Backfill window cannot exceed 31 days');
-  }
-  if (input.expiresAt.getTime() <= now.getTime()
-    || input.expiresAt.getTime() - now.getTime() > MAX_BACKFILL_AUTHORIZATION_TTL_MS) {
-    throw new Error('Backfill authorization must expire within 24 hours');
-  }
 
   return db.transaction(async (transaction) => {
     const [enrollment] = await transaction.select({
@@ -149,13 +144,31 @@ export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBack
       eq(repositoryEnrollments.tenantId, input.tenantId),
       eq(repositoryEnrollments.id, input.enrollmentId),
       eq(repositoryEnrollments.status, 'active'),
-    )).limit(1);
+    )).limit(1).for('update');
     if (!enrollment) throw new Error('Active repository enrollment was not found');
     const watermark = input.evidenceFamily === 'generation_session'
       ? enrollment.generationSessionEvidenceFrom
       : enrollment.commitNoteEvidenceFrom;
-    if (input.occurredUntil.getTime() >= watermark.getTime()) {
-      throw new Error('Backfill window must end before its enrollment watermark');
+    const reason = validateBackfillAuthorizationWindow({
+      occurredFrom: input.occurredFrom,
+      occurredUntil: input.occurredUntil,
+      expiresAt: input.expiresAt,
+      watermark,
+      reason: input.reason,
+      now,
+    });
+
+    const [existingAuthorization] = await transaction.select({
+      id: repositoryBackfillAuthorizations.id,
+    }).from(repositoryBackfillAuthorizations).where(and(
+      eq(repositoryBackfillAuthorizations.tenantId, input.tenantId),
+      eq(repositoryBackfillAuthorizations.enrollmentId, input.enrollmentId),
+      eq(repositoryBackfillAuthorizations.evidenceFamily, input.evidenceFamily),
+      eq(repositoryBackfillAuthorizations.status, 'active'),
+      gt(repositoryBackfillAuthorizations.expiresAt, now),
+    )).limit(1);
+    if (existingAuthorization) {
+      throw new Error('An active backfill authorization already exists for this evidence family');
     }
 
     const [authorization] = await transaction.insert(repositoryBackfillAuthorizations).values({
@@ -166,7 +179,7 @@ export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBack
       occurredUntil: input.occurredUntil,
       expiresAt: input.expiresAt,
       authorizedBy: input.actorId,
-      reason: input.reason.trim(),
+      reason,
     }).returning();
     await transaction.insert(securityAuditEvents).values({
       tenantId: input.tenantId,
@@ -181,7 +194,7 @@ export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBack
         occurredFrom: input.occurredFrom.toISOString(),
         occurredUntil: input.occurredUntil.toISOString(),
         expiresAt: input.expiresAt.toISOString(),
-        reason: input.reason.trim(),
+        reason,
       },
     });
     return authorization;
@@ -190,11 +203,8 @@ export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBack
 
 export async function grantMachineRepository(input: GrantRepositoryInput) {
   const effectiveFrom = input.effectiveFrom ?? new Date();
-  const branchPatterns = input.branchPatterns ?? [];
+  const branchPatterns = normalizeRepositoryBranchPatterns(input.branchPatterns ?? []);
   validateInterval(effectiveFrom, input.effectiveUntil);
-  if (branchPatterns.some((pattern) => !branchPatternIsValid(pattern))) {
-    throw new Error('Branch patterns must be exact names or a prefix ending in /*');
-  }
 
   return db.transaction(async (transaction) => {
     const [machine] = await transaction.select({ id: developerMachines.id })
@@ -202,7 +212,7 @@ export async function grantMachineRepository(input: GrantRepositoryInput) {
         eq(developerMachines.tenantId, input.tenantId),
         eq(developerMachines.id, input.machineId),
         eq(developerMachines.status, 'active'),
-      )).limit(1);
+      )).limit(1).for('update');
     if (!machine) throw new Error('Active developer machine was not found');
 
     const [enrollment] = await transaction.select({ id: repositoryEnrollments.id })
@@ -210,8 +220,23 @@ export async function grantMachineRepository(input: GrantRepositoryInput) {
         eq(repositoryEnrollments.tenantId, input.tenantId),
         eq(repositoryEnrollments.id, input.enrollmentId),
         eq(repositoryEnrollments.status, 'active'),
-      )).limit(1);
+    )).limit(1);
     if (!enrollment) throw new Error('Active repository enrollment was not found');
+
+    const [existingGrant] = await transaction.select({ id: machineRepositoryGrants.id })
+      .from(machineRepositoryGrants).where(and(
+        eq(machineRepositoryGrants.tenantId, input.tenantId),
+        eq(machineRepositoryGrants.machineId, input.machineId),
+        eq(machineRepositoryGrants.enrollmentId, input.enrollmentId),
+        eq(machineRepositoryGrants.status, 'active'),
+        or(
+          isNull(machineRepositoryGrants.effectiveUntil),
+          gt(machineRepositoryGrants.effectiveUntil, effectiveFrom),
+        ),
+      )).limit(1);
+    if (existingGrant) {
+      throw new Error('This machine already has active access to the repository');
+    }
 
     const [grant] = await transaction.insert(machineRepositoryGrants).values({
       tenantId: input.tenantId,
@@ -243,6 +268,69 @@ export async function grantMachineRepository(input: GrantRepositoryInput) {
   });
 }
 
+export async function replaceMachineRepositoryGrantBranchScope(
+  input: ReplaceRepositoryGrantBranchScopeInput,
+) {
+  const reason = input.reason.trim();
+  if (!reason) throw new Error('Branch-scope replacement reason is required');
+  const branchPatterns = normalizeRepositoryBranchPatterns(input.branchPatterns);
+
+  return db.transaction(async transaction => {
+    const [previous] = await transaction.select({
+      id: machineRepositoryGrants.id,
+      machineId: machineRepositoryGrants.machineId,
+      enrollmentId: machineRepositoryGrants.enrollmentId,
+      branchPatterns: machineRepositoryGrants.branchPatterns,
+    }).from(machineRepositoryGrants).where(and(
+      eq(machineRepositoryGrants.tenantId, input.tenantId),
+      eq(machineRepositoryGrants.id, input.grantId),
+      eq(machineRepositoryGrants.status, 'active'),
+    )).limit(1).for('update');
+    if (!previous) throw new Error('Active machine repository grant was not found');
+
+    const unchanged = previous.branchPatterns.length === branchPatterns.length
+      && previous.branchPatterns.every((pattern, index) => pattern === branchPatterns[index]);
+    if (unchanged) throw new Error('Branch scope is unchanged');
+
+    const replacedAt = new Date();
+    const [revoked] = await transaction.update(machineRepositoryGrants).set({
+      status: 'revoked', revokedAt: replacedAt,
+    }).where(and(
+      eq(machineRepositoryGrants.tenantId, input.tenantId),
+      eq(machineRepositoryGrants.id, previous.id),
+      eq(machineRepositoryGrants.status, 'active'),
+    )).returning({ id: machineRepositoryGrants.id });
+    if (!revoked) throw new Error('Repository grant state changed during branch-scope replacement');
+
+    const [replacement] = await transaction.insert(machineRepositoryGrants).values({
+      tenantId: input.tenantId,
+      machineId: previous.machineId,
+      enrollmentId: previous.enrollmentId,
+      branchPatterns,
+      effectiveFrom: replacedAt,
+      grantedBy: input.actorId,
+      reason,
+    }).returning();
+    await transaction.insert(securityAuditEvents).values({
+      tenantId: input.tenantId,
+      actorType: 'tenant_admin',
+      actorId: input.actorId,
+      action: 'repository_grant.branch_scope_replaced',
+      targetType: 'machine_repository_grant',
+      targetId: replacement.id,
+      details: {
+        previousGrantId: previous.id,
+        machineId: previous.machineId,
+        enrollmentId: previous.enrollmentId,
+        previousBranchPatterns: previous.branchPatterns,
+        branchPatterns,
+        reason,
+      },
+    });
+    return replacement;
+  });
+}
+
 export async function revokeMachineRepositoryGrant(
   tenantId: string,
   grantId: string,
@@ -271,6 +359,43 @@ export async function revokeMachineRepositoryGrant(
   });
 }
 
+export async function revokeRepositoryBackfillAuthorization(
+  tenantId: string,
+  authorizationId: string,
+  actorId: string,
+  reason: string,
+): Promise<void> {
+  if (!reason.trim()) throw new Error('Backfill authorization revocation reason is required');
+  await db.transaction(async transaction => {
+    const revokedAt = new Date();
+    const [authorization] = await transaction.update(repositoryBackfillAuthorizations).set({
+      status: 'revoked', revokedAt,
+    }).where(and(
+      eq(repositoryBackfillAuthorizations.tenantId, tenantId),
+      eq(repositoryBackfillAuthorizations.id, authorizationId),
+      eq(repositoryBackfillAuthorizations.status, 'active'),
+    )).returning({
+      id: repositoryBackfillAuthorizations.id,
+      enrollmentId: repositoryBackfillAuthorizations.enrollmentId,
+      evidenceFamily: repositoryBackfillAuthorizations.evidenceFamily,
+    });
+    if (!authorization) throw new Error('Active backfill authorization was not found');
+    await transaction.insert(securityAuditEvents).values({
+      tenantId,
+      actorType: 'tenant_admin',
+      actorId,
+      action: 'repository_backfill.revoked',
+      targetType: 'repository_backfill_authorization',
+      targetId: authorization.id,
+      details: {
+        enrollmentId: authorization.enrollmentId,
+        evidenceFamily: authorization.evidenceFamily,
+        reason: reason.trim(),
+      },
+    });
+  });
+}
+
 export async function revokeRepositoryEnrollment(
   tenantId: string,
   enrollmentId: string,
@@ -287,6 +412,13 @@ export async function revokeRepositoryEnrollment(
       eq(repositoryEnrollments.status, 'active'),
     )).returning({ id: repositoryEnrollments.id, repositoryId: repositoryEnrollments.repositoryId });
     if (!enrollment) throw new Error('Active repository enrollment was not found');
+    const revokedGrants = await transaction.update(machineRepositoryGrants).set({
+      status: 'revoked', revokedAt,
+    }).where(and(
+      eq(machineRepositoryGrants.tenantId, tenantId),
+      eq(machineRepositoryGrants.enrollmentId, enrollmentId),
+      eq(machineRepositoryGrants.status, 'active'),
+    )).returning({ id: machineRepositoryGrants.id });
     await transaction.update(repositoryBackfillAuthorizations).set({
       status: 'revoked', revokedAt,
     }).where(and(
@@ -301,7 +433,12 @@ export async function revokeRepositoryEnrollment(
       action: 'repository.revoked',
       targetType: 'repository_enrollment',
       targetId: enrollment.id,
-      details: { repositoryId: enrollment.repositoryId, reason },
+      details: {
+        repositoryId: enrollment.repositoryId,
+        reason,
+        grantsRevoked: revokedGrants.length,
+        backfillAuthorizationsRevoked: true,
+      },
     });
   });
 }
