@@ -200,6 +200,27 @@ T2.23 and T2.24 are green, but their production expansion still belongs to the
 later policy/security and Evidence Explorer programs. Task4 must preserve these
 data contracts and does not wait for deferred compatibility or visualization work.
 
+Task13 now owns the canonical agent/surface inventory in
+[`../../AGENT_COVERAGE.md`](../../AGENT_COVERAGE.md). T2.25–T2.29 remain only as
+Lifecycle Lab bridges to its Cursor, Xcode, Codex desktop, Claude Desktop and
+platform routes. Task13 does **not** block Task4. Task4 must nevertheless keep
+enrollment, queueing, encryption, key storage and event idempotency independent
+of editor host and operating system.
+
+Task4 client contracts must allow these additional provenance fields without
+using them as tenant authorization inputs:
+
+- `agentFamily`
+- `hostSurface`
+- `hostMode`
+- `captureChannel`
+- evidence fidelity / host-identity quality
+
+The existing `tool + exact model` key remains lifecycle ownership. Host fields
+must not merge or duplicate sessions, and tool/model alone must not be used to
+infer a desktop application. Raw prompt, response and tool content remains a
+Task5 data-policy concern even when a Task13 adapter can observe it.
+
 ## Shared-file conflict map
 
 The following surfaces are jointly sensitive and require checkpoint-based

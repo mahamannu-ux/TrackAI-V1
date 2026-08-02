@@ -1,12 +1,13 @@
 # Task2 — Lifecycle Metrics and SCM Correctness
 
 **Authoritative Task2 tracker**
-Last updated: **2026-07-30**
+Last updated: **2026-08-02**
 
 Cross-task tracker: [`TASK4.md`](TASK4.md)
 Post-E13 handoff: [`docs/handoffs/TASK2_TO_TASK4.md`](docs/handoffs/TASK2_TO_TASK4.md)
 Portfolio roadmap: [`ROUGH_ROADMAP.md`](ROUGH_ROADMAP.md)
 Git AI patch inventory: [`docs/GIT_AI_TASK2_CHANGES.md`](docs/GIT_AI_TASK2_CHANGES.md)
+Agent/surface coverage: [`AGENT_COVERAGE.md`](AGENT_COVERAGE.md)
 
 Task3 is retired. Its completed dashboard/schema work belongs to Task1;
 lifecycle correctness belongs here; delivery, security and policy belong to
@@ -59,6 +60,11 @@ product pass.
 | **T2.22** | Advanced SCM cases | 🔴 ☐ | 🔴 ☐ | E16 | Force-push basics passed; stacked/reopened/retargeted PRs, backports, merge queues, rollbacks and direct production pushes remain last. |
 | **T2.23** | Lifecycle view scoped by originating tool/model | 🟢 ✅ | 🟢 ✅ | E17 | Schema, immutable per-commit model ranges, origin-model rework allocation, merge/deployment propagation, protected API and model selector are implemented. Migration `0002` and the E15 rebuild were applied and live-verified: model totals reconcile exactly to Generated 1,193, Committed 917, Merged/Production 572 and Reworked 135. Legacy uncertainty remains explicit rather than guessed: 16 retained downstream lines and 42 reworked lines appear under `Unknown model`; Antigravity uncommitted work correctly has Generated with no Committed value. |
 | **T2.24** | Development prompt-to-commit evidence flow | 🟢 ✅ | 🟢 ✅ | E18 | OpenCode-first protected API and lazy commit-detail timeline are implemented and live-verified against a real OpenCode commit. The adapter reads the configured SQLite DB on demand, never persists raw content, presents prompts/responses/tool exchanges through a customer-facing sequence and omits provider-internal Git AI concepts. Production storage, semantic layers, tool-call cost/token insights, Copilot/Antigravity adapters and polished UX remain Task5/Task4 work. |
+| **T2.25** | Cursor IDE attribution and lifecycle compatibility | 🟡 ◐ | 🔴 ☐ | E21 | Bridge to Task13 routes **AC-IDE-06**, **AC-IDE-07**, **AC-CLI-06** and **AC-BG-03**. Git AI has substantial Cursor hooks/transcript support, but TrackAI has not run the route-conformance fixture. [`AGENT_COVERAGE.md`](AGENT_COVERAGE.md) is authoritative for implementation and validation status. |
+| **T2.26** | Xcode edit and AI-agent attribution adapter | 🔴 ☐ | 🔴 ☐ | E22 | Bridge to **AC-IDE-09**. No shipped adapter exists, and filesystem observation alone cannot prove AI authorship. Task13 owns discovery and any adapter; the Lifecycle Lab rejects inferred attribution that lacks a trustworthy assistant event. |
+| **T2.27** | Codex desktop host attribution and lifecycle compatibility | 🟡 ◐ | 🔴 ☐ | E23 | Bridge to **AC-DESK-01**, compared against **AC-CLI-02** and **AC-IDE-04**. Codex hook/rollout foundations exist, but desktop/CLI/IDE host identity is not yet proven separately. Task13 owns the normalized host evidence and route status. |
+| **T2.28** | Claude Desktop host attribution and lifecycle compatibility | 🔴 ☐ | 🔴 ☐ | E24 | Bridge to **AC-DESK-03**, explicitly distinct from Claude Code desktop mode **AC-DESK-02** and CLI **AC-CLI-01**. No proven Claude Desktop/Cowork adapter exists; absent provenance remains `Unknown`. |
+| **T2.29** | Native Windows, WSL and Linux compatibility matrix | 🟡 ◐ | 🔴 ☐ | E25 | Bridge to Task13 **T13.8** and the platform column of every applicable route. Code foundations exist, but only macOS has live TrackAI evidence. Task13 owns route/platform status; Task9 later owns managed fleet deployment. |
 
 ## Controlled test register
 
@@ -89,6 +95,11 @@ product pass.
 | **E18** | OpenCode prompt-to-commit development evidence flow | 🟢 ✅ | T2.24 | Live dashboard verification passed: a known OpenCode commit displayed its prompt, agent-response and tool-call sequence from the read-only local provider DB, with customer-facing terminology and no exposed Git AI internals. Task5 owns semantic enrichment, tool-call efficiency/token insights and production UX. |
 | **E19** | KnownHuman working-tree status regression | 🟢 ✅ | T2.11f | Both focused integration tests passed with the local daemon. In an isolated worktree, live manual additions and deletion were classified entirely as human (`unknown_additions: 0`, `ai_additions: 0`) and both checkpoints reported `is_human: true`. |
 | **E20** | Rebase and ambiguous rewritten-merge acceptance | 🟢 ✅ | T2.17 | Live acceptance passed. A two-commit GitHub rebase produced distinct patch-equivalent replacement SHAs and exact source mappings; a one-commit rebase onto a diverged base produced `rewritten_merge` at confidence 60 rather than a guessed squash/rebase label. Both PR scopes retained exact Generated/Committed/Merged/Reworked/Final AI and session/commit counts without duplication. |
+| **E21** | Cursor IDE lifecycle acceptance | 🔴 ☐ | T2.25; AC-IDE-06/07 | Run the canonical Task13 conformance fixture for Cursor Agent and Tab, including channel deduplication. |
+| **E22** | Xcode provenance discovery and controlled edit | 🔴 ☐ | T2.26; AC-IDE-09 | Prove a trustworthy AI mutation source before claiming attribution; filesystem-only evidence must remain Human/Unknown. |
+| **E23** | Codex desktop host-surface acceptance | 🔴 ☐ | T2.27; AC-DESK-01 | Compare a desktop edit with Codex CLI/IDE routes and require exact, non-duplicated host evidence plus the normal lifecycle chain. |
+| **E24** | Claude Desktop host-surface acceptance | 🔴 ☐ | T2.28; AC-DESK-03 | Run only after Task13 identifies a trustworthy Desktop/Cowork mutation source; fail closed when provenance is absent. |
+| **E25** | Client portability acceptance matrix | 🔴 ☐ | T2.29; T13.8; Task4; Task9 | Run the identical Task13 route fixture on macOS, Linux, native Windows and WSL, including install, credentials, queueing, paths and tenant-safe upload. |
 
 ## Task2 completion boundary
 
@@ -110,7 +121,10 @@ Non-green rows are deliberately separated into two groups:
 - **Explicitly deferred product/advanced scope:** T2.14 stable-versus-HEAD
   comparison may wait; T2.20 identity-link administration aligns with Task4;
   T2.21 trends/deep links align with the UX/API roadmap; T2.22/E16 remains the
-  advanced SCM suite. None blocks Task4.
+  advanced SCM suite. T2.25–T2.29 are Lifecycle Lab bridges into canonical
+  Task13 routes: they do not block Task4, but Task4 must keep transport,
+  enrollment and key contracts host- and operating-system-neutral. None blocks
+  Task4.
 
 Moving a row to another task must preserve its ID and evidence link; it must not
 be marked green merely because it was deferred.
@@ -121,8 +135,9 @@ be marked green merely because it was deferred.
    sufficient evidence; do not synthesize token values.
 2. Preserve T2.14, T2.20, the remaining T2.21 roadmap surface and T2.22/E16 as
    deferred work; they do not block Task4.
-3. Run final builds, record exact TrackAI/Git AI checkpoint SHAs, and refresh the
-   Task2→Task4 handoff before opening the independent Task4 worktrees.
+3. Let Task13 implement T2.25–T2.29's corresponding routes, then have this
+   Lifecycle Lab run E21–E25 independently. Preserve exact host surface
+   separately from tool/model and report unprovable provenance as `Unknown`.
 
 ## Metric invariants
 

@@ -64,6 +64,30 @@ existing field.
 - Upstream Git AI compatibility comparison remains T2.14; do not assume a later
   upstream release contains these patches.
 
+## Agent surface compatibility audit
+
+This section records the initial Git AI code audit only. The canonical,
+continuously updated implementation and live-validation status now lives in
+[`../AGENT_COVERAGE.md`](../AGENT_COVERAGE.md). Task13 owns adapters and route
+status; the Task2 Lifecycle Lab owns independent acceptance.
+
+The **host surface**, **agent/model** and **capture channel** are separate facts.
+For example, `Codex desktop` is a host, `codex + model` is an agent identity, and
+a tool hook or transcript reader is the evidence channel. TrackAI must not infer
+the host merely because it recognizes the model or sees a filesystem change.
+
+| Surface | Current Git AI foundation | Initial conclusion | Deferred acceptance |
+|---|---|---|---|
+| Cursor IDE | Dedicated Cursor pre/post tool hooks, model/session parsing, JSONL reader, Windows path normalization and shared VS Code/Cursor extension | Substantial implementation already exists; likely the shortest path to another green integration, but not yet live-tested by TrackAI | AC-IDE-06/07; T2.25/E21 |
+| Xcode IDE | A detailed FSEvents watcher proposal exists; no shipped `agent-support/xcode` code or installer exists | Unsupported today. A file watcher can observe saves but cannot prove which AI assistant authored them | AC-IDE-09; T2.26/E22 |
+| Codex desktop app | Codex hook installer supports `~/.codex/config.toml` or `hooks.json`; rollout JSONL discovery and Codex checkpoint parsing exist | Codex-agent support exists, but exact desktop-host identity is unproven and currently collapses to tool `codex` | AC-DESK-01; T2.27/E23 |
+| Claude Desktop | Claude Code hooks and `.claude/projects` transcript discovery exist | Claude Code support must not be advertised as Claude Desktop support. No desktop-specific adapter was found | AC-DESK-03; T2.28/E24 |
+| Linux / native Windows / WSL | Cross-platform binary/install code, platform keyrings/process handling and several Windows-specific tests exist | Designed for portability, but our live evidence is macOS-only | T13.8; T2.29/E25 |
+
+Exact attribution rule: if a surface cannot emit a trustworthy session/tool
+mutation event, preserve the change as Human or Unknown according to available
+evidence. Never promote a filesystem timing correlation to exact AI provenance.
+
 ## Ongoing update rule
 
 For every later Git AI patch, add one row above containing the behavior, reason,
