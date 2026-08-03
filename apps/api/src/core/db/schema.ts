@@ -11,6 +11,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -58,16 +59,6 @@ export const tenantAdminMemberships = pgTable('tenant_admin_memberships', {
   statusCheck: check('tenant_admin_memberships_status_check',
     sql`${table.status} in ('active', 'revoked')`),
 }));
-
-/**
- * Items Table Schema (Updated for Data Isolation)
- */
-export const items = pgTable('items', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  name: text('name').notNull(),
-  tenantId: tenantIdColumn(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
 
 /**
  * Provider repositories connected to a tenant workspace.
@@ -145,6 +136,46 @@ export const machineCredentials = pgTable('machine_credentials', {
     sql`${table.status} in ('active', 'revoked')`),
   hashCheck: check('machine_credentials_secret_hash_check',
     sql`${table.secretHash} ~ '^[a-f0-9]{64}$'`),
+}));
+
+/** Latest metadata-only delivery health reported by an authenticated machine. */
+export const machineDeliveryHealthReports = pgTable('machine_delivery_health_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  schemaVersion: integer('schema_version').notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  pendingRetryable: integer('pending_retryable').notNull(),
+  waitingRetry: integer('waiting_retry').notNull(),
+  processing: integer('processing').notNull(),
+  quarantined: integer('quarantined').notNull(),
+  rowsWithErrors: integer('rows_with_errors').notNull(),
+  oldestPendingAt: timestamp('oldest_pending_at', { withTimezone: true }),
+  lastDeliveredAt: timestamp('last_delivered_at', { withTimezone: true }),
+}, (table) => ({
+  tenantMachineForeignKey: foreignKey({
+    name: 'machine_delivery_health_reports_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantMachineUnique: unique('machine_delivery_health_reports_tenant_machine_key')
+    .on(table.tenantId, table.machineId),
+  tenantReceivedIndex: index('machine_delivery_health_reports_tenant_received_idx')
+    .on(table.tenantId, table.receivedAt),
+  schemaVersionCheck: check('machine_delivery_health_reports_schema_version_check',
+    sql`${table.schemaVersion} = 1`),
+  countCheck: check('machine_delivery_health_reports_count_check', sql`
+    ${table.pendingRetryable} between 0 and 1000000
+    and ${table.waitingRetry} between 0 and 1000000
+    and ${table.processing} between 0 and 1000000
+    and ${table.quarantined} between 0 and 1000000
+    and ${table.rowsWithErrors} between 0 and 1000000
+  `),
+  timestampCheck: check('machine_delivery_health_reports_timestamp_check', sql`
+    (${table.oldestPendingAt} is null or ${table.oldestPendingAt} <= ${table.observedAt})
+    and (${table.lastDeliveredAt} is null or ${table.lastDeliveredAt} <= ${table.observedAt})
+  `),
 }));
 
 /** Tenant-owned registry entry for an approved canonical repository. */
@@ -261,6 +292,156 @@ export const securityAuditEvents = pgTable('security_audit_events', {
 }, (table) => ({
   tenantOccurredAtIndex: index('security_audit_events_tenant_occurred_at_idx')
     .on(table.tenantId, table.occurredAt),
+}));
+
+/** Versioned tenant retention settings. New tenants default to no automatic purge. */
+export const tenantRetentionPolicies = pgTable('tenant_retention_policies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  version: integer('version').notNull(),
+  mode: text('mode').$type<'retain' | 'archive_then_purge'>().notNull(),
+  retentionDays: integer('retention_days'),
+  status: text('status').$type<'active' | 'superseded'>().notNull().default('active'),
+  createdBy: text('created_by').notNull(),
+  reason: text('reason').notNull(),
+  effectiveFrom: timestamp('effective_from', { withTimezone: true }).defaultNow().notNull(),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('tenant_retention_policies_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantVersionUnique: unique('tenant_retention_policies_tenant_version_key')
+    .on(table.tenantId, table.version),
+  tenantActiveUnique: uniqueIndex('tenant_retention_policies_one_active_idx')
+    .on(table.tenantId).where(sql`${table.status} = 'active'`),
+  modeCheck: check('tenant_retention_policies_mode_check',
+    sql`${table.mode} in ('retain', 'archive_then_purge')`),
+  statusCheck: check('tenant_retention_policies_status_check',
+    sql`${table.status} in ('active', 'superseded')`),
+  configurationCheck: check('tenant_retention_policies_configuration_check', sql`
+    (${table.mode} = 'retain' and ${table.retentionDays} is null)
+    or (${table.mode} = 'archive_then_purge' and ${table.retentionDays} between 1 and 3650)
+  `),
+  lifecycleCheck: check('tenant_retention_policies_lifecycle_check', sql`
+    (${table.status} = 'active' and ${table.supersededAt} is null)
+    or (${table.status} = 'superseded' and ${table.supersededAt} is not null)
+  `),
+}));
+
+/** Metadata-only, tenant-scoped export job and reproducibility manifest. */
+export const evidenceExportJobs = pgTable('evidence_export_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  format: text('format').notNull(),
+  status: text('status').$type<'planned' | 'running' | 'completed' | 'failed'>()
+    .notNull().default('planned'),
+  archivePurpose: boolean('archive_purpose').notNull().default(false),
+  scopeFrom: timestamp('scope_from', { withTimezone: true }),
+  scopeUntil: timestamp('scope_until', { withTimezone: true }),
+  requestedBy: text('requested_by').notNull(),
+  reason: text('reason').notNull(),
+  recordCounts: jsonb('record_counts').$type<Record<string, number>>().notNull().default({}),
+  contentSha256: text('content_sha256'),
+  storageReference: text('storage_reference'),
+  failureCode: text('failure_code'),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('evidence_export_jobs_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantStatusCreatedIndex: index('evidence_export_jobs_tenant_status_created_idx')
+    .on(table.tenantId, table.status, table.createdAt),
+  statusCheck: check('evidence_export_jobs_status_check', sql`
+    ${table.status} in ('planned', 'running', 'completed', 'failed')
+  `),
+  scopeCheck: check('evidence_export_jobs_scope_check', sql`
+    (${table.scopeFrom} is null and ${table.scopeUntil} is null)
+    or (${table.scopeFrom} is not null and ${table.scopeUntil} is not null
+      and ${table.scopeUntil} > ${table.scopeFrom})
+  `),
+  digestCheck: check('evidence_export_jobs_digest_check', sql`
+    ${table.contentSha256} is null or ${table.contentSha256} ~ '^[a-f0-9]{64}$'
+  `),
+  lifecycleCheck: check('evidence_export_jobs_lifecycle_check', sql`
+    (${table.status} = 'planned' and ${table.startedAt} is null and ${table.completedAt} is null)
+    or (${table.status} = 'running' and ${table.startedAt} is not null and ${table.completedAt} is null)
+    or (${table.status} in ('completed', 'failed')
+      and ${table.startedAt} is not null and ${table.completedAt} is not null)
+  `),
+}));
+
+/** Per-record proof that purgeable evidence was included in a completed archive. */
+export const evidenceArchiveEntries = pgTable('evidence_archive_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  exportJobId: uuid('export_job_id').notNull(),
+  evidenceFamily: text('evidence_family')
+    .$type<'telemetry_metric_evidence' | 'provider_delivery_evidence'>().notNull(),
+  evidenceId: uuid('evidence_id').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  contentSha256: text('content_sha256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantExportForeignKey: foreignKey({
+    name: 'evidence_archive_entries_tenant_export_fk',
+    columns: [table.tenantId, table.exportJobId],
+    foreignColumns: [evidenceExportJobs.tenantId, evidenceExportJobs.id],
+  }),
+  exportEvidenceUnique: unique('evidence_archive_entries_export_evidence_key')
+    .on(table.tenantId, table.exportJobId, table.evidenceFamily, table.evidenceId),
+  tenantEvidenceIndex: index('evidence_archive_entries_tenant_evidence_idx')
+    .on(table.tenantId, table.evidenceFamily, table.evidenceId),
+  familyCheck: check('evidence_archive_entries_family_check', sql`
+    ${table.evidenceFamily} in ('telemetry_metric_evidence', 'provider_delivery_evidence')
+  `),
+  digestCheck: check('evidence_archive_entries_digest_check',
+    sql`${table.contentSha256} ~ '^[a-f0-9]{64}$'`),
+}));
+
+/** Dry-run-first retention execution record. It never contains customer evidence. */
+export const retentionRuns = pgTable('retention_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  policyId: uuid('policy_id').notNull(),
+  archiveExportJobId: uuid('archive_export_job_id'),
+  mode: text('mode').$type<'dry_run' | 'apply'>().notNull(),
+  status: text('status').$type<'planned' | 'blocked' | 'completed' | 'failed'>()
+    .notNull().default('planned'),
+  cutoffAt: timestamp('cutoff_at', { withTimezone: true }).notNull(),
+  candidateCounts: jsonb('candidate_counts').$type<Record<string, number>>()
+    .notNull().default({}),
+  purgedCounts: jsonb('purged_counts').$type<Record<string, number>>()
+    .notNull().default({}),
+  requestedBy: text('requested_by').notNull(),
+  reason: text('reason').notNull(),
+  failureCode: text('failure_code'),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantPolicyForeignKey: foreignKey({
+    name: 'retention_runs_tenant_policy_fk',
+    columns: [table.tenantId, table.policyId],
+    foreignColumns: [tenantRetentionPolicies.tenantId, tenantRetentionPolicies.id],
+  }),
+  tenantArchiveForeignKey: foreignKey({
+    name: 'retention_runs_tenant_archive_fk',
+    columns: [table.tenantId, table.archiveExportJobId],
+    foreignColumns: [evidenceExportJobs.tenantId, evidenceExportJobs.id],
+  }),
+  tenantStatusCreatedIndex: index('retention_runs_tenant_status_created_idx')
+    .on(table.tenantId, table.status, table.createdAt),
+  modeCheck: check('retention_runs_mode_check', sql`${table.mode} in ('dry_run', 'apply')`),
+  statusCheck: check('retention_runs_status_check', sql`
+    ${table.status} in ('planned', 'blocked', 'completed', 'failed')
+  `),
+  applyArchiveCheck: check('retention_runs_apply_archive_check', sql`
+    ${table.mode} = 'dry_run' or ${table.archiveExportJobId} is not null
+  `),
+  completionCheck: check('retention_runs_completion_check', sql`
+    (${table.status} = 'planned' and ${table.completedAt} is null)
+    or (${table.status} in ('blocked', 'completed', 'failed') and ${table.completedAt} is not null)
+  `),
 }));
 
 /** Tenant ownership and least-privilege metadata for one GitHub App installation. */
@@ -877,8 +1058,6 @@ export const scmBranches = pgTable('scm_branches', {
 }));
 
 // Type inference helpers
-export type Item = typeof items.$inferSelect;
-export type NewItem = typeof items.$inferInsert;
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
 export type SCMRepository = typeof scmRepositories.$inferSelect;
@@ -889,6 +1068,10 @@ export type RepositoryEnrollment = typeof repositoryEnrollments.$inferSelect;
 export type RepositoryBackfillAuthorization = typeof repositoryBackfillAuthorizations.$inferSelect;
 export type MachineRepositoryGrant = typeof machineRepositoryGrants.$inferSelect;
 export type SecurityAuditEvent = typeof securityAuditEvents.$inferSelect;
+export type TenantRetentionPolicy = typeof tenantRetentionPolicies.$inferSelect;
+export type EvidenceExportJob = typeof evidenceExportJobs.$inferSelect;
+export type EvidenceArchiveEntry = typeof evidenceArchiveEntries.$inferSelect;
+export type RetentionRun = typeof retentionRuns.$inferSelect;
 export type GitHubAppInstallation = typeof githubAppInstallations.$inferSelect;
 export type GitHubAppCredentialVersion = typeof githubAppCredentialVersions.$inferSelect;
 export type SCMPullRequest = typeof scmPullRequests.$inferSelect;

@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { and, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { withTenant } from '../../core/db/tenant';
 import {
@@ -1356,6 +1356,69 @@ async function normalizeEvent(
     await normalizeSessionEvent(tenantId, event, attrs, sourceEventId);
     await normalizeCheckpoint(tenantId, event, attrs, sourceEventId);
   }
+}
+
+export async function reconcilePendingMetricEvents(input: {
+  tenantId: string;
+  apply: boolean;
+  evaluatedAt?: Date;
+  delayMs?: number;
+  limit?: number;
+}) {
+  const evaluatedAt = input.evaluatedAt ?? new Date();
+  const delayMs = input.delayMs ?? 5 * 60 * 1_000;
+  const limit = input.limit ?? 100;
+  if (!Number.isFinite(evaluatedAt.getTime())
+    || !Number.isSafeInteger(delayMs) || delayMs < 0
+    || !Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
+    throw new Error('Pending reconciliation options are invalid');
+  }
+  const eligibleBefore = new Date(evaluatedAt.getTime() - delayMs);
+  const rows = await db.select({
+    id: telemetryMetricEvents.id,
+    eventKind: telemetryMetricEvents.eventKind,
+    rawEvent: telemetryMetricEvents.rawEvent,
+  }).from(telemetryMetricEvents).where(and(
+    eq(telemetryMetricEvents.tenantId, input.tenantId),
+    eq(telemetryMetricEvents.normalizationStatus, 'pending'),
+    lte(telemetryMetricEvents.createdAt, eligibleBefore),
+  )).orderBy(asc(telemetryMetricEvents.createdAt), asc(telemetryMetricEvents.id)).limit(limit);
+  const eventKinds: Record<string, number> = {};
+  let normalized = 0;
+  let failed = 0;
+  for (const row of rows) {
+    eventKinds[String(row.eventKind)] = (eventKinds[String(row.eventKind)] ?? 0) + 1;
+    if (!input.apply) continue;
+    try {
+      const event = validateMetricEvent(row.rawEvent);
+      await normalizeEvent(input.tenantId, event, row.id);
+      const updated = await db.update(telemetryMetricEvents).set({
+        normalizationStatus: 'normalized', normalizationError: null,
+      }).where(and(
+        eq(telemetryMetricEvents.tenantId, input.tenantId),
+        eq(telemetryMetricEvents.id, row.id),
+        eq(telemetryMetricEvents.normalizationStatus, 'pending'),
+      )).returning({ id: telemetryMetricEvents.id });
+      normalized += updated.length;
+    } catch {
+      const updated = await db.update(telemetryMetricEvents).set({
+        normalizationStatus: 'failed',
+        normalizationError: 'pending_reconciliation_failed',
+      }).where(and(
+        eq(telemetryMetricEvents.tenantId, input.tenantId),
+        eq(telemetryMetricEvents.id, row.id),
+        eq(telemetryMetricEvents.normalizationStatus, 'pending'),
+      )).returning({ id: telemetryMetricEvents.id });
+      failed += updated.length;
+    }
+  }
+  return {
+    selected: rows.length,
+    eventKinds,
+    normalized,
+    failed,
+    databaseChanges: input.apply ? 'normalization-status-and-projections' as const : 'none' as const,
+  };
 }
 
 export async function ingestMetricsBatch(

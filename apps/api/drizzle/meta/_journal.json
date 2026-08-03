@@ -50,6 +50,27 @@
       "when": 1785503133308,
       "tag": "0006_fat_krista_starr",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785686873231,
+      "tag": "0007_friendly_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785693997966,
+      "tag": "0008_spicy_prodigy",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785698956953,
+      "tag": "0009_mute_tiger_shark",
+      "breakpoints": true
     }
   ]
 }

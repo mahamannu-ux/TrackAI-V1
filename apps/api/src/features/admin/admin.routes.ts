@@ -29,6 +29,19 @@ import {
   revokeGitHubAppInstallation,
   rotateGitHubAppCredential,
 } from '../../core/security/github-app-security-service';
+import {
+  listTenantRetentionPolicies,
+  replaceTenantRetentionPolicy,
+} from '../../core/operations/retention-policy-service';
+import {
+  createTenantEvidenceExport,
+  listTenantEvidenceExports,
+  planTenantEvidenceExport,
+  readTenantEvidenceExport,
+} from '../../core/operations/evidence-export-service';
+import { LocalFileEvidenceExportSink } from '../../core/operations/evidence-export-sink';
+import { planTenantRetentionRun } from '../../core/operations/retention-run-service';
+import { getTenantOperationalMonitoring } from '../../core/operations/operational-monitoring-service';
 
 const router = Router();
 const requireGitHubAdmin = requireAdminAction('github_app.manage');
@@ -36,6 +49,9 @@ const requireMachineAdmin = requireAdminAction('machine.manage');
 const requireRepositoryAdmin = requireAdminAction('repository.manage');
 const requireBackfillAdmin = requireAdminAction('backfill.manage');
 const requireAuditRead = requireAdminAction('audit.read');
+const requireOperationsRead = requireAdminAction('operations.read');
+const requireRetentionAdmin = requireAdminAction('retention.manage');
+const requireExportAdmin = requireAdminAction('export.manage');
 
 function requiredString(value: unknown, name: string, maxLength = 255): string {
   if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
@@ -148,6 +164,120 @@ router.get('/audit', requireAuditRead, async (req, res) => {
     const requested = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
     const limit = Number.isFinite(requested) ? requested : 100;
     res.json({ events: await listSecurityAuditEvents(tenantId, limit) });
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.get('/operations/retention-policy', requireOperationsRead, async (req, res) => {
+  try {
+    const { tenantId } = requestIdentity(req);
+    res.json(await listTenantRetentionPolicies(tenantId));
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.post('/operations/retention-policy', requireRetentionAdmin, async (req, res) => {
+  try {
+    const identity = requestIdentity(req);
+    const mode = requiredString(req.body?.mode, 'mode');
+    if (mode !== 'retain' && mode !== 'archive_then_purge') {
+      throw new Error('mode must be retain or archive_then_purge');
+    }
+    const retentionDaysValue = req.body?.retentionDays;
+    const retentionDays = retentionDaysValue === null || retentionDaysValue === undefined
+      ? null
+      : Number(retentionDaysValue);
+    if (retentionDays !== null && !Number.isInteger(retentionDays)) {
+      throw new Error('retentionDays must be an integer');
+    }
+    const policy = await replaceTenantRetentionPolicy({
+      ...identity,
+      mode,
+      retentionDays,
+      reason: requiredString(req.body?.reason, 'reason', 1_000),
+    });
+    res.status(201).json({ policy });
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.get('/operations/retention-plan', requireOperationsRead, async (req, res) => {
+  try {
+    const { tenantId } = requestIdentity(req);
+    res.json(await planTenantRetentionRun({ tenantId }));
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.get('/operations/monitoring', requireOperationsRead, async (req, res) => {
+  try {
+    const { tenantId } = requestIdentity(req);
+    res.json(await getTenantOperationalMonitoring({ tenantId }));
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.get('/operations/exports', requireOperationsRead, async (req, res) => {
+  try {
+    const { tenantId } = requestIdentity(req);
+    res.json({ exports: await listTenantEvidenceExports(tenantId) });
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.post('/operations/exports/plan', requireExportAdmin, async (req, res) => {
+  try {
+    const { tenantId } = requestIdentity(req);
+    res.json(await planTenantEvidenceExport({
+      tenantId,
+      scopeFrom: dateValue(req.body?.scopeFrom, 'scopeFrom'),
+      scopeUntil: dateValue(req.body?.scopeUntil, 'scopeUntil'),
+    }));
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.post('/operations/exports', requireExportAdmin, async (req, res) => {
+  try {
+    if (req.body?.apply !== true) throw new Error('apply must be true after reviewing an export plan');
+    const exportDirectory = process.env.TASK4_EXPORT_DIR;
+    if (!exportDirectory) throw new Error('TASK4_EXPORT_DIR is required');
+    const identity = requestIdentity(req);
+    const result = await createTenantEvidenceExport({
+      ...identity,
+      scopeFrom: dateValue(req.body?.scopeFrom, 'scopeFrom'),
+      scopeUntil: dateValue(req.body?.scopeUntil, 'scopeUntil'),
+      archivePurpose: req.body?.archivePurpose === true,
+      reason: requiredString(req.body?.reason, 'reason', 1_000),
+      sink: new LocalFileEvidenceExportSink(exportDirectory),
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    badRequest(res, error);
+  }
+});
+
+router.get('/operations/exports/:id/download', requireExportAdmin, async (req, res) => {
+  try {
+    const exportDirectory = process.env.TASK4_EXPORT_DIR;
+    if (!exportDirectory) throw new Error('TASK4_EXPORT_DIR is required');
+    const { tenantId } = requestIdentity(req);
+    const result = await readTenantEvidenceExport({
+      tenantId,
+      exportJobId: uuidValue(req.params.id, 'exportJobId'),
+      sink: new LocalFileEvidenceExportSink(exportDirectory),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="trackai-evidence-export-${result.job.id}.json"`);
+    res.send(result.content);
   } catch (error) {
     badRequest(res, error);
   }

@@ -8,7 +8,9 @@ import {
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
   getSessions, getAdminContext, getAdminAudit, getAdminBackfillAuthorizations,
-  getAdminGitHubInstallations, getAdminMachines, getAdminRepositoryPolicies,
+  getAdminEvidenceExports, getAdminGitHubInstallations, getAdminMachines, getAdminOperationalMonitoring,
+  getAdminRepositoryPolicies,
+  downloadAdminEvidenceExport,
   issueAdminMachineCredential, registerAdminMachine, revokeAdminMachine,
   revokeAdminMachineCredential,
   enrollAdminRepository, grantAdminMachineRepository,
@@ -16,7 +18,8 @@ import {
   revokeAdminMachineRepositoryGrant, revokeAdminRepositoryEnrollment,
   authorizeAdminRepositoryBackfill, revokeAdminRepositoryBackfill,
   type AdminAuditResources, type AdminBackfillResources, type AdminContext,
-  type AdminGitHubResources, type AdminMachineResources, type AdminRepositoryResources,
+  type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
+  type AdminRepositoryResources,
   type CommitListItem, type Contributor, type DashboardSummary,
   type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
@@ -179,9 +182,11 @@ type AdminResources = {
   backfills: AdminBackfillResources | null;
   github: AdminGitHubResources | null;
   audit: AdminAuditResources;
+  operations: AdminOperationsResources;
+  exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'repositories' | 'history' | 'github' | 'audit';
+type AdminSection = 'overview' | 'machines' | 'repositories' | 'history' | 'github' | 'operations' | 'audit';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
@@ -189,6 +194,7 @@ const adminNavigation: Array<{ id: AdminSection; label: string; description: str
   { id: 'repositories', label: 'Repository access', description: 'Enrollment, branches, and grants' },
   { id: 'history', label: 'Historical import', description: 'Allow selected older evidence' },
   { id: 'github', label: 'GitHub App', description: 'Connected organizations' },
+  { id: 'operations', label: 'Operations', description: 'Evidence health and retention' },
   { id: 'audit', label: 'Security audit', description: 'Who changed what' },
 ];
 
@@ -204,6 +210,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
   const [machineForm, setMachineForm] = useState({ installationId: '', displayName: '', platform: '' });
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
+  const [downloadingExportId, setDownloadingExportId] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>('overview');
   const [repositorySearch, setRepositorySearch] = useState('');
   const [repositoryStatus, setRepositoryStatus] = useState<'all' | 'active' | 'unenrolled'>('all');
@@ -255,6 +262,18 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
       return false;
     } finally {
       setMutationBusy(false);
+    }
+  }
+
+  async function downloadExport(exportJobId: string): Promise<void> {
+    setDownloadingExportId(exportJobId);
+    setMutationError(null);
+    try {
+      await downloadAdminEvidenceExport(exportJobId);
+    } catch (cause) {
+      setMutationError(cause instanceof Error ? cause.message : 'Evidence export download failed.');
+    } finally {
+      setDownloadingExportId(null);
     }
   }
 
@@ -491,7 +510,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
     {mutationError && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-sm text-rose-200">{mutationError}</div>}
     {oneTimeCredential && <div ref={credentialPanelRef} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5"><div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold text-amber-100">Save this one-time machine credential now</h2><p className="mt-1 text-sm text-amber-200/80">Copy the full value beginning with <span className="font-mono">trk_v1.</span>. It is not stored by the server and cannot be shown again.</p></div><button onClick={() => { setOneTimeCredential(null); setCredentialCopied(false); }} className="rounded-lg border border-amber-400/30 px-3 py-2 text-sm text-amber-100">Dismiss after saving</button></div><div className="mt-4 text-xs uppercase tracking-wider text-slate-400">Reference key ID — do not put this alone in the keyring</div><div className="mt-1 break-all font-mono text-sm text-slate-300">{oneTimeCredential.keyId}</div><div className="mt-4 flex items-center justify-between"><div className="text-xs uppercase tracking-wider text-amber-300">Complete one-time credential — starts with trk_v1.</div><button onClick={() => void navigator.clipboard.writeText(oneTimeCredential.plaintext).then(() => setCredentialCopied(true)).catch(() => setMutationError('Browser clipboard access failed; select the complete credential manually.'))} className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950">{credentialCopied ? 'Copied' : 'Copy complete credential'}</button></div><div className="mt-2 break-all rounded-lg border border-amber-400/20 bg-slate-950 p-3 font-mono text-sm text-amber-100">{oneTimeCredential.plaintext}</div></div>}
     {active && resources && <>
-      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-6">
+      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-7">
         {adminNavigation.map(item => <button key={item.id} type="button" onClick={() => setAdminSection(item.id)} className={`rounded-lg px-3 py-3 text-left transition ${adminSection === item.id ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><span className="block text-sm font-medium">{item.label}</span><span className={`mt-1 block text-xs ${adminSection === item.id ? 'text-violet-100' : 'text-slate-500'}`}>{item.description}</span></button>)}
       </nav>
       {adminSection === 'overview' && <section className="space-y-4">
@@ -547,6 +566,17 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
         </form>}
         <TableShell headers={['Repository', 'Evidence family', 'Window', 'Expires', 'Status', 'Reason', 'Actions']}>{resources.backfills.authorizations.length ? resources.backfills.authorizations.map((authorization) => { const enrollment = resources.repositories?.enrollments.find(row => row.id === authorization.enrollmentId); const repository = resources.repositories?.repositories.find(row => row.id === enrollment?.repositoryId); return <tr key={authorization.id}><td className="px-5 py-4 font-medium text-white">{repository?.name ?? 'Unknown repository'}</td><td className="px-5 py-4">{authorization.evidenceFamily.replace('_', ' / ')}</td><td className="px-5 py-4 text-slate-500">{date(authorization.occurredFrom)} → {date(authorization.occurredUntil)}</td><td className="px-5 py-4 text-slate-500">{date(authorization.expiresAt)}</td><td className="px-5 py-4"><Badge tone={authorization.status === 'active' ? 'green' : 'slate'}>{authorization.status}</Badge></td><td className="px-5 py-4 text-slate-400">{authorization.reason}</td><td className="px-5 py-4">{authorization.status === 'active' && <button disabled={mutationBusy} onClick={() => void reasonedMutation('Revoke this backfill authorization?', reason => revokeAdminRepositoryBackfill(authorization.id, reason))} className="text-sm text-rose-300 hover:text-rose-200">Revoke authorization</button>}</td></tr>; }) : <tr><td colSpan={7} className="px-5 py-5 text-slate-500">No backfill authorizations.</td></tr>}</TableShell>
       </section>}
+      {adminSection === 'operations' && <section className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">Evidence operations</h2><p className="mt-1 text-sm text-slate-500">Tenant-safe counts from the server. Raw events, credentials, prompts, and secret values are never returned here.</p></div><Badge tone={resources.operations.health === 'healthy' ? 'green' : 'amber'}>{resources.operations.health}</Badge></div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Normalized metrics" value={resources.operations.metrics.normalized} /><Metric label="Pending normalization" value={resources.operations.metrics.pending} /><Metric label="Failed normalization" value={resources.operations.metrics.failed} /><Metric label="Delayed pending" value={resources.operations.metrics.delayedPending} /></div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5"><h3 className="font-medium text-white">GitHub / SCM delivery</h3><p className="mt-1 text-xs text-slate-500">A failed or expired item needs operator attention. Duplicate and stale evidence is retained but deliberately does not change projections.</p><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Applied</div><div className="mt-1 text-xl text-white">{resources.operations.providers.applied}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Failed</div><div className="mt-1 text-xl text-white">{resources.operations.providers.failed}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Expired work</div><div className="mt-1 text-xl text-white">{resources.operations.providers.expiredWork}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Duplicate / stale</div><div className="mt-1 text-xl text-white">{resources.operations.providers.duplicate + resources.operations.providers.stale}</div></div></div>{resources.operations.providers.recentFailureCodes.length > 0 && <div className="mt-4 text-xs text-amber-200">Safe failure codes: {resources.operations.providers.recentFailureCodes.map(row => `${row.code} (${row.value})`).join(', ')}</div>}</div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5"><h3 className="font-medium text-white">Exports and retention</h3><p className="mt-1 text-xs text-slate-500">An archive proves a record was exported. Deletion still requires a separate explicit retention policy and full archive coverage.</p><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Completed exports</div><div className="mt-1 text-xl text-white">{resources.operations.exports.completed}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Failed exports</div><div className="mt-1 text-xl text-white">{resources.operations.exports.failed}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Retention policy</div><div className="mt-1 text-sm font-medium text-white">{resources.operations.retention.policy.mode === 'retain' ? 'Retain everything' : `${resources.operations.retention.policy.retentionDays} days`}</div></div><div className="rounded-lg bg-slate-950 p-3"><div className="text-slate-500">Retention decision</div><div className="mt-1 text-sm font-medium text-white">{resources.operations.retention.decision.replace('_', ' ')}</div></div></div></div>
+        </div>
+        <div className="space-y-2"><div><h3 className="font-medium text-white">Developer machine delivery</h3><p className="mt-1 text-xs text-slate-500">Counts-only queue health reported with each machine’s existing credential. No event content or failure reason is sent.</p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Current reports" value={`${resources.operations.clients.currentReports}/${resources.operations.clients.activeMachines}`} /><Metric label="Ready to retry" value={resources.operations.clients.pendingRetryable} /><Metric label="Waiting" value={resources.operations.clients.waitingRetry} /><Metric label="Processing" value={resources.operations.clients.processing} /><Metric label="Quarantined" value={resources.operations.clients.quarantined} /></div>{resources.operations.clients.machines.length ? <TableShell headers={['Machine', 'Report', 'Ready', 'Waiting', 'Processing', 'Quarantined', 'Oldest pending']}>{resources.operations.clients.machines.map(machine => <tr key={machine.machineId}><td className="px-5 py-4 font-medium text-white">{machine.displayName}<div className="text-xs text-slate-500">{machine.platform ?? 'platform unavailable'}</div></td><td className="px-5 py-4"><Badge tone={machine.status === 'current' ? 'green' : 'amber'}>{machine.status}</Badge><div className="mt-1 text-xs text-slate-500">{date(machine.receivedAt)}</div></td><td className="px-5 py-4 text-slate-300">{machine.pendingRetryable}</td><td className="px-5 py-4 text-slate-300">{machine.waitingRetry}</td><td className="px-5 py-4 text-slate-300">{machine.processing}</td><td className="px-5 py-4 text-slate-300">{machine.quarantined}</td><td className="px-5 py-4 text-slate-500">{date(machine.oldestPendingAt)}</td></tr>)}</TableShell> : <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-500">No active developer machines are enrolled for this tenant.</div>}<div className={`rounded-xl border p-4 text-sm ${resources.operations.clients.unreportedMachines === 0 && resources.operations.clients.staleReports === 0 ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-100' : 'border-amber-500/20 bg-amber-500/5 text-amber-100'}`}>{resources.operations.limitations.clientQueue}</div></div>
+        <div className="space-y-2"><div><h3 className="font-medium text-white">Evidence export history</h3><p className="mt-1 text-xs text-slate-500">Completed files are checksum-verified again and tenant authorization is re-checked before download. This Task4 adapter limits each single JSON artifact to 32 MiB; production-scale exports will use chunked, compressed object storage.</p></div><TableShell headers={['Created', 'Window', 'Records', 'Purpose', 'Status', 'Action']}>{resources.exports.exports.length ? resources.exports.exports.map((exportJob) => <tr key={exportJob.id}><td className="px-5 py-4 text-slate-500">{date(exportJob.createdAt)}</td><td className="px-5 py-4 text-slate-500">{date(exportJob.scopeFrom)} → {date(exportJob.scopeUntil)}</td><td className="px-5 py-4 text-slate-300">{Object.values(exportJob.recordCounts).reduce((total, value) => total + value, 0)}</td><td className="px-5 py-4"><Badge tone={exportJob.archivePurpose ? 'violet' : 'slate'}>{exportJob.archivePurpose ? 'Archive' : 'Review'}</Badge></td><td className="px-5 py-4"><Badge tone={exportJob.status === 'completed' ? 'green' : exportJob.status === 'failed' ? 'amber' : 'slate'}>{exportJob.status}</Badge></td><td className="px-5 py-4">{exportJob.status === 'completed' && context?.membership?.role === 'tenant_admin' ? <button disabled={downloadingExportId !== null} onClick={() => void downloadExport(exportJob.id)} className="text-sm text-violet-300 hover:text-violet-200 disabled:opacity-50">{downloadingExportId === exportJob.id ? 'Checking…' : 'Download verified JSON'}</button> : <span className="text-xs text-slate-500">{context?.membership?.role === 'tenant_auditor' ? 'Read-only auditor' : 'Not available'}</span>}</td></tr>) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No evidence exports have been created for this tenant.</td></tr>}</TableShell></div>
+        <div className="text-xs text-slate-600">Evaluated {date(resources.operations.evaluatedAt)}</div>
+      </section>}
       {adminSection === 'audit' && <section><div className="mb-4"><h2 className="font-semibold text-white">Security audit</h2><p className="mt-1 text-sm text-slate-500">Immutable history of administrative security changes. Revoking a resource does not erase its earlier entries.</p></div><TableShell headers={['Time', 'Action', 'Actor type', 'Target']}>{resources.audit.events.map((event) => <tr key={event.id}><td className="px-5 py-4 text-slate-500">{date(event.occurredAt)}</td><td className="px-5 py-4 font-medium text-white">{event.action}</td><td className="px-5 py-4 text-slate-400">{event.actorType}</td><td className="px-5 py-4 text-slate-500">{event.targetType}</td></tr>)}</TableShell></section>}
     </>}
   </div>;
@@ -589,15 +619,17 @@ export default function DashboardPage() {
         setAdminLoading(true);
         void (async () => {
           try {
-            const audit = await getAdminAudit();
+            const [audit, operations, exports] = await Promise.all([
+              getAdminAudit(), getAdminOperationalMonitoring(), getAdminEvidenceExports(),
+            ]);
             if (adminData.membership?.role === 'tenant_auditor') {
-              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, audit });
+              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, audit, operations, exports });
             } else {
               const [machines, repositories, backfills, github] = await Promise.all([
                 getAdminMachines(), getAdminRepositoryPolicies(),
                 getAdminBackfillAuthorizations(), getAdminGitHubInstallations(),
               ]);
-              setAdminResources({ machines, repositories, backfills, github, audit });
+              setAdminResources({ machines, repositories, backfills, github, audit, operations, exports });
             }
             setAdminError(null);
           } catch (cause) {

@@ -60,28 +60,22 @@ async function apiFetch<T>(
   return response.json();
 }
 
+async function apiDownload(endpoint: string): Promise<Blob> {
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated. Please log in.');
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `API error: ${response.status}`);
+  }
+  return response.blob();
+}
+
 // ---------------------------------------------------------------------------
 // API Methods
 // ---------------------------------------------------------------------------
-
-export interface Item {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
-/** Fetch all items from the backend */
-export async function getItems(): Promise<Item[]> {
-  return apiFetch<Item[]>('/api/items');
-}
-
-/** Create a new item via the backend */
-export async function createItem(name: string): Promise<Item> {
-  return apiFetch<Item>('/api/items', {
-    method: 'POST',
-    body: JSON.stringify({ name }),
-  });
-}
 
 export type AuditedValue<T> = {
   observedValue: T;
@@ -197,6 +191,56 @@ export type AdminAuditResources = { events: Array<{
   targetId: string; details: Record<string, unknown>; occurredAt: string;
 }> };
 
+export type AdminOperationsResources = {
+  evaluatedAt: string;
+  health: 'healthy' | 'attention' | 'critical';
+  metrics: { normalized: number; pending: number; failed: number; delayedPending: number };
+  providers: {
+    received: number; projected: number; applied: number; duplicate: number; stale: number;
+    conflict: number; unsequenced: number; failed: number; expiredWork: number;
+    recentFailureCodes: Array<{ code: string; value: number }>;
+  };
+  exports: { planned: number; running: number; completed: number; failed: number };
+  clients: {
+    activeMachines: number; currentReports: number; staleReports: number; unreportedMachines: number;
+    pendingRetryable: number; waitingRetry: number; processing: number;
+    quarantined: number; rowsWithErrors: number;
+    machines: Array<{
+      machineId: string; displayName: string; platform: string | null;
+      observedAt: string | null; receivedAt: string | null;
+      pendingRetryable: number; waitingRetry: number; processing: number;
+      quarantined: number; rowsWithErrors: number;
+      oldestPendingAt: string | null; lastDeliveredAt: string | null;
+      status: 'current' | 'stale' | 'unreported';
+    }>;
+  };
+  retention: {
+    policy: { id: string | null; version: number; mode: 'retain' | 'archive_then_purge'; retentionDays: number | null };
+    cutoffAt: string | null;
+    dueCounts: Record<string, number>;
+    archivedCounts: Record<string, number>;
+    blockedCounts: Record<string, number>;
+    decision: 'retain' | 'archive_required' | 'archive_ready';
+  };
+  limitations: { clientQueue: string; rawEvidence: string };
+};
+
+export type AdminExportResources = { exports: Array<{
+  id: string;
+  format: string;
+  status: 'planned' | 'running' | 'completed' | 'failed';
+  archivePurpose: boolean;
+  scopeFrom: string;
+  scopeUntil: string;
+  reason: string;
+  recordCounts: Record<string, number>;
+  contentSha256: string | null;
+  failureCode: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}> };
+
 export const getRepositories = () => apiFetch<Repository[]>('/api/repositories');
 export const getPullRequests = () => apiFetch<PullRequest[]>('/api/pull-requests');
 export const getContributors = () => apiFetch<Contributor[]>('/api/contributors');
@@ -215,6 +259,26 @@ export const getAdminRepositoryPolicies = () => apiFetch<AdminRepositoryResource
 export const getAdminBackfillAuthorizations = () => apiFetch<AdminBackfillResources>('/api/admin/backfill-authorizations');
 export const getAdminGitHubInstallations = () => apiFetch<AdminGitHubResources>('/api/admin/github-app/installations');
 export const getAdminAudit = (limit = 100) => apiFetch<AdminAuditResources>(`/api/admin/audit?limit=${limit}`);
+export const getAdminOperationalMonitoring = () => (
+  apiFetch<AdminOperationsResources>('/api/admin/operations/monitoring')
+);
+export const getAdminEvidenceExports = () => (
+  apiFetch<AdminExportResources>('/api/admin/operations/exports')
+);
+export async function downloadAdminEvidenceExport(exportJobId: string): Promise<void> {
+  const blob = await apiDownload(
+    `/api/admin/operations/exports/${encodeURIComponent(exportJobId)}/download`,
+  );
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `trackai-evidence-export-${exportJobId}.json`;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 export const registerAdminMachine = (input: {
   installationId: string; displayName: string; platform?: string;

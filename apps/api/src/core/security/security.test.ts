@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { decryptEnvelope, encryptEnvelope } from './envelope-encryption';
 import {
@@ -16,6 +19,33 @@ import {
   repositoryGrantAllows,
 } from './repository-grant';
 import { ADMIN_ACTIONS, adminMembershipAllows } from './admin-authorization';
+import {
+  DEFAULT_RETENTION_POLICY,
+  MAX_EXPORT_ARTIFACT_BYTES,
+  MAX_EXPORT_WINDOW_MS,
+  TASK4_EXPORT_DATASETS,
+  CLIENT_DELIVERY_HEALTH_STALE_MS,
+  classifyClientDeliveryHealthStatus,
+  classifyOperationalEvidence,
+  classifyTenantOperationalHealth,
+  exportFieldIsAllowed,
+  planRetentionCandidate,
+  pendingNormalizationIsEligible,
+  retentionArchiveCoverage,
+  validateExportWindow,
+  validateExportArtifactBytes,
+  validateRetentionPolicy,
+} from '../operations/task4-operations-contract';
+import {
+  canonicalExportJson,
+  createTask4ExportEnvelope,
+  restoreTask4ExportEnvelope,
+} from '../operations/task4-export-format';
+import { LocalFileEvidenceExportSink } from '../operations/evidence-export-sink';
+import {
+  MAX_CLIENT_DELIVERY_HEALTH_COUNT,
+  validateClientDeliveryHealthReport,
+} from '../operations/client-delivery-health-contract';
 import {
   MAX_BACKFILL_AUTHORIZATION_TTL_MS,
   MAX_BACKFILL_WINDOW_MS,
@@ -34,11 +64,16 @@ import { getTableConfig } from 'drizzle-orm/pg-core';
 import {
   githubAppCredentialVersions,
   githubAppInstallations,
+  evidenceArchiveEntries,
+  evidenceExportJobs,
+  machineDeliveryHealthReports,
   providerEventDeliveries,
   providerProjectionCursors,
+  retentionRuns,
   repositoryBackfillAuthorizations,
   repositoryEnrollments,
   tenantAdminMemberships,
+  tenantRetentionPolicies,
 } from '../db/schema';
 
 function encodedKey(): string {
@@ -432,7 +467,366 @@ test('tenant admin and auditor action matrix cannot cross tenant or subject boun
     }), false, `subject crossing should block ${action}`);
     assert.equal(adminMembershipAllows(auditor, {
       tenantId: 'tenant-a', subject: 'auditor-a', action,
-    }), action === 'audit.read', `auditor decision mismatch for ${action}`);
+    }), action === 'audit.read' || action === 'operations.read',
+    `auditor decision mismatch for ${action}`);
+  }
+});
+
+test('Task4 retention defaults to no deletion and requires archive before explicit purge', () => {
+  const evaluatedAt = new Date('2026-08-02T00:00:00.000Z');
+  const oldEvidence = new Date('2026-06-01T00:00:00.000Z');
+  assert.deepEqual(validateRetentionPolicy(DEFAULT_RETENTION_POLICY), {
+    version: 1,
+    mode: 'retain',
+    retentionDays: null,
+  });
+  assert.equal(planRetentionCandidate({
+    policy: DEFAULT_RETENTION_POLICY,
+    occurredAt: oldEvidence,
+    evaluatedAt,
+    archiveCompletedAt: null,
+    apply: true,
+  }), 'retain');
+
+  const archiveThenPurge = {
+    version: 1 as const,
+    mode: 'archive_then_purge' as const,
+    retentionDays: 30,
+  };
+  assert.equal(planRetentionCandidate({
+    policy: archiveThenPurge,
+    occurredAt: oldEvidence,
+    evaluatedAt,
+    archiveCompletedAt: null,
+    apply: true,
+  }), 'blocked_archive_required');
+  assert.equal(planRetentionCandidate({
+    policy: archiveThenPurge,
+    occurredAt: oldEvidence,
+    evaluatedAt,
+    archiveCompletedAt: new Date('2026-08-01T00:00:00.000Z'),
+    apply: false,
+  }), 'dry_run_candidate');
+  assert.equal(planRetentionCandidate({
+    policy: archiveThenPurge,
+    occurredAt: oldEvidence,
+    evaluatedAt,
+    archiveCompletedAt: new Date('2026-08-01T00:00:00.000Z'),
+    apply: true,
+  }), 'purge_candidate');
+  assert.throws(() => validateRetentionPolicy({
+    version: 1,
+    mode: 'archive_then_purge',
+    retentionDays: 0,
+  }), /between 1 and 3650/);
+});
+
+test('Task4 exports use explicit datasets and reject secret, prompt, and raw payload fields', () => {
+  assert.deepEqual(TASK4_EXPORT_DATASETS, [
+    'observed_metric_evidence',
+    'provider_delivery_evidence',
+    'lifecycle_projections',
+    'correction_overlays',
+    'security_audit',
+  ]);
+  for (const field of [
+    'credential', 'machine_credential_hash', 'private_key', 'installation_token',
+    'webhook_secret', 'master_key', 'prompt', 'raw_payload', 'provider_raw_event',
+  ]) {
+    assert.equal(exportFieldIsAllowed(field), false, `${field} must not be exported`);
+  }
+  for (const field of [
+    'tenant_id', 'repository_id', 'occurred_at', 'availability', 'observed_value',
+    'audited_value', 'correction_reason', 'safe_error_code',
+  ]) {
+    assert.equal(exportFieldIsAllowed(field), true, `${field} should be exportable`);
+  }
+});
+
+test('Task4 export windows are bounded, historical, and half-open', () => {
+  const evaluatedAt = new Date('2026-08-02T00:00:00.000Z');
+  assert.doesNotThrow(() => validateExportWindow({
+    scopeFrom: new Date(evaluatedAt.getTime() - MAX_EXPORT_WINDOW_MS),
+    scopeUntil: evaluatedAt,
+    evaluatedAt,
+  }));
+  assert.throws(() => validateExportWindow({
+    scopeFrom: new Date(evaluatedAt.getTime() - MAX_EXPORT_WINDOW_MS - 1),
+    scopeUntil: evaluatedAt,
+    evaluatedAt,
+  }), /at most 31 days/);
+  assert.throws(() => validateExportWindow({
+    scopeFrom: new Date('2026-08-01T00:00:00.000Z'),
+    scopeUntil: new Date('2026-08-02T00:00:00.001Z'),
+    evaluatedAt,
+  }), /cannot end in the future/);
+});
+
+test('Task4 single-file exports fail closed on total encoded bytes', () => {
+  assert.doesNotThrow(() => validateExportArtifactBytes(MAX_EXPORT_ARTIFACT_BYTES));
+  assert.throws(
+    () => validateExportArtifactBytes(MAX_EXPORT_ARTIFACT_BYTES + 1),
+    /maximum 32 MiB single-file limit/,
+  );
+  assert.throws(() => validateExportArtifactBytes(-1), /byte length is invalid/);
+});
+
+test('client delivery health accepts bounded counts and rejects identity or raw fields', () => {
+  const receivedAt = new Date('2026-08-02T12:00:00.000Z');
+  const valid = {
+    version: 1,
+    observedAt: '2026-08-02T11:59:00.000Z',
+    pendingRetryable: 2,
+    waitingRetry: 3,
+    processing: 1,
+    quarantined: 4,
+    rowsWithErrors: 5,
+    oldestPendingAt: '2026-08-01T00:00:00.000Z',
+    lastDeliveredAt: '2026-08-02T11:58:00.000Z',
+  };
+  const parsed = validateClientDeliveryHealthReport(valid, receivedAt);
+  assert.equal(parsed.pendingRetryable, 2);
+  assert.equal(parsed.quarantined, 4);
+  for (const forbidden of ['tenantId', 'machineId', 'credential', 'rawEvent', 'reason']) {
+    assert.throws(
+      () => validateClientDeliveryHealthReport({ ...valid, [forbidden]: 'forbidden' }, receivedAt),
+      /unsupported field/,
+    );
+  }
+  assert.throws(() => validateClientDeliveryHealthReport({
+    ...valid, pendingRetryable: MAX_CLIENT_DELIVERY_HEALTH_COUNT + 1,
+  }, receivedAt), /integer between/);
+  assert.throws(() => validateClientDeliveryHealthReport({
+    ...valid, observedAt: '2026-08-02T12:06:00.000Z',
+  }, receivedAt), /too far in the future/);
+  assert.throws(() => validateClientDeliveryHealthReport({
+    ...valid, oldestPendingAt: '2026-08-02T12:00:01.000Z',
+  }, receivedAt), /cannot be later/);
+});
+
+test('client delivery health distinguishes unreported, current, boundary, and stale machines', () => {
+  const evaluatedAt = new Date('2026-08-02T12:00:00.000Z');
+  assert.equal(classifyClientDeliveryHealthStatus({ receivedAt: null, evaluatedAt }), 'unreported');
+  assert.equal(classifyClientDeliveryHealthStatus({
+    receivedAt: new Date(evaluatedAt.getTime() - 1), evaluatedAt,
+  }), 'current');
+  assert.equal(classifyClientDeliveryHealthStatus({
+    receivedAt: new Date(evaluatedAt.getTime() - CLIENT_DELIVERY_HEALTH_STALE_MS), evaluatedAt,
+  }), 'current');
+  assert.equal(classifyClientDeliveryHealthStatus({
+    receivedAt: new Date(evaluatedAt.getTime() - CLIENT_DELIVERY_HEALTH_STALE_MS - 1), evaluatedAt,
+  }), 'stale');
+  assert.throws(() => classifyClientDeliveryHealthStatus({
+    receivedAt: new Date('invalid'), evaluatedAt,
+  }), /receipt time is invalid/);
+});
+
+test('Task4 export envelopes are deterministic across input ordering', () => {
+  const common = {
+    tenantId: 'tenant-a',
+    scopeFrom: new Date('2026-07-01T00:00:00.000Z'),
+    scopeUntil: new Date('2026-08-01T00:00:00.000Z'),
+    snapshotAt: new Date('2026-08-02T00:00:00.000Z'),
+  };
+  const first = createTask4ExportEnvelope({
+    ...common,
+    datasets: {
+      observed_metric_evidence: [
+        { id: 'b', occurredAt: '2026-07-03T00:00:00.000Z', data: { value: 2 } },
+        { id: 'a', occurredAt: '2026-07-02T00:00:00.000Z', data: { value: 1 } },
+      ],
+      correction_overlays: [{
+        id: 'c', occurredAt: '2026-07-04T00:00:00.000Z',
+        data: { reason: 'reviewed', audited_value: 1 },
+      }],
+    },
+  });
+  const second = createTask4ExportEnvelope({
+    ...common,
+    datasets: {
+      correction_overlays: [{
+        id: 'c', occurredAt: '2026-07-04T00:00:00.000Z',
+        data: { audited_value: 1, reason: 'reviewed' },
+      }],
+      observed_metric_evidence: [
+        { id: 'a', occurredAt: '2026-07-02T00:00:00.000Z', data: { value: 1 } },
+        { id: 'b', occurredAt: '2026-07-03T00:00:00.000Z', data: { value: 2 } },
+      ],
+    },
+  });
+  assert.equal(first.manifest.contentSha256, second.manifest.contentSha256);
+  assert.equal(canonicalExportJson(first), canonicalExportJson(second));
+  assert.equal(first.manifest.recordCounts.observed_metric_evidence, 2);
+  assert.equal(first.manifest.recordCounts.security_audit, 0);
+});
+
+test('Task4 export envelopes reject forbidden nested fields and duplicate records', () => {
+  const base = {
+    tenantId: 'tenant-a', scopeFrom: null, scopeUntil: null,
+    snapshotAt: new Date('2026-08-02T00:00:00.000Z'),
+  };
+  assert.throws(() => createTask4ExportEnvelope({
+    ...base,
+    datasets: { observed_metric_evidence: [{
+      id: 'a', occurredAt: '2026-08-01T00:00:00.000Z',
+      data: { nested: { raw_payload: 'not allowed' } },
+    }] },
+  }), /raw_payload is forbidden/);
+  assert.throws(() => createTask4ExportEnvelope({
+    ...base,
+    datasets: { security_audit: [
+      { id: 'a', occurredAt: '2026-08-01T00:00:00.000Z', data: {} },
+      { id: 'a', occurredAt: '2026-08-01T00:00:01.000Z', data: {} },
+    ] },
+  }), /record id is duplicated/);
+});
+
+test('local export sink writes atomically with owner-only directory and file permissions', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'trackai-wave5-export-'));
+  const exportDirectory = join(parent, 'exports');
+  try {
+    const sink = new LocalFileEvidenceExportSink(exportDirectory);
+    const result = await sink.write(randomUUID(), '{"safe":true}');
+    assert.equal(result.storageReference.startsWith('local-file:trackai-export-'), true);
+    assert.equal(result.bytes, 13);
+    assert.equal(await sink.read(result.storageReference), '{"safe":true}');
+    assert.equal((await stat(exportDirectory)).mode & 0o777, 0o700);
+    const fileName = result.storageReference.slice('local-file:'.length);
+    assert.equal((await stat(join(exportDirectory, fileName))).mode & 0o777, 0o600);
+    await assert.rejects(() => sink.read('local-file:../outside.json'), /invalid/);
+    await sink.remove(result.storageReference);
+    await assert.rejects(() => sink.read(result.storageReference));
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test('export restore validates checksum, manifest, counts, and tampering', () => {
+  const envelope = createTask4ExportEnvelope({
+    tenantId: 'tenant-a',
+    scopeFrom: new Date('2026-08-01T00:00:00.000Z'),
+    scopeUntil: new Date('2026-08-02T00:00:00.000Z'),
+    snapshotAt: new Date('2026-08-02T00:01:00.000Z'),
+    datasets: { lifecycle_projections: [{
+      id: 'code:1', occurredAt: '2026-08-01T01:00:00.000Z',
+      data: { projectionKind: 'code', stage: 'generated', lineCount: 7 },
+    }] },
+  });
+  const serialized = canonicalExportJson(envelope);
+  assert.deepEqual(restoreTask4ExportEnvelope(serialized), envelope);
+  assert.throws(
+    () => restoreTask4ExportEnvelope(serialized.replace('"lineCount":7', '"lineCount":8')),
+    /checksum|manifest/,
+  );
+  assert.throws(
+    () => restoreTask4ExportEnvelope(
+      serialized.replace('"lifecycle_projections":1', '"lifecycle_projections":2'),
+    ),
+    /checksum|manifest/,
+  );
+});
+
+test('Task4 operational monitoring distinguishes terminal and actionable states', () => {
+  const evaluatedAt = new Date('2026-08-02T00:00:00.000Z');
+  const base = {
+    deliveredAt: null,
+    quarantinedAt: null,
+    attempts: 0,
+    nextRetryAt: null,
+    firstObservedAt: new Date('2026-08-01T23:59:30.000Z'),
+    evaluatedAt,
+    delayedAfterMs: 60_000,
+  };
+  assert.equal(classifyOperationalEvidence({
+    ...base, deliveredAt: new Date('2026-08-01T23:59:50.000Z'),
+  }), 'delivered');
+  assert.equal(classifyOperationalEvidence({
+    ...base, quarantinedAt: new Date('2026-08-01T23:59:50.000Z'),
+  }), 'quarantined');
+  assert.equal(classifyOperationalEvidence({
+    ...base, attempts: 2, nextRetryAt: new Date('2026-08-02T00:01:00.000Z'),
+  }), 'retrying');
+  assert.equal(classifyOperationalEvidence({
+    ...base, firstObservedAt: new Date('2026-08-01T23:58:00.000Z'),
+  }), 'delayed');
+  assert.equal(classifyOperationalEvidence(base), 'unresolved');
+});
+
+test('tenant operational health prioritizes failures, expired work, and delay', () => {
+  assert.equal(classifyTenantOperationalHealth({
+    failed: 0, expiredWork: 0, delayedWork: 0,
+  }), 'healthy');
+  assert.equal(classifyTenantOperationalHealth({
+    failed: 0, expiredWork: 0, delayedWork: 1,
+  }), 'attention');
+  assert.equal(classifyTenantOperationalHealth({
+    failed: 1, expiredWork: 0, delayedWork: 10,
+  }), 'critical');
+  assert.equal(classifyTenantOperationalHealth({
+    failed: 0, expiredWork: 1, delayedWork: 0,
+  }), 'critical');
+  assert.throws(() => classifyTenantOperationalHealth({
+    failed: -1, expiredWork: 0, delayedWork: 0,
+  }), /non-negative/);
+});
+
+test('pending normalization recovery is delayed and status bound', () => {
+  const evaluatedAt = new Date('2026-08-02T10:00:00.000Z');
+  assert.equal(pendingNormalizationIsEligible({
+    status: 'pending', createdAt: new Date('2026-08-02T09:54:59.000Z'),
+    evaluatedAt, delayMs: 5 * 60 * 1_000,
+  }), true);
+  assert.equal(pendingNormalizationIsEligible({
+    status: 'pending', createdAt: new Date('2026-08-02T09:59:00.000Z'),
+    evaluatedAt, delayMs: 5 * 60 * 1_000,
+  }), false);
+  assert.equal(pendingNormalizationIsEligible({
+    status: 'failed', createdAt: new Date('2026-08-02T09:00:00.000Z'),
+    evaluatedAt, delayMs: 5 * 60 * 1_000,
+  }), false);
+});
+
+test('retention coverage fails closed until every due record has archive proof', () => {
+  assert.deepEqual(retentionArchiveCoverage(10, 4), {
+    blocked: 6,
+    decision: 'archive_required',
+  });
+  assert.deepEqual(retentionArchiveCoverage(10, 10), {
+    blocked: 0,
+    decision: 'archive_ready',
+  });
+  assert.throws(() => retentionArchiveCoverage(2, 3), /invalid/);
+  assert.throws(() => retentionArchiveCoverage(-1, 0), /invalid/);
+});
+
+test('Wave 5 operations schema is tenant-bound, metadata-only, and archive-before-purge', () => {
+  const policy = getTableConfig(tenantRetentionPolicies);
+  const exportJob = getTableConfig(evidenceExportJobs);
+  const archiveEntry = getTableConfig(evidenceArchiveEntries);
+  const retentionRun = getTableConfig(retentionRuns);
+  const clientHealth = getTableConfig(machineDeliveryHealthReports);
+
+  assert.equal(policy.indexes.some(indexConfig => indexConfig.config.unique), true);
+  assert.equal(policy.checks.length, 4);
+  assert.equal(exportJob.checks.length, 4);
+  assert.equal(archiveEntry.foreignKeys.length, 2);
+  assert.equal(archiveEntry.checks.length, 2);
+  assert.equal(retentionRun.foreignKeys.length, 3);
+  assert.equal(retentionRun.checks.length, 4);
+  assert.equal(clientHealth.foreignKeys.length, 2);
+  assert.equal(clientHealth.checks.length, 3);
+
+  const allColumnNames = [policy, exportJob, archiveEntry, retentionRun, clientHealth]
+    .flatMap(table => table.columns.map(column => column.name));
+  for (const columnName of allColumnNames) {
+    assert.equal(
+      /credential|private_key|token|secret|prompt|raw_event|raw_payload/.test(columnName),
+      false,
+      `${columnName} must not store sensitive or raw customer content`,
+    );
+  }
+  for (const table of [policy, exportJob, archiveEntry, retentionRun, clientHealth]) {
+    assert.equal(table.columns.some(column => column.name === 'tenant_id'), true);
   }
 });
 

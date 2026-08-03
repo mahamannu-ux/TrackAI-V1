@@ -78,7 +78,7 @@ async function main(): Promise<void> {
       watermarks: Number(row.missing_watermarks) === 0,
       labels: Number(row.unexpected_existing_labels) === 0,
       authorizations: Number(row.active_authorization_rows) === 0,
-      journal: Number(row.journal_rows) === 6,
+      journal: Number(row.journal_rows) >= 6,
     };
     if (Object.values(checks).some(value => !value)) {
       throw new Error('Wave 3 persistent schema verification failed');

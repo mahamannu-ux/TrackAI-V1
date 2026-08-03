@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import { authenticateJWT } from './core/middleware/auth';
 import { tenantMiddleware } from './core/middleware/tenant';
-import itemsRouter from './features/items/items.routes';
 import scmRouter from './features/scm/scm.routes';
 import telemetryIngestRouter from './features/telemetry/ingest.routes';
 import { authenticateMachine } from './core/middleware/machine-auth';
@@ -60,7 +59,6 @@ app.get('/health', (_req, res) => {
 // All /api/* routes require a valid Supabase JWT.
 // Authentication and tenant resolution apply to every protected API route, in order.
 app.use('/api', authenticateJWT, tenantMiddleware);
-app.use('/api/items', itemsRouter);
 app.use('/api', telemetryReadRouter);
 app.use('/api/admin', adminRouter);
 

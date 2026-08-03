@@ -82,7 +82,7 @@ async function main(): Promise<void> {
       || Number(row.hardening_constraints) !== 7
       || Number(row.plaintext_columns) !== 0
       || Number(row.invalid_lifecycle_rows) !== 0
-      || Number(row.journal_rows) !== 7) {
+      || Number(row.journal_rows) < 7) {
       throw new Error('Wave 4 persistent schema verification failed');
     }
     console.log('task4_admin_tables=3');

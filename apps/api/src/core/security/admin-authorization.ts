@@ -4,6 +4,9 @@ export const ADMIN_ACTIONS = [
   'backfill.manage',
   'github_app.manage',
   'audit.read',
+  'operations.read',
+  'retention.manage',
+  'export.manage',
 ] as const;
 
 export type AdminAction = typeof ADMIN_ACTIONS[number];
@@ -44,5 +47,6 @@ export function adminMembershipAllows(
   }
 
   if (membership.role === 'tenant_admin') return true;
-  return membership.role === 'tenant_auditor' && input.action === 'audit.read';
+  return membership.role === 'tenant_auditor'
+    && (input.action === 'audit.read' || input.action === 'operations.read');
 }

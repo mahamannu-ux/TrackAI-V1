@@ -5,8 +5,36 @@ import {
   partitionAuthorizedMetricsBatch,
   remapAuthorizedUploadErrors,
 } from './repository-enforcement';
+import { validateClientDeliveryHealthReport } from '../../core/operations/client-delivery-health-contract';
+import { recordClientDeliveryHealth } from '../../core/operations/client-delivery-health-service';
 
 const router = Router();
+
+router.post('/delivery-health', async (req: Request, res: Response) => {
+  if (!req.tenantId || !req.machineId || req.managedMachineCredential !== true) {
+    res.status(403).json({ error: 'Managed machine authentication is required' });
+    return;
+  }
+  const receivedAt = new Date();
+  try {
+    const report = validateClientDeliveryHealthReport(req.body, receivedAt);
+    const result = await recordClientDeliveryHealth({
+      tenantId: req.tenantId,
+      machineId: req.machineId,
+      report,
+      receivedAt,
+    });
+    res.status(202).json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid delivery health report';
+    if (/report|timestamp|integer|field|oldestPendingAt|lastDeliveredAt/.test(message)) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    console.error('Failed to record client delivery health');
+    res.status(503).json({ error: 'Client delivery health is temporarily unavailable' });
+  }
+});
 
 router.post('/metrics/upload', async (req: Request, res: Response) => {
   if (!req.tenantId) {

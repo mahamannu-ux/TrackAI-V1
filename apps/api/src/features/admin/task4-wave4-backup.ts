@@ -9,6 +9,10 @@ function timestamp(): string {
 }
 
 async function main(): Promise<void> {
+  const checkpoint = process.argv[2]?.trim() || 'wave4';
+  if (!/^wave[1-9][0-9]*$/.test(checkpoint)) {
+    throw new Error('Backup checkpoint must look like wave5');
+  }
   const databaseValue = process.env.DATABASE_URL;
   const backupDirValue = process.env.TASK4_BACKUP_DIR?.trim();
   if (!databaseValue) throw new Error('DATABASE_URL is required');
@@ -25,7 +29,7 @@ async function main(): Promise<void> {
   const backupDir = resolve(backupDirValue);
   await mkdir(backupDir, { recursive: true, mode: 0o700 });
   await chmod(backupDir, 0o700);
-  const backupPath = join(backupDir, `trackai-pre-wave4-${timestamp()}.dump`);
+  const backupPath = join(backupDir, `trackai-pre-${checkpoint}-${timestamp()}.dump`);
   const handle = await open(backupPath, 'wx', 0o600);
   await handle.close();
 
@@ -67,6 +71,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch(error => {
-  console.error(error instanceof Error ? error.message : 'Wave 4 backup failed');
+  console.error(error instanceof Error ? error.message : 'Task4 backup failed');
   process.exitCode = 1;
 });

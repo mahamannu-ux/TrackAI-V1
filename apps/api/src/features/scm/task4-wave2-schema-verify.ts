@@ -74,7 +74,7 @@ async function main(): Promise<void> {
       deliveryIndexes: Number(row.delivery_indexes) === 2,
       immutableTrigger: Number(row.immutable_triggers) === 1,
       plaintextColumns: Number(row.plaintext_columns) === 0,
-      journalRows: Number(row.journal_rows) === 5,
+      journalRows: Number(row.journal_rows) >= 5,
     };
     if (Object.values(checks).some(value => !value)) {
       throw new Error('Wave 2 persistent schema verification failed');
