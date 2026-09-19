@@ -5,11 +5,15 @@ import test from 'node:test';
 import {
   inferredIntentionFromPrompt,
   redactSecrets,
-  semanticSimilarity,
-  semanticTokens,
   validateOpenCodeEvidenceBatch,
 } from './contract';
 import { openCodeRowsToEvidenceEvents } from './opencode-collector';
+import {
+  SEMANTIC_DIMENSIONS,
+  normalizeEmbedding,
+  reciprocalRankFusion,
+  semanticSafeError,
+} from './semantic';
 
 function batch(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,12 +68,27 @@ test('secret scanning redacts nested content before storage', () => {
   assert.equal(result.counts.assigned_secret, 1);
 });
 
-test('semantic search ranks related intentions without calling them identical', () => {
-  const query = semanticTokens('reduce login failures');
-  const related = semanticSimilarity(query, semanticTokens('reduce repeated login failure errors'));
-  const unrelated = semanticSimilarity(query, semanticTokens('update billing invoice colors'));
-  assert.ok(related > unrelated);
-  assert.ok(related < 1);
+test('semantic vectors are normalized and dimension checked', () => {
+  const normalized = normalizeEmbedding(Array.from({ length: SEMANTIC_DIMENSIONS }, (_, index) => index === 0 ? 3 : index === 1 ? 4 : 0));
+  assert.equal(normalized[0], 0.6);
+  assert.equal(normalized[1], 0.8);
+  assert.throws(() => normalizeEmbedding([1, 2]), /semantic_invalid_dimensions/);
+});
+
+test('hybrid search uses stable reciprocal rank fusion', () => {
+  const ranked = reciprocalRankFusion(
+    [{ id: 'lexical-only', score: 0.9 }, { id: 'both', score: 0.8 }],
+    [{ id: 'both', score: 0.95 }, { id: 'vector-only', score: 0.85 }],
+  );
+  assert.equal(ranked[0].id, 'both');
+  assert.equal(ranked[0].lexicalRank, 2);
+  assert.equal(ranked[0].vectorRank, 1);
+  assert.deepEqual(new Set(ranked.map(row => row.id)), new Set(['both', 'lexical-only', 'vector-only']));
+});
+
+test('semantic worker errors expose safe codes rather than source content', () => {
+  assert.equal(semanticSafeError(new Error('customer prompt should never be returned')), 'semantic_unknown_failure');
+  assert.equal(semanticSafeError(new Error('semantic_timeout')), 'semantic_timeout');
 });
 
 test('inferred intention is a bounded summary, not the stored prompt identity', () => {
@@ -108,4 +127,22 @@ test('Task5 migration stores sensitive evidence only in encrypted JSON envelopes
   assert.match(migration, /"encrypted_value" jsonb NOT NULL/);
   assert.doesNotMatch(migration, /"(?:prompt|response|reasoning|tool_arguments|tool_result)_text"/);
   assert.match(migration, /"retention_days" = 30/);
+});
+
+test('Task5 semantic migration enables pgvector, exact hybrid indexes, versioning, and RLS', () => {
+  const migration = readFileSync(
+    resolve(process.cwd(), 'drizzle/0011_plain_xavin.sql'),
+    'utf8',
+  );
+  assert.match(migration, /CREATE EXTENSION IF NOT EXISTS vector/);
+  assert.match(migration, /"embedding" vector\(384\) NOT NULL/);
+  assert.match(migration, /"lexical_document" tsvector NOT NULL/);
+  assert.match(migration, /evidence_intentions_tenant_one_current_series_key/);
+  assert.match(migration, /evidence_intentions_supersedes_tenant_fk/);
+  for (const table of [
+    'tenant_evidence_settings', 'evidence_events', 'evidence_event_contents',
+    'evidence_intentions', 'evidence_links', 'evidence_summaries',
+    'evidence_semantic_documents', 'evidence_intention_embeddings', 'evidence_semantic_jobs',
+  ]) assert.match(migration, new RegExp(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`));
+  assert.doesNotMatch(migration, /CREATE POLICY/);
 });

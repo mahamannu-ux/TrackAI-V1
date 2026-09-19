@@ -161,8 +161,22 @@ export type EvidenceExplanation = {
 };
 export type EvidenceSearchResult = {
   id: string; sessionId: string | null; text: string;
-  evidenceState: EvidenceState; confidence: number; score: number;
-  match: 'exact' | 'semantic'; commitIds: string[];
+  evidenceState: EvidenceState; confidence: number; availability: EvidenceAvailability; score: number;
+  lexicalRank: number | null; vectorRank: number | null;
+  lexicalScore: number | null; vectorScore: number | null;
+  match: 'exact' | 'hybrid' | 'lexical' | 'semantic'; matchReasons: string[];
+  model: string; modelRevision: string; commitIds: string[];
+};
+
+export type EvidenceSearchFilters = {
+  limit?: number; repositoryId?: string; commitId?: string; sessionId?: string;
+  tool?: string; model?: string; path?: string;
+};
+
+export type EvidenceSemanticHealth = {
+  model: string; configuredRevision: string; dimensions: number;
+  intentions: number; availableIntentions: number; indexes: number;
+  jobs: { pending: number; processing: number; completed: number; failed: number; skipped: number };
 };
 
 export type AdminContext = {
@@ -283,9 +297,15 @@ export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowRespon
 export const getEvidenceExplanation = (commitId: string) => apiFetch<EvidenceExplanation>(
   `/api/evidence/commits/${encodeURIComponent(commitId)}/explain`,
 );
-export const searchEvidenceIntentions = (query: string) => apiFetch<{ query: string; results: EvidenceSearchResult[] }>(
-  `/api/evidence/search?q=${encodeURIComponent(query)}`,
-);
+export const searchEvidenceIntentions = (query: string, filters: EvidenceSearchFilters = {}) => {
+  const parameters = new URLSearchParams({ q: query });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') parameters.set(key, String(value));
+  });
+  return apiFetch<{ query: string; results: EvidenceSearchResult[] }>(
+    `/api/evidence/search?${parameters.toString()}`,
+  );
+};
 export const getEvidenceRaw = (eventId: string) => apiFetch<Record<string, unknown>>(
   `/api/evidence/events/${encodeURIComponent(eventId)}/raw`,
 );
@@ -296,6 +316,9 @@ export const getEvidenceSettings = () => apiFetch<{
   rawCollectionEnabled: boolean; provider: 'opencode'; retentionDays: number;
   consentedAt: string | null; disabledAt: string | null;
 }>('/api/admin/evidence/settings');
+export const getEvidenceSemanticHealth = () => apiFetch<EvidenceSemanticHealth>(
+  '/api/admin/evidence/semantic-health',
+);
 export const setEvidenceCollection = (rawCollectionEnabled: boolean) => apiFetch(
   '/api/admin/evidence/settings',
   { method: 'PUT', body: JSON.stringify({ rawCollectionEnabled }) },

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
-  getEvidenceExplanation, getEvidenceRaw, getEvidenceSettings, searchEvidenceIntentions,
+  getEvidenceExplanation, getEvidenceRaw, getEvidenceSemanticHealth, getEvidenceSettings, searchEvidenceIntentions,
   setEvidenceCollection,
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
@@ -23,7 +23,7 @@ import {
   type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
   type AdminRepositoryResources,
   type CommitListItem, type Contributor, type DashboardSummary,
-  type EvidenceExplanation, type EvidenceGraphNode, type EvidenceSearchResult,
+  type EvidenceExplanation, type EvidenceGraphNode, type EvidenceSearchResult, type EvidenceSemanticHealth,
   type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
@@ -148,8 +148,11 @@ function EvidenceFlow({ flow }: { flow: EvidenceFlowResponse }) {
   return <div className="space-y-4">{rendered}</div>;
 }
 
-function EvidenceExplorer({ commits, adminContext, openCommit }: {
+function EvidenceExplorer({ commits, repositories, sessions, models, adminContext, openCommit }: {
   commits: CommitListItem[];
+  repositories: Repository[];
+  sessions: SessionListItem[];
+  models: TelemetryModel[];
   adminContext: AdminContext | null;
   openCommit: (id: string) => void;
 }) {
@@ -159,8 +162,12 @@ function EvidenceExplorer({ commits, adminContext, openCommit }: {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<EvidenceSearchResult[]>([]);
+  const [searchFilters, setSearchFilters] = useState({
+    repositoryId: '', commitId: '', sessionId: '', tool: '', model: '', path: '',
+  });
   const [raw, setRaw] = useState<Record<string, unknown>>({});
   const [settings, setSettings] = useState<{ rawCollectionEnabled: boolean; retentionDays: number } | null>(null);
+  const [semanticHealth, setSemanticHealth] = useState<EvidenceSemanticHealth | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const canReadRaw = adminContext?.membership?.status === 'active';
   const canManageConsent = adminContext?.membership?.role === 'tenant_admin'
@@ -184,12 +191,13 @@ function EvidenceExplorer({ commits, adminContext, openCommit }: {
       rawCollectionEnabled: value.rawCollectionEnabled,
       retentionDays: value.retentionDays,
     })).catch(() => setSettings(null));
+    void getEvidenceSemanticHealth().then(setSemanticHealth).catch(() => setSemanticHealth(null));
   }, [canReadRaw]);
 
   async function runSearch() {
     if (search.trim().length < 2) return;
     setError(null);
-    try { setSearchResults((await searchEvidenceIntentions(search.trim())).results); }
+    try { setSearchResults((await searchEvidenceIntentions(search.trim(), searchFilters)).results); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Search unavailable'); }
   }
 
@@ -223,9 +231,21 @@ function EvidenceExplorer({ commits, adminContext, openCommit }: {
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
         <div className="text-xs uppercase tracking-wider text-slate-500">Raw OpenCode collection</div>
         <div className="mt-2 flex items-center justify-between gap-3"><div><div className="text-sm text-white">{settings ? settings.rawCollectionEnabled ? 'Enabled' : 'Disabled' : canReadRaw ? 'Unavailable' : 'Admin access required'}</div>{settings && <div className="text-xs text-slate-500">Encrypted · {settings.retentionDays}-day retention</div>}</div>{canManageConsent && settings && <button disabled={settingsBusy} onClick={() => void toggleCollection()} className={`rounded-lg px-3 py-2 text-xs ${settings.rawCollectionEnabled ? 'border border-rose-500/40 text-rose-200' : 'bg-violet-600 text-white'}`}>{settings.rawCollectionEnabled ? 'Disable' : 'Enable'}</button>}</div>
+        {semanticHealth && <div className="mt-3 border-t border-slate-800 pt-3 text-xs text-slate-500">Semantic index: {semanticHealth.availableIntentions}/{semanticHealth.intentions} intentions · {semanticHealth.jobs.pending} pending · {semanticHealth.dimensions} dimensions</div>}
       </div>
     </div>
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5"><div className="flex gap-2"><input value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search intentions, for example: reduce login failures" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><button onClick={() => void runSearch()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white">Search intentions</button></div>{searchResults.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{searchResults.map(result => <button key={result.id} onClick={() => { const linked = commits.find(commit => result.commitIds.includes(commit.id)); if (linked) setCommitId(linked.id); }} className="rounded-lg border border-slate-800 p-3 text-left"><div className="text-sm text-white">{result.text}</div><div className="mt-2 flex gap-2"><Badge tone={stateTone(result.evidenceState)}>{result.evidenceState}</Badge><span className="text-xs text-slate-500">{result.match} · {Math.round(result.score * 100)}%</span></div></button>)}</div>}</div>
+    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+      <div className="flex gap-2"><input value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search intentions, for example: reduce login failures" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><button onClick={() => void runSearch()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white">Search intentions</button></div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <select aria-label="Repository filter" value={searchFilters.repositoryId} onChange={event => setSearchFilters(current => ({ ...current, repositoryId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All repositories</option>{repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</select>
+        <select aria-label="Commit filter" value={searchFilters.commitId} onChange={event => setSearchFilters(current => ({ ...current, commitId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All commits</option>{commits.map(commit => <option key={commit.id} value={commit.id}>{commit.sha.slice(0, 8)} · {commit.subject}</option>)}</select>
+        <select aria-label="Session filter" value={searchFilters.sessionId} onChange={event => setSearchFilters(current => ({ ...current, sessionId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All sessions</option>{sessions.map(session => <option key={session.id} value={session.id}>{session.displayName ?? session.externalSessionId}</option>)}</select>
+        <select aria-label="Tool filter" value={searchFilters.tool} onChange={event => setSearchFilters(current => ({ ...current, tool: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All tools</option>{[...new Set(models.map(model => model.tool))].map(tool => <option key={tool} value={tool}>{tool}</option>)}</select>
+        <select aria-label="Model filter" value={searchFilters.model} onChange={event => setSearchFilters(current => ({ ...current, model: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All models</option>{[...new Set(models.flatMap(model => model.model ? [model.model] : []))].map(model => <option key={model} value={model}>{model}</option>)}</select>
+        <input aria-label="File path filter" value={searchFilters.path} onChange={event => setSearchFilters(current => ({ ...current, path: event.target.value }))} placeholder="File path contains…" className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"/>
+      </div>
+      {searchResults.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{searchResults.map(result => <button key={result.id} onClick={() => { const linked = commits.find(commit => result.commitIds.includes(commit.id)); if (linked) setCommitId(linked.id); }} className="rounded-lg border border-slate-800 p-3 text-left"><div className="text-sm text-white">{result.text}</div><div className="mt-2 flex flex-wrap gap-2"><Badge tone={stateTone(result.evidenceState)}>{result.evidenceState}</Badge><Badge tone="slate">{result.match}</Badge><span className="text-xs text-slate-500">{result.matchReasons.join(' + ')}{result.lexicalRank ? ` · lexical #${result.lexicalRank}` : ''}{result.vectorRank ? ` · semantic #${result.vectorRank}` : ''}</span></div></button>)}</div>}
+    </div>
     {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
     {loading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the evidence story…</div>}
     {!loading && explanation && <>
@@ -796,7 +816,7 @@ export default function DashboardPage() {
       {view !== 'administration' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
       <section className="mt-7">
         {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
-        {view === 'evidence' && <EvidenceExplorer commits={commits} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
+        {view === 'evidence' && <EvidenceExplorer commits={commits} repositories={repositories} sessions={sessions} models={models} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
         {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>
           {filteredSessions.sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('session', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.displayName ?? 'Unnamed session'}</div><div className="mt-1 font-mono text-xs text-slate-500">{row.externalSessionId}</div></td><td className="px-5 py-4"><div>{row.agent}</div><div className="text-xs text-slate-500">{row.models.auditedValue.join(', ') || 'Unknown'} {row.models.corrected && <Badge tone="violet">corrected</Badge>}</div></td><td className="px-5 py-4 text-slate-400">{row.repositories.map((repo) => repo.name).join(', ') || '—'}</td><td className="px-5 py-4">{row.retainedCommitCount} / {row.historicalCommitCount}</td><td className="px-5 py-4">{compact(row.totalTokens)}</td><td className="px-5 py-4"><Badge tone={row.status === 'shipped' ? 'green' : 'amber'}>{row.status}</Badge></td></tr>)}</TableShell>}
         {view === 'commits' && <TableShell headers={['Commit', 'Repository', 'Author', 'Lifecycle', 'Sessions', 'Final AI', 'Human']}>

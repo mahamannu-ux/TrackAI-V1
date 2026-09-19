@@ -1,0 +1,39 @@
+name: Task5 verification
+
+on:
+  pull_request:
+  push:
+    branches: [main, feature/task5-evidence-explorer]
+
+jobs:
+  task5:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: trackai
+          POSTGRES_PASSWORD: trackai_test_only
+          POSTGRES_DB: trackai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trackai -d trackai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://trackai:trackai_test_only@localhost:5432/trackai
+      TRACKAI_MASTER_KEYRING: '{"activeVersion":"ci-v1","keys":{"ci-v1":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}}'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace=apps/api
+      - run: npm run db:migrate --workspace=apps/api
+      - run: npm run verify:task5-schema --workspace=apps/api
+      - run: npx tsc --noEmit -p apps/api/tsconfig.json
+      - run: npx tsc --noEmit -p apps/web/tsconfig.json

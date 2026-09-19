@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { withTenant } from '../../core/db/tenant';
 import {
@@ -10,9 +10,11 @@ import {
   aiSessions,
   evidenceEventContents,
   evidenceEvents,
+  evidenceIntentionEmbeddings,
   evidenceIntentions,
   evidenceLinks,
   evidenceSemanticDocuments,
+  evidenceSemanticJobs,
   evidenceSummaries,
   scmCommitFiles,
   scmCommits,
@@ -26,12 +28,21 @@ import {
   contentFingerprint,
   inferredIntentionFromPrompt,
   redactSecrets,
-  semanticSimilarity,
-  semanticTokens,
   type EvidenceAvailability,
   type EvidenceState,
   type OpenCodeEvidenceBatchInput,
 } from './contract';
+import {
+  LocalBgeCommandEngine,
+  SEMANTIC_CANDIDATE_LIMIT,
+  SEMANTIC_DIMENSIONS,
+  SEMANTIC_MAX_ATTEMPTS,
+  SEMANTIC_MODEL,
+  normalizeEmbedding,
+  reciprocalRankFusion,
+  semanticSafeError,
+  type EmbeddingEngine,
+} from './semantic';
 
 const RETENTION_DAYS = 30;
 const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1_000;
@@ -46,6 +57,75 @@ function openEnvelope<T>(
   return JSON.parse(decryptEnvelope(value as unknown as EncryptedValue, {
     tenantId, purpose, resourceId,
   })) as T;
+}
+
+function configuredSemanticRevision() {
+  return process.env.TRACKAI_BGE_REVISION?.trim() || 'unconfigured-local-bge';
+}
+
+async function enqueueSemanticJob(
+  tenantId: string,
+  intention: typeof evidenceIntentions.$inferSelect,
+) {
+  await withTenant(db, tenantId).insertDoNothing(evidenceSemanticJobs, {
+    intentionId: intention.id,
+    contentFingerprint: intention.contentFingerprint,
+    modelRevision: configuredSemanticRevision(),
+    state: 'pending',
+    attemptCount: 0,
+    safeErrorCode: null,
+    availableAt: new Date(),
+    lockedAt: null,
+    expiresAt: intention.expiresAt,
+  }, [
+    evidenceSemanticJobs.tenantId,
+    evidenceSemanticJobs.intentionId,
+    evidenceSemanticJobs.contentFingerprint,
+    evidenceSemanticJobs.modelRevision,
+  ]);
+}
+
+async function createOrReviseIntention(input: {
+  tenantId: string;
+  sessionId: string;
+  sourceEventId: string | null;
+  value: string;
+  evidenceState: 'observed' | 'inferred';
+  confidence: number;
+  expiresAt: Date;
+}) {
+  const tenantDb = withTenant(db, input.tenantId);
+  const redacted = redactSecrets(input.value);
+  const value = String(redacted.value).replace(/\s+/g, ' ').trim();
+  const fingerprint = contentFingerprint(value);
+  const existing = (await tenantDb.select(
+    evidenceIntentions,
+    and(eq(evidenceIntentions.sessionId, input.sessionId), eq(evidenceIntentions.isCurrent, true)),
+  )).sort((left, right) => right.version - left.version)[0];
+  if (existing?.contentFingerprint === fingerprint) return existing;
+  if (existing) {
+    await tenantDb.update(evidenceIntentions, { isCurrent: false }, eq(evidenceIntentions.id, existing.id));
+  }
+  const id = randomUUID();
+  const [created] = await tenantDb.insert(evidenceIntentions, {
+    id,
+    seriesId: existing?.seriesId ?? randomUUID(),
+    version: (existing?.version ?? 0) + 1,
+    lifecycle: 'provisional',
+    supersedesIntentionId: existing?.id ?? null,
+    isCurrent: true,
+    sessionId: input.sessionId,
+    sourceEventId: input.sourceEventId,
+    encryptedValue: envelope(value, input.tenantId, 'evidence-intention', id),
+    contentFingerprint: fingerprint,
+    evidenceState: input.evidenceState,
+    confidence: input.confidence,
+    semanticAvailability: 'pending',
+    expiresAt: input.expiresAt,
+  });
+  if (!created) throw new Error('Evidence intention creation failed');
+  await enqueueSemanticJob(input.tenantId, created);
+  return created;
 }
 
 export async function evidenceSettings(tenantId: string) {
@@ -249,26 +329,17 @@ export async function ingestOpenCodeEvidence(input: {
   let intentionId: string | null = null;
   if (intentionText && insertedEventIds.length > 0) {
     const explicit = Boolean(input.batch.intention);
-    const redacted = redactSecrets(intentionText);
-    const provisionalId = randomUUID();
-    const [intention] = await tenantDb.insert(evidenceIntentions, {
-      id: provisionalId,
+    const intention = await createOrReviseIntention({
+      tenantId: input.tenantId,
       sessionId: session.id,
       sourceEventId: explicit ? null : firstPrompt?.eventId ?? null,
-      encryptedValue: envelope(redacted.value, input.tenantId, 'evidence-intention', provisionalId),
+      value: intentionText,
       evidenceState: explicit ? 'observed' : 'inferred',
       confidence: explicit ? 100 : 70,
       expiresAt,
     });
     if (intention) {
       intentionId = intention.id;
-      const tokens = semanticTokens(String(redacted.value));
-      await tenantDb.insert(evidenceSemanticDocuments, {
-        intentionId: intention.id,
-        encryptedValue: envelope(tokens, input.tenantId, 'evidence-semantic', intention.id),
-        model: 'trackai-token-set-v1',
-        expiresAt,
-      });
       await tenantDb.insertDoNothing(evidenceLinks, {
         fromType: 'intention', fromId: intention.id,
         toType: 'session', toId: session.id,
@@ -329,29 +400,41 @@ export async function correctIntention(input: {
     eq(evidenceIntentions.id, input.intentionId),
   );
   if (!original) return null;
+  if (original.expiresAt <= (input.now ?? new Date())) throw new Error('Expired intention cannot be corrected');
   const redacted = redactSecrets(value);
   const now = input.now ?? new Date();
-  const expiresAt = new Date(now.getTime() + RETENTION_MS);
+  const series = await tenantDb.select(
+    evidenceIntentions,
+    eq(evidenceIntentions.seriesId, original.seriesId),
+  );
+  const current = series.find(row => row.isCurrent) ?? original;
+  const nextVersion = Math.max(...series.map(row => row.version), original.version) + 1;
+  await tenantDb.update(
+    evidenceIntentions,
+    { isCurrent: false },
+    eq(evidenceIntentions.seriesId, original.seriesId),
+  );
   const correctedId = randomUUID();
+  const fingerprint = contentFingerprint(String(redacted.value));
   const [corrected] = await tenantDb.insert(evidenceIntentions, {
     id: correctedId,
+    seriesId: original.seriesId,
+    version: nextVersion,
+    lifecycle: current.lifecycle,
+    supersedesIntentionId: current.id,
+    isCurrent: true,
     sessionId: original.sessionId,
     sourceEventId: original.sourceEventId,
     encryptedValue: envelope(redacted.value, input.tenantId, 'evidence-intention', correctedId),
+    contentFingerprint: fingerprint,
     evidenceState: 'corrected',
     confidence: 100,
-    expiresAt,
+    semanticAvailability: 'pending',
+    expiresAt: original.expiresAt,
     createdAt: now,
   });
   if (!corrected) throw new Error('Intention correction failed');
-  await tenantDb.insert(evidenceSemanticDocuments, {
-    intentionId: corrected.id,
-    encryptedValue: envelope(
-      semanticTokens(String(redacted.value)), input.tenantId, 'evidence-semantic', corrected.id,
-    ),
-    model: 'trackai-token-set-v1',
-    expiresAt,
-  });
+  await enqueueSemanticJob(input.tenantId, corrected);
   await tenantDb.insert(evidenceLinks, {
     fromType: 'intention', fromId: corrected.id,
     toType: 'intention', toId: original.id,
@@ -386,6 +469,10 @@ export async function purgeExpiredEvidence(tenantId: string, actorId: string, no
     }, inArray(evidenceEvents.id, eventIds));
   }
   if (intentionIds.length) {
+    await tenantDb.delete(evidenceIntentionEmbeddings,
+      inArray(evidenceIntentionEmbeddings.intentionId, intentionIds));
+    await tenantDb.delete(evidenceSemanticJobs,
+      inArray(evidenceSemanticJobs.intentionId, intentionIds));
     await tenantDb.delete(evidenceSemanticDocuments,
       inArray(evidenceSemanticDocuments.intentionId, intentionIds));
     await tenantDb.delete(evidenceIntentions, inArray(evidenceIntentions.id, intentionIds));
@@ -405,6 +492,7 @@ export async function purgeExpiredEvidence(tenantId: string, actorId: string, no
       expiredEvents: eventIds.length,
       expiredIntentions: intentionIds.length,
       expiredSummaries: expiredSummaries.length,
+      expiredSemanticIndexes: intentionIds.length,
     },
   });
   return {
@@ -574,7 +662,14 @@ export async function evidenceGraph(input: {
       addNode({ type: 'intention', id: intention.id, label,
         occurredAt: intention.createdAt.toISOString(), evidenceState: intention.evidenceState,
         availability: available ? 'available' : 'expired',
-        data: { confidence: intention.confidence } });
+        data: {
+          confidence: intention.confidence,
+          seriesId: intention.seriesId,
+          version: intention.version,
+          lifecycle: intention.lifecycle,
+          isCurrent: intention.isCurrent,
+          semanticAvailability: intention.semanticAvailability,
+        } });
       if (intention.sessionId) addEdge({ fromType: 'intention', fromId: intention.id,
         toType: 'session', toId: intention.sessionId, relationship: 'describes',
         evidenceState: intention.evidenceState, confidence: intention.confidence,
@@ -626,8 +721,12 @@ export async function explainCommit(tenantId: string, commitId: string) {
   if (!commit) return null;
   const intentions = graph.nodes.filter(node => node.type === 'intention')
     .sort((left, right) => {
+      const current = Number(Boolean(right.data?.isCurrent)) - Number(Boolean(left.data?.isCurrent));
+      if (current) return current;
       const priority: Record<EvidenceState, number> = { corrected: 0, observed: 1, inferred: 2 };
-      return priority[left.evidenceState] - priority[right.evidenceState];
+      const state = priority[left.evidenceState] - priority[right.evidenceState];
+      if (state) return state;
+      return Number(right.data?.version ?? 0) - Number(left.data?.version ?? 0);
     });
   const events = graph.nodes.filter(node => node.type === 'event');
   const checkpoints = graph.nodes.filter(node => node.type === 'checkpoint');
@@ -704,11 +803,9 @@ export async function searchIntentions(tenantId: string, query: string, options:
   tool?: string;
   model?: string;
   path?: string;
-} = {}) {
+} = {}, engine: EmbeddingEngine = new LocalBgeCommandEngine()) {
   const tenantDb = withTenant(db, tenantId);
-  const [intentions, documents, sessions, commitLinks, sessionRepositories, commitFiles] = await Promise.all([
-    tenantDb.select(evidenceIntentions),
-    tenantDb.select(evidenceSemanticDocuments),
+  const [sessions, commitLinks, sessionRepositories, commitFiles] = await Promise.all([
     tenantDb.select(aiSessions),
     tenantDb.select(aiCommitSessions),
     tenantDb.select(aiSessionRepositories),
@@ -732,25 +829,247 @@ export async function searchIntentions(tenantId: string, query: string, options:
   if (options.tool) intersect(new Set(sessions.filter(session => session.tool === options.tool).map(session => session.id)));
   if (options.model) intersect(new Set(sessions.filter(session => Array.isArray(session.observedModels)
     && (session.observedModels as string[]).includes(options.model!)).map(session => session.id)));
-  const queryTokens = semanticTokens(query);
+  if (!eligibleSessionIds.size) return [];
+  const eligibleIds = [...eligibleSessionIds];
+  const now = new Date();
+  const lexicalScore = sql<number>`ts_rank_cd(${evidenceIntentionEmbeddings.lexicalDocument}, websearch_to_tsquery('english', ${query}))`;
+  const lexicalRows = await db.select({
+    id: evidenceIntentions.id,
+    score: lexicalScore,
+  }).from(evidenceIntentionEmbeddings).innerJoin(
+    evidenceIntentions,
+    and(
+      eq(evidenceIntentions.id, evidenceIntentionEmbeddings.intentionId),
+      eq(evidenceIntentions.tenantId, evidenceIntentionEmbeddings.tenantId),
+    ),
+  ).where(and(
+    eq(evidenceIntentionEmbeddings.tenantId, tenantId),
+    eq(evidenceIntentions.tenantId, tenantId),
+    eq(evidenceIntentions.isCurrent, true),
+    eq(evidenceIntentions.semanticAvailability, 'available'),
+    eq(evidenceIntentionEmbeddings.modelRevision, engine.revision),
+    gt(evidenceIntentionEmbeddings.expiresAt, now),
+    inArray(evidenceIntentions.sessionId, eligibleIds),
+    sql`${evidenceIntentionEmbeddings.lexicalDocument} @@ websearch_to_tsquery('english', ${query})`,
+  )).orderBy(desc(lexicalScore)).limit(SEMANTIC_CANDIDATE_LIMIT);
+
+  const queryEmbedding = normalizeEmbedding(await engine.embed(query, 'query'));
+  const vectorLiteral = `[${queryEmbedding.join(',')}]`;
+  const vectorScore = sql<number>`1 - (${evidenceIntentionEmbeddings.embedding} <=> ${vectorLiteral}::vector)`;
+  const vectorRows = await db.select({
+    id: evidenceIntentions.id,
+    score: vectorScore,
+  }).from(evidenceIntentionEmbeddings).innerJoin(
+    evidenceIntentions,
+    and(
+      eq(evidenceIntentions.id, evidenceIntentionEmbeddings.intentionId),
+      eq(evidenceIntentions.tenantId, evidenceIntentionEmbeddings.tenantId),
+    ),
+  ).where(and(
+    eq(evidenceIntentionEmbeddings.tenantId, tenantId),
+    eq(evidenceIntentions.tenantId, tenantId),
+    eq(evidenceIntentions.isCurrent, true),
+    eq(evidenceIntentions.semanticAvailability, 'available'),
+    eq(evidenceIntentionEmbeddings.modelRevision, engine.revision),
+    gt(evidenceIntentionEmbeddings.expiresAt, now),
+    inArray(evidenceIntentions.sessionId, eligibleIds),
+  )).orderBy(desc(vectorScore)).limit(SEMANTIC_CANDIDATE_LIMIT);
+
+  const ranked = reciprocalRankFusion(
+    lexicalRows.map(row => ({ id: row.id, score: Number(row.score) })),
+    vectorRows.map(row => ({ id: row.id, score: Number(row.score) })),
+  );
+  if (!ranked.length) return [];
+  const intentions = await tenantDb.select(
+    evidenceIntentions,
+    inArray(evidenceIntentions.id, ranked.map(row => row.id)),
+  );
   const intentionById = new Map(intentions.map(intention => [intention.id, intention]));
-  return documents.flatMap(document => {
-    const intention = intentionById.get(document.intentionId);
-    if (!intention || intention.expiresAt <= new Date() || !intention.sessionId
-      || !eligibleSessionIds.has(intention.sessionId)) return [];
-    const tokens = openEnvelope<string[]>(document.encryptedValue, tenantId, 'evidence-semantic', intention.id);
-    const text = openEnvelope<string>(intention.encryptedValue, tenantId, 'evidence-intention', intention.id);
-    const semanticScore = semanticSimilarity(queryTokens, tokens);
-    const exactMatch = text.toLowerCase().includes(query.toLowerCase());
-    const score = exactMatch ? Math.max(semanticScore, 1) : semanticScore;
-    if (score <= 0) return [];
-    return [{ id: intention.id, sessionId: intention.sessionId, text,
-      evidenceState: intention.evidenceState, confidence: intention.confidence, score,
-      match: exactMatch ? 'exact' as const : 'semantic' as const,
+  const normalizedQuery = query.toLowerCase();
+  const results = ranked.flatMap(candidate => {
+    const intention = intentionById.get(candidate.id);
+    if (!intention || !intention.sessionId) return [];
+    const text = openEnvelope<string>(
+      intention.encryptedValue, tenantId, 'evidence-intention', intention.id,
+    );
+    const exactMatch = text.toLowerCase().includes(normalizedQuery);
+    const matchReasons = [
+      ...(exactMatch ? ['exact_phrase'] : []),
+      ...(candidate.lexicalRank ? ['lexical'] : []),
+      ...(candidate.vectorRank ? ['semantic'] : []),
+    ];
+    return [{
+      id: intention.id,
+      sessionId: intention.sessionId,
+      text,
+      evidenceState: intention.evidenceState,
+      confidence: intention.confidence,
+      availability: 'available' as const,
+      score: candidate.fusedScore,
+      lexicalRank: candidate.lexicalRank ?? null,
+      vectorRank: candidate.vectorRank ?? null,
+      lexicalScore: candidate.lexicalScore ?? null,
+      vectorScore: candidate.vectorScore ?? null,
+      match: exactMatch ? 'exact' as const
+        : candidate.lexicalRank && candidate.vectorRank ? 'hybrid' as const
+          : candidate.lexicalRank ? 'lexical' as const : 'semantic' as const,
+      matchReasons,
+      model: engine.model,
+      modelRevision: engine.revision,
       commitIds: commitLinks.filter(link => link.sessionId === intention.sessionId)
-        .map(link => link.commitId) }];
-  }).sort((left, right) => right.score - left.score)
-    .slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
+        .map(link => link.commitId),
+    }];
+  });
+  return results.sort((left, right) => {
+    const exact = Number(right.match === 'exact') - Number(left.match === 'exact');
+    if (exact) return exact;
+    const relevance = right.score - left.score;
+    if (relevance) return relevance;
+    const evidencePriority = { corrected: 0, observed: 1, inferred: 2 } as const;
+    const evidence = evidencePriority[left.evidenceState] - evidencePriority[right.evidenceState];
+    return evidence || right.confidence - left.confidence || left.id.localeCompare(right.id);
+  }).slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
+}
+
+export async function processNextSemanticJob(
+  engine: EmbeddingEngine = new LocalBgeCommandEngine(),
+  now = new Date(),
+) {
+  const staleLock = new Date(now.getTime() - 5 * 60 * 1_000);
+  const job = await db.transaction(async transaction => {
+    const [candidate] = await transaction.select().from(evidenceSemanticJobs).where(and(
+      lte(evidenceSemanticJobs.availableAt, now),
+      gt(evidenceSemanticJobs.expiresAt, now),
+      or(
+        eq(evidenceSemanticJobs.state, 'pending'),
+        and(eq(evidenceSemanticJobs.state, 'processing'), lte(evidenceSemanticJobs.lockedAt, staleLock)),
+      ),
+    )).orderBy(evidenceSemanticJobs.createdAt).limit(1).for('update', { skipLocked: true });
+    if (!candidate) return null;
+    const [claimed] = await transaction.update(evidenceSemanticJobs).set({
+      state: 'processing',
+      lockedAt: now,
+      updatedAt: now,
+    }).where(and(
+      eq(evidenceSemanticJobs.tenantId, candidate.tenantId),
+      eq(evidenceSemanticJobs.id, candidate.id),
+    )).returning();
+    return claimed ?? null;
+  });
+  if (!job) return null;
+  const tenantDb = withTenant(db, job.tenantId);
+  const [intention] = await tenantDb.select(
+    evidenceIntentions,
+    eq(evidenceIntentions.id, job.intentionId),
+  );
+  const skip = !intention
+    || intention.expiresAt <= now
+    || !intention.isCurrent
+    || intention.contentFingerprint !== job.contentFingerprint
+    || engine.revision !== job.modelRevision;
+  if (skip) {
+    await tenantDb.update(evidenceSemanticJobs, {
+      state: 'skipped', lockedAt: null, safeErrorCode: null, updatedAt: now,
+    }, eq(evidenceSemanticJobs.id, job.id));
+    return { id: job.id, state: 'skipped' as const };
+  }
+  try {
+    const text = openEnvelope<string>(
+      intention.encryptedValue, job.tenantId, 'evidence-intention', intention.id,
+    );
+    const embedding = normalizeEmbedding(await engine.embed(text, 'document'));
+    await db.insert(evidenceIntentionEmbeddings).values({
+      tenantId: job.tenantId,
+      intentionId: intention.id,
+      contentFingerprint: intention.contentFingerprint,
+      model: engine.model,
+      modelRevision: engine.revision,
+      modelChecksum: engine.checksum,
+      dimensions: SEMANTIC_DIMENSIONS,
+      embedding,
+      lexicalDocument: sql`to_tsvector('english', ${text})`,
+      expiresAt: intention.expiresAt,
+    }).onConflictDoUpdate({
+      target: [
+        evidenceIntentionEmbeddings.tenantId,
+        evidenceIntentionEmbeddings.intentionId,
+        evidenceIntentionEmbeddings.modelRevision,
+      ],
+      set: {
+        contentFingerprint: intention.contentFingerprint,
+        model: engine.model,
+        modelChecksum: engine.checksum,
+        dimensions: SEMANTIC_DIMENSIONS,
+        embedding,
+        lexicalDocument: sql`to_tsvector('english', ${text})`,
+        expiresAt: intention.expiresAt,
+        createdAt: now,
+      },
+    });
+    await tenantDb.update(evidenceIntentions, {
+      semanticAvailability: 'available',
+    }, eq(evidenceIntentions.id, intention.id));
+    await tenantDb.update(evidenceSemanticJobs, {
+      state: 'completed', lockedAt: null, safeErrorCode: null, updatedAt: now,
+    }, eq(evidenceSemanticJobs.id, job.id));
+    return { id: job.id, state: 'completed' as const };
+  } catch (error) {
+    const attempts = job.attemptCount + 1;
+    const terminal = attempts >= SEMANTIC_MAX_ATTEMPTS;
+    await tenantDb.update(evidenceSemanticJobs, {
+      state: terminal ? 'failed' : 'pending',
+      attemptCount: attempts,
+      lockedAt: null,
+      safeErrorCode: semanticSafeError(error),
+      availableAt: new Date(now.getTime() + Math.min(60_000, 1_000 * (2 ** attempts))),
+      updatedAt: now,
+    }, eq(evidenceSemanticJobs.id, job.id));
+    if (terminal) await tenantDb.update(evidenceIntentions, {
+      semanticAvailability: 'unavailable',
+    }, eq(evidenceIntentions.id, intention.id));
+    return { id: job.id, state: terminal ? 'failed' as const : 'pending' as const };
+  }
+}
+
+export async function processSemanticJobs(input: {
+  limit?: number;
+  engine?: EmbeddingEngine;
+  now?: Date;
+} = {}) {
+  const engine = input.engine ?? new LocalBgeCommandEngine();
+  const limit = Math.min(100, Math.max(1, input.limit ?? 25));
+  const results: Array<{ id: string; state: string }> = [];
+  for (let index = 0; index < limit; index += 1) {
+    const result = await processNextSemanticJob(engine, input.now ?? new Date());
+    if (!result) break;
+    results.push(result);
+  }
+  return results;
+}
+
+export async function semanticHealth(tenantId: string) {
+  const tenantDb = withTenant(db, tenantId);
+  const [intentions, jobs, indexes] = await Promise.all([
+    tenantDb.select(evidenceIntentions),
+    tenantDb.select(evidenceSemanticJobs),
+    tenantDb.select(evidenceIntentionEmbeddings),
+  ]);
+  const count = (state: string) => jobs.filter(job => job.state === state).length;
+  return {
+    model: SEMANTIC_MODEL,
+    configuredRevision: configuredSemanticRevision(),
+    dimensions: SEMANTIC_DIMENSIONS,
+    intentions: intentions.length,
+    availableIntentions: intentions.filter(row => row.semanticAvailability === 'available').length,
+    indexes: indexes.length,
+    jobs: {
+      pending: count('pending'),
+      processing: count('processing'),
+      completed: count('completed'),
+      failed: count('failed'),
+      skipped: count('skipped'),
+    },
+  };
 }
 
 export async function frictionAnalytics(tenantId: string) {

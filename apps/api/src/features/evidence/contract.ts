@@ -178,21 +178,6 @@ export function contentFingerprint(value: unknown): string {
   return createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
-const STOP_WORDS = new Set(['a', 'an', 'and', 'are', 'for', 'from', 'in', 'is', 'of', 'on', 'the', 'to', 'with']);
-
-export function semanticTokens(value: string): string[] {
-  return [...new Set(value.toLowerCase().split(/[^a-z0-9_]+/)
-    .filter((token) => token.length > 1 && !STOP_WORDS.has(token)))].sort();
-}
-
-export function semanticSimilarity(left: string[], right: string[]): number {
-  if (left.length === 0 || right.length === 0) return 0;
-  const rightSet = new Set(right);
-  const intersection = left.filter((token) => rightSet.has(token)).length;
-  const union = new Set([...left, ...right]).size;
-  return intersection / union;
-}
-
 export function inferredIntentionFromPrompt(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const compact = value.replace(/\s+/g, ' ').trim();

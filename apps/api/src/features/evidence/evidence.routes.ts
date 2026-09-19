@@ -11,8 +11,10 @@ import {
   purgeExpiredEvidence,
   readRawEvidence,
   searchIntentions,
+  semanticHealth,
   setEvidenceConsent,
 } from './service';
+import { SemanticUnavailableError } from './semantic';
 
 export const evidenceWorkerRouter = Router();
 export const evidenceReadRouter = Router();
@@ -119,7 +121,13 @@ evidenceReadRouter.get('/search', async (req, res) => {
       const value = req.query[name];
       return typeof value === 'string' && value.length <= 500 ? value : undefined;
     };
+    const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) {
+      res.status(400).json({ error: 'limit must be an integer between 1 and 100' });
+      return;
+    }
     res.json({ query, results: await searchIntentions(tenantId, query, {
+      limit,
       repositoryId: filter('repositoryId'),
       commitId: filter('commitId'),
       sessionId: filter('sessionId'),
@@ -127,7 +135,14 @@ evidenceReadRouter.get('/search', async (req, res) => {
       model: filter('model'),
       path: filter('path'),
     }) });
-  } catch {
+  } catch (error) {
+    if (error instanceof SemanticUnavailableError) {
+      res.status(503).json({
+        error: 'Semantic search is unavailable because the local model is not ready',
+        code: error.code,
+      });
+      return;
+    }
     console.error('Evidence search failed');
     res.status(503).json({ error: 'Evidence search is temporarily unavailable' });
   }
@@ -201,6 +216,16 @@ evidenceAdminRouter.post('/purge-expired', requireAdminAction('evidence.consent.
   }
 });
 
+evidenceAdminRouter.get('/semantic-health', requireAdminAction('evidence.raw.read'), async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  try {
+    res.json(await semanticHealth(tenantId));
+  } catch {
+    console.error('Evidence semantic health query failed');
+    res.status(503).json({ error: 'Evidence semantic health is temporarily unavailable' });
+  }
+});
+
 evidenceAdminRouter.post(
   '/intentions/:id/corrections',
   requireAdminAction('evidence.correct'),
@@ -224,7 +249,7 @@ evidenceAdminRouter.post(
       res.status(201).json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
-      if (message.includes('invalid') || message.includes('required')) {
+      if (message.includes('invalid') || message.includes('required') || message.includes('Expired')) {
         res.status(400).json({ error: message });
         return;
       }

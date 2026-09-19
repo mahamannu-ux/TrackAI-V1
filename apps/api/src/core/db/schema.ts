@@ -1,5 +1,6 @@
 import {
   check,
+  customType,
   foreignKey,
   bigint,
   boolean,
@@ -13,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  vector,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -35,6 +37,13 @@ export const ssoTenants = pgTable('sso_tenants', {
  */
 export const tenantIdColumn = () =>
   uuid('tenant_id').references(() => ssoTenants.id).notNull();
+
+/** PostgreSQL search document. Its terms are sensitive tenant-derived data. */
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
 
 /** Explicit authorization for protected tenant-administration actions. */
 export const tenantAdminMemberships = pgTable('tenant_admin_memberships', {
@@ -1000,20 +1009,38 @@ export const evidenceEventContents = pgTable('evidence_event_contents', {
 export const evidenceIntentions = pgTable('evidence_intentions', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
+  seriesId: uuid('series_id').notNull(),
+  version: integer('version').notNull().default(1),
+  lifecycle: text('lifecycle').$type<'provisional' | 'finalized' | 'abandoned'>()
+    .notNull().default('provisional'),
+  supersedesIntentionId: uuid('supersedes_intention_id'),
+  isCurrent: boolean('is_current').notNull().default(true),
   sessionId: uuid('session_id').references(() => aiSessions.id),
   sourceEventId: uuid('source_event_id').references(() => evidenceEvents.id),
   encryptedValue: jsonb('encrypted_value').$type<Record<string, unknown>>().notNull(),
+  contentFingerprint: text('content_fingerprint').notNull(),
   evidenceState: text('evidence_state').$type<'observed' | 'inferred' | 'corrected'>().notNull(),
   confidence: integer('confidence').notNull(),
+  semanticAvailability: text('semantic_availability')
+    .$type<'pending' | 'available' | 'unavailable' | 'expired'>().notNull().default('pending'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   tenantSessionIndex: index('evidence_intentions_tenant_session_idx')
     .on(table.tenantId, table.sessionId),
+  tenantSeriesVersionUnique: unique('evidence_intentions_tenant_series_version_key')
+    .on(table.tenantId, table.seriesId, table.version),
+  tenantCurrentSeriesIndex: index('evidence_intentions_tenant_current_series_idx')
+    .on(table.tenantId, table.seriesId, table.isCurrent),
   stateCheck: check('evidence_intentions_state_check',
     sql`${table.evidenceState} in ('observed', 'inferred', 'corrected')`),
   confidenceCheck: check('evidence_intentions_confidence_check',
     sql`${table.confidence} between 0 and 100`),
+  versionCheck: check('evidence_intentions_version_check', sql`${table.version} >= 1`),
+  lifecycleCheck: check('evidence_intentions_lifecycle_check',
+    sql`${table.lifecycle} in ('provisional', 'finalized', 'abandoned')`),
+  semanticAvailabilityCheck: check('evidence_intentions_semantic_availability_check',
+    sql`${table.semanticAvailability} in ('pending', 'available', 'unavailable', 'expired')`),
 }));
 
 /** Typed graph relationship; nodes remain owned by their authoritative tables. */
@@ -1059,7 +1086,7 @@ export const evidenceSummaries = pgTable('evidence_summaries', {
     .on(table.tenantId, table.rootType, table.rootId, table.sourceFingerprint),
 }));
 
-/** Encrypted semantic material. The MVP ranks locally after tenant-scoped decryption. */
+/** Legacy encrypted token-set index. New search never reads this table. */
 export const evidenceSemanticDocuments = pgTable('evidence_semantic_documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
@@ -1072,6 +1099,58 @@ export const evidenceSemanticDocuments = pgTable('evidence_semantic_documents', 
 }, (table) => ({
   tenantIntentionUnique: unique('evidence_semantic_documents_tenant_intention_key')
     .on(table.tenantId, table.intentionId),
+}));
+
+/** Searchable derived intention material. Never returned by customer APIs. */
+export const evidenceIntentionEmbeddings = pgTable('evidence_intention_embeddings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  intentionId: uuid('intention_id').references(() => evidenceIntentions.id, { onDelete: 'cascade' })
+    .notNull(),
+  contentFingerprint: text('content_fingerprint').notNull(),
+  model: text('model').notNull(),
+  modelRevision: text('model_revision').notNull(),
+  modelChecksum: text('model_checksum').notNull(),
+  dimensions: integer('dimensions').notNull().default(384),
+  embedding: vector('embedding', { dimensions: 384 }).notNull(),
+  lexicalDocument: tsvector('lexical_document').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIntentionModelUnique: unique('evidence_intention_embeddings_tenant_intention_model_key')
+    .on(table.tenantId, table.intentionId, table.modelRevision),
+  tenantExpiryIndex: index('evidence_intention_embeddings_tenant_expiry_idx')
+    .on(table.tenantId, table.expiresAt),
+  dimensionsCheck: check('evidence_intention_embeddings_dimensions_check',
+    sql`${table.dimensions} = 384`),
+}));
+
+/** Durable, idempotent local-model work; contains no plaintext customer content. */
+export const evidenceSemanticJobs = pgTable('evidence_semantic_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  intentionId: uuid('intention_id').references(() => evidenceIntentions.id, { onDelete: 'cascade' })
+    .notNull(),
+  contentFingerprint: text('content_fingerprint').notNull(),
+  modelRevision: text('model_revision').notNull(),
+  state: text('state').$type<'pending' | 'processing' | 'completed' | 'failed' | 'skipped'>()
+    .notNull().default('pending'),
+  attemptCount: integer('attempt_count').notNull().default(0),
+  safeErrorCode: text('safe_error_code'),
+  availableAt: timestamp('available_at', { withTimezone: true }).defaultNow().notNull(),
+  lockedAt: timestamp('locked_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantJobUnique: unique('evidence_semantic_jobs_tenant_intention_fingerprint_model_key')
+    .on(table.tenantId, table.intentionId, table.contentFingerprint, table.modelRevision),
+  tenantStateAvailableIndex: index('evidence_semantic_jobs_tenant_state_available_idx')
+    .on(table.tenantId, table.state, table.availableAt),
+  stateCheck: check('evidence_semantic_jobs_state_check',
+    sql`${table.state} in ('pending', 'processing', 'completed', 'failed', 'skipped')`),
+  attemptCheck: check('evidence_semantic_jobs_attempt_check',
+    sql`${table.attemptCount} between 0 and 5`),
 }));
 
 /** Append-only transitions used to calculate lifecycle retention and rework. */
