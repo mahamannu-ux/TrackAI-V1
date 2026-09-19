@@ -179,6 +179,62 @@ export type EvidenceSemanticHealth = {
   jobs: { pending: number; processing: number; completed: number; failed: number; skipped: number };
 };
 
+export type EvidencePerspective = 'leader' | 'developer' | 'security';
+export type EvidenceWorkKind = 'pull_request' | 'direct_commit' | 'unfinished_intention';
+export type EvidenceOutcome = 'open' | 'merged' | 'deployed' | 'closed' | 'direct_change' | 'unfinished';
+export type EvidenceCoverage = 'recorded' | 'partial' | 'unavailable';
+export type EvidenceWorkCard = {
+  kind: EvidenceWorkKind; id: string; title: string;
+  repository: { id: string; name: string } | null; branch: string | null;
+  outcome: EvidenceOutcome; updatedAt: string;
+  intention: { text: string | null; count: number; state: EvidenceState | null };
+  keyInsight: string;
+  evidenceQuality: {
+    attribution: EvidenceCoverage; intention: EvidenceCoverage;
+    rawContent: EvidenceCoverage; lifecycle: EvidenceCoverage;
+  };
+  counts: { commits: number; reworkedLines: number; evidenceGaps: number };
+};
+export type EvidenceWorkspaceResponse = {
+  insights: { outcomes: string; attention: number; evidenceGaps: number };
+  pullRequests: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+  directChanges: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+  unfinishedWork: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+};
+export type EvidenceWorkStory = {
+  root: { type: 'pull_request' | 'commit' | 'intention' | 'code'; id: string; title: string; repository: string | null; branch: string | null };
+  summary: {
+    why: { primary: string | null; additional: number; state: EvidenceState | null; confidence: number | null };
+    outcome: { status: EvidenceOutcome; label: string };
+    keyInsight: string;
+    evidenceQuality: EvidenceWorkCard['evidenceQuality'];
+  };
+  intentions: Array<{ id: string; text: string; state: EvidenceState; confidence: number; lifecycle: string; sessionId: string | null }>;
+  lifecycle: {
+    pullRequest: null | { id: string; title: string; state: string; headRef: string | null; baseRef: string | null };
+    merge: null | { sha: string; mergedAt: string | null };
+    deployments: Array<{ id: string; environment: string; status: string; production: boolean; deployedAt: string }>;
+  };
+  changes: Array<{
+    id: string; sha: string; subject: string; branch: string | null; historical: boolean;
+    files: Array<{ id: string; path: string; aiLines: number; humanLines: number; unknownLines: number; ranges: Array<Record<string, unknown>> }>;
+  }>;
+  insights: {
+    failedTools: number; retries: number; slowTools: number; promptLoops: number;
+    reworkedLines: number; abandoned: boolean; evidenceGaps: number;
+    tests: Array<{ eventId: string; label: string; status: 'passed' | 'failed' | 'unknown' }>;
+    unresolved: string[];
+  };
+  graph: EvidenceGraphResponse;
+  similarWork: { status: 'available' | 'unavailable'; items: EvidenceWorkCard[] };
+  focus: null | { path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
+};
+export type EvidenceWorkspaceSearchResult = EvidenceWorkCard & { matchReasons: string[]; score: number };
+export type EvidenceWorkspaceSearchFilters = {
+  repositoryId?: string; branch?: string; from?: string; to?: string; agent?: string;
+  model?: string; outcome?: string; resultType?: string; limit?: number;
+};
+
 export type AdminContext = {
   tenantId: string;
   subject: string;
@@ -297,6 +353,31 @@ export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowRespon
 export const getEvidenceExplanation = (commitId: string) => apiFetch<EvidenceExplanation>(
   `/api/evidence/commits/${encodeURIComponent(commitId)}/explain`,
 );
+export const getEvidenceWorkspace = (cursor = 0, limit = 20) => apiFetch<EvidenceWorkspaceResponse>(
+  `/api/evidence/workspace?cursor=${cursor}&limit=${limit}`,
+);
+export const getEvidenceWorkStory = (kind: EvidenceWorkKind, id: string) => {
+  const rootType = kind === 'pull_request' ? 'pull_request'
+    : kind === 'direct_commit' ? 'commit' : 'intention';
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/stories/${rootType}/${encodeURIComponent(id)}`,
+  );
+};
+export const getEvidenceLineWhy = (commitId: string, path: string, line: number) => {
+  const parameters = new URLSearchParams({ path, line: String(line) });
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/commits/${encodeURIComponent(commitId)}/why?${parameters.toString()}`,
+  );
+};
+export const searchEvidenceWorkspace = (query: string, filters: EvidenceWorkspaceSearchFilters = {}) => {
+  const parameters = new URLSearchParams({ q: query });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') parameters.set(key, String(value));
+  });
+  return apiFetch<{ query: string; results: EvidenceWorkspaceSearchResult[] }>(
+    `/api/evidence/workspace-search?${parameters.toString()}`,
+  );
+};
 export const searchEvidenceIntentions = (query: string, filters: EvidenceSearchFilters = {}) => {
   const parameters = new URLSearchParams({ q: query });
   Object.entries(filters).forEach(([key, value]) => {

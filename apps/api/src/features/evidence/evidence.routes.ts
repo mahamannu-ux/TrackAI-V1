@@ -16,6 +16,11 @@ import {
   setEvidenceConsent,
 } from './service';
 import { SemanticUnavailableError } from './semantic';
+import {
+  evidenceWorkspace,
+  evidenceWorkStory,
+  searchEvidenceWorkspace,
+} from './workspace';
 
 export const evidenceWorkerRouter = Router();
 export const evidenceReadRouter = Router();
@@ -107,6 +112,96 @@ evidenceReadRouter.get('/commits/:id/explain', async (req, res) => {
   } catch {
     console.error('Evidence explanation query failed');
     res.status(503).json({ error: 'Evidence explanation is temporarily unavailable' });
+  }
+});
+
+evidenceReadRouter.get('/workspace', async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  const cursor = req.query.cursor === undefined ? 0 : Number(req.query.cursor);
+  const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+  if (!Number.isInteger(cursor) || cursor < 0 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    res.status(400).json({ error: 'cursor and limit must be valid bounded integers' });
+    return;
+  }
+  try {
+    res.json(await evidenceWorkspace(tenantId, { cursor, limit }));
+  } catch {
+    console.error('Evidence workspace query failed');
+    res.status(503).json({ error: 'Evidence workspace is temporarily unavailable' });
+  }
+});
+
+const STORY_ROOT_TYPES = new Set(['pull_request', 'commit', 'intention']);
+
+evidenceReadRouter.get('/stories/:rootType/:id', async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  const rootType = String(req.params.rootType);
+  if (!STORY_ROOT_TYPES.has(rootType)) {
+    res.status(400).json({ error: 'A supported customer story root is required' });
+    return;
+  }
+  try {
+    const result = await evidenceWorkStory({
+      tenantId,
+      rootType: rootType as 'pull_request' | 'commit' | 'intention',
+      rootId: String(req.params.id),
+    });
+    if (!result) { res.status(404).json({ error: 'Customer story was not found' }); return; }
+    res.json(result);
+  } catch {
+    console.error('Evidence work story query failed');
+    res.status(503).json({ error: 'Evidence story is temporarily unavailable' });
+  }
+});
+
+evidenceReadRouter.get('/commits/:id/why', async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  const path = typeof req.query.path === 'string' ? req.query.path : '';
+  const line = Number(req.query.line);
+  if (!path || path.length > 2_000 || !Number.isInteger(line) || line < 1) {
+    res.status(400).json({ error: 'A file path and positive line number are required' });
+    return;
+  }
+  try {
+    const result = await evidenceWorkStory({
+      tenantId, rootType: 'commit', rootId: String(req.params.id), focus: { path, line },
+    });
+    if (!result) { res.status(404).json({ error: 'Commit was not found' }); return; }
+    res.json(result);
+  } catch {
+    console.error('Evidence file-line explanation failed');
+    res.status(503).json({ error: 'File-line explanation is temporarily unavailable' });
+  }
+});
+
+evidenceReadRouter.get('/workspace-search', async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (query.length < 2 || query.length > 500) {
+    res.status(400).json({ error: 'Search query must contain between 2 and 500 characters' });
+    return;
+  }
+  const value = (key: string) => typeof req.query[key] === 'string'
+    ? String(req.query[key]).slice(0, 500) : undefined;
+  const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 50)) {
+    res.status(400).json({ error: 'limit must be an integer between 1 and 50' });
+    return;
+  }
+  const from = value('from'); const to = value('to');
+  if ((from && Number.isNaN(new Date(from).getTime())) || (to && Number.isNaN(new Date(to).getTime()))) {
+    res.status(400).json({ error: 'from and to must be valid dates' });
+    return;
+  }
+  try {
+    res.json({ query, results: await searchEvidenceWorkspace(tenantId, query, {
+      repositoryId: value('repositoryId'), branch: value('branch'), from, to,
+      agent: value('agent'), model: value('model'), outcome: value('outcome'),
+      resultType: value('resultType'), limit,
+    }) });
+  } catch {
+    console.error('Evidence workspace search failed');
+    res.status(503).json({ error: 'Evidence workspace search is temporarily unavailable' });
   }
 });
 

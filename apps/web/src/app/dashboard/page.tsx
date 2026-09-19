@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { EvidenceWorkspace } from './evidence-workspace';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
   getEvidenceExplanation, getEvidenceFriction, getEvidenceRaw, getEvidenceSemanticHealth, getEvidenceSettings, searchEvidenceIntentions,
@@ -28,17 +29,11 @@ import {
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
 
-type View = 'lifecycle' | 'evidence' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
+type View = 'workspace' | 'lifecycle' | 'evidence' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
 type Detail = { kind: 'session' | 'commit' | 'pullRequest'; data: Record<string, any> } | null;
 
 const navigation: Array<{ id: View; label: string }> = [
-  { id: 'lifecycle', label: 'Code Lifecycle' },
-  { id: 'evidence', label: 'Evidence Explorer' },
-  { id: 'sessions', label: 'Sessions' },
-  { id: 'commits', label: 'Commits' },
-  { id: 'pullRequests', label: 'Pull Requests' },
-  { id: 'repositories', label: 'Repositories' },
-  { id: 'contributors', label: 'Contributors' },
+  { id: 'workspace', label: 'Evidence Workspace' },
   { id: 'administration', label: 'Administration' },
 ];
 
@@ -713,7 +708,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [view, setView] = useState<View>('sessions');
+  const [view, setView] = useState<View>('workspace');
   const [query, setQuery] = useState('');
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [lifecycle, setLifecycle] = useState<LifecycleResponse | null>(null);
@@ -816,14 +811,14 @@ export default function DashboardPage() {
   return <div className="min-h-screen bg-slate-950 text-slate-200">
     <aside className="fixed inset-y-0 left-0 w-64 border-r border-slate-800 bg-slate-950 p-5">
       <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 font-bold text-white">T</div><div><div className="font-semibold text-white">TrackAI</div><div className="text-xs text-slate-500">Telemetry intelligence</div></div></div>
-      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'lifecycle' ? 'Live' : item.id === 'evidence' ? 'Why' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : item.id === 'contributors' ? contributors.length : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
+      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'workspace' ? 'PR · Why · Insights' : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
       <div className="absolute bottom-5 left-5 right-5 border-t border-slate-800 pt-4"><div className="truncate text-xs text-slate-500">{email}</div><button onClick={signOut} className="mt-2 text-xs text-slate-400 hover:text-white">Sign out</button></div>
     </aside>
     <main className="ml-64 min-h-screen p-8">
-      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}{view !== 'evidence' && <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/>}<button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
+      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></header>
       {error && <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
-      {view !== 'administration' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
       <section className="mt-7">
+        {view === 'workspace' && <EvidenceWorkspace repositories={repositories} models={models} adminContext={adminContext} />}
         {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
         {view === 'evidence' && <EvidenceExplorer commits={commits} repositories={repositories} sessions={sessions} models={models} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
         {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>

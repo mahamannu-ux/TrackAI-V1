@@ -15,6 +15,7 @@ import {
   reciprocalRankFusion,
   semanticSafeError,
 } from './semantic';
+import { isTestCommand } from './workspace';
 
 function batch(overrides: Record<string, unknown> = {}) {
   return {
@@ -177,4 +178,11 @@ test('local BGE adapter is pinned to local-only normalized 384-dimensional infer
   assert.match(adapter, /trust_remote_code=False/);
   assert.match(adapter, /normalize_embeddings=True/);
   assert.doesNotMatch(adapter, /print\(customer_text/);
+});
+
+test('customer workspace identifies tests without treating ordinary shell work as a test', () => {
+  assert.equal(isTestCommand({ command: 'npm run test --workspace=apps/api' }), true);
+  assert.equal(isTestCommand({ command: 'cargo test evidence_binding --lib' }), true);
+  assert.equal(isTestCommand({ command: 'git status --short' }), false);
+  assert.equal(isTestCommand({ path: 'src/testimonials.ts' }), false);
 });
