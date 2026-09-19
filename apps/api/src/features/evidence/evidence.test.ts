@@ -183,6 +183,7 @@ test('local BGE adapter is pinned to local-only normalized 384-dimensional infer
 test('customer workspace identifies tests without treating ordinary shell work as a test', () => {
   assert.equal(isTestCommand({ command: 'npm run test --workspace=apps/api' }), true);
   assert.equal(isTestCommand({ command: 'cargo test evidence_binding --lib' }), true);
+  assert.equal(isTestCommand({ command: 'task test' }), true);
   assert.equal(isTestCommand({ command: 'git status --short' }), false);
   assert.equal(isTestCommand({ path: 'src/testimonials.ts' }), false);
 });

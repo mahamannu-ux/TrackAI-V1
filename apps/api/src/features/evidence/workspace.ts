@@ -106,7 +106,7 @@ function asText(value: unknown): string {
 }
 
 export function isTestCommand(value: unknown): boolean {
-  return /(^|\s)(npm|pnpm|yarn|bun|cargo|go|pytest|python\s+-m\s+pytest|rspec|dotnet)\s+(run\s+)?test\b|\b(test|vitest|jest|playwright|cypress)\b/i
+  return /(^|\s)(npm|pnpm|yarn|bun|cargo|go|task|make|pytest|python\s+-m\s+pytest|rspec|dotnet)\s+(run\s+)?test\b|\b(test|vitest|jest|playwright|cypress)\b/i
     .test(asText(value));
 }
 
@@ -517,6 +517,21 @@ export async function searchEvidenceWorkspace(tenantId: string, query: string, f
       results.push({ ...card, matchReasons: [commitMatch ? 'commit' : '', fileMatch ? 'file_path' : '',
         eventMatch ? 'evidence_metadata' : ''].filter(Boolean), score: 2 });
     }
+  }
+  for (const intention of records.intentions.filter(row => row.isCurrent)) {
+    const text = intentionText(tenantId, intention);
+    if (!text?.toLowerCase().includes(normalized)) continue;
+    const intentionSessionIds = intention.sessionId ? [intention.sessionId] : [];
+    if (!sessionAllowed(intentionSessionIds)) continue;
+    const commitIds = intention.sessionId
+      ? records.commitSessions.filter(row => row.sessionId === intention.sessionId).map(row => row.commitId) : [];
+    const parentPr = commitIds.map(id => prForCommit(records, id)).find(Boolean) ?? null;
+    const parentCommit = records.commits.find(row => commitIds.includes(row.id)) ?? null;
+    const card = parentPr ? cardForPr(tenantId, records, friction, parentPr)
+      : parentCommit ? cardForCommit(tenantId, records, friction, parentCommit)
+        : cardForIntention(tenantId, records, friction, intention);
+    if (filters.resultType && filters.resultType !== card.kind) continue;
+    if (cardAllowed(card)) results.push({ ...card, matchReasons: ['exact_intention'], score: 5 });
   }
   try {
     const semantic = await searchIntentions(tenantId, query, { limit: filters.limit ?? 20 });
