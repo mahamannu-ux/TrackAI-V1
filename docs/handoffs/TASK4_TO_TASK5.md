@@ -33,7 +33,8 @@ Canonical authorities:
 
 - Task2 owns metric and lifecycle meaning.
 - [`TASK4.md`](../../TASK4.md) owns Task4 implementation evidence.
-- [`ROUGH_ROADMAP.md`](../../ROUGH_ROADMAP.md) owns Task5 scope.
+- [`TASK5.md`](../../TASK5.md) is the authoritative Task5 tracker.
+- [`ROUGH_ROADMAP.md`](../../ROUGH_ROADMAP.md) owns the portfolio summary.
 - [`TASK14.md`](../../TASK14.md) owns production deployment certification.
 
 ## Task5 first boundary
