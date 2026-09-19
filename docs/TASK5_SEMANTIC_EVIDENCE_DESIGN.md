@@ -3,6 +3,8 @@
 This document explains how Task5 evidence analysis, intentions, embeddings and
 hybrid search work. It contains no independent status or completion claims.
 The authoritative tracker and acceptance gates are in [`../TASK5.md`](../TASK5.md).
+The implemented TrackAI semantic checkpoint is `2a3e528`; the isolated GitAI
+OpenCode collection checkpoint is `a8d93aa20`.
 
 ## 1. GitAI identities remain authoritative
 
@@ -75,7 +77,7 @@ sequenceDiagram
   participant W as Semantic worker
 
   O->>G: synthetic provider messages/parts
-  G->>G: map stable provider IDs and GitAI traces
+  G->>G: map stable provider IDs + GitAI session identity
   G->>A: authenticated idempotent batch
   A->>A: validate metadata and scan/redact secrets
   A->>P: metadata + encrypted content + evidence links
@@ -108,13 +110,20 @@ separate business goal, create noise and repeatedly reset work. Waiting for “t
 prompt-to-commit lifecycle” would also be wrong because a session may never
 commit or may contribute to multiple commits.
 
-An embedding job is enqueued when:
+The implemented Task5 triggers are:
 
 1. an explicit intention is first supplied;
-2. a completed OpenCode turn produces a new inferred intention;
-3. the latest intention changes meaningfully;
-4. an administrator corrects the intention; or
-5. commit linkage/session close finalizes a changed intention fingerprint.
+2. the first usable prompt creates the session's one provisional inferred
+   intention when no explicit intention exists;
+3. an explicit intention replaces or upgrades that provisional inference;
+4. an administrator creates an audited correction; or
+5. an administrator starts revision-specific re-indexing after a pinned model
+   upgrade.
+
+A later prompt by itself does **not** create an intention version or embedding.
+This prevents collector chunks and conversational follow-ups from becoming
+fake business goals. Future finalization/abandonment triggers may change the
+`lifecycle` field only when backed by an observed session/outcome event.
 
 No new vector is written when the normalized content fingerprint, model
 revision and dimensions are unchanged.
@@ -141,7 +150,8 @@ flowchart TD
 
 - Model: `BAAI/bge-small-en-v1.5`.
 - Output: normalized 384-dimensional vector.
-- Runtime: local ONNX inference in a background Node worker.
+- Runtime: a Node background job worker invokes the bundled local-only Python
+  adapter, which loads the deployment-local Sentence Transformers artifact.
 - Artifact: immutable model revision and checksum recorded in configuration and
   each semantic record.
 - Production: remote model loading disabled; startup health fails closed if the
@@ -149,6 +159,21 @@ flowchart TD
 - Query input uses the model's retrieval instruction; stored documents use the
   passage/document form.
 - No prompt, intention or vector is sent to an external embedding provider.
+
+The implementation boundary is:
+
+- `apps/api/src/features/evidence/semantic-worker.ts` continuously claims jobs;
+- `apps/api/src/features/evidence/semantic.ts` validates the pinned executable,
+  revision, checksum, dimensions, normalization and safe failure codes;
+- `apps/api/scripts/trackai-bge-embed.py` reads text only from stdin, applies the
+  BGE query instruction only to queries, uses `local_files_only=True` and
+  `trust_remote_code=False`, and emits only the vector;
+- `evidence_intention_embeddings` stores the vector and PostgreSQL `tsvector`;
+- `evidence_semantic_jobs` stores content-free retry state.
+
+The executable never receives customer text in argv, and stderr is not copied
+into application logs. The configured artifact revision and checksum are
+stored beside each vector.
 
 The model card documents its 384-dimensional representation and normalized
 similarity usage: [BAAI BGE small English v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5).
@@ -227,8 +252,8 @@ flowchart LR
    `RRF(document) = Σ 1 / (60 + rank_in_list)`
 
 6. Superseded, expired and inaccessible intention versions are removed.
-7. Exact matches lead, followed by fused relevance. Evidence state, confidence,
-   creation time and stable ID only break relevance ties.
+7. Exact matches lead, followed by fused relevance. Evidence state, confidence
+   and stable ID only break relevance ties.
 
 The response returns lexical rank, vector rank, fused score, match reasons,
 model revision, evidence state, confidence and availability. It never returns
@@ -303,6 +328,9 @@ deleted content, vector, lexical terms or a reversible derivative.
 - A semantic record is uniquely identified by tenant, intention version,
   content fingerprint, model revision and dimensions.
 - A model upgrade enqueues new jobs without mutating old records.
+- The tenant-admin semantic reindex action enqueues the current unexpired
+  intention versions for the newly configured revision and records a
+  content-free audit event.
 - Search reads only the configured active model revision after its backfill gate
   passes; old model rows expire or are deleted with the source.
 - Transient inference failures retry with bounded backoff and safe codes.
