@@ -63,12 +63,12 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-3** | Consent, tenant isolation, encryption, secret redaction and raw authorization | T5.2 | 🟢 ✅ | 🟡 ◐ | Static/unit controls pass, including RLS and tenant-composite semantic references; live two-tenant and log inspection remain. | `44de334`, `2a3e528` | Security acceptance |
 | **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟡 ◐ | GitAI synthetic SQLite-to-upload test covers local redaction, exact tenant/repository binding and unavailable reasoning; live authenticated TrackAI replay remains. | GitAI `a8d93aa20` | Local OpenCode run |
 | **E5-5** | Forward/reverse graph traversal and pagination | T5.5 | 🟢 ✅ | 🟡 ◐ | Automated graph contracts exist; live query review remains. | — | Query review |
-| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | Unified workspace, perspective lenses, PR-first stories and progressive evidence tree compile/build; three controlled customer walkthroughs remain. | `11a4025`, `056c475` | Product acceptance |
+| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | Unified workspace, perspective lenses, PR-first stories and progressive evidence tree compile/build; active-versus-historical PR membership and exact-range semantics have focused tests. Three controlled customer walkthroughs remain. | `11a4025`, `056c475`, `016b207` | Product acceptance |
 | **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟡 ◐ | Story insights and deterministic test recognition exist; realistic synthetic corpus and analyst review remain. | `2a3e528`, `11a4025` | Analyst acceptance |
 | **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟡 ◐ | File/line UI and exact-range-only classification exist; run live exact and missing-attribution cases. | `11a4025` | Provenance audit |
 | **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟡 ◐ | Local BGE/pgvector/FTS/RRF plus customer-level exact metadata/intention search, filters and outcome comparison exist; exact intention search remains available when the vector model is offline. Pinned artifact, two-tenant negatives and relevance thresholds remain. | `44de334`, `2a3e528`, `11a4025`, `31df089` | Relevance labelling |
 | **E5-10** | Correction, expiry and complete derived-data deletion | T5.2, T5.9 | 🟢 ✅ | 🟡 ◐ | Corrections preserve source expiry; purge removes vectors, lexical rows, jobs, old token documents, intentions and summaries. Live deletion inspection remains. | `44de334` | Deletion review |
-| **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟡 ◐ | TrackAI API/security/metric suite passes 112/112; API/web TypeScript, web lint and production build pass. GitAI focused Task5 tests pass. Its full suite reports 2,166 passes and 17 existing local-listener failures because this sandbox forbids listener creation; lint reports 11 pre-existing errors in untouched files under Rust 1.97. | TrackAI `11a4025`, `056c475`; GitAI `a8d93aa20` | Rerun GitAI full suite/lint in supported CI, then release review |
+| **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟡 ◐ | TrackAI API/security/metric suite passes 114/114; API/web TypeScript, web lint and production build pass. GitAI focused Task5 tests pass. Its full suite reports 2,166 passes and 17 existing local-listener failures because this sandbox forbids listener creation; lint reports 11 pre-existing errors in untouched files under Rust 1.97. | TrackAI `11a4025`, `056c475`, `016b207`; GitAI `a8d93aa20` | Rerun GitAI full suite/lint in supported CI, then release review |
 | **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟡 ◐ | 🔴 ☐ | Run after E5-1–E5-11 pass. | — | Product/security acceptance |
 
 ## GitAI identity and terminology contract
@@ -215,7 +215,7 @@ and does not block completion.
 | TrackAI working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/TrackAI-V1` |
 | Required Task4 TrackAI ancestor | `91e5724269789f4aa1b357d0665f88bd01af8852` |
 | Required GitAI Task4 client ancestor | `2d240fb939313f0cfbe43b71b779a1ac683dfb5d` |
-| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528`, `11a4025`, `056c475`, `31df089` |
+| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528`, `11a4025`, `056c475`, `31df089`, `016b207` |
 | GitAI Task5 branch | `feature/task5-opencode-evidence` |
 | GitAI isolated working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/git-ai-task5` |
 | GitAI OpenCode collector checkpoint | `a8d93aa20` |
@@ -376,4 +376,4 @@ Only then may E5-12 and the Task5 completion boundary become green.
 
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
-| 2026-09-19 | Automated release verification | 🟡 ◐ | TrackAI: 112/112 tests, API/web compilation, web lint and production build pass. GitAI: Task5-focused tests pass; the full run has 2,166 passes and 17 sandbox listener failures, while lint has 11 untouched baseline errors under Rust 1.97. E5-12 and all live portions remain, so Task5 is not yet complete under the completion rule. |
+| 2026-09-19 | Automated release verification | 🟡 ◐ | TrackAI: 114/114 tests, API/web compilation, web lint and production build pass. Focused workspace tests protect active PR membership, legacy fallback and exact GitAI range attribution. GitAI: Task5-focused tests pass; the full run has 2,166 passes and 17 sandbox listener failures, while lint has 11 untouched baseline errors under Rust 1.97. E5-12 and all live portions remain, so Task5 is not yet complete under the completion rule. |
