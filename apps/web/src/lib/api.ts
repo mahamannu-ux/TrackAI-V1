@@ -135,6 +135,36 @@ export type EvidenceFlowResponse = {
   developmentOnly?: boolean; correlation?: string; nodes: EvidenceFlowNode[];
 };
 
+export type EvidenceState = 'observed' | 'inferred' | 'corrected';
+export type EvidenceAvailability = 'available' | 'unavailable' | 'redacted' | 'expired';
+export type EvidenceGraphNode = {
+  type: string; id: string; label: string; occurredAt?: string | null;
+  evidenceState: EvidenceState; availability: EvidenceAvailability;
+  data?: Record<string, unknown>;
+};
+export type EvidenceGraphEdge = {
+  fromType: string; fromId: string; toType: string; toId: string;
+  relationship: string; evidenceState: EvidenceState; confidence: number; basis: string;
+};
+export type EvidenceGraphResponse = {
+  root: { type: string; id: string };
+  nodes: EvidenceGraphNode[]; edges: EvidenceGraphEdge[]; nextCursor: number | null;
+};
+export type EvidenceExplanation = {
+  intention: { text: string | null; evidenceState: EvidenceState | null; confidence: number | null };
+  outcome: string;
+  friction: {
+    toolCalls: number; toolResults: number; unavailableEvidence: number;
+    failedTools: number; slowTools: number; reworkSignals: number;
+  };
+  learnings: string[]; openItems: string[]; graph: EvidenceGraphResponse;
+};
+export type EvidenceSearchResult = {
+  id: string; sessionId: string | null; text: string;
+  evidenceState: EvidenceState; confidence: number; score: number;
+  match: 'exact' | 'semantic'; commitIds: string[];
+};
+
 export type AdminContext = {
   tenantId: string;
   subject: string;
@@ -250,6 +280,26 @@ export const getSession = (id: string) => apiFetch<Record<string, any>>(`/api/te
 export const getCommits = () => apiFetch<CommitListItem[]>('/api/telemetry/commits');
 export const getCommit = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/commits/${encodeURIComponent(id)}`);
 export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowResponse>(`/api/telemetry/commits/${encodeURIComponent(id)}/evidence-flow`);
+export const getEvidenceExplanation = (commitId: string) => apiFetch<EvidenceExplanation>(
+  `/api/evidence/commits/${encodeURIComponent(commitId)}/explain`,
+);
+export const searchEvidenceIntentions = (query: string) => apiFetch<{ query: string; results: EvidenceSearchResult[] }>(
+  `/api/evidence/search?q=${encodeURIComponent(query)}`,
+);
+export const getEvidenceRaw = (eventId: string) => apiFetch<Record<string, unknown>>(
+  `/api/evidence/events/${encodeURIComponent(eventId)}/raw`,
+);
+export const getEvidenceFriction = () => apiFetch<{ sessions: Array<Record<string, unknown>> }>(
+  '/api/evidence/analytics/friction',
+);
+export const getEvidenceSettings = () => apiFetch<{
+  rawCollectionEnabled: boolean; provider: 'opencode'; retentionDays: number;
+  consentedAt: string | null; disabledAt: string | null;
+}>('/api/admin/evidence/settings');
+export const setEvidenceCollection = (rawCollectionEnabled: boolean) => apiFetch(
+  '/api/admin/evidence/settings',
+  { method: 'PUT', body: JSON.stringify({ rawCollectionEnabled }) },
+);
 export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
 export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
 export const getLifecycle = (query = '') => apiFetch<LifecycleResponse>(`/api/metrics/lifecycle${query}`);

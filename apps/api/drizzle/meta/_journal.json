@@ -71,6 +71,13 @@
       "when": 1785698956953,
       "tag": "0009_mute_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789809396478,
+      "tag": "0010_cooing_darkhawk",
+      "breakpoints": true
     }
   ]
 }

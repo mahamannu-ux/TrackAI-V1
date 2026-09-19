@@ -922,6 +922,158 @@ export const aiGenerationObservations = pgTable('ai_generation_observations', {
     .on(table.tenantId, table.sourceEventId),
 }));
 
+/** Fixed Task5 consent boundary. Task6 may later evaluate richer policy behind it. */
+export const tenantEvidenceSettings = pgTable('tenant_evidence_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  rawCollectionEnabled: boolean('raw_collection_enabled').notNull().default(false),
+  provider: text('provider').$type<'opencode'>().notNull().default('opencode'),
+  retentionDays: integer('retention_days').notNull().default(30),
+  consentedBy: text('consented_by'),
+  consentedAt: timestamp('consented_at', { withTimezone: true }),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantProviderUnique: unique('tenant_evidence_settings_tenant_provider_key')
+    .on(table.tenantId, table.provider),
+  retentionCheck: check('tenant_evidence_settings_retention_check',
+    sql`${table.retentionDays} = 30`),
+  providerCheck: check('tenant_evidence_settings_provider_check',
+    sql`${table.provider} = 'opencode'`),
+}));
+
+/** Metadata-only provider event. Sensitive payloads live in evidence_event_contents. */
+export const evidenceEvents = pgTable('evidence_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  sessionId: uuid('session_id').references(() => aiSessions.id).notNull(),
+  repositoryId: uuid('repository_id').references(() => scmRepositories.id),
+  provider: text('provider').$type<'opencode'>().notNull(),
+  providerEventId: text('provider_event_id').notNull(),
+  eventType: text('event_type').$type<
+    'prompt' | 'reasoning' | 'response' | 'tool_call' | 'tool_result'
+  >().notNull(),
+  traceId: text('trace_id'),
+  model: text('model'),
+  toolName: text('tool_name'),
+  evidenceState: text('evidence_state').$type<'observed' | 'inferred' | 'corrected'>()
+    .notNull().default('observed'),
+  availability: text('availability').$type<'available' | 'unavailable' | 'redacted' | 'expired'>()
+    .notNull().default('available'),
+  sourceVersion: text('source_version').notNull(),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  contentSha256: text('content_sha256'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  ingestedAt: timestamp('ingested_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantProviderEventUnique: unique('evidence_events_tenant_provider_event_key')
+    .on(table.tenantId, table.provider, table.providerEventId),
+  tenantSessionTimeIndex: index('evidence_events_tenant_session_time_idx')
+    .on(table.tenantId, table.sessionId, table.occurredAt),
+  stateCheck: check('evidence_events_state_check',
+    sql`${table.evidenceState} in ('observed', 'inferred', 'corrected')`),
+  availabilityCheck: check('evidence_events_availability_check',
+    sql`${table.availability} in ('available', 'unavailable', 'redacted', 'expired')`),
+  typeCheck: check('evidence_events_type_check', sql`${table.eventType} in
+    ('prompt', 'reasoning', 'response', 'tool_call', 'tool_result')`),
+}));
+
+/** Envelope-encrypted raw event content, intentionally separated from metadata. */
+export const evidenceEventContents = pgTable('evidence_event_contents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  eventId: uuid('event_id').references(() => evidenceEvents.id, { onDelete: 'cascade' }).notNull(),
+  encryptedValue: jsonb('encrypted_value').$type<Record<string, unknown>>().notNull(),
+  redactionSummary: jsonb('redaction_summary').$type<Record<string, number>>()
+    .notNull().default({}),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantEventUnique: unique('evidence_event_contents_tenant_event_key')
+    .on(table.tenantId, table.eventId),
+  tenantExpiryIndex: index('evidence_event_contents_tenant_expiry_idx')
+    .on(table.tenantId, table.expiresAt),
+}));
+
+/** Customer goal kept distinct from the verbatim prompt that may support it. */
+export const evidenceIntentions = pgTable('evidence_intentions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  sessionId: uuid('session_id').references(() => aiSessions.id),
+  sourceEventId: uuid('source_event_id').references(() => evidenceEvents.id),
+  encryptedValue: jsonb('encrypted_value').$type<Record<string, unknown>>().notNull(),
+  evidenceState: text('evidence_state').$type<'observed' | 'inferred' | 'corrected'>().notNull(),
+  confidence: integer('confidence').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantSessionIndex: index('evidence_intentions_tenant_session_idx')
+    .on(table.tenantId, table.sessionId),
+  stateCheck: check('evidence_intentions_state_check',
+    sql`${table.evidenceState} in ('observed', 'inferred', 'corrected')`),
+  confidenceCheck: check('evidence_intentions_confidence_check',
+    sql`${table.confidence} between 0 and 100`),
+}));
+
+/** Typed graph relationship; nodes remain owned by their authoritative tables. */
+export const evidenceLinks = pgTable('evidence_links', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  fromType: text('from_type').notNull(),
+  fromId: text('from_id').notNull(),
+  toType: text('to_type').notNull(),
+  toId: text('to_id').notNull(),
+  relationship: text('relationship').notNull(),
+  evidenceState: text('evidence_state').$type<'observed' | 'inferred' | 'corrected'>().notNull(),
+  confidence: integer('confidence').notNull(),
+  basis: text('basis').notNull(),
+  correctedFromLinkId: uuid('corrected_from_link_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantEdgeUnique: unique('evidence_links_tenant_edge_key').on(
+    table.tenantId, table.fromType, table.fromId, table.toType, table.toId, table.relationship,
+  ),
+  tenantFromIndex: index('evidence_links_tenant_from_idx')
+    .on(table.tenantId, table.fromType, table.fromId),
+  tenantToIndex: index('evidence_links_tenant_to_idx')
+    .on(table.tenantId, table.toType, table.toId),
+  stateCheck: check('evidence_links_state_check',
+    sql`${table.evidenceState} in ('observed', 'inferred', 'corrected')`),
+  confidenceCheck: check('evidence_links_confidence_check',
+    sql`${table.confidence} between 0 and 100`),
+}));
+
+/** Encrypted customer narrative; never becomes an identity or attribution source. */
+export const evidenceSummaries = pgTable('evidence_summaries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  rootType: text('root_type').notNull(),
+  rootId: text('root_id').notNull(),
+  encryptedValue: jsonb('encrypted_value').$type<Record<string, unknown>>().notNull(),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantRootFingerprintUnique: unique('evidence_summaries_tenant_root_fingerprint_key')
+    .on(table.tenantId, table.rootType, table.rootId, table.sourceFingerprint),
+}));
+
+/** Encrypted semantic material. The MVP ranks locally after tenant-scoped decryption. */
+export const evidenceSemanticDocuments = pgTable('evidence_semantic_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  intentionId: uuid('intention_id').references(() => evidenceIntentions.id, { onDelete: 'cascade' })
+    .notNull(),
+  encryptedValue: jsonb('encrypted_value').$type<Record<string, unknown>>().notNull(),
+  model: text('model').notNull().default('trackai-token-set-v1'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIntentionUnique: unique('evidence_semantic_documents_tenant_intention_key')
+    .on(table.tenantId, table.intentionId),
+}));
+
 /** Append-only transitions used to calculate lifecycle retention and rework. */
 export const aiCodeLifecycleEvents = pgTable('ai_code_lifecycle_events', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -1089,3 +1241,10 @@ export type SCMCommitFile = typeof scmCommitFiles.$inferSelect;
 export type AISession = typeof aiSessions.$inferSelect;
 export type AISessionUsage = typeof aiSessionUsage.$inferSelect;
 export type TelemetryCorrection = typeof telemetryCorrections.$inferSelect;
+export type TenantEvidenceSetting = typeof tenantEvidenceSettings.$inferSelect;
+export type EvidenceEvent = typeof evidenceEvents.$inferSelect;
+export type EvidenceEventContent = typeof evidenceEventContents.$inferSelect;
+export type EvidenceIntention = typeof evidenceIntentions.$inferSelect;
+export type EvidenceLink = typeof evidenceLinks.$inferSelect;
+export type EvidenceSummary = typeof evidenceSummaries.$inferSelect;
+export type EvidenceSemanticDocument = typeof evidenceSemanticDocuments.$inferSelect;

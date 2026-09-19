@@ -467,7 +467,7 @@ test('tenant admin and auditor action matrix cannot cross tenant or subject boun
     }), false, `subject crossing should block ${action}`);
     assert.equal(adminMembershipAllows(auditor, {
       tenantId: 'tenant-a', subject: 'auditor-a', action,
-    }), action === 'audit.read' || action === 'operations.read',
+    }), action === 'audit.read' || action === 'operations.read' || action === 'evidence.raw.read',
     `auditor decision mismatch for ${action}`);
   }
 });

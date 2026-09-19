@@ -103,6 +103,7 @@ ui-debug.log
 .next/
 .next-dev/
 out/
+*.tsbuildinfo
 
 # Turborepo
 .turbo/

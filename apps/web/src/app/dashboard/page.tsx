@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
+  getEvidenceExplanation, getEvidenceRaw, getEvidenceSettings, searchEvidenceIntentions,
+  setEvidenceCollection,
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
   getSessions, getAdminContext, getAdminAudit, getAdminBackfillAuthorizations,
@@ -21,15 +23,17 @@ import {
   type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
   type AdminRepositoryResources,
   type CommitListItem, type Contributor, type DashboardSummary,
+  type EvidenceExplanation, type EvidenceGraphNode, type EvidenceSearchResult,
   type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
 
-type View = 'lifecycle' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
+type View = 'lifecycle' | 'evidence' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
 type Detail = { kind: 'session' | 'commit' | 'pullRequest'; data: Record<string, any> } | null;
 
 const navigation: Array<{ id: View; label: string }> = [
   { id: 'lifecycle', label: 'Code Lifecycle' },
+  { id: 'evidence', label: 'Evidence Explorer' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'commits', label: 'Commits' },
   { id: 'pullRequests', label: 'Pull Requests' },
@@ -142,6 +146,102 @@ function EvidenceFlow({ flow }: { flow: EvidenceFlowResponse }) {
     rendered.push(<details key={`tools:${group[0].id}`} className="rounded-lg border border-slate-800 p-3"><summary className="cursor-pointer text-sm text-cyan-200">{calls} tool {calls === 1 ? 'call' : 'calls'}</summary><div className="mt-4 space-y-4">{group.map((node) => <EvidenceNode key={node.id} node={node} />)}</div></details>);
   }
   return <div className="space-y-4">{rendered}</div>;
+}
+
+function EvidenceExplorer({ commits, adminContext, openCommit }: {
+  commits: CommitListItem[];
+  adminContext: AdminContext | null;
+  openCommit: (id: string) => void;
+}) {
+  const [commitId, setCommitId] = useState(commits[0]?.id ?? '');
+  const [explanation, setExplanation] = useState<EvidenceExplanation | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<EvidenceSearchResult[]>([]);
+  const [raw, setRaw] = useState<Record<string, unknown>>({});
+  const [settings, setSettings] = useState<{ rawCollectionEnabled: boolean; retentionDays: number } | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const canReadRaw = adminContext?.membership?.status === 'active';
+  const canManageConsent = adminContext?.membership?.role === 'tenant_admin'
+    && adminContext.membership.status === 'active';
+
+  useEffect(() => {
+    if (!commitId && commits[0]) setCommitId(commits[0].id);
+  }, [commitId, commits]);
+
+  useEffect(() => {
+    if (!commitId) return;
+    setLoading(true); setError(null); setRaw({});
+    void getEvidenceExplanation(commitId).then(setExplanation)
+      .catch(cause => setError(cause instanceof Error ? cause.message : 'Evidence unavailable'))
+      .finally(() => setLoading(false));
+  }, [commitId]);
+
+  useEffect(() => {
+    if (!canReadRaw) return;
+    void getEvidenceSettings().then(value => setSettings({
+      rawCollectionEnabled: value.rawCollectionEnabled,
+      retentionDays: value.retentionDays,
+    })).catch(() => setSettings(null));
+  }, [canReadRaw]);
+
+  async function runSearch() {
+    if (search.trim().length < 2) return;
+    setError(null);
+    try { setSearchResults((await searchEvidenceIntentions(search.trim())).results); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Search unavailable'); }
+  }
+
+  async function reveal(node: EvidenceGraphNode) {
+    try {
+      const value = await getEvidenceRaw(node.id);
+      setRaw(current => ({ ...current, [node.id]: value }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Raw evidence unavailable'); }
+  }
+
+  async function toggleCollection() {
+    if (!settings || !canManageConsent) return;
+    setSettingsBusy(true); setError(null);
+    try {
+      await setEvidenceCollection(!settings.rawCollectionEnabled);
+      setSettings({ ...settings, rawCollectionEnabled: !settings.rawCollectionEnabled });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Consent update failed'); }
+    finally { setSettingsBusy(false); }
+  }
+
+  const eventNodes = explanation?.graph.nodes.filter(node => node.type === 'event') ?? [];
+  const supportingNodes = explanation?.graph.nodes.filter(node => node.type !== 'event') ?? [];
+  const stateTone = (state: string): 'green' | 'amber' | 'violet' | 'slate' => state === 'observed'
+    ? 'green' : state === 'corrected' ? 'violet' : state === 'inferred' ? 'amber' : 'slate';
+
+  return <div className="space-y-5">
+    <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs uppercase tracking-wider text-slate-500">Start from a commit<select value={commitId} onChange={event => setCommitId(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case tracking-normal text-slate-200">{commits.map(commit => <option key={commit.id} value={commit.id}>{commit.sha.slice(0, 8)} · {commit.subject}</option>)}</select></label><button disabled={!commitId} onClick={() => openCommit(commitId)} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300">Commit details</button></div>
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+        <div className="text-xs uppercase tracking-wider text-slate-500">Raw OpenCode collection</div>
+        <div className="mt-2 flex items-center justify-between gap-3"><div><div className="text-sm text-white">{settings ? settings.rawCollectionEnabled ? 'Enabled' : 'Disabled' : canReadRaw ? 'Unavailable' : 'Admin access required'}</div>{settings && <div className="text-xs text-slate-500">Encrypted · {settings.retentionDays}-day retention</div>}</div>{canManageConsent && settings && <button disabled={settingsBusy} onClick={() => void toggleCollection()} className={`rounded-lg px-3 py-2 text-xs ${settings.rawCollectionEnabled ? 'border border-rose-500/40 text-rose-200' : 'bg-violet-600 text-white'}`}>{settings.rawCollectionEnabled ? 'Disable' : 'Enable'}</button>}</div>
+      </div>
+    </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5"><div className="flex gap-2"><input value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search intentions, for example: reduce login failures" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><button onClick={() => void runSearch()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white">Search intentions</button></div>{searchResults.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{searchResults.map(result => <button key={result.id} onClick={() => { const linked = commits.find(commit => result.commitIds.includes(commit.id)); if (linked) setCommitId(linked.id); }} className="rounded-lg border border-slate-800 p-3 text-left"><div className="text-sm text-white">{result.text}</div><div className="mt-2 flex gap-2"><Badge tone={stateTone(result.evidenceState)}>{result.evidenceState}</Badge><span className="text-xs text-slate-500">{result.match} · {Math.round(result.score * 100)}%</span></div></button>)}</div>}</div>
+    {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
+    {loading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the evidence story…</div>}
+    {!loading && explanation && <>
+      <section className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-6">
+        <div className="flex items-center justify-between"><div><div className="text-xs uppercase tracking-[0.2em] text-violet-300">Plain-language explanation</div><h2 className="mt-2 text-xl font-semibold text-white">Why does this code exist?</h2></div>{explanation.intention.evidenceState && <Badge tone={stateTone(explanation.intention.evidenceState)}>{explanation.intention.evidenceState}</Badge>}</div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div><div className="text-xs uppercase text-slate-500">Intention</div><div className="mt-1 text-slate-200">{explanation.intention.text ?? 'Unavailable — no explicit or safely inferred intention was captured.'}</div>{explanation.intention.confidence !== null && <div className="mt-1 text-xs text-slate-500">Confidence {explanation.intention.confidence}%</div>}</div>
+          <div><div className="text-xs uppercase text-slate-500">Outcome</div><div className="mt-1 text-slate-200">{explanation.outcome}</div></div>
+          <div><div className="text-xs uppercase text-slate-500">Friction</div><div className="mt-1 text-sm text-slate-300">{explanation.friction.toolCalls} tool calls · {explanation.friction.failedTools} failed · {explanation.friction.slowTools} slow · {explanation.friction.reworkSignals} reworked lines · {explanation.friction.unavailableEvidence} unavailable/redacted items</div></div>
+          <div><div className="text-xs uppercase text-slate-500">Learnings / open items</div><div className="mt-1 text-sm text-slate-300">{[...explanation.learnings, ...explanation.openItems].join(' ')}</div></div>
+        </div>
+      </section>
+      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><div><h2 className="font-semibold text-white">Supporting evidence</h2><p className="mt-1 text-sm text-slate-500">GitAI identities stay separate. Lines show the evidence basis—not invented causality.</p></div><div className="mt-5 space-y-3">{supportingNodes.sort((a, b) => (a.occurredAt ?? '').localeCompare(b.occurredAt ?? '')).map(node => <div key={`${node.type}:${node.id}`} className="flex items-start justify-between gap-4 rounded-lg border border-slate-800 p-3"><div><div className="text-sm text-white">{node.label}</div><div className="mt-1 text-xs text-slate-500">{node.type.replace('_', ' ')}{node.occurredAt ? ` · ${date(node.occurredAt)}` : ''}</div></div><div className="flex gap-2"><Badge tone={stateTone(node.evidenceState)}>{node.evidenceState}</Badge>{node.availability !== 'available' && <Badge tone="amber">{node.availability}</Badge>}</div></div>)}</div></section>
+      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><div><h2 className="font-semibold text-white">Provider timeline</h2><p className="mt-1 text-sm text-slate-500">Raw content stays closed until an approved administrator or auditor explicitly opens an item.</p></div><div className="mt-5 space-y-3">{eventNodes.length ? eventNodes.map(node => <div key={node.id} className="rounded-lg border border-slate-800 p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-sm text-white">{node.label}</div><div className="mt-1 text-xs text-slate-500">{date(node.occurredAt ?? null)} · {String(node.data?.model ?? 'model unavailable')}</div></div><div className="flex gap-2"><Badge tone={stateTone(node.evidenceState)}>{node.evidenceState}</Badge>{canReadRaw && node.availability !== 'unavailable' && node.availability !== 'expired' && !raw[node.id] && <button onClick={() => void reveal(node)} className="rounded border border-violet-500/40 px-2 py-1 text-xs text-violet-200">Open raw</button>}</div></div>{raw[node.id] !== undefined && <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{JSON.stringify(raw[node.id], null, 2)}</pre>}</div>) : <div className="text-sm text-slate-500">No centrally stored OpenCode events are available for the linked sessions.</div>}</div></section>
+    </>}
+  </div>;
 }
 
 function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: () => void; openLinked: (kind: 'session' | 'commit', id: string) => void }) {
@@ -659,9 +759,18 @@ export default function DashboardPage() {
     return () => { active = false; window.clearInterval(interval); };
   }, [refresh, router]);
 
-  const matches = (values: Array<string | null | undefined>) => values.some((value) => value?.toLowerCase().includes(query.toLowerCase()));
-  const filteredSessions = useMemo(() => sessions.filter((row) => matches([row.externalSessionId, row.displayName, row.agent, ...row.models.auditedValue])), [sessions, query]);
-  const filteredCommits = useMemo(() => commits.filter((row) => matches([row.sha, row.subject, row.authorEmail, row.repository?.name])), [commits, query]);
+  const matches = useCallback(
+    (values: Array<string | null | undefined>) => values.some(
+      (value) => value?.toLowerCase().includes(query.toLowerCase()),
+    ),
+    [query],
+  );
+  const filteredSessions = useMemo(() => sessions.filter((row) => matches([
+    row.externalSessionId, row.displayName, row.agent, ...row.models.auditedValue,
+  ])), [sessions, matches]);
+  const filteredCommits = useMemo(() => commits.filter((row) => matches([
+    row.sha, row.subject, row.authorEmail, row.repository?.name,
+  ])), [commits, matches]);
   const visibleTotals = view === 'lifecycle' && lifecycle?.totals
     ? lifecycle.totals
     : summary;
@@ -678,15 +787,16 @@ export default function DashboardPage() {
   return <div className="min-h-screen bg-slate-950 text-slate-200">
     <aside className="fixed inset-y-0 left-0 w-64 border-r border-slate-800 bg-slate-950 p-5">
       <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 font-bold text-white">T</div><div><div className="font-semibold text-white">TrackAI</div><div className="text-xs text-slate-500">Telemetry intelligence</div></div></div>
-      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'lifecycle' ? 'Live' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : item.id === 'contributors' ? contributors.length : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
+      <nav className="mt-10 space-y-1">{navigation.map((item) => <button key={item.id} onClick={() => setView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'lifecycle' ? 'Live' : item.id === 'evidence' ? 'Why' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : item.id === 'contributors' ? contributors.length : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
       <div className="absolute bottom-5 left-5 right-5 border-t border-slate-800 pt-4"><div className="truncate text-xs text-slate-500">{email}</div><button onClick={signOut} className="mt-2 text-xs text-slate-400 hover:text-white">Sign out</button></div>
     </aside>
     <main className="ml-64 min-h-screen p-8">
-      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/><button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
+      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}{view !== 'evidence' && <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/>}<button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
       {error && <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
       {view !== 'administration' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
       <section className="mt-7">
         {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
+        {view === 'evidence' && <EvidenceExplorer commits={commits} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
         {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>
           {filteredSessions.sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('session', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.displayName ?? 'Unnamed session'}</div><div className="mt-1 font-mono text-xs text-slate-500">{row.externalSessionId}</div></td><td className="px-5 py-4"><div>{row.agent}</div><div className="text-xs text-slate-500">{row.models.auditedValue.join(', ') || 'Unknown'} {row.models.corrected && <Badge tone="violet">corrected</Badge>}</div></td><td className="px-5 py-4 text-slate-400">{row.repositories.map((repo) => repo.name).join(', ') || '—'}</td><td className="px-5 py-4">{row.retainedCommitCount} / {row.historicalCommitCount}</td><td className="px-5 py-4">{compact(row.totalTokens)}</td><td className="px-5 py-4"><Badge tone={row.status === 'shipped' ? 'green' : 'amber'}>{row.status}</Badge></td></tr>)}</TableShell>}
         {view === 'commits' && <TableShell headers={['Commit', 'Repository', 'Author', 'Lifecycle', 'Sessions', 'Final AI', 'Human']}>
