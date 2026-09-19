@@ -35,11 +35,11 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **T5.2** | Fixed Evidence Safety Contract | Require tenant opt-in, tenant isolation, content/metadata separation, envelope encryption, secret scanning, audited raw access and 30-day deletion on portable PostgreSQL. | 🟢 ✅ | 🟡 ◐ | Security review and live two-tenant acceptance required. | Task4 security foundation | **Wave 2 · 2** | RLS deny-by-default, tenant-composite semantic FKs, encryption, consent, audit and complete derived-data purge are implemented. Live E5-3/E5-10 remain. |
 | **T5.3** | OpenCode Evidence Ingestion and Storage | Ingest idempotent OpenCode prompt, response, reasoning and tool events while preserving provider IDs and GitAI session/trace/checkpoint identities. | 🟢 ✅ | 🟡 ◐ | Controlled local OpenCode-to-TrackAI run required. | T5.1–T5.2; Task4 managed transport | **Wave 3 · 3** | Isolated GitAI collector reads OpenCode SQLite, redacts locally and uses tenant/repository-bound managed delivery. Synthetic mapping/upload passes; live server replay remains. Other providers wait for Task13. |
 | **T5.4** | Work-Item Linkage | Link GitHub Issues, Jira or Linear only with explicit customer configuration. | ⚪ — | ⚪ — | Customer-led future decision. | Customer configuration and provider authorization | **Deferred** | Deliberately excluded from Task5. Reconsider with a customer or during Task14. |
-| **T5.5** | Evidence Graph APIs | Traverse commit, file/line, session, trace, checkpoint, intention and evidence event in both directions with tenant-safe filters and pagination. | 🟢 ✅ | 🟡 ◐ | Live database/query review required. | T5.1–T5.3 | **Wave 4 · 4** | Functional graph and explain APIs exist. E5-2/E5-5 must verify pagination, gaps and exact versus inferred links. |
-| **T5.6** | Visual Evidence Explorer | Present plain-language explanation, supporting graph/timeline, reverse navigation, search and privileged raw reveal. | 🟢 ✅ | 🟡 ◐ | Product-manager walkthrough required. | T5.5; Task10 owns polish | **Wave 5 · 5** | Functional dashboard includes repository/commit/session/tool/model/path search filters, match reasons, semantic health, friction signals and privileged raw reveal. E5-6/E5-12 remain. |
-| **T5.7** | Pain-Point and Quality Analytics | Explain failures, retries, slow tools, prompt loops, rework, abandoned work and weak outcomes without employee scoring. | 🟢 ✅ | 🟡 ◐ | Analyst interpretation review required. | T5.3, T5.5; Task2 metrics | **Wave 5 · 6** | Deterministic analytics exist. Realistic E5-7 evidence and explanation validation remain. |
-| **T5.8** | Code-to-Intention Reverse Engineering | Navigate commit/file/line → GitAI range/checkpoint/trace/session → provider evidence/intention without claiming time proximity as causality. | 🟢 ✅ | 🟡 ◐ | Manual provenance audit required. | T5.1, T5.3, T5.5 | **Wave 4 · 7** | Range-attribution traversal exists. E5-8 must verify exact Git Note lineage and honest missing evidence. |
-| **T5.9** | Semantic Intention Review | Provide tenant-isolated intention embeddings, exact and lexical retrieval, cosine retrieval, hybrid fusion, explainable reranking and outcome comparison. | 🟢 ✅ | 🟡 ◐ | Product relevance review, pinned model installation and hard-negative labelling required. | T5.2–T5.5 | **Wave 6 · 8** | Real pgvector cosine + PostgreSQL lexical retrieval, RRF `k=60`, deterministic reranking, local-only BGE adapter, durable jobs and revision reindex are implemented. Live model/relevance E5-9 remains. |
+| **T5.5** | Evidence Graph APIs | Traverse commit, file/line, session, trace, checkpoint, intention and evidence event in both directions with tenant-safe filters and pagination. | 🟢 ✅ | 🟡 ◐ | Live database/query review required. | T5.1–T5.3 | **Wave 4 · 4** | Common PR/commit/intention work stories and exact file/line explanation now project the graph without redefining GitAI identities. E5-2/E5-5 still require live pagination and gap review. |
+| **T5.6** | Visual Evidence Explorer | Present plain-language explanation, supporting graph/timeline, reverse navigation, search and privileged raw reveal. | 🟢 ✅ | 🟡 ◐ | Leader/developer/security walkthroughs required. | T5.5; Task10 owns later styling only | **Wave 5 · 5** | The unified Evidence Workspace is PR-led, perspective-aware and progressively reveals changes, insights and low-level evidence. Existing lifecycle/session/commit/PR/repository/contributor views remain available for diagnostics. E5-6/E5-12 remain. |
+| **T5.7** | Pain-Point and Quality Analytics | Explain failures, retries, slow tools, prompt loops, rework, abandoned work and weak outcomes without employee scoring. | 🟢 ✅ | 🟡 ◐ | Analyst interpretation review required. | T5.3, T5.5; Task2 metrics | **Wave 5 · 6** | Work stories combine friction, rework, evidence gaps, unresolved signals and deterministically identified tests. Realistic E5-7 evidence and explanation validation remain. |
+| **T5.8** | Code-to-Intention Reverse Engineering | Navigate commit/file/line → GitAI range/checkpoint/trace/session → provider evidence/intention without claiming time proximity as causality. | 🟢 ✅ | 🟡 ◐ | Manual provenance audit required. | T5.1, T5.3, T5.5 | **Wave 4 · 7** | The workspace supports file/line entry and labels only a GitAI `attributed_to` range edge as exact; a missing range is an explicit gap. Live E5-8 remains. |
+| **T5.9** | Semantic Intention Review | Provide tenant-isolated intention embeddings, exact and lexical retrieval, cosine retrieval, hybrid fusion, explainable reranking and outcome comparison. | 🟢 ✅ | 🟡 ◐ | Product relevance review, pinned model installation and hard-negative labelling required. | T5.2–T5.5 | **Wave 6 · 8** | Hybrid intention matches now roll up to PR/direct/unfinished customer stories; exact PR/branch/SHA/path/tool/model/error matching, filters and similar-outcome cards exist. Live model/relevance E5-9 remains. |
 | **T5.10** | Continuous Verification | Continuously verify taxonomy, privacy, collector mapping, graph behavior, semantic quality and Task2/Task4 regressions. | 🟡 ◐ | 🟡 ◐ | Live provider, product and security acceptance required. | T5.1–T5.9 | **Wave 7 · 9** | Automated API/security/metric/collector checks and pgvector CI workflow exist. Live database/provider/browser/semantic gates and E5-12 remain. Customer certification stays in Tasks12/14. |
 
 ## Execution waves
@@ -63,12 +63,12 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-3** | Consent, tenant isolation, encryption, secret redaction and raw authorization | T5.2 | 🟢 ✅ | 🟡 ◐ | Static/unit controls pass, including RLS and tenant-composite semantic references; live two-tenant and log inspection remain. | `44de334`, `2a3e528` | Security acceptance |
 | **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟡 ◐ | GitAI synthetic SQLite-to-upload test covers local redaction, exact tenant/repository binding and unavailable reasoning; live authenticated TrackAI replay remains. | GitAI `a8d93aa20` | Local OpenCode run |
 | **E5-5** | Forward/reverse graph traversal and pagination | T5.5 | 🟢 ✅ | 🟡 ◐ | Automated graph contracts exist; live query review remains. | — | Query review |
-| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | Functional UI exists; product-manager walkthrough remains. | — | Product acceptance |
-| **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟡 ◐ | Deterministic rules and customer-facing friction cards exist; realistic synthetic corpus and analyst review remain. | `2a3e528` | Analyst acceptance |
-| **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟡 ◐ | Traversal exists; run exact line-attribution and missing-note cases. | — | Provenance audit |
-| **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟡 ◐ | Token overlap is removed. Local BGE/pgvector/FTS/RRF code and tests exist; pinned artifact run, two-tenant negatives and relevance thresholds remain. | `44de334`, `2a3e528` | Relevance labelling |
+| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | Unified workspace, perspective lenses, PR-first stories and progressive evidence tree compile/build; three controlled customer walkthroughs remain. | `11a4025`, `056c475` | Product acceptance |
+| **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟡 ◐ | Story insights and deterministic test recognition exist; realistic synthetic corpus and analyst review remain. | `2a3e528`, `11a4025` | Analyst acceptance |
+| **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟡 ◐ | File/line UI and exact-range-only classification exist; run live exact and missing-attribution cases. | `11a4025` | Provenance audit |
+| **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟡 ◐ | Local BGE/pgvector/FTS/RRF plus customer-level exact metadata search, filters and outcome comparison exist; pinned artifact, two-tenant negatives and relevance thresholds remain. | `44de334`, `2a3e528`, `11a4025` | Relevance labelling |
 | **E5-10** | Correction, expiry and complete derived-data deletion | T5.2, T5.9 | 🟢 ✅ | 🟡 ◐ | Corrections preserve source expiry; purge removes vectors, lexical rows, jobs, old token documents, intentions and summaries. Live deletion inspection remains. | `44de334` | Deletion review |
-| **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟡 ◐ | TrackAI API/security/metric suite passes 111/111; API TypeScript compilation and web production build pass. GitAI focused Task5 tests pass. Its full suite reports 2,166 passes and 17 existing local-listener failures because this sandbox forbids listener creation; lint reports 11 pre-existing errors in untouched files under Rust 1.97. | TrackAI `2a3e528`; GitAI `a8d93aa20` | Rerun GitAI full suite/lint in supported CI, then release review |
+| **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟡 ◐ | TrackAI API/security/metric suite passes 112/112; API/web TypeScript, web lint and production build pass. GitAI focused Task5 tests pass. Its full suite reports 2,166 passes and 17 existing local-listener failures because this sandbox forbids listener creation; lint reports 11 pre-existing errors in untouched files under Rust 1.97. | TrackAI `11a4025`, `056c475`; GitAI `a8d93aa20` | Rerun GitAI full suite/lint in supported CI, then release review |
 | **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟡 ◐ | 🔴 ☐ | Run after E5-1–E5-11 pass. | — | Product/security acceptance |
 
 ## GitAI identity and terminology contract
@@ -94,8 +94,8 @@ a type of inference.
 1. A tenant administrator explicitly enables OpenCode raw-evidence collection.
 2. OpenCode/GitAI records provider events, sessions, traces, checkpoints and
    commit attribution without changing their identities.
-3. A customer selects a commit and asks, “Why does this code exist?”
-4. TrackAI shows intention, outcome, friction, learnings and open items.
+3. A customer starts from a PR, intention, direct commit, file/line or global search result.
+4. TrackAI shows four compact answers: why, outcome, key insight and separate evidence-quality dimensions.
 5. Every statement links to supporting evidence and displays its state and
    availability.
 6. The customer drills from commit or file/line to GitAI attribution and then
@@ -103,9 +103,26 @@ a type of inference.
 7. Approved administrators/auditors may explicitly reveal raw evidence; normal
    metadata and summary views never expose it.
 8. Similar-intention search compares prior outcomes and friction while exact
-   commit, file, session, tool and model filters remain available.
+   PR, branch, commit SHA, file, tool, model and safe-error matching remains available.
 9. Corrections create audited versions; expiry creates a visible gap rather
    than a fabricated explanation.
+
+## Unified customer evidence workspace
+
+The workspace is the default customer surface. It leads with PRs, then keeps
+direct commits and unfinished intentions in secondary expandable groups. A
+Leader, Developer or Security perspective changes ordering and default
+expansion only; it never changes evidence or authorization.
+
+The investigation uses one collapsible tree and one contextual detail pane:
+overview → intentions → lifecycle → changes → insights → evidence details.
+Sessions, checkpoints, traces and tools appear only below evidence details.
+Code Lifecycle, Sessions, Commits, Pull Requests, Repositories and Contributors
+remain in the left navigation during Task5 for debugging and regression review.
+
+Deferred from this workspace are “what went well” semantic interpretation,
+agent CLI/handoff, previous/next checkpoint navigation, session-first customer
+navigation and full source-code indexing.
 
 ## Semantic design summary
 
@@ -198,7 +215,7 @@ and does not block completion.
 | TrackAI working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/TrackAI-V1` |
 | Required Task4 TrackAI ancestor | `91e5724269789f4aa1b357d0665f88bd01af8852` |
 | Required GitAI Task4 client ancestor | `2d240fb939313f0cfbe43b71b779a1ac683dfb5d` |
-| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528` |
+| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528`, `11a4025`, `056c475` |
 | GitAI Task5 branch | `feature/task5-opencode-evidence` |
 | GitAI isolated working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/git-ai-task5` |
 | GitAI OpenCode collector checkpoint | `a8d93aa20` |
@@ -268,17 +285,25 @@ test log or issue.
 
 ### Phase E — customer Explorer and analytics
 
-1. As a normal metadata user, select a commit and read “Why does this code
-   exist?”, outcome, friction, learnings and open items without database access.
-2. Verify observed/inferred/corrected and available/redacted/unavailable/expired
-   labels with synthetic records.
-3. As an approved administrator/auditor, reveal one raw item. Confirm the audit
-   row exists and the response is `no-store`; confirm an unapproved role fails.
-4. Exercise repository, commit, session, path, tool and model filters and use a
-   search result to navigate back to a linked commit.
-5. Load failed/retried/slow tools, prompt loops, rework, abandoned work and a
-   session without a commit. Validate the friction cards and ensure no person
-   ranking is present. These steps complete E5-6/E5-7.
+1. In Leader perspective, open a concerning PR and confirm intention, outcome,
+   friction, evidence quality and similar outcomes are understandable without
+   expanding sessions or inspecting the database.
+2. In Developer perspective, expand a commit/file, enter an attributed line and
+   follow its exact GitAI range to intention, tests/tools and provenance. Repeat
+   with a missing range and confirm no time-based claim is presented as exact.
+3. In Security perspective, review observed/inferred/corrected plus
+   available/redacted/unavailable/expired labels. Reveal one raw event as an
+   approved administrator/auditor, confirm the `no-store` response and audit
+   record, then confirm an unapproved role fails.
+4. Search by PR title, branch, commit SHA, file path, tool/model, safe error and
+   semantic intention. Exercise repository, branch, date, agent/model, outcome
+   and result-type filters and navigate each result to its parent customer story.
+5. Load failed/retried/slow tools, prompt loops, rework, abandoned work, test
+   success/failure and an intention without a commit. Confirm no person ranking
+   exists and that direct/unfinished work remains in secondary groups.
+6. Switch perspectives and prove that only ordering/default expansion changes;
+   facts, states, results and permissions remain identical. These steps complete
+   E5-6/E5-7 and the customer portion of E5-8/E5-9.
 
 ### Phase F — semantic and deletion gates
 
@@ -301,11 +326,11 @@ test log or issue.
 ### Phase G — product-manager acceptance
 
 Run the entire path without database inspection: enable collection → collect
-synthetic OpenCode work → commit attributed code → ask why → inspect supporting
-evidence → review friction → search a similar intention → navigate to its
-outcome → correct an intention → observe expiry. Record sanitized screenshots,
-gate results and checkpoint commits in this file. Only then may E5-12 and the
-Task5 completion boundary become green.
+synthetic OpenCode work → create a multi-commit PR → inspect it as Leader →
+trace a file/line as Developer → audit a gap/raw reveal as Security → search a
+similar intention and compare outcomes → correct an intention → observe expiry.
+Record sanitized screenshots, gate results and checkpoint commits in this file.
+Only then may E5-12 and the Task5 completion boundary become green.
 
 ## Wave 1 implementation evidence
 
@@ -338,15 +363,17 @@ Task5 completion boundary become green.
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
 | 2026-09-19 | Customer Explorer and analytics implementation | 🟡 ◐ | TrackAI `2fcfc9b` and `2a3e528` provide the functional explanation, graph/timeline, filters, raw reveal, semantic health and visible friction cards. Product-manager and analyst acceptance remain. |
+| 2026-09-19 | Unified customer Evidence Workspace | 🟡 ◐ | TrackAI `11a4025` adds PR-led work stories, Leader/Developer/Security perspectives, direct/unfinished secondary groups, a hierarchical evidence deep dive, exact file/line “Why?”, deterministic tests, customer-level search and similar-outcome cards. `056c475` retains all diagnostic dashboard views. Three controlled browser walkthroughs remain. |
 
 ## Wave 6 implementation evidence
 
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
 | 2026-09-19 | Semantic intention search implementation | 🟡 ◐ | TrackAI `44de334` and `2a3e528` replace token overlap with PostgreSQL FTS, exact pgvector cosine retrieval, RRF `k=60`, deterministic reranking, revision-aware jobs/reindex and a local-only BGE adapter. A pinned model run and relevance/deletion lab remain. |
+| 2026-09-19 | Customer-level hybrid search projection | 🟡 ◐ | TrackAI `11a4025` rolls semantic intentions and exact PR/branch/SHA/path/tool/model/error matches up to PR, direct-change or unfinished-work results, with outcome comparison and compact filters. Live pinned-model relevance remains. |
 
 ## Wave 7 implementation evidence
 
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
-| 2026-09-19 | Automated release verification | 🟡 ◐ | TrackAI: 111/111 tests, API compilation and web production build pass. GitAI: Task5-focused tests pass; the full run has 2,166 passes and 17 sandbox listener failures, while lint has 11 untouched baseline errors under Rust 1.97. E5-12 and all live portions remain, so Task5 is not yet complete under the completion rule. |
+| 2026-09-19 | Automated release verification | 🟡 ◐ | TrackAI: 112/112 tests, API/web compilation, web lint and production build pass. GitAI: Task5-focused tests pass; the full run has 2,166 passes and 17 sandbox listener failures, while lint has 11 untouched baseline errors under Rust 1.97. E5-12 and all live portions remain, so Task5 is not yet complete under the completion rule. |
