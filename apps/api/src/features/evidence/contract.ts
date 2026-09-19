@@ -178,6 +178,20 @@ export function contentFingerprint(value: unknown): string {
   return createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
+export function shouldCreateIntentionVersion(input: {
+  existingFingerprint?: string;
+  existingState?: EvidenceState;
+  nextFingerprint: string;
+  nextState: 'observed' | 'inferred';
+}): boolean {
+  if (!input.existingFingerprint) return true;
+  // An automatically inferred intention represents the session milestone, not
+  // every later prompt or collector chunk. Explicit input may supersede it.
+  if (input.nextState === 'inferred') return false;
+  return input.existingFingerprint !== input.nextFingerprint
+    || input.existingState !== input.nextState;
+}
+
 export function inferredIntentionFromPrompt(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const compact = value.replace(/\s+/g, ' ').trim();

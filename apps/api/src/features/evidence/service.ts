@@ -28,6 +28,7 @@ import {
   contentFingerprint,
   inferredIntentionFromPrompt,
   redactSecrets,
+  shouldCreateIntentionVersion,
   type EvidenceAvailability,
   type EvidenceState,
   type OpenCodeEvidenceBatchInput,
@@ -67,7 +68,7 @@ async function enqueueSemanticJob(
   tenantId: string,
   intention: typeof evidenceIntentions.$inferSelect,
 ) {
-  await withTenant(db, tenantId).insertDoNothing(evidenceSemanticJobs, {
+  const created = await withTenant(db, tenantId).insertDoNothing(evidenceSemanticJobs, {
     intentionId: intention.id,
     contentFingerprint: intention.contentFingerprint,
     modelRevision: configuredSemanticRevision(),
@@ -83,6 +84,7 @@ async function enqueueSemanticJob(
     evidenceSemanticJobs.contentFingerprint,
     evidenceSemanticJobs.modelRevision,
   ]);
+  return created.length > 0;
 }
 
 async function createOrReviseIntention(input: {
@@ -102,7 +104,12 @@ async function createOrReviseIntention(input: {
     evidenceIntentions,
     and(eq(evidenceIntentions.sessionId, input.sessionId), eq(evidenceIntentions.isCurrent, true)),
   )).sort((left, right) => right.version - left.version)[0];
-  if (existing?.contentFingerprint === fingerprint) return existing;
+  if (existing && !shouldCreateIntentionVersion({
+    existingFingerprint: existing.contentFingerprint,
+    existingState: existing.evidenceState,
+    nextFingerprint: fingerprint,
+    nextState: input.evidenceState,
+  })) return existing;
   if (existing) {
     await tenantDb.update(evidenceIntentions, { isCurrent: false }, eq(evidenceIntentions.id, existing.id));
   }
@@ -1070,6 +1077,34 @@ export async function semanticHealth(tenantId: string) {
       skipped: count('skipped'),
     },
   };
+}
+
+export async function enqueueSemanticReindex(input: {
+  tenantId: string;
+  actorId: string;
+  now?: Date;
+}) {
+  const now = input.now ?? new Date();
+  const tenantDb = withTenant(db, input.tenantId);
+  const intentions = await tenantDb.select(evidenceIntentions, and(
+    eq(evidenceIntentions.isCurrent, true),
+    gt(evidenceIntentions.expiresAt, now),
+  ));
+  let enqueued = 0;
+  for (const intention of intentions) {
+    if (await enqueueSemanticJob(input.tenantId, intention)) {
+      enqueued += 1;
+      await tenantDb.update(evidenceIntentions, {
+        semanticAvailability: 'pending',
+      }, eq(evidenceIntentions.id, intention.id));
+    }
+  }
+  await tenantDb.insert(securityAuditEvents, {
+    actorType: 'tenant_admin', actorId: input.actorId,
+    action: 'evidence.semantic.reindex_enqueued', targetType: 'tenant', targetId: input.tenantId,
+    details: { model: SEMANTIC_MODEL, modelRevision: configuredSemanticRevision(), enqueued },
+  });
+  return { model: SEMANTIC_MODEL, modelRevision: configuredSemanticRevision(), enqueued };
 }
 
 export async function frictionAnalytics(tenantId: string) {

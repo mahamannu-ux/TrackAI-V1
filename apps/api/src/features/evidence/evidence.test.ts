@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   inferredIntentionFromPrompt,
   redactSecrets,
+  shouldCreateIntentionVersion,
   validateOpenCodeEvidenceBatch,
 } from './contract';
 import { openCodeRowsToEvidenceEvents } from './opencode-collector';
@@ -99,6 +100,20 @@ test('inferred intention is a bounded summary, not the stored prompt identity', 
   assert.equal(inferredIntentionFromPrompt(null), null);
 });
 
+test('inferred intention is created at a session milestone, not for every later prompt', () => {
+  assert.equal(shouldCreateIntentionVersion({
+    nextFingerprint: 'first', nextState: 'inferred',
+  }), true);
+  assert.equal(shouldCreateIntentionVersion({
+    existingFingerprint: 'first', existingState: 'inferred',
+    nextFingerprint: 'later-prompt', nextState: 'inferred',
+  }), false);
+  assert.equal(shouldCreateIntentionVersion({
+    existingFingerprint: 'first', existingState: 'inferred',
+    nextFingerprint: 'first', nextState: 'observed',
+  }), true);
+});
+
 test('OpenCode collector preserves provider event identity and explicit trace mapping', () => {
   const events = openCodeRowsToEvidenceEvents([{
     messageId: 'message-1', messageTime: 1_750_000_000_000,
@@ -145,4 +160,21 @@ test('Task5 semantic migration enables pgvector, exact hybrid indexes, versionin
     'evidence_semantic_documents', 'evidence_intention_embeddings', 'evidence_semantic_jobs',
   ]) assert.match(migration, new RegExp(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`));
   assert.doesNotMatch(migration, /CREATE POLICY/);
+  const hardeningMigration = readFileSync(
+    resolve(process.cwd(), 'drizzle/0012_gray_warbird.sql'),
+    'utf8',
+  );
+  assert.match(hardeningMigration, /evidence_intention_embeddings_tenant_intention_fk/);
+  assert.match(hardeningMigration, /evidence_semantic_jobs_tenant_intention_fk/);
+  assert.match(hardeningMigration, /DROP CONSTRAINT "evidence_intention_embeddings_intention_id/);
+});
+
+test('local BGE adapter is pinned to local-only normalized 384-dimensional inference', () => {
+  const adapter = readFileSync(resolve(process.cwd(), 'scripts/trackai-bge-embed.py'), 'utf8');
+  assert.match(adapter, /BAAI\/bge-small-en-v1\.5/);
+  assert.match(adapter, /DIMENSIONS = 384/);
+  assert.match(adapter, /local_files_only=True/);
+  assert.match(adapter, /trust_remote_code=False/);
+  assert.match(adapter, /normalize_embeddings=True/);
+  assert.doesNotMatch(adapter, /print\(customer_text/);
 });

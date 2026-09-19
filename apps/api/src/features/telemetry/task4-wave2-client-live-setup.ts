@@ -147,6 +147,7 @@ async function main(): Promise<void> {
       version: 1,
       repositories: provisioned.map(entry => ({
         repository_url: entry.repositoryUrl,
+        repository_id: entry.repositoryId,
         tenant_id: entry.tenantId,
         api_base_url: apiBaseUrl,
         credential_key_id: entry.keyId,

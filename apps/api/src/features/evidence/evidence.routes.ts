@@ -5,6 +5,7 @@ import {
   correctIntention,
   evidenceGraph,
   evidenceSettings,
+  enqueueSemanticReindex,
   explainCommit,
   frictionAnalytics,
   ingestOpenCodeEvidence,
@@ -223,6 +224,18 @@ evidenceAdminRouter.get('/semantic-health', requireAdminAction('evidence.raw.rea
   } catch {
     console.error('Evidence semantic health query failed');
     res.status(503).json({ error: 'Evidence semantic health is temporarily unavailable' });
+  }
+});
+
+evidenceAdminRouter.post('/semantic-reindex', requireAdminAction('evidence.consent.manage'), async (req, res) => {
+  const tenantId = tenant(req, res); if (!tenantId) return;
+  const actorId = req.user?.sub;
+  if (!actorId) { res.status(401).json({ error: 'Authenticated user is required' }); return; }
+  try {
+    res.status(202).json(await enqueueSemanticReindex({ tenantId, actorId }));
+  } catch {
+    console.error('Evidence semantic reindex failed');
+    res.status(503).json({ error: 'Evidence semantic reindex is temporarily unavailable' });
   }
 });
 

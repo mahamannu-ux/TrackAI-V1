@@ -29,11 +29,10 @@ async function main(): Promise<void> {
           'public.evidence_intention_embeddings',
           'public.evidence_semantic_jobs'
         ]) AS expected(name) WHERE to_regclass(expected.name) IS NOT NULL)::text AS semantic_tables,
-        (SELECT count(*) FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'evidence_intention_embeddings'
-           AND column_name = 'embedding'
-           AND udt_name = 'vector')::text AS vector_dimensions,
+        (SELECT count(*) FROM pg_attribute
+         WHERE attrelid = 'public.evidence_intention_embeddings'::regclass
+           AND attname = 'embedding'
+           AND format_type(atttypid, atttypmod) = 'vector(384)')::text AS vector_dimensions,
         (SELECT count(*) FROM pg_indexes
          WHERE schemaname = 'public'
            AND indexname = 'evidence_intention_embeddings_lexical_idx'
@@ -45,8 +44,10 @@ async function main(): Promise<void> {
           'evidence_intentions_lifecycle_check',
           'evidence_intentions_semantic_availability_check',
           'evidence_intention_embeddings_dimensions_check',
+          'evidence_intention_embeddings_tenant_intention_fk',
           'evidence_semantic_jobs_state_check',
-          'evidence_semantic_jobs_attempt_check'
+          'evidence_semantic_jobs_attempt_check',
+          'evidence_semantic_jobs_tenant_intention_fk'
         ))::text AS versioning_constraints,
         (SELECT count(*) FROM pg_class WHERE oid IN (
           'public.tenant_evidence_settings'::regclass,
@@ -85,12 +86,12 @@ async function main(): Promise<void> {
       tables: Number(row.semantic_tables) === 2,
       dimensions: Number(row.vector_dimensions) === 1,
       lexical: Number(row.lexical_indexes) === 1,
-      constraints: Number(row.versioning_constraints) === 8,
+      constraints: Number(row.versioning_constraints) === 10,
       rls: Number(row.rls_tables) === 9,
       policies: Number(row.browser_policies) === 0,
       plaintext: Number(row.plaintext_columns) === 0,
       rows: Number(row.invalid_rows) === 0,
-      journal: Number(row.journal_rows) >= 12,
+      journal: Number(row.journal_rows) >= 13,
     };
     if (Object.values(checks).some(value => !value)) {
       throw new Error('Task5 persistent schema verification failed');
@@ -99,7 +100,7 @@ async function main(): Promise<void> {
     console.log('semantic_tables=2');
     console.log('embedding_dimensions=384');
     console.log('lexical_gin_index=present');
-    console.log('versioning_constraints=8');
+    console.log('versioning_constraints=10');
     console.log('rls_enabled_tables=9');
     console.log('direct_browser_policies=0');
     console.log('unexpected_plaintext_columns=0');

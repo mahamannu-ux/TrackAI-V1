@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
-  getEvidenceExplanation, getEvidenceRaw, getEvidenceSemanticHealth, getEvidenceSettings, searchEvidenceIntentions,
+  getEvidenceExplanation, getEvidenceFriction, getEvidenceRaw, getEvidenceSemanticHealth, getEvidenceSettings, searchEvidenceIntentions,
   setEvidenceCollection,
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
@@ -168,6 +168,7 @@ function EvidenceExplorer({ commits, repositories, sessions, models, adminContex
   const [raw, setRaw] = useState<Record<string, unknown>>({});
   const [settings, setSettings] = useState<{ rawCollectionEnabled: boolean; retentionDays: number } | null>(null);
   const [semanticHealth, setSemanticHealth] = useState<EvidenceSemanticHealth | null>(null);
+  const [friction, setFriction] = useState<Array<Record<string, unknown>>>([]);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const canReadRaw = adminContext?.membership?.status === 'active';
   const canManageConsent = adminContext?.membership?.role === 'tenant_admin'
@@ -193,6 +194,10 @@ function EvidenceExplorer({ commits, repositories, sessions, models, adminContex
     })).catch(() => setSettings(null));
     void getEvidenceSemanticHealth().then(setSemanticHealth).catch(() => setSemanticHealth(null));
   }, [canReadRaw]);
+
+  useEffect(() => {
+    void getEvidenceFriction().then(value => setFriction(value.sessions)).catch(() => setFriction([]));
+  }, []);
 
   async function runSearch() {
     if (search.trim().length < 2) return;
@@ -246,6 +251,10 @@ function EvidenceExplorer({ commits, repositories, sessions, models, adminContex
       </div>
       {searchResults.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{searchResults.map(result => <button key={result.id} onClick={() => { const linked = commits.find(commit => result.commitIds.includes(commit.id)); if (linked) setCommitId(linked.id); }} className="rounded-lg border border-slate-800 p-3 text-left"><div className="text-sm text-white">{result.text}</div><div className="mt-2 flex flex-wrap gap-2"><Badge tone={stateTone(result.evidenceState)}>{result.evidenceState}</Badge><Badge tone="slate">{result.match}</Badge><span className="text-xs text-slate-500">{result.matchReasons.join(' + ')}{result.lexicalRank ? ` · lexical #${result.lexicalRank}` : ''}{result.vectorRank ? ` · semantic #${result.vectorRank}` : ''}</span></div></button>)}</div>}
     </div>
+    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+      <div><h2 className="font-semibold text-white">Workflow friction signals</h2><p className="mt-1 text-sm text-slate-500">System and workflow evidence only—not employee scoring.</p></div>
+      {friction.length ? <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{friction.slice(0, 6).map(row => <div key={String(row.sessionId)} className="rounded-lg border border-slate-800 p-3"><div className="truncate text-xs text-slate-500">Session {String(row.sessionId).slice(0, 12)}</div><div className="mt-2 text-sm text-slate-300">{Number(row.failedToolCalls ?? 0)} failed · {Number(row.retries ?? 0)} retries · {Number(row.slowToolCalls ?? 0)} slow · {Number(row.promptLoops ?? 0)} prompt loops</div><div className="mt-1 text-xs text-slate-500">{Number(row.reworkedLines ?? 0)} reworked lines{row.weakOutcome ? ' · no linked commit outcome' : ''}{row.abandoned ? ' · abandoned' : ''}</div></div>)}</div> : <div className="mt-3 text-sm text-slate-500">No OpenCode friction evidence is available yet.</div>}
+    </section>
     {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
     {loading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the evidence story…</div>}
     {!loading && explanation && <>

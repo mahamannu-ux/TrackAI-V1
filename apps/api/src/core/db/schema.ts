@@ -1105,8 +1105,7 @@ export const evidenceSemanticDocuments = pgTable('evidence_semantic_documents', 
 export const evidenceIntentionEmbeddings = pgTable('evidence_intention_embeddings', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
-  intentionId: uuid('intention_id').references(() => evidenceIntentions.id, { onDelete: 'cascade' })
-    .notNull(),
+  intentionId: uuid('intention_id').notNull(),
   contentFingerprint: text('content_fingerprint').notNull(),
   model: text('model').notNull(),
   modelRevision: text('model_revision').notNull(),
@@ -1123,14 +1122,18 @@ export const evidenceIntentionEmbeddings = pgTable('evidence_intention_embedding
     .on(table.tenantId, table.expiresAt),
   dimensionsCheck: check('evidence_intention_embeddings_dimensions_check',
     sql`${table.dimensions} = 384`),
+  tenantIntentionForeignKey: foreignKey({
+    columns: [table.tenantId, table.intentionId],
+    foreignColumns: [evidenceIntentions.tenantId, evidenceIntentions.id],
+    name: 'evidence_intention_embeddings_tenant_intention_fk',
+  }).onDelete('cascade'),
 }));
 
 /** Durable, idempotent local-model work; contains no plaintext customer content. */
 export const evidenceSemanticJobs = pgTable('evidence_semantic_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
-  intentionId: uuid('intention_id').references(() => evidenceIntentions.id, { onDelete: 'cascade' })
-    .notNull(),
+  intentionId: uuid('intention_id').notNull(),
   contentFingerprint: text('content_fingerprint').notNull(),
   modelRevision: text('model_revision').notNull(),
   state: text('state').$type<'pending' | 'processing' | 'completed' | 'failed' | 'skipped'>()
@@ -1151,6 +1154,11 @@ export const evidenceSemanticJobs = pgTable('evidence_semantic_jobs', {
     sql`${table.state} in ('pending', 'processing', 'completed', 'failed', 'skipped')`),
   attemptCheck: check('evidence_semantic_jobs_attempt_check',
     sql`${table.attemptCount} between 0 and 5`),
+  tenantIntentionForeignKey: foreignKey({
+    columns: [table.tenantId, table.intentionId],
+    foreignColumns: [evidenceIntentions.tenantId, evidenceIntentions.id],
+    name: 'evidence_semantic_jobs_tenant_intention_fk',
+  }).onDelete('cascade'),
 }));
 
 /** Append-only transitions used to calculate lifecycle retention and rework. */
