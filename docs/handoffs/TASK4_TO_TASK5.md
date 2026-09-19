@@ -6,15 +6,16 @@ start in a separate task, branch and worktree.
 This file—not either Codex conversation—is the concise cross-task source of
 truth. Do not copy Task4's chronological evidence log into Task5.
 
-## Immutable starting points
+## Immutable Task4 checkpoints
 
-| Repository | GitHub `main` SHA | State |
+| Repository | Task4 implementation checkpoint | State |
 |---|---|---|
 | TrackAI | `91e5724269789f4aa1b357d0665f88bd01af8852` | Task4 server, web, migrations and documentation merged |
 | Git AI | `2d240fb939313f0cfbe43b71b779a1ac683dfb5d` | Task4 client plus upstream Git AI `1.6.19` merged |
 
-Create Task5 from current GitHub `main`; do not continue inside either Task4
-worktree. Suggested branch: `feature/task5-evidence-explorer`.
+Create Task5 from current GitHub `main`, verify that it contains the TrackAI
+checkpoint above, and do not continue inside either Task4 worktree. Suggested
+branch: `feature/task5-evidence-explorer`.
 
 ## Verified foundation Task5 may consume
 
