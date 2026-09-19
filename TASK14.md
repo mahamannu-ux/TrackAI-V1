@@ -4,7 +4,7 @@
 
 Status: **🔴 ☐ Planned**
 
-Last updated: **2026-08-02**
+Last updated: **2026-09-19**
 
 Portfolio roadmap: [`ROUGH_ROADMAP.md`](ROUGH_ROADMAP.md)
 
@@ -39,6 +39,26 @@ product behavior or repeat unfinished feature work from earlier tasks.
 
 Task14 may rerun an earlier gate as a release prerequisite, but ownership of
 that contract remains with its original task.
+
+## Task4 carryover map
+
+Task4 is complete for its accepted local and non-destructive release scope.
+Its dated implementation-evidence rows are history, not a second backlog. Only
+the following unresolved boundaries carry forward:
+
+| Task4 boundary | Next owner | What remains |
+|---|---|---|
+| Production master-key injection | **Task14 · T14.2, T14.8, T14.10** | Replace local environment injection with a tested secret/KMS adapter and certify rotation, outage and rollback. |
+| Large production exports | **Task14 · T14.1, T14.5, T14.6, T14.10** | Replace the 32 MiB single-file limit with bounded chunking/compression and protected object storage; test download, restore and scale. |
+| Dependency and artifact release gate | **Task14 · T14.7** | Re-run vulnerability policy against the release dependency set and require signed artifacts, SBOM and provenance. Historical Task4 audit findings are evidence, not a frozen vulnerability list. |
+| Legacy static ingestion-token retirement | **Task14 · T14.8, T14.10**, consuming Task8/9 rollout | Certify that supported deployments use managed machine credentials and that the transitional static-token path is disabled. |
+| Destructive retention behavior | **Task6 defines policy; Task14 certifies deployment** | Task6 decides retention/deletion semantics and approvals. Task14 tests backup, restore, execution safety and audit after that contract exists. Task4 remains safely `retain`. |
+| Enterprise-scale administration UX | **Task10** | Pagination, bulk operations, inverse machine/repository views, accessibility and scale testing. |
+| General rule catalogs and Cedar-like evaluation | **Task6** | Policy vocabulary, inheritance, exceptions, simulation and signed endpoint bundles. |
+| Additional agent/OS route coverage | **Task13 and Task9** | Route fidelity and managed macOS/Windows/Linux deployment; Task14 certifies only the supported matrix they produce. |
+
+No other yellow row in Task4's chronological evidence log should be copied
+here. Later green evidence supersedes those interim checkpoints.
 
 ## Production invariants
 

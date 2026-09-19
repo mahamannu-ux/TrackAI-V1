@@ -124,6 +124,11 @@ idempotency and offline-delivery rules.
 
 ## Wave 1 implementation evidence
 
+> **How to read the evidence log:** the rows below are dated checkpoints. A
+> yellow row records what was incomplete on that date; it is not automatically
+> current backlog. Use the master matrix above for Task4's final state and the
+> concise carryover map in [`TASK14.md`](TASK14.md) for later production work.
+
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
 | 2026-07-31 | W1.0 isolated baselines | 🟢 ✅ | TrackAI `feature/task4-hardening` starts at `18d56e3`; Git AI `feature/task4-client-hardening` starts at `a77081cba`. TrackAI API baseline passed 42 tests and its TypeScript build; the web production build passed with non-secret build-only public values. |
