@@ -132,11 +132,19 @@ async function loadRecords(tenantId: string) {
     sessions, intentions, events, contents, rework, deployments };
 }
 
-function currentCommitIds(records: Records, pullRequestId: string): string[] {
-  const temporal = records.memberships.filter(row => row.pullRequestId === pullRequestId);
-  return (temporal.length
+export function currentPullRequestCommitIds(
+  memberships: Array<{ pullRequestId: string; commitId: string; active: boolean }>,
+  legacyLinks: Array<{ pullRequestId: string; commitId: string }>,
+  pullRequestId: string,
+): string[] {
+  const temporal = memberships.filter(row => row.pullRequestId === pullRequestId);
+  return temporal.length
     ? temporal.filter(row => row.active).map(row => row.commitId)
-    : records.legacyPrLinks.filter(row => row.pullRequestId === pullRequestId).map(row => row.commitId));
+    : legacyLinks.filter(row => row.pullRequestId === pullRequestId).map(row => row.commitId);
+}
+
+function currentCommitIds(records: Records, pullRequestId: string): string[] {
+  return currentPullRequestCommitIds(records.memberships, records.legacyPrLinks, pullRequestId);
 }
 
 function historicalCommitIds(records: Records, pullRequestId: string): string[] {
@@ -316,6 +324,13 @@ function mergeGraphs(graphs: Array<Awaited<ReturnType<typeof evidenceGraph>>>, r
   return { root, nodes: [...nodes.values()], edges: [...edges.values()], nextCursor: null };
 }
 
+export function exactRangeTraceIds(edges: Array<{
+  fromType: string; relationship: string; toType: string; toId: string;
+}>): string[] {
+  return edges.filter(edge => edge.fromType === 'code_range'
+    && edge.relationship === 'attributed_to' && edge.toType === 'trace').map(edge => edge.toId);
+}
+
 async function testSignals(tenantId: string, records: Records, sessionIds: string[]) {
   const wanted = new Set(sessionIds);
   const events = records.events.filter(row => wanted.has(row.sessionId));
@@ -381,8 +396,7 @@ export async function evidenceWorkStory(input: {
     graphs.push(await evidenceGraph({ tenantId: input.tenantId, rootType: 'session', rootId: sessionIds[0], limit: 200 }));
   }
   const graph = mergeGraphs(graphs, { type: input.rootType, id: input.rootId });
-  const focusTraces = graph.edges.filter(edge => edge.fromType === 'code_range'
-    && edge.relationship === 'attributed_to' && edge.toType === 'trace').map(edge => edge.toId);
+  const focusTraces = exactRangeTraceIds(graph.edges);
   const focus = input.focus ? {
     ...input.focus, attribution: (focusTraces.length ? 'exact' : 'missing') as 'exact' | 'missing',
     traceIds: focusTraces,

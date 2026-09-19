@@ -15,7 +15,7 @@ import {
   reciprocalRankFusion,
   semanticSafeError,
 } from './semantic';
-import { isTestCommand } from './workspace';
+import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand } from './workspace';
 
 function batch(overrides: Record<string, unknown> = {}) {
   return {
@@ -186,4 +186,27 @@ test('customer workspace identifies tests without treating ordinary shell work a
   assert.equal(isTestCommand({ command: 'task test' }), true);
   assert.equal(isTestCommand({ command: 'git status --short' }), false);
   assert.equal(isTestCommand({ path: 'src/testimonials.ts' }), false);
+});
+
+test('customer workspace uses active PR membership and retains legacy fallback only when needed', () => {
+  const memberships = [
+    { pullRequestId: 'pr-1', commitId: 'current', active: true },
+    { pullRequestId: 'pr-1', commitId: 'removed', active: false },
+  ];
+  const legacy = [
+    { pullRequestId: 'pr-1', commitId: 'legacy-stale' },
+    { pullRequestId: 'pr-2', commitId: 'legacy-current' },
+  ];
+  assert.deepEqual(currentPullRequestCommitIds(memberships, legacy, 'pr-1'), ['current']);
+  assert.deepEqual(currentPullRequestCommitIds(memberships, legacy, 'pr-2'), ['legacy-current']);
+});
+
+test('file-line exactness requires an explicit GitAI range attribution edge', () => {
+  assert.deepEqual(exactRangeTraceIds([
+    { fromType: 'event', relationship: 'reported_trace', toType: 'trace', toId: 'provider-trace' },
+    { fromType: 'checkpoint', relationship: 'identified_by', toType: 'trace', toId: 'checkpoint-trace' },
+  ]), []);
+  assert.deepEqual(exactRangeTraceIds([
+    { fromType: 'code_range', relationship: 'attributed_to', toType: 'trace', toId: 'exact-trace' },
+  ]), ['exact-trace']);
 });
