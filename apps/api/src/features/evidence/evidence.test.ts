@@ -16,6 +16,10 @@ import {
   semanticSafeError,
 } from './semantic';
 import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand } from './workspace';
+import {
+  task5VerificationCorpus,
+  validateTask5VerificationCorpus,
+} from './task5-verification-corpus';
 
 function batch(overrides: Record<string, unknown> = {}) {
   return {
@@ -41,6 +45,37 @@ test('OpenCode evidence contract keeps prompt and intention separate', () => {
   assert.equal(parsed.intention, 'Improve login reliability');
   assert.equal(parsed.events[0].content, 'Reduce login failures.');
   assert.equal(parsed.events[0].type, 'prompt');
+});
+
+test('Task5 verification corpus covers every evidence gate with one bounded product story', () => {
+  assert.deepEqual(validateTask5VerificationCorpus(), {
+    corpusId: 'task5-password-recovery-v1',
+    pullRequests: 3,
+    commits: 7,
+    sessions: 5,
+    intentions: 6,
+    evidenceScenarios: 8,
+    gates: 12,
+  });
+});
+
+test('Task5 verification corpus proves GitAI many-to-many identity without redefining sessions', () => {
+  const sessions = task5VerificationCorpus.sessions;
+  assert.ok(sessions.some(row => row.commits.length === 0));
+  assert.ok(sessions.some(row => row.commits.length === 1));
+  assert.ok(sessions.some(row => row.commits.length > 1));
+  const recoveryTestSessions = sessions.filter(row => row.commits.some(commit => commit === 'recovery-test'));
+  assert.equal(recoveryTestSessions.length, 2);
+});
+
+test('Task5 verification corpus separates semantic positives from token-word hard negatives', () => {
+  const cases = task5VerificationCorpus.searchCases;
+  assert.ok(cases.relevantIntentions.includes('recovery-v2'));
+  assert.ok(cases.relevantIntentions.includes('refresh-race'));
+  assert.deepEqual(cases.hardNegatives, ['design-token']);
+  const negative = task5VerificationCorpus.intentions.find(row => row.key === 'design-token');
+  assert.match(negative?.text ?? '', /tokens/);
+  assert.match(negative?.text ?? '', /without changing authentication/);
 });
 
 test('OpenCode evidence contract rejects providers outside Task5 scope', () => {

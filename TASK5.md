@@ -226,6 +226,28 @@ Use only synthetic prompts, tool payloads, repository data and credentials in
 this verification. Never paste customer evidence into a terminal, fixture,
 test log or issue.
 
+### Controlled verification data
+
+Task5 uses one deterministic synthetic corpus, `task5-password-recovery-v1`,
+rather than a large collection of unrelated demo code. The committed corpus
+contains identities and safe metadata only. Raw synthetic payloads and unique
+redaction sentinels are created by the live runner and are never reused as
+credentials.
+
+| Customer-visible story | Minimum data | Gates covered |
+|---|---|---|
+| Password-recovery PR | Three active commits, one removed historical commit, two contributing sessions, corrected intention, tests/tools and exact plus missing line attribution | E5-1, E5-2, E5-5–E5-8, E5-12 |
+| Related session-refresh PR | One deployed commit and a semantically related intention | E5-6, E5-9, E5-12 |
+| Design-token PR | One deliberately misleading keyword match that is not authentication work | E5-9 |
+| Direct and unfinished work | One direct commit and one abandoned zero-commit session/intention | E5-1, E5-6, E5-7 |
+| Isolated tenant copy | Similar intention wording owned by a second synthetic tenant | E5-3, E5-9 |
+| Expiry copy | Runtime-created evidence with a controlled expired timestamp | E5-10 |
+
+This is seven core commits across three PRs, plus one direct change and one
+unfinished effort. More commits are added only when a gate exposes a genuine
+coverage gap. The corpus contract and its structural tests live in
+`apps/api/src/features/evidence/task5-verification-corpus.ts`.
+
 ### Phase A — automated baseline
 
 1. In the TrackAI working copy, run `npm ci` if dependencies are absent.
