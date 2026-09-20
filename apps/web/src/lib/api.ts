@@ -179,7 +179,6 @@ export type EvidenceSemanticHealth = {
   jobs: { pending: number; processing: number; completed: number; failed: number; skipped: number };
 };
 
-export type EvidencePerspective = 'leader' | 'developer' | 'security';
 export type EvidenceWorkKind = 'pull_request' | 'direct_commit' | 'unfinished_intention';
 export type EvidenceOutcome = 'open' | 'merged' | 'deployed' | 'closed' | 'direct_change' | 'unfinished';
 export type EvidenceCoverage = 'recorded' | 'partial' | 'unavailable';

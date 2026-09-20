@@ -493,7 +493,7 @@ export async function evidenceWorkStory(input: {
   if (!commitIds.length) quality.lifecycle = 'unavailable';
   const outcomeLabels: Record<WorkCard['outcome'], string> = {
     open: 'Open pull request', merged: 'Merged', deployed: 'Deployed', closed: 'Closed without merge',
-    direct_change: 'Direct change outside a pull request', unfinished: 'No linked commit outcome',
+    direct_change: 'Committed, not in a pull request', unfinished: 'Not committed',
   };
   const unresolved = [
     ...(values.failedTools ? [`${values.failedTools} failed tool operation${values.failedTools === 1 ? '' : 's'}`] : []),

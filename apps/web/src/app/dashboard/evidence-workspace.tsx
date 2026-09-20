@@ -1,16 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getEvidenceLineWhy,
   getEvidenceRaw,
-  getEvidenceSettings,
   getEvidenceWorkStory,
   getEvidenceWorkspace,
   searchEvidenceWorkspace,
   type AdminContext,
   type EvidenceGraphNode,
-  type EvidencePerspective,
   type EvidenceWorkCard,
   type EvidenceWorkStory,
   type EvidenceWorkspaceResponse,
@@ -57,11 +55,11 @@ function matchReason(reason: string) {
   return labels[reason] ?? reason.replaceAll('_', ' ');
 }
 
-const perspectiveCopy: Record<EvidencePerspective, { label: string; description: string }> = {
-  leader: { label: 'Leader', description: 'Outcomes, intentions and workflow insights' },
-  developer: { label: 'Developer', description: 'Changes, tests and code provenance' },
-  security: { label: 'Security', description: 'Evidence quality, gaps and authorized access' },
-};
+function outcomeLabel(value: EvidenceWorkCard['outcome']) {
+  if (value === 'direct_change') return 'Committed, not in a PR';
+  if (value === 'unfinished') return 'Not committed';
+  return value.replace('_', ' ');
+}
 
 function WorkCard({ card, selected, onSelect }: {
   card: EvidenceWorkCard & { matchReasons?: string[] }; selected: boolean; onSelect: () => void;
@@ -71,7 +69,7 @@ function WorkCard({ card, selected, onSelect }: {
   }`}>
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0"><div className="truncate font-medium text-white">{card.title}</div><div className="mt-1 text-xs text-slate-500">{card.repository?.name ?? 'Repository unavailable'}{card.branch ? ` · ${card.branch}` : ''}</div></div>
-      <Badge tone={tone(card.outcome)}>{card.outcome.replace('_', ' ')}</Badge>
+      <Badge tone={tone(card.outcome)}>{outcomeLabel(card.outcome)}</Badge>
     </div>
     <div className="mt-3 line-clamp-2 text-sm text-slate-300">{card.intention.text ?? 'No available intention'}</div>
     {card.matchReasons && card.matchReasons.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{card.matchReasons.map(reason => <Badge key={reason}>{matchReason(reason)}</Badge>)}</div>}
@@ -100,12 +98,9 @@ function TreeButton({ selected, onClick, children }: {
   return <button role="treeitem" aria-selected={selected} onClick={onClick} className={`block w-full rounded-md px-2 py-1.5 text-left text-sm ${selected ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-800/70 hover:text-white'}`}>{children}</button>;
 }
 
-function StoryTree({ story, perspective, selected, onSelect }: {
-  story: EvidenceWorkStory; perspective: EvidencePerspective; selected: string; onSelect: (value: string) => void;
+function StoryTree({ story, selected, onSelect }: {
+  story: EvidenceWorkStory; selected: string; onSelect: (value: string) => void;
 }) {
-  const changesOpen = perspective === 'developer';
-  const insightsOpen = perspective !== 'leader';
-  const evidenceOpen = perspective === 'security';
   const relatedToSession = (sessionId: string) => {
     const directlyLinked = new Set(story.graph.edges.filter(edge => edge.toType === 'session'
       && edge.toId === sessionId).map(edge => `${edge.fromType}:${edge.fromId}`));
@@ -116,11 +111,11 @@ function StoryTree({ story, perspective, selected, onSelect }: {
   };
   return <div role="tree" aria-label="Evidence story" className="space-y-2">
     <TreeButton selected={selected === 'overview'} onClick={() => onSelect('overview')}>Overview</TreeButton>
-    <details open={perspective === 'leader'}><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Intentions ({story.intentions.length})</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.intentions.length ? story.intentions.map(item => <TreeButton key={item.id} selected={selected === `intention:${item.id}`} onClick={() => onSelect(`intention:${item.id}`)}>{item.text}</TreeButton>) : <div className="px-2 py-1 text-xs text-slate-600">Unavailable</div>}</div></details>
-    <details open={perspective === 'leader'}><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Outcome and lifecycle</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2"><TreeButton selected={selected === 'lifecycle'} onClick={() => onSelect('lifecycle')}>PR, merge and deployment</TreeButton>{story.changes.map(commit => <TreeButton key={commit.id} selected={selected === `commit:${commit.id}`} onClick={() => onSelect(`commit:${commit.id}`)}>{commit.sha.slice(0, 8)} {commit.historical ? '(historical)' : ''}</TreeButton>)}</div></details>
-    <details open={changesOpen}><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Changes ({story.changes.reduce((sum, commit) => sum + commit.files.length, 0)} files)</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.changes.map(commit => <details key={commit.id}><summary className="cursor-pointer py-1 text-xs text-slate-500">{commit.sha.slice(0, 8)} · {commit.subject}</summary><div className="ml-3 space-y-1 border-l border-slate-800 pl-2">{commit.files.map(file => <TreeButton key={file.id} selected={selected === `file:${commit.id}:${file.id}`} onClick={() => onSelect(`file:${commit.id}:${file.id}`)}>{file.path}</TreeButton>)}</div></details>)}</div></details>
-    <details open={insightsOpen}><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Insights</summary><div role="group" className="ml-3 border-l border-slate-800 pl-2"><TreeButton selected={selected === 'insights'} onClick={() => onSelect('insights')}>Friction, tests and gaps</TreeButton></div></details>
-    <details open={evidenceOpen}><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Evidence details</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.graph.nodes.filter(node => node.type === 'session').map(node => <details key={node.id}><summary className="cursor-pointer px-2 py-1 text-xs text-slate-500">{node.label}</summary><div className="ml-3 space-y-1 border-l border-slate-800 pl-2">{relatedToSession(node.id).filter(item => item.type === 'checkpoint' || item.type === 'trace').map(item => <TreeButton key={`${node.id}:${item.type}:${item.id}`} selected={selected === `evidence:${item.type}:${item.id}`} onClick={() => onSelect(`evidence:${item.type}:${item.id}`)}>{item.label}</TreeButton>)}{relatedToSession(node.id).filter(item => item.type === 'event').map(item => <TreeButton key={item.id} selected={selected === `event:${item.id}`} onClick={() => onSelect(`event:${item.id}`)}>{item.label}</TreeButton>)}</div></details>)}</div></details>
+    <details><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Intentions ({story.intentions.length})</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.intentions.length ? story.intentions.map(item => <TreeButton key={item.id} selected={selected === `intention:${item.id}`} onClick={() => onSelect(`intention:${item.id}`)}>{item.text}</TreeButton>) : <div className="px-2 py-1 text-xs text-slate-600">Unavailable</div>}</div></details>
+    <details><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Outcome and lifecycle</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2"><TreeButton selected={selected === 'lifecycle'} onClick={() => onSelect('lifecycle')}>PR, merge and deployment</TreeButton>{story.changes.map(commit => <TreeButton key={commit.id} selected={selected === `commit:${commit.id}`} onClick={() => onSelect(`commit:${commit.id}`)}>{commit.sha.slice(0, 8)} {commit.historical ? '(historical)' : ''}</TreeButton>)}</div></details>
+    <details><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Changes ({story.changes.reduce((sum, commit) => sum + commit.files.length, 0)} files)</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.changes.map(commit => <details key={commit.id}><summary className="cursor-pointer py-1 text-xs text-slate-500">{commit.sha.slice(0, 8)} · {commit.subject}</summary><div className="ml-3 space-y-1 border-l border-slate-800 pl-2">{commit.files.map(file => <TreeButton key={file.id} selected={selected === `file:${commit.id}:${file.id}`} onClick={() => onSelect(`file:${commit.id}:${file.id}`)}>{file.path}</TreeButton>)}</div></details>)}</div></details>
+    <details><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Insights</summary><div role="group" className="ml-3 border-l border-slate-800 pl-2"><TreeButton selected={selected === 'insights'} onClick={() => onSelect('insights')}>Friction, tests and gaps</TreeButton></div></details>
+    <details><summary className="cursor-pointer py-1 text-sm font-medium text-slate-300">Evidence details</summary><div role="group" className="ml-3 space-y-1 border-l border-slate-800 pl-2">{story.graph.nodes.filter(node => node.type === 'session').map(node => <details key={node.id}><summary className="cursor-pointer px-2 py-1 text-xs text-slate-500">{node.label}</summary><div className="ml-3 space-y-1 border-l border-slate-800 pl-2">{relatedToSession(node.id).filter(item => item.type === 'checkpoint' || item.type === 'trace').map(item => <TreeButton key={`${node.id}:${item.type}:${item.id}`} selected={selected === `evidence:${item.type}:${item.id}`} onClick={() => onSelect(`evidence:${item.type}:${item.id}`)}>{item.label}</TreeButton>)}{relatedToSession(node.id).filter(item => item.type === 'event').map(item => <TreeButton key={item.id} selected={selected === `event:${item.id}`} onClick={() => onSelect(`event:${item.id}`)}>{item.label}</TreeButton>)}</div></details>)}</div></details>
   </div>;
 }
 
@@ -175,7 +170,6 @@ function DetailPane({ story, selected, canReadRaw, onLineWhy, onSelectNode }: {
 export function EvidenceWorkspace({ repositories, models, adminContext }: {
   repositories: Repository[]; models: TelemetryModel[]; adminContext: AdminContext | null;
 }) {
-  const [perspective, setPerspective] = useState<EvidencePerspective>('leader');
   const [workspace, setWorkspace] = useState<EvidenceWorkspaceResponse | null>(null);
   const [selectedCard, setSelectedCard] = useState<EvidenceWorkCard | null>(null);
   const [story, setStory] = useState<EvidenceWorkStory | null>(null);
@@ -186,12 +180,12 @@ export function EvidenceWorkspace({ repositories, models, adminContext }: {
   const [loading, setLoading] = useState(true);
   const [storyLoading, setStoryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [collection, setCollection] = useState<{ enabled: boolean; retention: number } | null>(null);
+  const browseScrollPosition = useRef(0);
   const canReadRaw = adminContext?.membership?.status === 'active';
 
-  function updateUrl(card: EvidenceWorkCard | null, lens = perspective, focus?: { path: string; line: number }) {
+  function updateUrl(card: EvidenceWorkCard | null, focus?: { path: string; line: number }) {
     const parameters = new URLSearchParams(window.location.search);
-    parameters.set('lens', lens);
+    parameters.delete('lens');
     if (card) { parameters.set('workType', card.kind); parameters.set('workId', card.id); }
     else { parameters.delete('workType'); parameters.delete('workId'); }
     if (focus) { parameters.set('path', focus.path); parameters.set('line', String(focus.line)); }
@@ -200,12 +194,13 @@ export function EvidenceWorkspace({ repositories, models, adminContext }: {
   }
 
   async function openCard(card: EvidenceWorkCard, restoreFocus?: { path: string; line: number }) {
+    if (!story) browseScrollPosition.current = window.scrollY;
     setSelectedCard(card); setStoryLoading(true); setError(null); setSelectedNode('overview');
     try {
       const value = restoreFocus && card.kind === 'direct_commit'
         ? await getEvidenceLineWhy(card.id, restoreFocus.path, restoreFocus.line)
         : await getEvidenceWorkStory(card.kind, card.id);
-      setStory(value); updateUrl(card, perspective, restoreFocus);
+      setStory(value); updateUrl(card, restoreFocus);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Evidence story unavailable'); }
     finally { setStoryLoading(false); }
   }
@@ -213,15 +208,17 @@ export function EvidenceWorkspace({ repositories, models, adminContext }: {
   function selectStoryNode(value: string) {
     setSelectedNode(value);
     setStory(current => current?.focus ? { ...current, focus: null } : current);
-    updateUrl(selectedCard, perspective);
+    updateUrl(selectedCard);
+  }
+
+  function closeStory() {
+    setStory(null); setSelectedCard(null); setSelectedNode('overview'); setError(null);
+    updateUrl(null);
+    window.requestAnimationFrame(() => window.scrollTo({ top: browseScrollPosition.current }));
   }
 
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
-    const requested = parameters.get('lens');
-    const saved = window.localStorage.getItem('trackai-evidence-perspective');
-    const lens = (requested ?? saved) as EvidencePerspective | null;
-    if (lens && perspectiveCopy[lens]) setPerspective(lens);
     void getEvidenceWorkspace().then(async value => {
       setWorkspace(value);
       const type = parameters.get('workType'); const id = parameters.get('workId');
@@ -233,16 +230,9 @@ export function EvidenceWorkspace({ repositories, models, adminContext }: {
       }
     }).catch(cause => setError(cause instanceof Error ? cause.message : 'Workspace unavailable'))
       .finally(() => setLoading(false));
-    if (canReadRaw) void getEvidenceSettings().then(value => setCollection({ enabled: value.rawCollectionEnabled, retention: value.retentionDays })).catch(() => setCollection(null));
     // Initial state is intentionally read once; story selection updates state directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canReadRaw]);
-
-  function choosePerspective(value: EvidencePerspective) {
-    setPerspective(value); window.localStorage.setItem('trackai-evidence-perspective', value);
-    updateUrl(selectedCard, value, story?.focus ? { path: story.focus.path, line: story.focus.line } : undefined);
-    setSelectedNode(value === 'leader' ? 'overview' : value === 'developer' ? 'insights' : 'lifecycle');
-  }
 
   async function runSearch() {
     if (query.trim().length < 2) return;
@@ -252,47 +242,20 @@ export function EvidenceWorkspace({ repositories, models, adminContext }: {
     finally { setLoading(false); }
   }
 
-  const insightCards = useMemo(() => {
-    if (!workspace) return [];
-    if (perspective === 'leader') return [
-      ['Outcomes', workspace.insights.outcomes], ['Needs attention', String(workspace.insights.attention)],
-      ['Evidence gaps', String(workspace.insights.evidenceGaps)],
-    ];
-    if (perspective === 'developer') return [
-      ['Active PR stories', String(workspace.pullRequests.total)], ['Direct changes', String(workspace.directChanges.total)],
-      ['Unfinished work', String(workspace.unfinishedWork.total)],
-    ];
-    return [
-      ['Evidence gaps', String(workspace.insights.evidenceGaps)],
-      ['Raw collection', collection ? collection.enabled ? 'Enabled' : 'Disabled' : 'Restricted'],
-      ['Raw retention', collection ? `${collection.retention} days` : 'Restricted'],
-    ];
-  }, [workspace, perspective, collection]);
-
   const displayed = searchResults.length ? searchResults : workspace?.pullRequests.items ?? [];
   return <div className="space-y-6">
-    <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-      <div><div className="text-xs uppercase tracking-wider text-slate-500">Perspective</div><div className="mt-1 text-sm text-slate-300">{perspectiveCopy[perspective].description}</div></div>
-      <div className="flex rounded-lg border border-slate-700 p-1" aria-label="Customer perspective">{(Object.keys(perspectiveCopy) as EvidencePerspective[]).map(value => <button key={value} aria-pressed={perspective === value} onClick={() => choosePerspective(value)} className={`rounded-md px-3 py-2 text-sm ${perspective === value ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}>{perspectiveCopy[value].label}</button>)}</div>
-    </section>
-    <section className="grid gap-3 md:grid-cols-3">{insightCards.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"><div className="text-xs uppercase tracking-wider text-slate-500">{label}</div><div className="mt-2 text-xl font-semibold text-white">{value}</div></div>)}</section>
-    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    {!story && !storyLoading && <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
       <div className="flex gap-2"><input value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runSearch(); }} placeholder="Find a PR, intention, commit SHA, file, tool or error…" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><button onClick={() => void runSearch()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white">Find or investigate</button>{searchResults.length > 0 && <button onClick={() => { setSearchResults([]); setQuery(''); }} className="rounded-lg border border-slate-700 px-3 py-2 text-sm">Clear</button>}</div>
-      <details className="mt-3"><summary className="cursor-pointer text-xs text-slate-500">Filters</summary><div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-8"><select value={filters.repositoryId ?? ''} onChange={event => setFilters(current => ({ ...current, repositoryId: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All repositories</option>{repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</select><input value={filters.branch ?? ''} onChange={event => setFilters(current => ({ ...current, branch: event.target.value }))} placeholder="Branch" className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/><select value={filters.agent ?? ''} onChange={event => setFilters(current => ({ ...current, agent: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All agents</option>{[...new Set(models.map(model => model.tool))].map(agent => <option key={agent} value={agent}>{agent}</option>)}</select><select value={filters.model ?? ''} onChange={event => setFilters(current => ({ ...current, model: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All models</option>{[...new Set(models.flatMap(model => model.model ? [model.model] : []))].map(model => <option key={model} value={model}>{model}</option>)}</select><select value={filters.outcome ?? ''} onChange={event => setFilters(current => ({ ...current, outcome: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All outcomes</option>{['open', 'merged', 'deployed', 'closed', 'direct_change', 'unfinished'].map(value => <option key={value} value={value}>{value.replace('_', ' ')}</option>)}</select><select value={filters.resultType ?? ''} onChange={event => setFilters(current => ({ ...current, resultType: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All work types</option><option value="pull_request">Pull requests</option><option value="direct_commit">Direct changes</option><option value="unfinished_intention">Unfinished work</option></select><input type="date" aria-label="From date" value={filters.from ?? ''} onChange={event => setFilters(current => ({ ...current, from: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/><input type="date" aria-label="To date" value={filters.to ?? ''} onChange={event => setFilters(current => ({ ...current, to: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/></div></details>
-    </section>
+      <details className="mt-3"><summary className="cursor-pointer text-xs text-slate-500">Filters</summary><div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-8"><select value={filters.repositoryId ?? ''} onChange={event => setFilters(current => ({ ...current, repositoryId: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All repositories</option>{repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</select><input value={filters.branch ?? ''} onChange={event => setFilters(current => ({ ...current, branch: event.target.value }))} placeholder="Branch" className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/><select value={filters.agent ?? ''} onChange={event => setFilters(current => ({ ...current, agent: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All agents</option>{[...new Set(models.map(model => model.tool))].map(agent => <option key={agent} value={agent}>{agent}</option>)}</select><select value={filters.model ?? ''} onChange={event => setFilters(current => ({ ...current, model: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All models</option>{[...new Set(models.flatMap(model => model.model ? [model.model] : []))].map(model => <option key={model} value={model}>{model}</option>)}</select><select value={filters.outcome ?? ''} onChange={event => setFilters(current => ({ ...current, outcome: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All outcomes</option>{['open', 'merged', 'deployed', 'closed', 'direct_change', 'unfinished'].map(value => <option key={value} value={value}>{value === 'direct_change' ? 'committed, not in a PR' : value === 'unfinished' ? 'not committed' : value.replace('_', ' ')}</option>)}</select><select value={filters.resultType ?? ''} onChange={event => setFilters(current => ({ ...current, resultType: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"><option value="">All work types</option><option value="pull_request">Pull requests</option><option value="direct_commit">Committed, not in a PR</option><option value="unfinished_intention">Not committed</option></select><input type="date" aria-label="From date" value={filters.from ?? ''} onChange={event => setFilters(current => ({ ...current, from: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/><input type="date" aria-label="To date" value={filters.to ?? ''} onChange={event => setFilters(current => ({ ...current, to: event.target.value }))} className="rounded border border-slate-700 bg-slate-950 p-2 text-xs"/></div></details>
+    </section>}
     {error && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
     {loading && <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-500">Loading evidence workspace…</div>}
-    {!loading && workspace && <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.8fr),minmax(0,2.2fr)]">
-      <aside className="space-y-4">
+    {!loading && workspace && !story && !storyLoading && <div className="space-y-4">
         <div><h2 className="font-semibold text-white">{searchResults.length ? 'Search results' : 'Pull request work'}</h2><p className="mt-1 text-xs text-slate-500">Start with customer outcomes; open the evidence only when needed.</p></div>
-        <div className="space-y-2">{displayed.map(card => <WorkCard key={`${card.kind}:${card.id}`} card={card} selected={selectedCard?.kind === card.kind && selectedCard.id === card.id} onSelect={() => void openCard(card)}/>)}</div>
-        {!searchResults.length && <><details><summary className="cursor-pointer rounded-lg border border-slate-800 p-3 text-sm text-slate-300">Direct changes ({workspace.directChanges.total})</summary><div className="mt-2 space-y-2">{workspace.directChanges.items.map(card => <WorkCard key={card.id} card={card} selected={selectedCard?.id === card.id} onSelect={() => void openCard(card)}/>)}</div></details><details><summary className="cursor-pointer rounded-lg border border-slate-800 p-3 text-sm text-slate-300">Unfinished work ({workspace.unfinishedWork.total})</summary><div className="mt-2 space-y-2">{workspace.unfinishedWork.items.map(card => <WorkCard key={card.id} card={card} selected={selectedCard?.id === card.id} onSelect={() => void openCard(card)}/>)}</div></details></>}
-      </aside>
-      <main className="min-w-0">
-        {storyLoading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the customer evidence story…</div>}
-        {!storyLoading && !story && <div className="rounded-xl border border-dashed border-slate-700 p-10 text-center"><h2 className="text-lg font-medium text-white">Choose work to investigate</h2><p className="mt-2 text-sm text-slate-500">Select a PR, direct change, unfinished intention or search result.</p></div>}
-        {!storyLoading && story && <div className="space-y-5"><div><div className="text-xs text-violet-300">{story.root.repository ?? 'Repository unavailable'}{story.root.branch ? ` / ${story.root.branch}` : ''}</div><h2 className="mt-1 text-2xl font-semibold text-white">{story.root.title}</h2></div><Summary story={story}/><div className="grid min-h-[32rem] gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 lg:grid-cols-[minmax(220px,0.7fr),minmax(0,1.7fr)]"><aside className="border-b border-slate-800 pb-4 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4"><StoryTree key={`${story.root.type}:${story.root.id}:${perspective}`} story={story} perspective={perspective} selected={selectedNode} onSelect={selectStoryNode}/></aside><section className="min-w-0 p-2"><DetailPane story={story} selected={selectedNode} canReadRaw={Boolean(canReadRaw)} onSelectNode={selectStoryNode} onLineWhy={async (commitId, path, lineNumber) => { const value = await getEvidenceLineWhy(commitId, path, lineNumber); setStory(value); setSelectedNode(`file:${commitId}:${value.changes.find(change => change.id === commitId)?.files.find(item => item.path === path)?.id ?? ''}`); updateUrl({ kind: 'direct_commit', id: commitId, title: value.root.title, repository: null, branch: value.root.branch, outcome: value.summary.outcome.status, updatedAt: new Date().toISOString(), intention: { text: value.summary.why.primary, count: value.intentions.length, state: value.summary.why.state }, keyInsight: value.summary.keyInsight, evidenceQuality: value.summary.evidenceQuality, counts: { commits: value.changes.length, reworkedLines: value.insights.reworkedLines, evidenceGaps: value.insights.evidenceGaps } }, perspective, { path, line: lineNumber }); }}/></section></div></div>}
-      </main>
+        <div className="grid gap-3 lg:grid-cols-2">{displayed.map(card => <WorkCard key={`${card.kind}:${card.id}`} card={card} selected={false} onSelect={() => void openCard(card)}/>)}</div>
+        {!searchResults.length && <><details><summary className="cursor-pointer rounded-lg border border-slate-800 p-3 text-sm text-slate-300">Committed, not in a PR ({workspace.directChanges.total})</summary><div className="mt-2 grid gap-3 lg:grid-cols-2">{workspace.directChanges.items.map(card => <WorkCard key={card.id} card={card} selected={false} onSelect={() => void openCard(card)}/>)}</div></details><details><summary className="cursor-pointer rounded-lg border border-slate-800 p-3 text-sm text-slate-300">Not committed ({workspace.unfinishedWork.total})</summary><div className="mt-2 grid gap-3 lg:grid-cols-2">{workspace.unfinishedWork.items.map(card => <WorkCard key={card.id} card={card} selected={false} onSelect={() => void openCard(card)}/>)}</div></details></>}
     </div>}
+    {storyLoading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the customer evidence story…</div>}
+    {!storyLoading && story && <main className="min-w-0 space-y-5"><button type="button" onClick={closeStory} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:border-slate-500 hover:text-white">← Back to evidence workspace</button><div><div className="text-xs text-violet-300">{story.root.repository ?? 'Repository unavailable'}{story.root.branch ? ` / ${story.root.branch}` : ''}</div><h2 className="mt-1 text-2xl font-semibold text-white">{story.root.title}</h2></div><Summary story={story}/><div className="grid min-h-[32rem] gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 lg:grid-cols-[minmax(220px,0.7fr),minmax(0,1.7fr)]"><aside className="border-b border-slate-800 pb-4 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4"><StoryTree key={`${story.root.type}:${story.root.id}`} story={story} selected={selectedNode} onSelect={selectStoryNode}/></aside><section className="min-w-0 p-2"><DetailPane story={story} selected={selectedNode} canReadRaw={Boolean(canReadRaw)} onSelectNode={selectStoryNode} onLineWhy={async (commitId, path, lineNumber) => { const value = await getEvidenceLineWhy(commitId, path, lineNumber); setStory(value); setSelectedNode(`file:${commitId}:${value.changes.find(change => change.id === commitId)?.files.find(item => item.path === path)?.id ?? ''}`); updateUrl({ kind: 'direct_commit', id: commitId, title: value.root.title, repository: null, branch: value.root.branch, outcome: value.summary.outcome.status, updatedAt: new Date().toISOString(), intention: { text: value.summary.why.primary, count: value.intentions.length, state: value.summary.why.state }, keyInsight: value.summary.keyInsight, evidenceQuality: value.summary.evidenceQuality, counts: { commits: value.changes.length, reworkedLines: value.insights.reworkedLines, evidenceGaps: value.insights.evidenceGaps } }, { path, line: lineNumber }); }}/></section></div></main>}
   </div>;
 }

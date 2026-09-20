@@ -39,10 +39,10 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **T5.3** | OpenCode Evidence Ingestion and Storage | Ingest idempotent OpenCode prompt, response, reasoning and tool events while preserving provider IDs and GitAI session/trace/checkpoint identities. | 🟢 ✅ | 🟢 ✅ | None for the OpenCode-only Task5 scope. | T5.1–T5.2; Task4 managed transport | **Wave 3 · 3** | GitAI reads synthetic OpenCode SQLite with stable redacted request bodies; TrackAI accepts that contract over managed-machine HTTP, deduplicates replay and preserves unavailable reasoning. Other providers wait for Task13. |
 | **T5.4** | Work-Item Linkage | Link GitHub Issues, Jira or Linear only with explicit customer configuration. | ⚪ — | ⚪ — | Customer-led future decision. | Customer configuration and provider authorization | **Deferred** | Deliberately excluded from Task5. Reconsider with a customer or during Task14. |
 | **T5.5** | Evidence Graph APIs | Traverse commit, file/line, session, trace, checkpoint, intention and evidence event in both directions with tenant-safe filters and pagination. | 🟢 ✅ | 🟢 ✅ | None for the Task5 API/query scope. | T5.1–T5.3 | **Wave 4 · 4** | Ephemeral pgvector CI proves lossless, non-duplicating pagination, alternate roots, explicit relationship bases and tenant isolation. The gate exposed and fixed both cross-page edge loss and duplicate normalized/stored links. |
-| **T5.6** | Visual Evidence Explorer | Present plain-language explanation, supporting graph/timeline, reverse navigation, search and privileged raw reveal. | 🟢 ✅ | 🟢 ✅ | Later customer wording and styling refinement is non-blocking. | T5.5; Task10 owns later styling only | **Wave 5 · 5** | Controlled Leader, Developer and Security browser walkthroughs pass. The PR-led workspace progressively reveals changes, insights and low-level evidence while retaining lifecycle/session/commit/PR/repository/contributor views for diagnostics. |
+| **T5.6** | Visual Evidence Explorer | Present plain-language explanation, supporting graph/timeline, reverse navigation, search and privileged raw reveal. | 🟢 ✅ | 🟢 ✅ | Later customer wording and styling refinement is non-blocking. | T5.5; Task10 owns later styling only | **Wave 5 · 5** | Controlled role-appropriate browser walkthroughs pass. The PR-led workspace now separates browsing from a full-width focused investigation, progressively reveals changes, insights and low-level evidence, and retains lifecycle/session/commit/PR/repository/contributor views for diagnostics. |
 | **T5.7** | Pain-Point and Quality Analytics | Explain failures, retries, slow tools, prompt loops, rework, abandoned work and weak outcomes without employee scoring. | 🟢 ✅ | 🟢 ✅ | Broader customer wording refinement may continue, but does not block the functional scope. | T5.3, T5.5; Task2 metrics | **Wave 5 · 6** | Live CI proves failed/retried/slow/unmatched tools, prompt loops, Task2 rework, failed/unknown tests, abandoned work and weak outcomes become compact evidence-linked story insights. |
 | **T5.8** | Code-to-Intention Reverse Engineering | Navigate commit/file/line → GitAI range/checkpoint/trace/session → provider evidence/intention without claiming time proximity as causality. | 🟢 ✅ | 🟢 ✅ | None for the Task5 functional scope. | T5.1, T5.3, T5.5 | **Wave 4 · 7** | Live API and browser gates prove an exact GitAI-attributed line reaches its trace and intention, while an unattributed line is shown as a gap and never upgraded from time proximity to fact. |
-| **T5.9** | Semantic Intention Review | Provide tenant-isolated intention embeddings, exact and lexical retrieval, cosine retrieval, hybrid fusion, explainable reranking and outcome comparison. | 🟢 ✅ | 🟢 ✅ | Product relevance labels were exercised through a controlled synthetic hard-negative corpus. | T5.2–T5.5 | **Wave 6 · 8** | Pinned local BGE embeddings, pgvector cosine retrieval, PostgreSQL lexical retrieval, RRF, deterministic reranking, exact-match priority, paraphrase retrieval, hard-negative ordering and tenant isolation pass live E5-9. Hybrid results roll up to PR/direct/unfinished customer stories. |
+| **T5.9** | Semantic Intention Review | Provide tenant-isolated intention embeddings, exact and lexical retrieval, cosine retrieval, hybrid fusion, explainable reranking and outcome comparison. | 🟢 ✅ | 🟢 ✅ | Product relevance labels were exercised through a controlled synthetic hard-negative corpus. | T5.2–T5.5 | **Wave 6 · 8** | Pinned local BGE embeddings, pgvector cosine retrieval, PostgreSQL lexical retrieval, RRF, deterministic reranking, exact-match priority, paraphrase retrieval, hard-negative ordering and tenant isolation pass live E5-9. Hybrid results roll up to PR, **Committed, not in a PR**, or **Not committed** customer stories. |
 | **T5.10** | Continuous Verification | Continuously verify taxonomy, privacy, collector mapping, graph behavior, semantic quality and Task2/Task4 regressions. | 🟢 ✅ | 🟢 ✅ | None for Task5; customer certification remains Tasks12/14. | T5.1–T5.9 | **Wave 7 · 9** | Final TrackAI CI passes 127 API/security/metric tests, fresh migrations, every E5 live gate, both TypeScript projects and the production web build. The controlled customer walkthrough and GitAI's complete cross-platform matrix also pass. |
 
 ## Execution waves
@@ -66,13 +66,13 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-3** | Consent, tenant isolation, encryption, secret redaction and raw authorization | T5.2 | 🟢 ✅ | 🟢 ✅ | Live CI proves explicit consent, envelope encryption, pre-storage redaction, two-tenant isolation, managed-machine authorization, administrator/auditor raw reveal, ordinary-user denial, `no-store`, authorized-only audit records and absence of raw content in captured logs. | `44de334`, `2a3e528`, `3df7341`, `6eaf9fb`; CI `35493134057` | None |
 | **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟢 ✅ | GitAI synthetic SQLite collection produces stable, locally redacted, tenant/repository-bound request bodies. Managed-machine HTTP delivery is accepted once, replay is deduplicated, unavailable reasoning is preserved, and disabled consent/revoked grant/invalid credential all fail closed without persisting denied events. | TrackAI `3df7341`; GitAI `a8d93aa20`, `00262a33f`; CI `35489833224` | None |
 | **E5-5** | Forward/reverse graph traversal and pagination | T5.5 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI traverses commit, session, trace, checkpoint and intention roots; paginated nodes/edges exactly match the complete graph, identical links are emitted once, evidence bases remain explicit and a second tenant sees nothing. | `d0a6db1`, `90de8f2`; CI `35490329769` | None |
-| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟢 ✅ | Controlled Leader, Developer and Security browser walkthroughs pass from the PR-led workspace. The four-answer summary, progressive evidence tree, similar work, exact provenance, gaps and permission-aware raw reveal are available without visiting scattered pages. | `11a4025`, `056c475`, `016b207`, `f269626`, `c5de2ff` | None |
+| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟢 ✅ | Controlled leadership, development and security use cases pass through one role-neutral workspace. The four-answer summary, progressive evidence tree, similar work, exact provenance, gaps and permission-aware raw reveal are available without visiting scattered pages. | `11a4025`, `056c475`, `016b207`, `f269626`, `c5de2ff` | None |
 | **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI verifies all friction signals, Task2 reworked lines, failed and unresolved test evidence, abandoned weak outcomes, unfinished-work presentation and deterministic customer insight priority. | `2a3e528`, `11a4025`, `ecf838d`, `0d43265`; CI `35494274247` | None |
-| **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟢 ✅ | CI proves the API chain; the Developer browser walkthrough follows attributed `src/auth/recovery.ts:45` through GitAI trace evidence and shows line 99 as explicitly unattributed without presenting proximity as proof. | `11a4025`, `d0a6db1`, `90de8f2`, `f269626`; CI `35490329769` | None |
+| **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟢 ✅ | CI proves the API chain; the browser walkthrough follows attributed `src/auth/recovery.ts:45` through GitAI trace evidence and shows line 99 as explicitly unattributed without presenting proximity as proof. | `11a4025`, `d0a6db1`, `90de8f2`, `f269626`; CI `35490329769` | None |
 | **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟢 ✅ | The pinned local BGE gate proves normalized 384-dimensional embeddings, cosine/lexical retrieval, RRF, exact priority and tenant isolation. Browser and final CI acceptance prove concise-query normalization, the semantic-only cosine floor, visible match reasons, self-story exclusion, direct-race ordering and suppression of the design-token hard negative. | `865909e`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35495908579`, `35519778360` | None |
 | **E5-10** | Correction, expiry and complete derived-data deletion | T5.2, T5.9 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI proves correction cannot extend retention; purge removes raw content, all intention versions, embeddings, lexical index rows, jobs, legacy semantic documents, summaries and intention links while retaining safe event metadata as expired and recording an audit. | `44de334`, `07bdbef`; CI `35493393579` | None |
 | **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟢 ✅ | Final TrackAI CI run `35519778360` passes the 127-test API/security/metric suite, fresh migrations, all Task5 live gates, API/web TypeScript and production web build. GitAI PR 1 passes all 44 applicable macOS, Ubuntu and Windows checks, including tests, lint, format, docs, CodeQL, E2E, performance smoke and Git compatibility. | TrackAI `57f0377`; GitAI `00262a33f`, `06128fcf3`, `cb1db62df`; GitAI runs `35503427698`, `35503427702`, `35503427704`, `35503427735` | None |
-| **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟢 ✅ | 🟡 ◐ | The controlled Codex browser walkthrough and final CI pass for Leader, Developer, Security administrator and ordinary developer roles. Product-owner hands-on acceptance and feedback are pending using the linked local runbook. | `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35519778360` | Product-owner UAT |
+| **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟢 ✅ | 🟡 ◐ | The controlled browser walkthrough and final CI pass for leadership, development and security use cases plus administrator and ordinary-developer authorization. Product-owner hands-on acceptance and feedback are pending using the linked local runbook. | `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35519778360` | Product-owner UAT |
 
 ## GitAI identity and terminology contract
 
@@ -113,9 +113,15 @@ a type of inference.
 ## Unified customer evidence workspace
 
 The workspace is the default customer surface. It leads with PRs, then keeps
-direct commits and unfinished intentions in secondary expandable groups. A
-Leader, Developer or Security perspective changes ordering and default
-expansion only; it never changes evidence or authorization.
+**Committed, not in a PR** and **Not committed** work in secondary expandable
+groups, using Task2 lifecycle language. Role lenses were removed because they
+reordered the same evidence without adding distinct customer value. Task4
+authorization—not a visual lens—continues to govern privileged actions.
+
+Browsing and investigation are separate UI states. Search, filters and other
+work cards disappear after a customer opens a story. The selected story uses
+the full workspace width and provides one explicit Back control that restores
+the browsing context.
 
 The investigation uses one collapsible tree and one contextual detail pane:
 overview → intentions → lifecycle → changes → insights → evidence details.
@@ -315,13 +321,13 @@ coverage gap. The corpus contract and its structural tests live in
 
 ### Phase E — customer Explorer and analytics
 
-1. In Leader perspective, open a concerning PR and confirm intention, outcome,
+1. Open a concerning PR and confirm intention, outcome,
    friction, evidence quality and similar outcomes are understandable without
    expanding sessions or inspecting the database.
-2. In Developer perspective, expand a commit/file, enter an attributed line and
+2. Expand a commit/file, enter an attributed line and
    follow its exact GitAI range to intention, tests/tools and provenance. Repeat
    with a missing range and confirm no time-based claim is presented as exact.
-3. In Security perspective, review observed/inferred/corrected plus
+3. As an approved security administrator, review observed/inferred/corrected plus
    available/redacted/unavailable/expired labels. Reveal one raw event as an
    approved administrator/auditor, confirm the `no-store` response and audit
    record, then confirm an unapproved role fails.
@@ -330,10 +336,12 @@ coverage gap. The corpus contract and its structural tests live in
    and result-type filters and navigate each result to its parent customer story.
 5. Load failed/retried/slow tools, prompt loops, rework, abandoned work, test
    success/failure and an intention without a commit. Confirm no person ranking
-   exists and that direct/unfinished work remains in secondary groups.
-6. Switch perspectives and prove that only ordering/default expansion changes;
-   facts, states, results and permissions remain identical. These steps complete
-   E5-6/E5-7 and the customer portion of E5-8/E5-9.
+   exists and that **Committed, not in a PR** / **Not committed** work remains in
+   secondary groups.
+6. Open a story and prove that browse/search controls and unrelated work are
+   hidden until Back is selected. Repeat authorization as an ordinary developer
+   to prove that facts stay identical while privileged actions remain hidden.
+   These steps complete E5-6/E5-7 and the customer portion of E5-8/E5-9.
 
 ### Phase F — semantic and deletion gates
 
@@ -356,8 +364,8 @@ coverage gap. The corpus contract and its structural tests live in
 ### Phase G — product-manager acceptance
 
 Run the entire path without database inspection: enable collection → collect
-synthetic OpenCode work → create a multi-commit PR → inspect it as Leader →
-trace a file/line as Developer → audit a gap/raw reveal as Security → search a
+synthetic OpenCode work → create a multi-commit PR → inspect its focused story →
+trace a file/line → audit a gap/raw reveal with an approved role → search a
 similar intention and compare outcomes → correct an intention → observe expiry.
 Record sanitized screenshots, gate results and checkpoint commits in this file.
 Only then may E5-12 and the Task5 completion boundary become green. This phase
@@ -394,7 +402,7 @@ completed on 2026-09-20 and is recorded in the final Wave 7 row below.
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
 | 2026-09-19 | Customer Explorer and analytics implementation | 🟡 ◐ | TrackAI `2fcfc9b` and `2a3e528` provide the functional explanation, graph/timeline, filters, raw reveal, semantic health and visible friction cards. Product-manager and analyst acceptance remain. |
-| 2026-09-19 | Unified customer Evidence Workspace | 🟡 ◐ | TrackAI `11a4025` adds PR-led work stories, Leader/Developer/Security perspectives, direct/unfinished secondary groups, a hierarchical evidence deep dive, exact file/line “Why?”, deterministic tests, customer-level search and similar-outcome cards. `056c475` retains all diagnostic dashboard views. Three controlled browser walkthroughs remain. |
+| 2026-09-19 | Unified customer Evidence Workspace | 🟡 ◐ | TrackAI `11a4025` added PR-led work stories and `056c475` retained diagnostic views. The later focused-workspace revision removes low-value role lenses, uses Task2 lifecycle wording, separates browse and investigation states, and keeps the hierarchical evidence deep dive, exact file/line “Why?”, deterministic tests, customer-level search and similar-outcome cards. Product-owner UAT remains. |
 
 ## Wave 6 implementation evidence
 
@@ -417,4 +425,4 @@ completed on 2026-09-20 and is recorded in the final Wave 7 row below.
 | 2026-09-20 | Pain-point and quality analytics | 🟢 ✅ | TrackAI `ecf838d` and `0d43265`, CI run `35494274247`: failed/retried/slow/unmatched tools, prompt loops, Task2 rework, failed/unknown tests, abandoned work and weak outcomes are detected and projected into a compact customer story. The gate also corrected and protected singular/plural insight wording. E5-7 and T5.7 are complete. |
 | 2026-09-20 | Semantic intention retrieval and relevance | 🟢 ✅ | TrackAI `e45c57c`, `6cacaf7`, `1c381e4`, `d980c23` and `865909e`, CI run `35495908579`: the pinned local BGE artifact produces normalized 384-dimensional embeddings; pgvector cosine and PostgreSQL lexical retrieval are fused with RRF and deterministically reranked. Exact priority, semantic paraphrases, graded hard negatives, explainable channel reasons and two-tenant isolation pass. E5-9 and T5.9 are complete. |
 | 2026-09-20 | Cross-platform Task2/Task4/GitAI regression | 🟢 ✅ | GitAI `00262a33f`, `06128fcf3` and `cb1db62df`, PR 1: all 44 applicable checks pass. Full macOS, Ubuntu and Windows suites, lint, format, docs, CodeQL, agent/OpenCode E2E, performance smoke and Git compatibility are green. The gate found and fixed one Windows portability warning, one stale migration-version assertion and one one-second fixture race. E5-11 is complete. |
-| 2026-09-20 | Controlled customer browser acceptance | 🟡 ◐ | TrackAI `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486` and `57f0377`; final CI run `35519778360`: Codex-observed Leader, Developer and Security workflows pass. Exact/missing attribution, insights, search, similar work, authorized raw reveal/audit and ordinary-user denial were exercised, and 127 tests plus every live gate pass. Product-owner UAT remains before E5-12 and Task5 close. |
+| 2026-09-20 | Controlled customer browser acceptance | 🟡 ◐ | TrackAI `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486` and `57f0377`; final CI run `35519778360`: role-appropriate customer workflows pass. Exact/missing attribution, insights, search, similar work, authorized raw reveal/audit and ordinary-user denial were exercised, and 127 tests plus every live gate pass. Product-owner UAT remains before E5-12 and Task5 close. |

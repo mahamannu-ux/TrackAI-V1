@@ -63,7 +63,7 @@ RRF and deterministic reranking. Derived rows are deleted with the source.
 - Pinned local BGE adapter with remote inference loading disabled.
 - Hybrid exact, lexical and vector search with match reasons.
 - Tenant isolation, privileged raw reveal, audit and deletion logic.
-- Evidence Workspace, reverse file/line provenance and perspectives.
+- Evidence Workspace and reverse file/line provenance.
 - CI using ephemeral pgvector and the real pinned model.
 
 ### Required before a production launch
@@ -97,9 +97,8 @@ If the local verification processes are still running, open
 | Ordinary developer | `developer@task5.acceptance.invalid` | `task5-viewer-only` | Same story facts, but no raw reveal or administrator actions |
 
 These are non-production fixture credentials. Start as administrator, sign out,
-then repeat security checks as the developer. Use the Leader, Developer and
-Security perspective buttons. A perspective changes emphasis only; it must not
-change facts or permissions.
+then repeat security checks as the developer. Both roles see the same evidence
+story; Task4 authorization controls raw reveal and Administration access.
 
 ## 4. Product-owner acceptance checklist
 
@@ -108,18 +107,18 @@ in the last column or in a review note.
 
 | Gate | What to do | Expected result | Product-owner result / feedback |
 |---|---|---|---|
-| E5-1 | Open **Unfinished work**, then recovery and direct-change stories | Zero-, one- and multi-commit work remain distinct | Pending |
+| E5-1 | Open **Not committed**, then recovery and **Committed, not in a PR** stories | Zero-, one- and multi-commit work remain distinct | Pending |
 | E5-2 | Open **Prevent duplicate password recovery token use** and expand commits/Evidence details | Multiple sessions, traces and checkpoints remain distinct | Pending |
 | E5-3 | As admin reveal one raw event and inspect audit; repeat as developer | Admin reveal is audited; developer has no reveal or Administration access | Pending |
 | E5-4 | Expand recovery Evidence details | OpenCode provider/trace identity remains; unavailable reasoning is labelled | Pending |
 | E5-5 | Expand/collapse every story group | Forward/reverse evidence is available without duplicate links or scattered pages | Pending |
-| E5-6 | In Leader perspective open the recovery PR | Why, outcome, key insight and evidence quality are clear without low-level expansion | Pending |
+| E5-6 | Open the recovery PR | Browse/search controls and unrelated PRs disappear; Why, outcome, key insight and evidence quality are clear without low-level expansion | Pending |
 | E5-7 | Open **Insights** | Failed/retried/slow tools, prompt loop, rework and unresolved signals are compact and do not score people | Pending |
-| E5-8 | In Developer perspective inspect `src/auth/recovery.ts:45`, then `src/auth/recovery-metrics.ts:19` | First is exact; second is an honest gap, never time proximity presented as proof | Pending |
+| E5-8 | Inspect `src/auth/recovery.ts:45`, then `src/auth/recovery-metrics.ts:19` | First is exact; second is an honest gap, never time proximity presented as proof | Pending |
 | E5-9 | Search `authentication credential race condition`, `5100000`, `src/auth/recovery.ts`, and `playwright`; apply merged filter | Relevant recovery/refresh work and match reasons appear; design-token work is not a semantic false positive | Pending |
 | E5-10 | Inspect corrected intention plus unavailable/redacted badges | Correction and availability are separate; destructive expiry remains an isolated automated gate | Pending |
 | E5-11 | Review final CI in `TASK5.md` | Metrics, security, migrations, live gates, types and production build are green | Pending |
-| E5-12 | Complete all perspectives and repeat authorization as developer | Complete story works without database inspection; low-level evidence is progressive | Pending |
+| E5-12 | Complete the focused story, use Back, and repeat authorization as developer | Complete story works without database inspection; browsing context returns; low-level evidence is progressive | Pending |
 
 Useful exact fixtures are PR `104`, branch `feature/recovery-token-race`, SHA
 prefix `5100000`, path `src/auth/recovery.ts`, and tool `playwright`.
