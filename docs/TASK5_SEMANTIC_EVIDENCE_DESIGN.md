@@ -254,9 +254,10 @@ flowchart LR
    `websearch_to_tsquery` and `ts_rank_cd`.
 4. For a small, deterministic set of terse customer concepts, query
    normalization adds natural-language context before embedding. For example,
-   `race condition` becomes a concurrent-request concept query. The original
-   query remains authoritative for exact and lexical matching, and no evidence
-   link or stored intention is created by this expansion.
+   `race condition` becomes a query about preventing concurrent-request
+   conflicts with atomic updates. The original query remains authoritative for
+   exact and lexical matching, and no evidence link or stored intention is
+   created by this expansion.
 5. Local BGE query inference plus pgvector cosine similarity returns up to 50
    dense candidates. A semantic-only candidate must have cosine similarity of
    at least `0.60`; exact and lexical candidates bypass this floor.

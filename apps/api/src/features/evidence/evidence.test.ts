@@ -161,7 +161,7 @@ test('semantic vectors are normalized and dimension checked', () => {
 test('semantic keyword queries expand concurrency concepts and reject weak vector-only matches', () => {
   assert.equal(
     semanticQueryForEmbedding('authentication credential race condition'),
-    'Find work about concurrent requests involving authentication credential.',
+    'Find work about preventing concurrent request conflicts with atomic updates involving authentication credential.',
   );
   assert.equal(semanticCandidateIsRelevant({ exact: false, vectorScore: 0.5999 }), false);
   assert.equal(semanticCandidateIsRelevant({ exact: false, vectorScore: 0.6 }), true);
