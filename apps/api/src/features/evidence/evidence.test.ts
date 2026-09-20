@@ -338,3 +338,20 @@ test('file-line exactness requires an explicit GitAI range attribution edge', ()
     { fromType: 'code_range', relationship: 'attributed_to', toType: 'trace', toId: 'exact-trace' },
   ]), ['exact-trace']);
 });
+
+test('Task5 browser acceptance helpers fail closed and do not log credentials', () => {
+  const corpusRunner = readFileSync(
+    resolve(process.cwd(), 'src/features/evidence/task5-corpus-live-verify.ts'),
+    'utf8',
+  );
+  const authServer = readFileSync(
+    resolve(process.cwd(), 'src/features/evidence/task5-acceptance-auth.ts'),
+    'utf8',
+  );
+  assert.match(corpusRunner, /TASK5_ACCEPTANCE_PERSIST === '1'/);
+  assert.match(corpusRunner, /TASK5_EPHEMERAL_DATABASE !== '1'/);
+  assert.match(authServer, /NODE_ENV === 'production'/);
+  assert.match(authServer, /TASK5_EPHEMERAL_DATABASE !== '1'/);
+  assert.doesNotMatch(authServer, /console\.log\([^\n]*password/);
+  assert.doesNotMatch(authServer, /console\.log\([^\n]*(accessToken|refreshToken)/);
+});

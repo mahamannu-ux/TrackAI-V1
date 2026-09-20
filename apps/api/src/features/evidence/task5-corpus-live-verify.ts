@@ -51,6 +51,13 @@ async function expectForeignKeyRejection(
 async function main() {
   activeStage = 'configuration';
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+  const persistAcceptance = process.env.TASK5_ACCEPTANCE_PERSIST === '1';
+  if (persistAcceptance && process.env.TASK5_EPHEMERAL_DATABASE !== '1') {
+    throw new Error('Persistent acceptance fixtures require an explicitly ephemeral database');
+  }
+  const acceptanceDomain = 'task5.acceptance.invalid';
+  const acceptanceSubject = 'task5-acceptance-admin';
+  const acceptanceEmail = `admin@${acceptanceDomain}`;
   validateTask5VerificationCorpus();
 
   const corpus = task5VerificationCorpus;
@@ -75,6 +82,9 @@ async function main() {
     activeStage = 'tenants';
     const tenantIds = new Map<string, string>();
     for (const [key, domain] of Object.entries(corpus.tenants)) {
+      const tenantDomain = persistAcceptance && key === 'primary'
+        ? acceptanceDomain
+        : `${marker}.${domain}`;
       const result = await client.query<{ id: string }>(`
         INSERT INTO sso_tenants
           (company_name, domain, supabase_provider_id, scm_org_identifier)
@@ -82,7 +92,7 @@ async function main() {
         RETURNING id
       `, [
         `Task5 verification ${key}`,
-        `${marker}.${domain}`,
+        tenantDomain,
         `${marker}-${key}-provider`,
         `${marker}-${key}-org`,
       ]);
@@ -115,6 +125,13 @@ async function main() {
           (tenant_id, raw_collection_enabled, provider, retention_days, consented_by, consented_at)
         VALUES ($1, true, 'opencode', 30, $2, now())
       `, [tenantId, `${marker}-admin`]);
+    }
+    if (persistAcceptance) {
+      await client.query(`
+        INSERT INTO tenant_admin_memberships
+          (tenant_id, subject, email, role, status, granted_by)
+        VALUES ($1, $2, $3, 'tenant_admin', 'active', 'task5-acceptance-seed')
+      `, [primaryTenantId, acceptanceSubject, acceptanceEmail]);
     }
 
     activeStage = 'commits_and_sessions';
@@ -396,6 +413,18 @@ async function main() {
     if (failedChecks.length) {
       console.log(`failed_checks=${failedChecks.join(',')}`);
       throw new Error('task5_acceptance_check_failed');
+    }
+
+    if (persistAcceptance) {
+      activeStage = 'commit_acceptance_fixture';
+      await client.query('COMMIT');
+      transactionOpen = false;
+      console.log('corpus=task5-password-recovery-v1');
+      console.log('acceptance_fixture=persisted');
+      console.log(`acceptance_email=${acceptanceEmail}`);
+      console.log('acceptance_role=tenant_admin');
+      console.log('task5_corpus_live_verification=passed');
+      return;
     }
 
     activeStage = 'rollback_and_residuals';
