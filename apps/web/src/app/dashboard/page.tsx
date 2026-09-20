@@ -825,7 +825,9 @@ export default function DashboardPage() {
       {view !== 'workspace' && view !== 'administration' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
       {error && <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
       <section className="mt-7">
-        {view === 'workspace' && <EvidenceWorkspace repositories={repositories} models={models} adminContext={adminContext} />}
+        <div className={view === 'workspace' ? '' : 'hidden'} aria-hidden={view !== 'workspace'}>
+          <EvidenceWorkspace repositories={repositories} models={models} adminContext={adminContext} />
+        </div>
         {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
         {view === 'evidence' && <EvidenceExplorer commits={commits} repositories={repositories} sessions={sessions} models={models} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
         {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>

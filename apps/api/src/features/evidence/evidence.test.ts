@@ -408,6 +408,10 @@ test('Task5 browser acceptance helpers fail closed and do not log credentials', 
     resolve(process.cwd(), '../web/src/app/dashboard/evidence-workspace.tsx'),
     'utf8',
   );
+  const dashboard = readFileSync(
+    resolve(process.cwd(), '../web/src/app/dashboard/page.tsx'),
+    'utf8',
+  );
   assert.match(corpusRunner, /TASK5_ACCEPTANCE_PERSIST === '1'/);
   assert.match(corpusRunner, /TASK5_EPHEMERAL_DATABASE !== '1'/);
   assert.match(authServer, /NODE_ENV === 'production'/);
@@ -418,6 +422,8 @@ test('Task5 browser acceptance helpers fail closed and do not log credentials', 
   assert.match(workspace, />Evidence trail</);
   assert.match(workspace, /rawEvidenceText/);
   assert.doesNotMatch(workspace, /Open supporting trace/);
+  assert.match(dashboard, /className=\{view === 'workspace' \? '' : 'hidden'\}/);
+  assert.doesNotMatch(dashboard, /view === 'workspace' && <EvidenceWorkspace/);
 });
 
 test('Task5 semantic runtime stays compatible with Intel macOS and reindex retries existing jobs', () => {
