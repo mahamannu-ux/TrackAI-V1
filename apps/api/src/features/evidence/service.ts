@@ -524,6 +524,13 @@ type GraphEdge = {
   relationship: string; evidenceState: EvidenceState; confidence: number; basis: string;
 };
 
+export function edgesForNodePage(edges: GraphEdge[], pageKeys: ReadonlySet<string>) {
+  // An edge belongs to the page containing its source node. Requiring both
+  // endpoints to share a page silently drops cross-page relationships, while
+  // emitting on either endpoint duplicates them when pages are merged.
+  return edges.filter(edge => pageKeys.has(`${edge.fromType}:${edge.fromId}`));
+}
+
 function rangeRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>> : [];
 }
@@ -716,8 +723,7 @@ export async function evidenceGraph(input: {
   return {
     root: { type: input.rootType, id: input.rootId },
     nodes: page,
-    edges: edges.filter(edge => pageKeys.has(`${edge.fromType}:${edge.fromId}`)
-      && pageKeys.has(`${edge.toType}:${edge.toId}`)),
+    edges: edgesForNodePage(edges, pageKeys),
     nextCursor: cursor + limit < allNodes.length ? cursor + limit : null,
   };
 }

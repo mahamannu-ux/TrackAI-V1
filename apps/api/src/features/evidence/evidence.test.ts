@@ -15,6 +15,7 @@ import {
   reciprocalRankFusion,
   semanticSafeError,
 } from './semantic';
+import { edgesForNodePage } from './service';
 import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand } from './workspace';
 import {
   task5VerificationCorpus,
@@ -158,6 +159,16 @@ test('hybrid search uses stable reciprocal rank fusion', () => {
   assert.equal(ranked[0].lexicalRank, 2);
   assert.equal(ranked[0].vectorRank, 1);
   assert.deepEqual(new Set(ranked.map(row => row.id)), new Set(['both', 'lexical-only', 'vector-only']));
+});
+
+test('graph pagination emits cross-page edges once with their source page', () => {
+  const edges = [{
+    fromType: 'commit', fromId: 'commit-1', toType: 'session', toId: 'session-1',
+    relationship: 'contains_attribution_from', evidenceState: 'observed' as const,
+    confidence: 100, basis: 'git_ai_authorship_note',
+  }];
+  assert.equal(edgesForNodePage(edges, new Set(['commit:commit-1'])).length, 1);
+  assert.equal(edgesForNodePage(edges, new Set(['session:session-1'])).length, 0);
 });
 
 test('semantic worker errors expose safe codes rather than source content', () => {
