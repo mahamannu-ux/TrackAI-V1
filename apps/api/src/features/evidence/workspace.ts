@@ -82,6 +82,18 @@ export type WorkStory = {
     failedTools: number; retries: number; slowTools: number; promptLoops: number;
     reworkedLines: number; abandoned: boolean; evidenceGaps: number;
     tests: Array<{ eventId: string; label: string; status: 'passed' | 'failed' | 'unknown' }>;
+    signals: Array<{
+      eventId: string;
+      kind: 'failed_tool' | 'retry' | 'slow_tool' | 'prompt_loop' | 'evidence_gap';
+      label: string;
+      toolName: string | null;
+      status: string | null;
+      durationMs: number | null;
+      attempt: number | null;
+      occurredAt: string;
+      evidenceState: EvidenceState;
+      availability: 'available' | 'unavailable' | 'redacted' | 'expired';
+    }>;
     unresolved: string[];
   };
   graph: {
@@ -123,6 +135,57 @@ function asText(value: unknown): string {
 export function isTestCommand(value: unknown): boolean {
   return /(^|\s)(npm|pnpm|yarn|bun|cargo|go|task|make|pytest|python\s+-m\s+pytest|rspec|dotnet)\s+(run\s+)?test\b|\b(test|vitest|jest|playwright|cypress)\b/i
     .test(asText(value));
+}
+
+type InsightEvent = {
+  id: string;
+  sessionId: string;
+  eventType: 'prompt' | 'reasoning' | 'response' | 'tool_call' | 'tool_result';
+  toolName: string | null;
+  metadata: Record<string, unknown>;
+  occurredAt: Date;
+  evidenceState: EvidenceState;
+  availability: 'available' | 'unavailable' | 'redacted' | 'expired';
+};
+
+export function insightSignals(events: InsightEvent[]): WorkStory['insights']['signals'] {
+  const lastToolBySession = new Map<string, string>();
+  const pendingPromptsBySession = new Map<string, number>();
+  const signals: WorkStory['insights']['signals'] = [];
+  for (const event of [...events].sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime())) {
+    const status = typeof event.metadata.status === 'string' ? event.metadata.status : null;
+    const durationMs = typeof event.metadata.durationMs === 'number' ? event.metadata.durationMs : null;
+    const attempt = typeof event.metadata.attempt === 'number' ? event.metadata.attempt : null;
+    const kinds: WorkStory['insights']['signals'][number]['kind'][] = [];
+    if (event.eventType === 'tool_call') {
+      if (event.toolName && lastToolBySession.get(event.sessionId) === event.toolName) kinds.push('retry');
+      if (event.toolName) lastToolBySession.set(event.sessionId, event.toolName);
+    }
+    if (status === 'failed' || status === 'error' || event.metadata.errorCode) kinds.push('failed_tool');
+    if (durationMs !== null && durationMs >= 30_000) kinds.push('slow_tool');
+    if (event.eventType === 'prompt') {
+      const pending = (pendingPromptsBySession.get(event.sessionId) ?? 0) + 1;
+      pendingPromptsBySession.set(event.sessionId, pending);
+      if (pending > 1) kinds.push('prompt_loop');
+    }
+    if (event.eventType === 'response') pendingPromptsBySession.set(event.sessionId, 0);
+    if (event.availability !== 'available') kinds.push('evidence_gap');
+    for (const kind of kinds) signals.push({
+      eventId: event.id,
+      kind,
+      label: event.toolName
+        ? `${event.toolName} ${event.eventType.replace('_', ' ')}`
+        : event.eventType.replace('_', ' '),
+      toolName: event.toolName,
+      status,
+      durationMs,
+      attempt,
+      occurredAt: event.occurredAt.toISOString(),
+      evidenceState: event.evidenceState,
+      availability: event.availability,
+    });
+  }
+  return signals;
 }
 
 async function loadRecords(tenantId: string) {
@@ -418,6 +481,7 @@ export async function evidenceWorkStory(input: {
   } : null;
   const values = sessionFriction(frictionRows, sessionIds, records);
   const tests = await testSignals(input.tenantId, records, sessionIds);
+  const signals = insightSignals(records.events.filter(row => sessionIds.includes(row.sessionId)));
   const outcome = commitIds.length ? outcomeFor(records, pr, commitIds) : 'unfinished';
   const commits = records.commits.filter(row => commitIds.includes(row.id) || historicalIds.includes(row.id));
   const repository = records.repositories.find(row => row.id === (pr?.repositoryId ?? commits[0]?.repositoryId));
@@ -462,7 +526,7 @@ export async function evidenceWorkStory(input: {
         unknownLines: file.observedUnknownLines, ranges: ranges(file.attributionRanges),
       })),
     })),
-    insights: { ...values, tests, unresolved }, graph,
+    insights: { ...values, tests, signals, unresolved }, graph,
     similarWork: { status: 'unavailable', items: [] }, focus,
   };
   if (primary?.text) {

@@ -22,6 +22,7 @@ import {
   currentPullRequestCommitIds,
   distinctRelatedWork,
   exactRangeTraceIds,
+  insightSignals,
   isTestCommand,
   keyInsight,
 } from './workspace';
@@ -85,6 +86,32 @@ test('Task5 verification corpus separates semantic positives from token-word har
   const negative = task5VerificationCorpus.intentions.find(row => row.key === 'design-token');
   assert.match(negative?.text ?? '', /tokens/);
   assert.match(negative?.text ?? '', /without changing authentication/);
+});
+
+test('customer insight totals retain safe event-level drill-down evidence', () => {
+  const base = {
+    sessionId: 'session-1', toolName: null, metadata: {},
+    evidenceState: 'observed' as const, availability: 'available' as const,
+  };
+  const signals = insightSignals([
+    { ...base, id: 'prompt-1', eventType: 'prompt', occurredAt: new Date('2026-09-20T00:00:00Z') },
+    { ...base, id: 'prompt-2', eventType: 'prompt', occurredAt: new Date('2026-09-20T00:00:01Z') },
+    { ...base, id: 'call-1', eventType: 'tool_call', toolName: 'npm', occurredAt: new Date('2026-09-20T00:00:02Z') },
+    { ...base, id: 'call-2', eventType: 'tool_call', toolName: 'npm', metadata: { attempt: 2 }, occurredAt: new Date('2026-09-20T00:00:03Z') },
+    { ...base, id: 'result-2', eventType: 'tool_result', toolName: 'npm',
+      metadata: { status: 'failed', durationMs: 42_000 }, availability: 'redacted',
+      occurredAt: new Date('2026-09-20T00:00:04Z') },
+  ]);
+  assert.deepEqual(signals.map(signal => [signal.eventId, signal.kind]), [
+    ['prompt-2', 'prompt_loop'],
+    ['call-2', 'retry'],
+    ['result-2', 'failed_tool'],
+    ['result-2', 'slow_tool'],
+    ['result-2', 'evidence_gap'],
+  ]);
+  assert.equal(signals.at(-1)?.label, 'npm tool result');
+  assert.equal(signals.at(-1)?.status, 'failed');
+  assert.equal(signals.at(-1)?.durationMs, 42_000);
 });
 
 test('OpenCode evidence contract rejects providers outside Task5 scope', () => {

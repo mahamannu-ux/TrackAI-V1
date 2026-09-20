@@ -223,6 +223,13 @@ export type EvidenceWorkStory = {
     failedTools: number; retries: number; slowTools: number; promptLoops: number;
     reworkedLines: number; abandoned: boolean; evidenceGaps: number;
     tests: Array<{ eventId: string; label: string; status: 'passed' | 'failed' | 'unknown' }>;
+    signals: Array<{
+      eventId: string;
+      kind: 'failed_tool' | 'retry' | 'slow_tool' | 'prompt_loop' | 'evidence_gap';
+      label: string; toolName: string | null; status: string | null;
+      durationMs: number | null; attempt: number | null; occurredAt: string;
+      evidenceState: EvidenceState; availability: EvidenceAvailability;
+    }>;
     unresolved: string[];
   };
   graph: EvidenceGraphResponse;
