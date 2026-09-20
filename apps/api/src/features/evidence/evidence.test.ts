@@ -15,7 +15,7 @@ import {
   reciprocalRankFusion,
   semanticSafeError,
 } from './semantic';
-import { edgesForNodePage } from './service';
+import { edgesForNodePage, uniqueGraphEdges } from './service';
 import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand } from './workspace';
 import {
   task5VerificationCorpus,
@@ -169,6 +169,16 @@ test('graph pagination emits cross-page edges once with their source page', () =
   }];
   assert.equal(edgesForNodePage(edges, new Set(['commit:commit-1'])).length, 1);
   assert.equal(edgesForNodePage(edges, new Set(['session:session-1'])).length, 0);
+});
+
+test('graph removes duplicate normalized and stored relationships before pagination', () => {
+  const edge = {
+    fromType: 'event', fromId: 'event-1', toType: 'session', toId: 'session-1',
+    relationship: 'occurred_in', evidenceState: 'observed' as const,
+    confidence: 100, basis: 'provider_session_id',
+  };
+  assert.equal(uniqueGraphEdges([edge, { ...edge }]).length, 1);
+  assert.equal(uniqueGraphEdges([edge, { ...edge, basis: 'independent_attestation' }]).length, 2);
 });
 
 test('semantic worker errors expose safe codes rather than source content', () => {

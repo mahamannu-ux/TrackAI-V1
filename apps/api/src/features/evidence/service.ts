@@ -524,6 +524,17 @@ type GraphEdge = {
   relationship: string; evidenceState: EvidenceState; confidence: number; basis: string;
 };
 
+function graphEdgeKey(edge: GraphEdge) {
+  return [
+    edge.fromType, edge.fromId, edge.toType, edge.toId, edge.relationship,
+    edge.evidenceState, edge.confidence, edge.basis,
+  ].join(':');
+}
+
+export function uniqueGraphEdges(edges: GraphEdge[]) {
+  return [...new Map(edges.map(edge => [graphEdgeKey(edge), edge])).values()];
+}
+
 export function edgesForNodePage(edges: GraphEdge[], pageKeys: ReadonlySet<string>) {
   // An edge belongs to the page containing its source node. Requiring both
   // endpoints to share a page silently drops cross-page relationships, while
@@ -716,6 +727,7 @@ export async function evidenceGraph(input: {
     }
   }
   const allNodes = [...nodes.values()];
+  const allEdges = uniqueGraphEdges(edges);
   const cursor = Math.max(0, input.cursor ?? 0);
   const limit = Math.min(200, Math.max(1, input.limit ?? 100));
   const page = allNodes.slice(cursor, cursor + limit);
@@ -723,7 +735,7 @@ export async function evidenceGraph(input: {
   return {
     root: { type: input.rootType, id: input.rootId },
     nodes: page,
-    edges: edgesForNodePage(edges, pageKeys),
+    edges: edgesForNodePage(allEdges, pageKeys),
     nextCursor: cursor + limit < allNodes.length ? cursor + limit : null,
   };
 }
