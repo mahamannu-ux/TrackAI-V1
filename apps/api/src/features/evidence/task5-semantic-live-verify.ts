@@ -124,14 +124,14 @@ async function main() {
   const order = results.map(row => row.id);
   const relatedPositions = [relatedRace, relatedAtomic].map(id => order.indexOf(id));
   const hardNegativePosition = order.indexOf(hardNegative);
-  if (!results.length || ![relatedRace, relatedAtomic].includes(results[0].id)) {
-    throw new Error('semantic_top_result_was_not_related');
+  if (!results.length || results[0].id !== relatedRace) {
+    throw new Error('semantic_best_race_match_was_not_first');
   }
   if (relatedPositions.some(position => position < 0 || position > 2)) {
     throw new Error('semantic_related_recall_at_three_failed');
   }
-  if (hardNegativePosition < 0 || hardNegativePosition < Math.max(...relatedPositions)) {
-    throw new Error('semantic_hard_negative_ranked_above_related_work');
+  if (hardNegativePosition < 0 || hardNegativePosition < order.indexOf(relatedRace)) {
+    throw new Error('semantic_hard_negative_ranked_above_best_race_match');
   }
   if ((order.includes(unrelated) && order.indexOf(unrelated) < Math.min(...relatedPositions))
     || order.includes(isolated)) {
@@ -148,8 +148,13 @@ async function main() {
     throw new Error('exact_phrase_priority_failed');
   }
   const paraphrase = await searchIntentions(primaryTenant.id, 'make account reset persistence indivisible');
-  if (![relatedRace, relatedAtomic].includes(paraphrase[0]?.id ?? '')) {
-    throw new Error('semantic_paraphrase_retrieval_failed');
+  const paraphraseHardNegative = paraphrase.findIndex(row => row.id === hardNegative);
+  const paraphraseAtomic = paraphrase.findIndex(row => row.id === relatedAtomic);
+  if (paraphrase[0]?.id !== relatedAtomic) {
+    throw new Error('semantic_best_atomic_paraphrase_was_not_first');
+  }
+  if (paraphraseHardNegative >= 0 && paraphraseHardNegative < paraphraseAtomic) {
+    throw new Error('semantic_hard_negative_ranked_above_best_atomic_match');
   }
   const isolatedResults = await searchIntentions(isolatedTenant.id, 'password recovery race condition');
   if (!isolatedResults.some(row => row.id === isolated)
