@@ -32,8 +32,10 @@ async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 
   const marker = `task5-graph-${randomUUID()}`;
-  const traceId = `${marker}-trace`;
+  const traceId = `${marker}-trace-primary`;
+  const secondaryTraceId = `${marker}-trace-secondary`;
   const exactPath = 'src/auth/recovery.ts';
+  const secondaryPath = 'src/auth/recovery-store.ts';
   const missingPath = 'src/auth/unattributed.ts';
 
   activeStage = 'fixture_setup';
@@ -87,6 +89,25 @@ async function main() {
     }),
   });
   if (!ingestion.intentionId) throw new Error('intention_was_not_created');
+  const secondaryIngestion = await ingestOpenCodeEvidence({
+    tenantId: tenant.id,
+    now: occurredAt,
+    batch: validateOpenCodeEvidenceBatch({
+      provider: 'opencode',
+      batchId: `${marker}-batch-secondary`,
+      sourceVersion: 'git-ai/opencode-evidence/1',
+      repositoryId: repository.id,
+      externalSessionId: `${marker}-session-secondary`,
+      gitAiSessionId: `${marker}-git-ai-session-secondary`,
+      intention: 'Add an atomic recovery-token persistence operation',
+      events: [{
+        providerEventId: `${marker}-prompt-secondary`, type: 'prompt', occurredAt: occurredAt.toISOString(),
+        traceId: secondaryTraceId, model: 'task5-local-model', toolName: null,
+        content: 'Synthetic atomic persistence instruction', metadata: {},
+      }],
+    }),
+  });
+  if (!secondaryIngestion.intentionId) throw new Error('secondary_intention_was_not_created');
 
   activeStage = 'git_ai_attribution';
   const [commit] = await db.insert(scmCommits).values({
@@ -103,10 +124,17 @@ async function main() {
   await db.insert(aiCommitSessions).values({
     tenantId: tenant.id, commitId: commit.id, sessionId: ingestion.sessionId, observedAiLines: 18,
   });
+  await db.insert(aiCommitSessions).values({
+    tenantId: tenant.id, commitId: commit.id, sessionId: secondaryIngestion.sessionId, observedAiLines: 6,
+  });
   await db.insert(scmCommitFiles).values([
     {
       tenantId: tenant.id, commitId: commit.id, path: exactPath, observedAiLines: 18,
       attributionRanges: [{ startLine: 41, endLine: 58, traceId, authorType: 'ai' }],
+    },
+    {
+      tenantId: tenant.id, commitId: commit.id, path: secondaryPath, observedAiLines: 6,
+      attributionRanges: [{ startLine: 8, endLine: 13, traceId: secondaryTraceId, authorType: 'ai' }],
     },
     {
       tenantId: tenant.id, commitId: commit.id, path: missingPath, observedUnknownLines: 3,
@@ -146,6 +174,38 @@ async function main() {
     generatedAt: occurredAt,
     evidenceSource: 'git_ai_checkpoint',
   });
+  const [secondaryTelemetryBatch] = await db.insert(telemetryIngestBatches).values({
+    tenantId: tenant.id,
+    apiVersion: 3,
+    payloadHash: `${marker}-payload-hash-secondary`,
+    eventCount: 1,
+    payload: { synthetic: true },
+  }).returning();
+  const [secondaryTelemetryEvent] = await db.insert(telemetryMetricEvents).values({
+    tenantId: tenant.id,
+    batchId: secondaryTelemetryBatch.id,
+    eventIndex: 0,
+    eventFingerprint: `${marker}-event-fingerprint-secondary`,
+    eventKind: 1,
+    eventTimestamp: occurredAt,
+    rawEvent: { synthetic: true },
+    evidenceFamily: 'generation_session',
+    arrivalClass: 'current',
+    normalizationStatus: 'normalized',
+  }).returning();
+  await db.insert(aiGenerationObservations).values({
+    tenantId: tenant.id,
+    sessionId: secondaryIngestion.sessionId,
+    repositoryId: repository.id,
+    sourceEventId: secondaryTelemetryEvent.id,
+    traceId: secondaryTraceId,
+    model: 'task5-local-model',
+    filePath: secondaryPath,
+    generatedLines: 6,
+    acceptedLines: 6,
+    generatedAt: occurredAt,
+    evidenceSource: 'git_ai_checkpoint',
+  });
 
   activeStage = 'paginated_graph';
   const complete = await evidenceGraph({ tenantId: tenant.id, rootType: 'commit', rootId: commit.id, limit: 200 });
@@ -177,6 +237,11 @@ async function main() {
   const requiredNodeTypes = ['commit', 'code_range', 'session', 'event', 'trace', 'intention', 'checkpoint'];
   if (requiredNodeTypes.some(type => !complete.nodes.some(node => node.type === type))) {
     throw new Error('graph_node_type_missing');
+  }
+  for (const [type, minimum] of [['session', 2], ['trace', 2], ['checkpoint', 2]] as const) {
+    if (complete.nodes.filter(node => node.type === type).length < minimum) {
+      throw new Error(`multi_${type}_identity_was_collapsed`);
+    }
   }
   const requiredBases = [
     'git_ai_authorship_note', 'git_ai_range_attestation', 'provider_trace_id',
@@ -228,6 +293,7 @@ async function main() {
 
   console.log('graph_pagination=lossless_and_nonduplicating');
   console.log('graph_relationship_bases=verified');
+  console.log('multi_session_trace_checkpoint_identity=verified');
   console.log('file_line_exact_attribution=verified');
   console.log('file_line_missing_attribution=reported');
   console.log('alternate_graph_roots=verified');
