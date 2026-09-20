@@ -61,7 +61,7 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-1** | One session with zero, one and multiple commits | T5.1 | 🟢 ✅ | 🟡 ◐ | Many-to-many schema exists; complete deterministic fixture and live review. | — | Terminology review |
 | **E5-2** | One commit with multiple sessions, traces and checkpoints | T5.1, T5.5 | 🟢 ✅ | 🟡 ◐ | Graph paths exist; verify pagination and exact edge bases. | — | Provenance review |
 | **E5-3** | Consent, tenant isolation, encryption, secret redaction and raw authorization | T5.2 | 🟢 ✅ | 🟡 ◐ | Static/unit controls pass, including RLS and tenant-composite semantic references; live two-tenant and log inspection remain. | `44de334`, `2a3e528` | Security acceptance |
-| **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟡 ◐ | GitAI synthetic SQLite-to-upload test covers local redaction, exact tenant/repository binding and unavailable reasoning; live authenticated TrackAI replay remains. | GitAI `a8d93aa20` | Local OpenCode run |
+| **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟡 ◐ | GitAI synthetic SQLite-to-upload tests cover local redaction, exact tenant/repository binding, stable replay bodies/IDs, contract-safe metadata and unavailable reasoning; TrackAI accepts the exact request shape. Live authenticated database delivery and server deduplication remain. | GitAI `a8d93aa20`, `00262a33f` | Local OpenCode run |
 | **E5-5** | Forward/reverse graph traversal and pagination | T5.5 | 🟢 ✅ | 🟡 ◐ | Automated graph contracts exist; live query review remains. | — | Query review |
 | **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | Unified workspace, perspective lenses, PR-first stories and progressive evidence tree compile/build; active-versus-historical PR membership and exact-range semantics have focused tests. Three controlled customer walkthroughs remain. | `11a4025`, `056c475`, `016b207` | Product acceptance |
 | **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟡 ◐ | Story insights and deterministic test recognition exist; realistic synthetic corpus and analyst review remain. | `2a3e528`, `11a4025` | Analyst acceptance |
@@ -372,7 +372,7 @@ Only then may E5-12 and the Task5 completion boundary become green.
 
 | Date | Scope | Status | Evidence / next gate |
 |---|---|---:|---|
-| 2026-09-19 | OpenCode/GitAI collection | 🟡 ◐ | GitAI `a8d93aa20` adds `evidence sync-opencode`, read-only SQLite extraction, pre-serialization redaction, stable provider IDs, unavailable-reasoning representation and exact policy binding. Forty-one OpenCode-focused tests plus the evidence-binding test pass; live authenticated TrackAI replay remains. |
+| 2026-09-19 | OpenCode/GitAI collection | 🟡 ◐ | GitAI `a8d93aa20` adds `evidence sync-opencode`, read-only SQLite extraction, pre-serialization redaction, stable provider IDs, unavailable-reasoning representation and exact policy binding. GitAI `00262a33f` proves repeat collection creates the same body and IDs and that the payload remains inside TrackAI's metadata contract; TrackAI independently accepts that exact shape. Focused collector tests pass; live authenticated database delivery and server deduplication remain. |
 
 ## Wave 4 implementation evidence
 

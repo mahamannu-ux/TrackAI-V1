@@ -87,6 +87,43 @@ test('OpenCode evidence contract rejects duplicate provider event identities', (
   assert.throws(() => validateOpenCodeEvidenceBatch(batch({ events: [event, event] })), /unique/);
 });
 
+test('TrackAI accepts GitAI replay-stable tool and unavailable-reasoning evidence', () => {
+  const gitAiBatch = {
+    provider: 'opencode',
+    batchId: 'opencode-contract-replay-id',
+    sourceVersion: 'git-ai/opencode-evidence/1',
+    repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    externalSessionId: 'session-contract',
+    gitAiSessionId: 's_1234567890abcd',
+    events: [
+      {
+        providerEventId: 'part-contract:call', type: 'tool_call',
+        occurredAt: '2025-06-15T15:06:40.000Z', traceId: null,
+        model: 'model-contract', toolName: 'shell',
+        content: { command: 'task test' }, metadata: { status: 'completed', durationMs: 42 },
+      },
+      {
+        providerEventId: 'part-contract:result', type: 'tool_result',
+        occurredAt: '2025-06-15T15:06:40.000Z', traceId: null,
+        model: 'model-contract', toolName: 'shell', content: 'passed',
+        metadata: { status: 'completed', durationMs: 42 },
+      },
+      {
+        providerEventId: 'message-contract:reasoning-unavailable', type: 'reasoning',
+        occurredAt: '2025-06-15T15:06:40.000Z', traceId: null,
+        model: 'model-contract', toolName: null, content: null, metadata: {},
+      },
+    ],
+  };
+  const parsed = validateOpenCodeEvidenceBatch(gitAiBatch);
+  assert.equal(parsed.events.length, 3);
+  assert.equal(parsed.events[2].type, 'reasoning');
+  assert.equal(parsed.events[2].content, null);
+  assert.equal(parsed.events[2].traceId, null);
+  assert.equal(parsed.intention, null);
+  assert.deepEqual(validateOpenCodeEvidenceBatch(structuredClone(gitAiBatch)), parsed);
+});
+
 test('raw prompt and tool payload fields cannot be smuggled into metadata', () => {
   const event = { ...(batch().events as Array<Record<string, unknown>>)[0], metadata: {
     status: 'failed', arguments: { password: 'must-not-live-in-metadata' },
