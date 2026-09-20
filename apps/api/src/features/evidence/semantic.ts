@@ -14,7 +14,7 @@ export function semanticQueryForEmbedding(query: string): string {
   if (!trimmed) return trimmed;
   if (/\brace conditions?\b/i.test(trimmed)) {
     const subject = trimmed.replace(/\brace conditions?\b/ig, '').replace(/\s+/g, ' ').trim();
-    return `Find work about preventing concurrent request conflicts with atomic updates involving ${subject || 'shared state'}.`;
+    return `Find work about preventing concurrent requests from overwriting ${subject || 'shared state'}, including atomic updates.`;
   }
   const words = trimmed.split(/\s+/);
   if (words.length <= 8 && !/[.!?]$/.test(trimmed)) return `Find work about ${trimmed}.`;
