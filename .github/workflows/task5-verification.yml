@@ -43,6 +43,9 @@ jobs:
       - run: npm run verify:task5-graph-live --workspace=apps/api
         env:
           TASK5_EPHEMERAL_DATABASE: '1'
+      - run: npm run verify:task5-retention-live --workspace=apps/api
+        env:
+          TASK5_EPHEMERAL_DATABASE: '1'
       - run: npx tsc --noEmit -p apps/api/tsconfig.json
       - run: npx tsc --noEmit -p apps/web/tsconfig.json
       - run: npm run build --workspace=apps/web
