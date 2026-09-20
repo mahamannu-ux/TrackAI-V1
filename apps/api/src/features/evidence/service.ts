@@ -1128,7 +1128,20 @@ export async function enqueueSemanticReindex(input: {
   ));
   let enqueued = 0;
   for (const intention of intentions) {
-    if (await enqueueSemanticJob(input.tenantId, intention)) {
+    const created = await enqueueSemanticJob(input.tenantId, intention);
+    const requeued = created ? [] : await tenantDb.update(evidenceSemanticJobs, {
+      state: 'pending',
+      attemptCount: 0,
+      safeErrorCode: null,
+      availableAt: now,
+      lockedAt: null,
+    }, and(
+      eq(evidenceSemanticJobs.intentionId, intention.id),
+      eq(evidenceSemanticJobs.contentFingerprint, intention.contentFingerprint),
+      eq(evidenceSemanticJobs.modelRevision, configuredSemanticRevision()),
+      inArray(evidenceSemanticJobs.state, ['completed', 'failed', 'skipped']),
+    ));
+    if (created || requeued.length > 0) {
       enqueued += 1;
       await tenantDb.update(evidenceIntentions, {
         semanticAvailability: 'pending',

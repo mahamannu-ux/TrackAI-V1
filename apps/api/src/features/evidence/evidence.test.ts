@@ -355,3 +355,18 @@ test('Task5 browser acceptance helpers fail closed and do not log credentials', 
   assert.doesNotMatch(authServer, /console\.log\([^\n]*password/);
   assert.doesNotMatch(authServer, /console\.log\([^\n]*(accessToken|refreshToken)/);
 });
+
+test('Task5 semantic runtime stays compatible with Intel macOS and reindex retries existing jobs', () => {
+  const requirements = readFileSync(
+    resolve(process.cwd(), 'scripts/requirements-semantic.txt'),
+    'utf8',
+  );
+  const service = readFileSync(
+    resolve(process.cwd(), 'src/features/evidence/service.ts'),
+    'utf8',
+  );
+  assert.match(requirements, /^numpy<2$/m);
+  assert.match(service, /inArray\(evidenceSemanticJobs\.state, \['completed', 'failed', 'skipped'\]\)/);
+  assert.match(service, /attemptCount: 0/);
+  assert.match(service, /safeErrorCode: null/);
+});
