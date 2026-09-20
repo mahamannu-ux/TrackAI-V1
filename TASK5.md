@@ -13,6 +13,9 @@ Historical input is retained in
 [`docs/handoffs/TASK4_TO_TASK5.md`](docs/handoffs/TASK4_TO_TASK5.md). It is not a
 current tracker. Detailed semantic design is documented in
 [`docs/TASK5_SEMANTIC_EVIDENCE_DESIGN.md`](docs/TASK5_SEMANTIC_EVIDENCE_DESIGN.md).
+The synthetic environment, production-readiness boundary and product-owner
+walkthrough are documented in
+[`docs/TASK5_LOCAL_ACCEPTANCE_RUNBOOK.md`](docs/TASK5_LOCAL_ACCEPTANCE_RUNBOOK.md).
 This file is the only source of truth for Task5 status, gates and completion.
 
 ## Status legend
@@ -69,7 +72,7 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟢 ✅ | The pinned local BGE gate proves normalized 384-dimensional embeddings, cosine/lexical retrieval, RRF, exact priority and tenant isolation. Browser and final CI acceptance prove concise-query normalization, the semantic-only cosine floor, visible match reasons, self-story exclusion, direct-race ordering and suppression of the design-token hard negative. | `865909e`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35495908579`, `35519778360` | None |
 | **E5-10** | Correction, expiry and complete derived-data deletion | T5.2, T5.9 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI proves correction cannot extend retention; purge removes raw content, all intention versions, embeddings, lexical index rows, jobs, legacy semantic documents, summaries and intention links while retaining safe event metadata as expired and recording an audit. | `44de334`, `07bdbef`; CI `35493393579` | None |
 | **E5-11** | Task2 metric and Task4 security regression | T5.10 | 🟢 ✅ | 🟢 ✅ | Final TrackAI CI run `35519778360` passes the 127-test API/security/metric suite, fresh migrations, all Task5 live gates, API/web TypeScript and production web build. GitAI PR 1 passes all 44 applicable macOS, Ubuntu and Windows checks, including tests, lint, format, docs, CodeQL, E2E, performance smoke and Git compatibility. | TrackAI `57f0377`; GitAI `00262a33f`, `06128fcf3`, `cb1db62df`; GitAI runs `35503427698`, `35503427702`, `35503427704`, `35503427735` | None |
-| **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟢 ✅ | 🟢 ✅ | The controlled browser walkthrough passes for Leader, Developer, Security administrator and ordinary developer roles, including exact/missing attribution, insight drill-down, search, similar work, raw reveal/audit and UI denial. Final CI confirms the complete implementation after the walkthrough-discovered fixes. | `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35519778360` | None |
+| **E5-12** | Complete product-manager acceptance walkthrough | T5.6–T5.10 | 🟢 ✅ | 🟡 ◐ | The controlled Codex browser walkthrough and final CI pass for Leader, Developer, Security administrator and ordinary developer roles. Product-owner hands-on acceptance and feedback are pending using the linked local runbook. | `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35519778360` | Product-owner UAT |
 
 ## GitAI identity and terminology contract
 
@@ -207,8 +210,10 @@ Task4 regressions remain green, semantic search uses real embeddings, and the
 customer workflow works without raw database inspection. T5.4 remains deferred
 and does not block completion.
 
-**Completion result (2026-09-20): 🟢 ✅ Complete.** All required subtasks and
-E5-1–E5-12 pass. T5.4 remains explicitly deferred.
+**Completion result (2026-09-20): 🟡 ◐ Engineering-complete; product-owner UAT
+pending.** All automated, live-data and controlled Codex browser gates pass.
+Task5 closes only after the product owner completes E5-12 and records feedback.
+T5.4 remains explicitly deferred.
 
 ## Working directories and checkpoints
 
@@ -412,4 +417,4 @@ completed on 2026-09-20 and is recorded in the final Wave 7 row below.
 | 2026-09-20 | Pain-point and quality analytics | 🟢 ✅ | TrackAI `ecf838d` and `0d43265`, CI run `35494274247`: failed/retried/slow/unmatched tools, prompt loops, Task2 rework, failed/unknown tests, abandoned work and weak outcomes are detected and projected into a compact customer story. The gate also corrected and protected singular/plural insight wording. E5-7 and T5.7 are complete. |
 | 2026-09-20 | Semantic intention retrieval and relevance | 🟢 ✅ | TrackAI `e45c57c`, `6cacaf7`, `1c381e4`, `d980c23` and `865909e`, CI run `35495908579`: the pinned local BGE artifact produces normalized 384-dimensional embeddings; pgvector cosine and PostgreSQL lexical retrieval are fused with RRF and deterministically reranked. Exact priority, semantic paraphrases, graded hard negatives, explainable channel reasons and two-tenant isolation pass. E5-9 and T5.9 are complete. |
 | 2026-09-20 | Cross-platform Task2/Task4/GitAI regression | 🟢 ✅ | GitAI `00262a33f`, `06128fcf3` and `cb1db62df`, PR 1: all 44 applicable checks pass. Full macOS, Ubuntu and Windows suites, lint, format, docs, CodeQL, agent/OpenCode E2E, performance smoke and Git compatibility are green. The gate found and fixed one Windows portability warning, one stale migration-version assertion and one one-second fixture race. E5-11 is complete. |
-| 2026-09-20 | Controlled customer browser acceptance and Task5 completion | 🟢 ✅ | TrackAI `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486` and `57f0377`; final CI run `35519778360`: Leader, Developer and Security workflows pass against the disposable acceptance environment. Exact and missing attribution, friction drill-down, semantic/exact search, similar-work comparison, authorized raw reveal/audit and ordinary-user denial were observed. The walkthrough exposed and fixed retryable reindexing, Intel macOS runtime compatibility, self-story leakage and concise-query relevance. The final workflow passes 127 tests, every live gate, both TypeScript projects and production build. E5-12 and T5.10 are complete. |
+| 2026-09-20 | Controlled customer browser acceptance | 🟡 ◐ | TrackAI `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486` and `57f0377`; final CI run `35519778360`: Codex-observed Leader, Developer and Security workflows pass. Exact/missing attribution, insights, search, similar work, authorized raw reveal/audit and ordinary-user denial were exercised, and 127 tests plus every live gate pass. Product-owner UAT remains before E5-12 and Task5 close. |

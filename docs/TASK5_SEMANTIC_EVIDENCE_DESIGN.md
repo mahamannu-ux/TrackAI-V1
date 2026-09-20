@@ -3,6 +3,8 @@
 This document explains how Task5 evidence analysis, intentions, embeddings and
 hybrid search work. It contains no independent status or completion claims.
 The authoritative tracker and acceptance gates are in [`../TASK5.md`](../TASK5.md).
+Local verification, production deployment boundaries and product-owner UAT are
+covered by [`TASK5_LOCAL_ACCEPTANCE_RUNBOOK.md`](TASK5_LOCAL_ACCEPTANCE_RUNBOOK.md).
 Implemented TrackAI semantic checkpoints are recorded in the canonical tracker;
 the isolated GitAI OpenCode collection checkpoint is `a8d93aa20`.
 
