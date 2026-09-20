@@ -212,8 +212,8 @@ function sessionFriction(
   };
 }
 
-function keyInsight(values: ReturnType<typeof sessionFriction>) {
-  if (values.failedTools) return `${values.failedTools} failed tool operation${values.failedTools === 1 ? '' : 's'} need review.`;
+export function keyInsight(values: ReturnType<typeof sessionFriction>) {
+  if (values.failedTools) return `${values.failedTools} failed tool operation${values.failedTools === 1 ? '' : 's'} ${values.failedTools === 1 ? 'needs' : 'need'} review.`;
   if (values.slowTools) return `${values.slowTools} slow tool operation${values.slowTools === 1 ? '' : 's'} affected this work.`;
   if (values.reworkedLines) return `${values.reworkedLines} attributed line${values.reworkedLines === 1 ? '' : 's'} were reworked.`;
   if (values.evidenceGaps) return `${values.evidenceGaps} evidence item${values.evidenceGaps === 1 ? ' is' : 's are'} unavailable, redacted or expired.`;

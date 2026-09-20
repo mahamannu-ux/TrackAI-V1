@@ -16,7 +16,7 @@ import {
   semanticSafeError,
 } from './semantic';
 import { edgesForNodePage, uniqueGraphEdges } from './service';
-import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand } from './workspace';
+import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand, keyInsight } from './workspace';
 import {
   task5VerificationCorpus,
   validateTask5VerificationCorpus,
@@ -289,6 +289,15 @@ test('customer workspace identifies tests without treating ordinary shell work a
   assert.equal(isTestCommand({ command: 'task test' }), true);
   assert.equal(isTestCommand({ command: 'git status --short' }), false);
   assert.equal(isTestCommand({ path: 'src/testimonials.ts' }), false);
+});
+
+test('customer quality insight uses readable singular and plural wording', () => {
+  const values = {
+    failedTools: 1, retries: 0, slowTools: 0, promptLoops: 0,
+    reworkedLines: 0, abandoned: false, evidenceGaps: 0,
+  };
+  assert.equal(keyInsight(values), '1 failed tool operation needs review.');
+  assert.equal(keyInsight({ ...values, failedTools: 2 }), '2 failed tool operations need review.');
 });
 
 test('customer workspace uses active PR membership and retains legacy fallback only when needed', () => {
