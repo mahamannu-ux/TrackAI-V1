@@ -90,7 +90,14 @@ async function main() {
     'Prevent concurrent password reset token races');
 
   activeStage = 'local_embedding_jobs';
-  await processSemanticJobs({ limit: 100, now });
+  // Database defaults assign available_at during each insert, a few
+  // milliseconds after the fixture clock. Advance only the synthetic worker
+  // clock so every newly queued job is eligible without sleeping.
+  const workerNow = new Date(now.getTime() + 60_000);
+  const processed = await processSemanticJobs({ limit: 100, now: workerNow });
+  if (processed.filter(row => row.state === 'completed').length !== 5) {
+    throw new Error('semantic_jobs_did_not_complete');
+  }
   const primaryIndexes = await db.select().from(evidenceIntentionEmbeddings)
     .where(eq(evidenceIntentionEmbeddings.tenantId, primaryTenant.id));
   const isolatedIndexes = await db.select().from(evidenceIntentionEmbeddings)
