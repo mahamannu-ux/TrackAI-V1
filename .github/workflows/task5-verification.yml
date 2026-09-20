@@ -49,6 +49,26 @@ jobs:
       - run: npm run verify:task5-analytics-live --workspace=apps/api
         env:
           TASK5_EPHEMERAL_DATABASE: '1'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: apps/api/scripts/requirements-semantic.txt
+      - run: pip install --requirement apps/api/scripts/requirements-semantic.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/trackai/bge-small-en-v1.5-5c38ec7
+          key: task5-bge-small-en-v1.5-5c38ec7-v1
+      - run: >-
+          python apps/api/scripts/prepare-task5-bge.py
+          --output "$HOME/.cache/trackai/bge-small-en-v1.5-5c38ec7"
+      - run: npm run verify:task5-semantic-live --workspace=apps/api
+        env:
+          TASK5_EPHEMERAL_DATABASE: '1'
+          TRACKAI_BGE_EXECUTABLE: ${{ github.workspace }}/apps/api/scripts/trackai-bge-embed.py
+          TRACKAI_BGE_MODEL_PATH: /home/runner/.cache/trackai/bge-small-en-v1.5-5c38ec7
+          TRACKAI_BGE_REVISION: 5c38ec7c405ec4b44b94cc5a9bb96e735b38267a
+          TRACKAI_BGE_CHECKSUM: 3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad
       - run: npx tsc --noEmit -p apps/api/tsconfig.json
       - run: npx tsc --noEmit -p apps/web/tsconfig.json
       - run: npm run build --workspace=apps/web

@@ -154,6 +154,9 @@ flowchart TD
   adapter, which loads the deployment-local Sentence Transformers artifact.
 - Artifact: immutable model revision and checksum recorded in configuration and
   each semantic record.
+- Task5 verification pin: revision
+  `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`; `model.safetensors` SHA-256
+  `3c9f31665447c8911517620762200d2245a2518d6e7208acc78cd9db317e21ad`.
 - Production: remote model loading disabled; startup health fails closed if the
   packaged artifact/checksum is absent.
 - Query input uses the model's retrieval instruction; stored documents use the

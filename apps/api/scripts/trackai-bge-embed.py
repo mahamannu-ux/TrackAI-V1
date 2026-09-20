@@ -7,6 +7,7 @@ already exist on this deployment; network downloads are disabled.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -27,6 +28,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--model", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--checksum", required=True)
     parser.add_argument("--kind", choices=("document", "query"), required=True)
     parser.add_argument("--dimensions", type=int, required=True)
     arguments = parser.parse_args()
@@ -41,6 +43,23 @@ def main() -> None:
     model_path = pathlib.Path(model_path_value)
     if not model_path.is_dir():
         fail("local model artifact is unavailable")
+    revision_path = model_path / ".trackai-revision"
+    weights_path = model_path / "model.safetensors"
+    try:
+        packaged_revision = revision_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        fail("local semantic revision marker is unavailable")
+    if packaged_revision != arguments.revision:
+        fail("local semantic revision does not match configuration")
+    try:
+        digest = hashlib.sha256()
+        with weights_path.open("rb") as weights:
+            for chunk in iter(lambda: weights.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        fail("local semantic weights are unavailable")
+    if digest.hexdigest() != arguments.checksum:
+        fail("local semantic checksum does not match configuration")
 
     customer_text = sys.stdin.read()
     if not customer_text.strip():

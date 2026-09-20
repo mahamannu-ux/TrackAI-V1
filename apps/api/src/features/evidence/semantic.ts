@@ -62,6 +62,7 @@ export class LocalBgeCommandEngine implements EmbeddingEngine {
       const child = spawn(this.executable, [
         '--model', this.model,
         '--revision', this.revision,
+        '--checksum', this.checksum,
         '--kind', kind,
         '--dimensions', String(SEMANTIC_DIMENSIONS),
       ], {

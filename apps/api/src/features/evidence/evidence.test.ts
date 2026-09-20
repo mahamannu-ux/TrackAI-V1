@@ -280,6 +280,9 @@ test('local BGE adapter is pinned to local-only normalized 384-dimensional infer
   assert.match(adapter, /local_files_only=True/);
   assert.match(adapter, /trust_remote_code=False/);
   assert.match(adapter, /normalize_embeddings=True/);
+  assert.match(adapter, /hashlib\.sha256/);
+  assert.match(adapter, /local semantic checksum does not match configuration/);
+  assert.match(adapter, /local semantic revision does not match configuration/);
   assert.doesNotMatch(adapter, /print\(customer_text/);
 });
 
