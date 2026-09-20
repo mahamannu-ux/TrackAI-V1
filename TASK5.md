@@ -67,7 +67,7 @@ workflow. A related component or passing unit test alone is not a live pass.
 | **E5-3** | Consent, tenant isolation, encryption, secret redaction and raw authorization | T5.2 | 🟢 ✅ | 🟢 ✅ | Live CI proves explicit consent, envelope encryption, pre-storage redaction, two-tenant isolation, managed-machine authorization, administrator/auditor raw reveal, ordinary-user denial, `no-store`, authorized-only audit records and absence of raw content in captured logs. | `44de334`, `2a3e528`, `3df7341`, `6eaf9fb`; CI `35493134057` | None |
 | **E5-4** | Live synthetic OpenCode collection, replay and unavailable reasoning | T5.3 | 🟢 ✅ | 🟢 ✅ | GitAI synthetic SQLite collection produces stable, locally redacted, tenant/repository-bound request bodies. Managed-machine HTTP delivery is accepted once, replay is deduplicated, unavailable reasoning is preserved, and disabled consent/revoked grant/invalid credential all fail closed without persisting denied events. | TrackAI `3df7341`; GitAI `a8d93aa20`, `00262a33f`; CI `35489833224` | None |
 | **E5-5** | Forward/reverse graph traversal and pagination | T5.5 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI traverses commit, session, trace, checkpoint and intention roots; paginated nodes/edges exactly match the complete graph, identical links are emitted once, evidence bases remain explicit and a second tenant sees nothing. | `d0a6db1`, `90de8f2`; CI `35490329769` | None |
-| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | One role-neutral workspace now presents the intention once, then outcome, scope and the most important signal. Internal derivation labels, confidence mechanics, evidence coverage and low-level provenance are progressively disclosed under **How do we know?** The revised product-owner walkthrough remains pending. | `11a4025`, `056c475`, `016b207`, `f269626`, `c5de2ff` | Product-owner UAT of the revised experience |
+| **E5-6** | “Why does this code exist?” customer workflow | T5.6, T5.8 | 🟢 ✅ | 🟡 ◐ | One role-neutral workspace presents the primary intention once, then outcome, scope and the most important signal. **Dig deeper** contains evidence coverage plus a full-width, progressively disclosed evidence trail. Prompt text leads when authorized; payload JSON and provider metadata remain optional. The revised product-owner walkthrough remains pending. | `11a4025`, `056c475`, `016b207`, `f269626`, `c5de2ff` | Product-owner UAT of the revised experience |
 | **E5-7** | Failed tools, retries, slow tools, prompt loops, rework and abandoned work | T5.7 | 🟢 ✅ | 🟢 ✅ | Ephemeral pgvector CI verifies all friction signals, Task2 reworked lines, failed and unresolved test evidence, abandoned weak outcomes, unfinished-work presentation and deterministic customer insight priority. | `2a3e528`, `11a4025`, `ecf838d`, `0d43265`; CI `35494274247` | None |
 | **E5-8** | File/line → Git Note → checkpoint/trace/session → intention | T5.8 | 🟢 ✅ | 🟡 ◐ | The API chain is verified. The revised customer flow keeps the selected PR in context, explains the line through intention, outcome and exact GitAI trace evidence, and treats missing attribution as an honest gap. Product-owner UAT of the revised interaction remains pending. | `11a4025`, `d0a6db1`, `90de8f2`, `f269626`; CI `35490329769` | Product-owner UAT of the revised line investigation |
 | **E5-9** | Embeddings, hybrid search, hard negatives and tenant isolation | T5.9 | 🟢 ✅ | 🟢 ✅ | The pinned local BGE gate proves normalized 384-dimensional embeddings, cosine/lexical retrieval, RRF, exact priority and tenant isolation. Browser and final CI acceptance prove concise-query normalization, the semantic-only cosine floor, visible match reasons, self-story exclusion, direct-race ordering and suppression of the design-token hard negative. | `865909e`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`; CI `35495908579`, `35519778360` | None |
@@ -125,11 +125,14 @@ the full workspace width and provides one explicit Back control that restores
 the browsing context.
 
 The investigation uses one collapsible tree and one contextual detail pane:
-summary → related intents when there is more than one → lifecycle → changes →
-insights → how we know. The summary shows the intent once; intention source,
-confidence mechanics, evidence coverage and low-level provenance stay under
-**How do we know?** rather than competing with the customer answer.
-Sessions, checkpoints, traces and tools appear only below **How do we know?**.
+summary → other non-primary intents in this work → lifecycle → changes →
+insights → dig deeper. The summary shows the primary intent once. **Dig
+deeper** contains evidence coverage and the evidence trail; the coverage pane
+uses **How do we know?** as its focused heading. Opening the evidence trail
+gives most of the workspace to a vertical hybrid stepper. Prompts, tools,
+results, checkpoints and commits are progressively disclosed and colour-coded;
+raw trace identifiers are not empty customer destinations. Authorized prompt
+text is rendered as readable text before optional JSON/provider metadata.
 Code Lifecycle, Sessions, Commits, Pull Requests, Repositories and Contributors
 remain in the left navigation during Task5 for debugging and regression review.
 

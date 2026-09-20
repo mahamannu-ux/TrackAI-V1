@@ -108,11 +108,11 @@ in the last column or in a review note.
 | Gate | What to do | Expected result | Product-owner result / feedback |
 |---|---|---|---|
 | E5-1 | Open **Not committed**, then recovery and **Committed, not in a PR** stories | Zero-, one- and multi-commit work remain distinct | Pending |
-| E5-2 | Open **Prevent duplicate password recovery token use**, then expand **Changes** and **How do we know?** | Multiple sessions, traces and checkpoints remain distinct without cluttering the initial story | Pending |
+| E5-2 | Open **Prevent duplicate password recovery token use**, then expand **Changes** and **Dig deeper → Evidence trail** | Multiple work sequences and checkpoints remain distinct without exposing empty trace-ID destinations | Pending |
 | E5-3 | As admin reveal one raw event and inspect audit; repeat as developer | Admin reveal is audited; developer has no reveal or Administration access | Pending |
-| E5-4 | Expand recovery **How do we know?** | OpenCode provider/trace identity remains; unavailable reasoning is labelled | Pending |
+| E5-4 | Open recovery **Dig deeper → Evidence trail**, then expand a prompt and its technical metadata | Authorized prompt text is readable first; JSON/provider metadata is optional; unavailable reasoning remains labelled | Pending |
 | E5-5 | Expand/collapse every story group | Forward/reverse evidence is available without duplicate links or scattered pages | Pending |
-| E5-6 | Open the recovery PR | Browse/search controls and unrelated PRs disappear; the intention appears once, followed by outcome, scope and important signal; derivation mechanics remain under **How do we know?** | Pending |
+| E5-6 | Open the recovery PR | Browse/search controls and unrelated PRs disappear; the primary intention appears once, followed by outcome, scope and important signal; derivation mechanics remain under **Dig deeper → Evidence coverage and sources** | Pending |
 | E5-7 | Open **Insights** | Failed/retried/slow tools, prompt loop, rework and unresolved signals are compact and do not score people | Pending |
 | E5-8 | Under **Changes**, open `src/auth/recovery.ts`, select its recorded range, then inspect `src/auth/recovery-metrics.ts:19` | The first reveals why the line exists, its commit/outcome and exact supporting trace without leaving the PR; the second is an honest gap, never time proximity presented as proof | Pending |
 | E5-9 | Search `authentication credential race condition`, `5100000`, `src/auth/recovery.ts`, and `playwright`; apply merged filter | Relevant recovery/refresh work and match reasons appear; design-token work is not a semantic false positive | Pending |
