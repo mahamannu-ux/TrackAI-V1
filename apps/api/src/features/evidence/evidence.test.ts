@@ -366,6 +366,7 @@ test('Task5 semantic runtime stays compatible with Intel macOS and reindex retri
     'utf8',
   );
   assert.match(requirements, /^numpy<2$/m);
+  assert.match(requirements, /^scipy<1\.15$/m);
   assert.match(service, /inArray\(evidenceSemanticJobs\.state, \['completed', 'failed', 'skipped'\]\)/);
   assert.match(service, /attemptCount: 0/);
   assert.match(service, /safeErrorCode: null/);
