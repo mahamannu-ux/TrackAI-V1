@@ -52,7 +52,7 @@ test('Task5 verification corpus covers every evidence gate with one bounded prod
     corpusId: 'task5-password-recovery-v1',
     pullRequests: 3,
     commits: 7,
-    sessions: 5,
+    sessions: 6,
     intentions: 6,
     evidenceScenarios: 8,
     gates: 12,

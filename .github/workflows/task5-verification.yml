@@ -35,6 +35,7 @@ jobs:
       - run: npm test --workspace=apps/api
       - run: npm run db:migrate --workspace=apps/api
       - run: npm run verify:task5-schema --workspace=apps/api
+      - run: npm run verify:task5-corpus-live --workspace=apps/api
       - run: npx tsc --noEmit -p apps/api/tsconfig.json
       - run: npx tsc --noEmit -p apps/web/tsconfig.json
       - run: npm run build --workspace=apps/web

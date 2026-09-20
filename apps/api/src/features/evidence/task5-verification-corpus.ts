@@ -61,6 +61,10 @@ export const task5VerificationCorpus = {
       gitAiSessionId: 's_task5_refresh_build', status: 'shipped', commits: ['refresh-lock'],
     },
     {
+      key: 'design-token-build', externalId: 'task5-session-design-token-build',
+      gitAiSessionId: 's_task5_design_token_build', status: 'shipped', commits: ['design-token-rename'],
+    },
+    {
       key: 'direct-doc', externalId: 'task5-session-direct-doc',
       gitAiSessionId: 's_task5_direct_doc', status: 'shipped', commits: ['direct-runbook'],
     },
@@ -92,7 +96,7 @@ export const task5VerificationCorpus = {
     },
     {
       key: 'design-token', series: 'design-token', version: 1, current: true,
-      session: null, state: 'observed', lifecycle: 'finalized',
+      session: 'design-token-build', state: 'observed', lifecycle: 'finalized',
       text: 'Rename dashboard colour design tokens without changing authentication.',
     },
     {
@@ -119,6 +123,10 @@ export const task5VerificationCorpus = {
     {
       commit: 'recovery-test', path: 'tests/auth/recovery.test.ts',
       range: { startLine: 70, endLine: 103, traceId: 't_recovery_test', checkpointId: 'cp_recovery_test' },
+    },
+    {
+      commit: 'recovery-test', path: 'src/auth/recovery.ts',
+      range: { startLine: 60, endLine: 68, traceId: 't_recovery_review', checkpointId: 'cp_recovery_review' },
     },
   ],
   missingAttribution: { commit: 'recovery-observe', path: 'src/auth/recovery-metrics.ts', line: 19 },
