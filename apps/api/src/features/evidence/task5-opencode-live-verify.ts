@@ -13,6 +13,7 @@ import {
   scmRepositories,
   securityAuditEvents,
   ssoTenants,
+  tenantAdminMemberships,
 } from '../../core/db/schema';
 import { authenticateMachine } from '../../core/middleware/machine-auth';
 import {
@@ -24,8 +25,8 @@ import {
   grantMachineRepository,
   revokeMachineRepositoryGrant,
 } from '../../core/security/repository-security-service';
-import { evidenceWorkerRouter } from './evidence.routes';
-import { readRawEvidence, setEvidenceConsent } from './service';
+import { evidenceReadRouter, evidenceWorkerRouter } from './evidence.routes';
+import { setEvidenceConsent } from './service';
 
 let activeStage = 'startup';
 
@@ -70,6 +71,7 @@ async function main() {
 
   const marker = `task5-opencode-${randomUUID()}`;
   const actorId = `${marker}-admin`;
+  const auditorId = `${marker}-security-auditor`;
   activeStage = 'fixture_setup';
   const [tenant] = await db.insert(ssoTenants).values({
     companyName: 'Task5 OpenCode verification',
@@ -104,10 +106,26 @@ async function main() {
     actorId, reason: 'Ephemeral Task5 OpenCode verification',
   });
   await setEvidenceConsent({ tenantId: tenant.id, actorId, enabled: true });
+  await db.insert(tenantAdminMemberships).values([
+    {
+      tenantId: tenant.id, subject: actorId, role: 'tenant_admin',
+      status: 'active', grantedBy: `${marker}-system`,
+    },
+    {
+      tenantId: tenant.id, subject: auditorId, role: 'tenant_auditor',
+      status: 'active', grantedBy: actorId,
+    },
+  ]);
 
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   app.use('/worker/evidence', authenticateMachine, evidenceWorkerRouter);
+  app.use('/api/evidence', (req, _res, next) => {
+    req.tenantId = tenant.id;
+    const subject = req.header('x-task5-subject');
+    if (subject) req.user = { sub: subject };
+    next();
+  }, evidenceReadRouter);
   const server = createServer(app);
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -126,8 +144,10 @@ async function main() {
 
     activeStage = 'authenticated_ingestion';
     const redactionSentinel = `synthetic-${randomUUID()}`;
+    const safeContentSentinel = `task5-safe-content-${randomUUID()}`;
     const acceptedBatch = batch(
-      repository.id, marker, 'accepted', `Investigate recovery conflict; token=${redactionSentinel}`,
+      repository.id, marker, 'accepted',
+      `Investigate recovery conflict ${safeContentSentinel}; token=${redactionSentinel}`,
     );
     const firstResponse = await send(acceptedBatch);
     const first = await firstResponse.json() as Record<string, unknown>;
@@ -158,16 +178,53 @@ async function main() {
       || reasoning.availability !== 'unavailable') {
       throw new Error('availability_classification_failed');
     }
-    const raw = await readRawEvidence({ tenantId: tenant.id, eventId: prompt.id, actorId });
-    const rawText = JSON.stringify(raw?.content ?? null);
-    if (rawText.includes(redactionSentinel) || !rawText.includes('[REDACTED:assigned_secret]')) {
+    activeStage = 'role_authorized_raw_reveal';
+    const rawEndpoint = `http://127.0.0.1:${address.port}/api/evidence/events/${prompt.id}/raw`;
+    const capturedLogs: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => { capturedLogs.push(args.map(String).join(' ')); };
+    console.error = (...args: unknown[]) => { capturedLogs.push(args.map(String).join(' ')); };
+    let adminRawResponse: Response;
+    let auditorRawResponse: Response;
+    let deniedRawResponse: Response;
+    try {
+      adminRawResponse = await fetch(rawEndpoint, { headers: { 'x-task5-subject': actorId } });
+      auditorRawResponse = await fetch(rawEndpoint, { headers: { 'x-task5-subject': auditorId } });
+      deniedRawResponse = await fetch(rawEndpoint, {
+        headers: { 'x-task5-subject': `${marker}-ordinary-user` },
+      });
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+    }
+    const adminRawText = await adminRawResponse.text();
+    const auditorRawText = await auditorRawResponse.text();
+    if (adminRawResponse.status !== 200 || auditorRawResponse.status !== 200
+      || deniedRawResponse.status !== 403) {
+      throw new Error('raw_role_authorization_failed');
+    }
+    if (adminRawResponse.headers.get('cache-control') !== 'no-store'
+      || auditorRawResponse.headers.get('cache-control') !== 'no-store') {
+      throw new Error('raw_response_cache_control_failed');
+    }
+    if (!adminRawText.includes(safeContentSentinel) || !auditorRawText.includes(safeContentSentinel)
+      || adminRawText.includes(redactionSentinel) || auditorRawText.includes(redactionSentinel)
+      || !adminRawText.includes('[REDACTED:assigned_secret]')) {
       throw new Error('pre_storage_redaction_failed');
     }
-    const [rawAudit] = await db.select().from(securityAuditEvents).where(and(
+    if (capturedLogs.some(line => line.includes(safeContentSentinel) || line.includes(redactionSentinel))) {
+      throw new Error('raw_content_was_logged');
+    }
+    const rawAudits = await db.select().from(securityAuditEvents).where(and(
       eq(securityAuditEvents.tenantId, tenant.id),
       eq(securityAuditEvents.action, 'evidence.raw.read'),
     ));
-    if (!rawAudit) throw new Error('raw_read_audit_failed');
+    if (!rawAudits.some(row => row.actorId === actorId)
+      || !rawAudits.some(row => row.actorId === auditorId)
+      || rawAudits.some(row => row.actorId === `${marker}-ordinary-user`)) {
+      throw new Error('raw_read_audit_failed');
+    }
 
     activeStage = 'consent_denial';
     await setEvidenceConsent({ tenantId: tenant.id, actorId, enabled: false });
@@ -199,7 +256,10 @@ async function main() {
     console.log('opencode_replay=deduplicated');
     console.log('reasoning_unavailable=preserved');
     console.log('secret_redaction_before_storage=passed');
-    console.log('raw_read_audit=recorded');
+    console.log('raw_role_authorization=passed');
+    console.log('raw_response_no_store=passed');
+    console.log('raw_content_logging=absent');
+    console.log('raw_read_audit=recorded_for_authorized_roles');
     console.log('disabled_consent=blocked');
     console.log('revoked_repository_grant=blocked');
     console.log('invalid_machine_credential=blocked');
