@@ -22,6 +22,7 @@ import {
   currentPullRequestCommitIds,
   distinctRelatedWork,
   exactRangeTraceIds,
+  focusedRangeTraceIds,
   insightSignals,
   isTestCommand,
   keyInsight,
@@ -383,6 +384,15 @@ test('file-line exactness requires an explicit GitAI range attribution edge', ()
   assert.deepEqual(exactRangeTraceIds([
     { fromType: 'code_range', relationship: 'attributed_to', toType: 'trace', toId: 'exact-trace' },
   ]), ['exact-trace']);
+});
+
+test('PR line explanation only trusts attribution from the selected commit', () => {
+  const graphs = [
+    { edges: [{ fromType: 'code_range', relationship: 'attributed_to', toType: 'trace', toId: 'other-trace' }] },
+    { edges: [] },
+  ];
+  assert.deepEqual(focusedRangeTraceIds(graphs, ['other-commit', 'selected-commit'], 'selected-commit'), []);
+  assert.deepEqual(focusedRangeTraceIds(graphs, ['other-commit', 'selected-commit'], 'other-commit'), ['other-trace']);
 });
 
 test('Task5 browser acceptance helpers fail closed and do not log credentials', () => {

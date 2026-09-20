@@ -127,6 +127,38 @@ This prevents collector chunks and conversational follow-ups from becoming
 fake business goals. Future finalization/abandonment triggers may change the
 `lifecycle` field only when backed by an observed session/outcome event.
 
+### Open design subtask T5.9a — intention derivation quality
+
+The current fallback is deliberately small: when no explicit intention is
+provided, TrackAI takes the first usable prompt's first sentence, labels it
+`inferred`, and assigns fixed confidence 70. This is safe and deterministic,
+but it is not a complete ML solution and must not be presented as one.
+
+T5.9a is a discussion-first subtask. No new derivation model will be selected
+until the founder requirements and evaluation examples are reviewed. The design
+must address:
+
+- intent derived from a complete multi-turn flow rather than one sentence;
+- one session containing several intents and one intent spanning sessions,
+  commits or PRs;
+- questions such as “why was authentication built this way?” that must resolve
+  to the earlier PR/commit/intent that introduced the design;
+- explicit developer intent versus system-derived intent versus later audited
+  correction;
+- intent revisions, splitting, merging and supersession without redefining a
+  GitAI session, trace or checkpoint;
+- evaluation with hard negatives, ambiguous prompts, changing goals and
+  incomplete evidence;
+- privacy-safe local processing, retention and deletion of every derived form;
+- a human review loop that explains the evidence used and never turns a fixed
+  heuristic score into a probability claim.
+
+Customer UX will say **Explicitly provided**, **Derived from the first prompt —
+review recommended**, or **Reviewed and corrected** under **How do we know?**.
+Numeric intention confidence and the internal provisional/finalized lifecycle
+remain hidden from the normal customer story until T5.9a establishes a useful,
+calibrated interpretation.
+
 No new vector is written when the normalized content fingerprint, model
 revision and dimensions are unchanged.
 

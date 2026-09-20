@@ -140,11 +140,21 @@ evidenceReadRouter.get('/stories/:rootType/:id', async (req, res) => {
     res.status(400).json({ error: 'A supported customer story root is required' });
     return;
   }
+  const path = typeof req.query.path === 'string' ? req.query.path : null;
+  const commitId = typeof req.query.commitId === 'string' ? req.query.commitId : null;
+  const line = req.query.line === undefined ? null : Number(req.query.line);
+  const hasFocus = path !== null || commitId !== null || line !== null;
+  if (hasFocus && (!path || path.length > 2_000 || !commitId
+    || commitId.length > 200 || !Number.isInteger(line) || Number(line) < 1)) {
+    res.status(400).json({ error: 'A commit, file path and positive line number are required' });
+    return;
+  }
   try {
     const result = await evidenceWorkStory({
       tenantId,
       rootType: rootType as 'pull_request' | 'commit' | 'intention',
       rootId: String(req.params.id),
+      focus: hasFocus ? { commitId: commitId!, path: path!, line: Number(line) } : undefined,
     });
     if (!result) { res.status(404).json({ error: 'Customer story was not found' }); return; }
     res.json(result);

@@ -236,7 +236,7 @@ export type EvidenceWorkStory = {
     status: 'available' | 'unavailable';
     items: Array<EvidenceWorkCard & { matchReasons: string[] }>;
   };
-  focus: null | { path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
+  focus: null | { commitId: string; path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
 };
 export type EvidenceWorkspaceSearchResult = EvidenceWorkCard & { matchReasons: string[]; score: number };
 export type EvidenceWorkspaceSearchFilters = {
@@ -376,6 +376,16 @@ export const getEvidenceLineWhy = (commitId: string, path: string, line: number)
   const parameters = new URLSearchParams({ path, line: String(line) });
   return apiFetch<EvidenceWorkStory>(
     `/api/evidence/commits/${encodeURIComponent(commitId)}/why?${parameters.toString()}`,
+  );
+};
+export const getEvidenceStoryLineWhy = (
+  kind: EvidenceWorkKind, id: string, commitId: string, path: string, line: number,
+) => {
+  const rootType = kind === 'pull_request' ? 'pull_request'
+    : kind === 'direct_commit' ? 'commit' : 'intention';
+  const parameters = new URLSearchParams({ commitId, path, line: String(line) });
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/stories/${rootType}/${encodeURIComponent(id)}?${parameters.toString()}`,
   );
 };
 export const searchEvidenceWorkspace = (query: string, filters: EvidenceWorkspaceSearchFilters = {}) => {

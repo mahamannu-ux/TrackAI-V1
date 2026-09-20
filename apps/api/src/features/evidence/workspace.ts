@@ -106,7 +106,7 @@ export type WorkStory = {
     status: 'available' | 'unavailable';
     items: Array<WorkCard & { matchReasons: string[] }>;
   };
-  focus: null | { path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
+  focus: null | { commitId: string; path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
 };
 
 type Records = Awaited<ReturnType<typeof loadRecords>>;
@@ -409,6 +409,16 @@ export function exactRangeTraceIds(edges: Array<{
     && edge.relationship === 'attributed_to' && edge.toType === 'trace').map(edge => edge.toId);
 }
 
+export function focusedRangeTraceIds(
+  graphs: Array<{ edges: Array<{ fromType: string; relationship: string; toType: string; toId: string }> }>,
+  commitIds: string[],
+  focusCommitId: string | null,
+): string[] {
+  if (!focusCommitId) return [];
+  const focusedGraph = graphs[commitIds.indexOf(focusCommitId)];
+  return focusedGraph ? exactRangeTraceIds(focusedGraph.edges) : [];
+}
+
 async function testSignals(tenantId: string, records: Records, sessionIds: string[]) {
   const wanted = new Set(sessionIds);
   const events = records.events.filter(row => wanted.has(row.sessionId));
@@ -432,7 +442,7 @@ async function testSignals(tenantId: string, records: Records, sessionIds: strin
 
 export async function evidenceWorkStory(input: {
   tenantId: string; rootType: Exclude<RootKind, 'code'>; rootId: string;
-  focus?: { path: string; line: number };
+  focus?: { commitId?: string; path: string; line: number };
 }): Promise<WorkStory | null> {
   const records = await loadRecords(input.tenantId);
   const frictionRows = await frictionAnalytics(input.tenantId) as Array<Record<string, unknown>>;
@@ -466,17 +476,21 @@ export async function evidenceWorkStory(input: {
     return text ? [{ id: row.id, text, state: row.evidenceState, confidence: row.confidence,
       lifecycle: row.lifecycle, sessionId: row.sessionId }] : [];
   });
+  const focusCommitId = input.focus?.commitId ?? (input.rootType === 'commit' ? input.rootId : null);
   const graphs = await Promise.all(commitIds.map(commitId => evidenceGraph({
     tenantId: input.tenantId, rootType: 'commit', rootId: commitId,
-    path: input.focus?.path, line: input.focus?.line, limit: 200,
+    path: focusCommitId === commitId ? input.focus?.path : undefined,
+    line: focusCommitId === commitId ? input.focus?.line : undefined,
+    limit: 200,
   })));
   if (!commitIds.length && sessionIds.length) {
     graphs.push(await evidenceGraph({ tenantId: input.tenantId, rootType: 'session', rootId: sessionIds[0], limit: 200 }));
   }
   const graph = mergeGraphs(graphs, { type: input.rootType, id: input.rootId });
-  const focusTraces = exactRangeTraceIds(graph.edges);
+  const focusTraces = focusedRangeTraceIds(graphs, commitIds, focusCommitId);
   const focus = input.focus ? {
-    ...input.focus, attribution: (focusTraces.length ? 'exact' : 'missing') as 'exact' | 'missing',
+    commitId: focusCommitId ?? input.rootId, path: input.focus.path, line: input.focus.line,
+    attribution: (focusTraces.length ? 'exact' : 'missing') as 'exact' | 'missing',
     traceIds: focusTraces,
   } : null;
   const values = sessionFriction(frictionRows, sessionIds, records);
