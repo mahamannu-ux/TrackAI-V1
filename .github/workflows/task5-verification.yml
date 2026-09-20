@@ -24,7 +24,8 @@ jobs:
           --health-retries 12
     env:
       DATABASE_URL: postgresql://trackai:trackai_test_only@localhost:5432/trackai
-      TRACKAI_MASTER_KEYRING: '{"activeVersion":"ci-v1","keys":{"ci-v1":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}}'
+      MASTER_ENCRYPTION_KEY_ACTIVE_VERSION: ci-v1
+      MASTER_ENCRYPTION_KEYS_JSON: '{"ci-v1":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

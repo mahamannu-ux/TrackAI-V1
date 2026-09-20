@@ -242,6 +242,16 @@ test('Task5 semantic migration enables pgvector, exact hybrid indexes, versionin
   assert.match(hardeningMigration, /DROP CONSTRAINT "evidence_intention_embeddings_intention_id/);
 });
 
+test('Task5 CI uses the Task4 runtime master-key contract', () => {
+  const workflow = readFileSync(
+    resolve(process.cwd(), '../../.github/workflows/task5-verification.yml'),
+    'utf8',
+  );
+  assert.match(workflow, /MASTER_ENCRYPTION_KEY_ACTIVE_VERSION: ci-v1/);
+  assert.match(workflow, /MASTER_ENCRYPTION_KEYS_JSON:/);
+  assert.doesNotMatch(workflow, /TRACKAI_MASTER_KEYRING/);
+});
+
 test('local BGE adapter is pinned to local-only normalized 384-dimensional inference', () => {
   const adapter = readFileSync(resolve(process.cwd(), 'scripts/trackai-bge-embed.py'), 'utf8');
   assert.match(adapter, /BAAI\/bge-small-en-v1\.5/);
