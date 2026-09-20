@@ -945,15 +945,33 @@ export async function searchIntentions(tenantId: string, query: string, options:
         .map(link => link.commitId),
     }];
   });
-  return results.sort((left, right) => {
+  return results.sort(compareIntentionSearchResults).slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
+}
+
+export function compareIntentionSearchResults(left: {
+  id: string; match: 'exact' | 'hybrid' | 'lexical' | 'semantic'; score: number;
+  vectorScore: number | null; lexicalScore: number | null;
+  evidenceState: EvidenceState; confidence: number;
+}, right: {
+  id: string; match: 'exact' | 'hybrid' | 'lexical' | 'semantic'; score: number;
+  vectorScore: number | null; lexicalScore: number | null;
+  evidenceState: EvidenceState; confidence: number;
+}) {
     const exact = Number(right.match === 'exact') - Number(left.match === 'exact');
     if (exact) return exact;
     const relevance = right.score - left.score;
     if (relevance) return relevance;
+    // RRF ties when lexical and vector ranks are swapped. Prefer the stronger
+    // cosine score so a keyword-heavy hard negative cannot win by random ID.
+    const vector = (right.vectorScore ?? Number.NEGATIVE_INFINITY)
+      - (left.vectorScore ?? Number.NEGATIVE_INFINITY);
+    if (vector) return vector;
+    const lexical = (right.lexicalScore ?? Number.NEGATIVE_INFINITY)
+      - (left.lexicalScore ?? Number.NEGATIVE_INFINITY);
+    if (lexical) return lexical;
     const evidencePriority = { corrected: 0, observed: 1, inferred: 2 } as const;
     const evidence = evidencePriority[left.evidenceState] - evidencePriority[right.evidenceState];
     return evidence || right.confidence - left.confidence || left.id.localeCompare(right.id);
-  }).slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
 }
 
 export async function processNextSemanticJob(

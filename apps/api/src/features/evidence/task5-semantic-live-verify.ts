@@ -124,14 +124,18 @@ async function main() {
   const order = results.map(row => row.id);
   const relatedPositions = [relatedRace, relatedAtomic].map(id => order.indexOf(id));
   const hardNegativePosition = order.indexOf(hardNegative);
-  if (!results.length
-    || ![relatedRace, relatedAtomic].includes(results[0].id)
-    || relatedPositions.some(position => position < 0 || position > 2)
-    || hardNegativePosition < 0
-    || hardNegativePosition < Math.max(...relatedPositions)
-    || (order.includes(unrelated) && order.indexOf(unrelated) < Math.min(...relatedPositions))
+  if (!results.length || ![relatedRace, relatedAtomic].includes(results[0].id)) {
+    throw new Error('semantic_top_result_was_not_related');
+  }
+  if (relatedPositions.some(position => position < 0 || position > 2)) {
+    throw new Error('semantic_related_recall_at_three_failed');
+  }
+  if (hardNegativePosition < 0 || hardNegativePosition < Math.max(...relatedPositions)) {
+    throw new Error('semantic_hard_negative_ranked_above_related_work');
+  }
+  if ((order.includes(unrelated) && order.indexOf(unrelated) < Math.min(...relatedPositions))
     || order.includes(isolated)) {
-    throw new Error('semantic_hard_negative_ranking_failed');
+    throw new Error('semantic_irrelevant_or_cross_tenant_result_ranked_too_high');
   }
   if (!results.some(row => row.matchReasons.includes('semantic'))
     || !results.some(row => row.matchReasons.includes('lexical'))) {

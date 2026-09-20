@@ -15,7 +15,7 @@ import {
   reciprocalRankFusion,
   semanticSafeError,
 } from './semantic';
-import { edgesForNodePage, uniqueGraphEdges } from './service';
+import { compareIntentionSearchResults, edgesForNodePage, uniqueGraphEdges } from './service';
 import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand, keyInsight } from './workspace';
 import {
   task5VerificationCorpus,
@@ -159,6 +159,19 @@ test('hybrid search uses stable reciprocal rank fusion', () => {
   assert.equal(ranked[0].lexicalRank, 2);
   assert.equal(ranked[0].vectorRank, 1);
   assert.deepEqual(new Set(ranked.map(row => row.id)), new Set(['both', 'lexical-only', 'vector-only']));
+});
+
+test('deterministic semantic reranking breaks RRF ties before database identity', () => {
+  const base = {
+    match: 'hybrid' as const, score: 0.032, lexicalScore: 0.9,
+    evidenceState: 'observed' as const, confidence: 100,
+  };
+  const hardNegative = { ...base, id: 'a-randomly-first-id', vectorScore: 0.71 };
+  const semanticMatch = { ...base, id: 'z-randomly-last-id', vectorScore: 0.83, lexicalScore: 0.5 };
+  assert.deepEqual(
+    [hardNegative, semanticMatch].sort(compareIntentionSearchResults).map(row => row.id),
+    ['z-randomly-last-id', 'a-randomly-first-id'],
+  );
 });
 
 test('graph pagination emits cross-page edges once with their source page', () => {
