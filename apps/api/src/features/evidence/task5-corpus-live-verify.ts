@@ -7,6 +7,7 @@ import { task5VerificationCorpus, validateTask5VerificationCorpus } from './task
 
 type PgFailure = Error & { code?: string; constraint?: string };
 type Scenario = Record<string, unknown>;
+let activeStage = 'startup';
 
 const lifecycleCountsSql = `
   SELECT
@@ -48,6 +49,7 @@ async function expectForeignKeyRejection(
 }
 
 async function main() {
+  activeStage = 'configuration';
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
   validateTask5VerificationCorpus();
 
@@ -63,12 +65,14 @@ async function main() {
   let transactionOpen = false;
 
   try {
+    activeStage = 'baseline';
     const beforeLifecycle = (await client.query(lifecycleCountsSql)).rows[0];
     await client.query('BEGIN');
     transactionOpen = true;
     await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query("SET LOCAL statement_timeout = '60s'");
 
+    activeStage = 'tenants';
     const tenantIds = new Map<string, string>();
     for (const [key, domain] of Object.entries(corpus.tenants)) {
       const result = await client.query<{ id: string }>(`
@@ -87,6 +91,7 @@ async function main() {
     const primaryTenantId = tenantIds.get('primary')!;
     const isolatedTenantId = tenantIds.get('isolated')!;
 
+    activeStage = 'repositories_and_consent';
     const repositories = new Map<string, string>();
     for (const [key, tenantId] of tenantIds) {
       const result = await client.query<{ id: string }>(`
@@ -112,6 +117,7 @@ async function main() {
       `, [tenantId, `${marker}-admin`]);
     }
 
+    activeStage = 'commits_and_sessions';
     const commitIds = new Map<string, string>();
     for (const commit of corpus.commits) {
       const result = await client.query<{ id: string }>(`
@@ -151,6 +157,7 @@ async function main() {
       }
     }
 
+    activeStage = 'pull_requests';
     const pullRequestIds = new Map<string, string>();
     for (const pr of corpus.pullRequests) {
       const headCommit = corpus.commits.find(row => row.key === pr.activeCommits.at(-1));
@@ -193,6 +200,7 @@ async function main() {
       }
     }
 
+    activeStage = 'file_attribution';
     const fileKeys = new Set<string>();
     for (const file of corpus.fileEvidence) {
       const key = `${file.commit}:${file.path}`;
@@ -217,6 +225,7 @@ async function main() {
       corpus.missingAttribution.path,
     ]);
 
+    activeStage = 'evidence_events';
     const eventIds = new Map<string, string>();
     for (const rawScenario of corpus.evidenceScenarios) {
       const scenario = rawScenario as Scenario;
@@ -256,6 +265,7 @@ async function main() {
       }
     }
 
+    activeStage = 'intentions';
     const intentionIds = new Map<string, string>();
     const seriesIds = new Map<string, string>();
     for (const intention of corpus.intentions) {
@@ -286,6 +296,7 @@ async function main() {
       intentionIds.set(intention.key, id);
     }
 
+    activeStage = 'isolated_tenant';
     const isolatedSession = await client.query<{ id: string }>(`
       INSERT INTO ai_sessions
         (tenant_id, external_session_id, tool, display_name, observed_models, status)
@@ -308,6 +319,7 @@ async function main() {
       JSON.stringify(isolatedEncrypted), fingerprint(corpus.isolatedTenantIntention),
     ]);
 
+    activeStage = 'verification_queries';
     const identity = (await client.query<{
       zero_sessions: string; one_sessions: string; multi_sessions: string;
       max_sessions_per_commit: string; trace_count: string; checkpoint_count: string;
@@ -358,10 +370,12 @@ async function main() {
         (SELECT count(*)::text FROM tenant_evidence_settings
           WHERE tenant_id = ANY($2::uuid[]) AND raw_collection_enabled) AS consented_tenants
     `, [primaryTenantId, [...tenantIds.values()]])).rows[0];
+    activeStage = 'cross_tenant_rejection';
     const crossTenantSemanticBlocked = await expectForeignKeyRejection(
       client, primaryTenantId, isolatedIntentionId, marker,
     );
 
+    activeStage = 'acceptance_checks';
     const checks = {
       zeroCommitSession: Number(identity.zero_sessions) >= 1,
       oneCommitSession: Number(identity.one_sessions) >= 1,
@@ -378,10 +392,13 @@ async function main() {
         && Number(persistedShape.historical_memberships) >= 1,
       explicitConsent: Number(persistedShape.consented_tenants) === tenantIds.size,
     };
-    if (Object.values(checks).some(value => !value)) {
-      throw new Error(`Task5 live corpus checks failed: ${JSON.stringify(checks)}`);
+    const failedChecks = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
+    if (failedChecks.length) {
+      console.log(`failed_checks=${failedChecks.join(',')}`);
+      throw new Error('task5_acceptance_check_failed');
     }
 
+    activeStage = 'rollback_and_residuals';
     await client.query('ROLLBACK');
     transactionOpen = false;
     const afterLifecycle = (await client.query(lifecycleCountsSql)).rows[0];
@@ -412,6 +429,8 @@ async function main() {
 void main().catch(error => {
   const failure = error as PgFailure;
   console.log('task5_corpus_live_verification=failed');
+  console.log(`failure_stage=${activeStage}`);
   console.log(`error_code=${failure.code ?? 'unknown'}`);
+  if (failure.constraint) console.log(`error_constraint=${failure.constraint}`);
   process.exitCode = 1;
 });
