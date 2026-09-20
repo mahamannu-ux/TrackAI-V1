@@ -3,8 +3,8 @@
 This document explains how Task5 evidence analysis, intentions, embeddings and
 hybrid search work. It contains no independent status or completion claims.
 The authoritative tracker and acceptance gates are in [`../TASK5.md`](../TASK5.md).
-The implemented TrackAI semantic checkpoint is `2a3e528`; the isolated GitAI
-OpenCode collection checkpoint is `a8d93aa20`.
+Implemented TrackAI semantic checkpoints are recorded in the canonical tracker;
+the isolated GitAI OpenCode collection checkpoint is `a8d93aa20`.
 
 ## 1. GitAI identities remain authoritative
 
@@ -152,6 +152,9 @@ flowchart TD
 - Output: normalized 384-dimensional vector.
 - Runtime: a Node background job worker invokes the bundled local-only Python
   adapter, which loads the deployment-local Sentence Transformers artifact.
+- Supported verification runtime: Python 3.11 or 3.12. The reproducible Intel
+  macOS environment pins `numpy<2` and `scipy<1.15` for compatibility with the
+  pinned PyTorch runtime. Python 3.14 is not a supported Task5 runtime.
 - Artifact: immutable model revision and checksum recorded in configuration and
   each semantic record.
 - Task5 verification pin: revision
@@ -227,7 +230,8 @@ Task14 scale evidence justifies tenant-safe partitioning:
 ```mermaid
 flowchart LR
   Q[Customer query] --> A[Authorize + tenant bind]
-  A --> M[Exact metadata filters]
+  A --> N[Normalize concise semantic concepts]
+  N --> M[Exact metadata filters]
   M --> X[Exact phrase/identifier lookup]
   M --> L[PostgreSQL lexical top 50]
   M --> D[Local query embedding]
@@ -248,17 +252,24 @@ flowchart LR
 2. Exact normalized phrase/identifier lookup produces an explicit match reason.
 3. PostgreSQL full-text search returns up to 50 lexical candidates using
    `websearch_to_tsquery` and `ts_rank_cd`.
-4. Local BGE query inference plus pgvector cosine similarity returns up to 50
-   dense candidates.
-5. Candidate lists are fused with Reciprocal Rank Fusion:
+4. For a small, deterministic set of terse customer concepts, query
+   normalization adds natural-language context before embedding. For example,
+   `race condition` becomes a concurrent-request concept query. The original
+   query remains authoritative for exact and lexical matching, and no evidence
+   link or stored intention is created by this expansion.
+5. Local BGE query inference plus pgvector cosine similarity returns up to 50
+   dense candidates. A semantic-only candidate must have cosine similarity of
+   at least `0.60`; exact and lexical candidates bypass this floor.
+6. Candidate lists are fused with Reciprocal Rank Fusion:
 
    `RRF(document) = Σ 1 / (60 + rank_in_list)`
 
-6. Superseded, expired and inaccessible intention versions are removed.
-7. Exact matches lead, followed by fused relevance. Evidence state, confidence
+7. Superseded, expired and inaccessible intention versions are removed.
+8. Exact matches lead, followed by fused relevance. Evidence state, confidence
    and stable ID only break relevance ties.
 
-The response returns lexical rank, vector rank, fused score, match reasons,
+The response returns lexical rank, vector rank, fused score, customer-readable
+match reasons such as exact, lexical, similar intention or concurrency concept,
 model revision, evidence state, confidence and availability. It never returns
 the vector or lexical document.
 
@@ -332,8 +343,10 @@ deleted content, vector, lexical terms or a reversible derivative.
   content fingerprint, model revision and dimensions.
 - A model upgrade enqueues new jobs without mutating old records.
 - The tenant-admin semantic reindex action enqueues the current unexpired
-  intention versions for the newly configured revision and records a
-  content-free audit event.
+  intention versions for the configured revision and records a content-free
+  audit event. If an idempotent job already exists in completed, failed or
+  skipped state, reindex resets it to pending, clears only its safe error and
+  attempt state, and preserves the source expiry. It never extends retention.
 - Search reads only the configured active model revision after its backfill gate
   passes; old model rows expire or are deleted with the source.
 - Transient inference failures retry with bounded backoff and safe codes.
