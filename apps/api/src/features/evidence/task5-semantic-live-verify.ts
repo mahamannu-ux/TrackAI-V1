@@ -119,7 +119,7 @@ async function main() {
     throw new Error('semantic_availability_was_not_recorded');
   }
 
-  activeStage = 'hybrid_retrieval';
+  activeStage = 'semantic_relevance';
   const results = await searchIntentions(primaryTenant.id, 'password recovery race condition');
   const order = results.map(row => row.id);
   const relatedPositions = [relatedRace, relatedAtomic].map(id => order.indexOf(id));
@@ -137,16 +137,20 @@ async function main() {
     || order.includes(isolated)) {
     throw new Error('semantic_irrelevant_or_cross_tenant_result_ranked_too_high');
   }
-  if (!results.some(row => row.matchReasons.includes('semantic'))
-    || !results.some(row => row.matchReasons.includes('lexical'))) {
-    throw new Error('hybrid_match_reasons_were_missing');
+  if (!results.some(row => row.matchReasons.includes('semantic'))) {
+    throw new Error('semantic_match_reason_was_missing');
   }
 
-  activeStage = 'exact_and_semantic_queries';
+  activeStage = 'hybrid_channels';
   const exact = await searchIntentions(primaryTenant.id, 'Prevent concurrent password recovery tokens');
   if (exact[0]?.id !== relatedRace || exact[0]?.match !== 'exact') {
     throw new Error('exact_phrase_priority_failed');
   }
+  if (!exact[0].matchReasons.includes('lexical') || !exact[0].matchReasons.includes('semantic')) {
+    throw new Error('hybrid_match_reasons_were_missing');
+  }
+
+  activeStage = 'semantic_paraphrase_and_isolation';
   const paraphrase = await searchIntentions(primaryTenant.id, 'make account reset persistence indivisible');
   const paraphraseHardNegative = paraphrase.findIndex(row => row.id === hardNegative);
   const paraphraseAtomic = paraphrase.findIndex(row => row.id === relatedAtomic);
