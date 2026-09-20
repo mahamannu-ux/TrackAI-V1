@@ -41,6 +41,8 @@ import {
   SEMANTIC_MODEL,
   normalizeEmbedding,
   reciprocalRankFusion,
+  semanticCandidateIsRelevant,
+  semanticQueryForEmbedding,
   semanticSafeError,
   type EmbeddingEngine,
 } from './semantic';
@@ -878,7 +880,8 @@ export async function searchIntentions(tenantId: string, query: string, options:
     sql`${evidenceIntentionEmbeddings.lexicalDocument} @@ websearch_to_tsquery('english', ${query})`,
   )).orderBy(desc(lexicalScore)).limit(SEMANTIC_CANDIDATE_LIMIT);
 
-  const queryEmbedding = normalizeEmbedding(await engine.embed(query, 'query'));
+  const embeddingQuery = semanticQueryForEmbedding(query);
+  const queryEmbedding = normalizeEmbedding(await engine.embed(embeddingQuery, 'query'));
   const vectorLiteral = `[${queryEmbedding.join(',')}]`;
   const vectorScore = sql<number>`1 - (${evidenceIntentionEmbeddings.embedding} <=> ${vectorLiteral}::vector)`;
   const vectorRows = await db.select({
@@ -922,6 +925,7 @@ export async function searchIntentions(tenantId: string, query: string, options:
       ...(exactMatch ? ['exact_phrase'] : []),
       ...(candidate.lexicalRank ? ['lexical'] : []),
       ...(candidate.vectorRank ? ['semantic'] : []),
+      ...(candidate.vectorRank && embeddingQuery !== query ? ['semantic_concept_expansion'] : []),
     ];
     return [{
       id: intention.id,
@@ -945,7 +949,11 @@ export async function searchIntentions(tenantId: string, query: string, options:
         .map(link => link.commitId),
     }];
   });
-  return results.sort(compareIntentionSearchResults).slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
+  return results.filter(result => semanticCandidateIsRelevant({
+    exact: result.match === 'exact',
+    lexicalRank: result.lexicalRank ?? undefined,
+    vectorScore: result.vectorScore ?? undefined,
+  })).sort(compareIntentionSearchResults).slice(0, Math.min(100, Math.max(1, options.limit ?? 20)));
 }
 
 export function compareIntentionSearchResults(left: {

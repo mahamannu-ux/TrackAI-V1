@@ -83,7 +83,7 @@ async function main() {
   const relatedAtomic = await createIntention(primaryTenant.id, primaryRepository.id, 'related-atomic',
     'Use an atomic database update for account recovery token rotation');
   const hardNegative = await createIntention(primaryTenant.id, primaryRepository.id, 'hard-negative',
-    'Rotate the office recovery handbook archive and database password');
+    'Rename dashboard colour design tokens without changing authentication');
   const unrelated = await createIntention(primaryTenant.id, primaryRepository.id, 'unrelated',
     'Improve invoice PDF rendering performance');
   const isolated = await createIntention(isolatedTenant.id, isolatedRepository.id, 'isolated-related',
@@ -120,7 +120,7 @@ async function main() {
   }
 
   activeStage = 'semantic_relevance';
-  const results = await searchIntentions(primaryTenant.id, 'password recovery race condition');
+  const results = await searchIntentions(primaryTenant.id, 'authentication credential race condition');
   const order = results.map(row => row.id);
   const relatedPositions = [relatedRace, relatedAtomic].map(id => order.indexOf(id));
   const hardNegativePosition = order.indexOf(hardNegative);
@@ -130,8 +130,8 @@ async function main() {
   if (relatedPositions.some(position => position < 0 || position > 2)) {
     throw new Error('semantic_related_recall_at_three_failed');
   }
-  if (hardNegativePosition < 0 || hardNegativePosition < order.indexOf(relatedRace)) {
-    throw new Error('semantic_hard_negative_ranked_above_best_race_match');
+  if (hardNegativePosition >= 0) {
+    throw new Error('semantic_hard_negative_was_not_suppressed');
   }
   if ((order.includes(unrelated) && order.indexOf(unrelated) < Math.min(...relatedPositions))
     || order.includes(isolated)) {

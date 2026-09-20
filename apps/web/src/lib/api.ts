@@ -226,7 +226,10 @@ export type EvidenceWorkStory = {
     unresolved: string[];
   };
   graph: EvidenceGraphResponse;
-  similarWork: { status: 'available' | 'unavailable'; items: EvidenceWorkCard[] };
+  similarWork: {
+    status: 'available' | 'unavailable';
+    items: Array<EvidenceWorkCard & { matchReasons: string[] }>;
+  };
   focus: null | { path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
 };
 export type EvidenceWorkspaceSearchResult = EvidenceWorkCard & { matchReasons: string[]; score: number };

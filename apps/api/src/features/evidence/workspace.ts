@@ -23,6 +23,18 @@ type Coverage = 'recorded' | 'partial' | 'unavailable';
 type WorkKind = 'pull_request' | 'direct_commit' | 'unfinished_intention';
 type RootKind = 'pull_request' | 'commit' | 'intention' | 'code';
 
+export function distinctRelatedWork<T extends { kind: string; id: string }>(
+  items: T[], excludedKeys: Iterable<string>, limit = 3,
+): T[] {
+  const excluded = new Set(excludedKeys);
+  const distinct = new Map<string, T>();
+  for (const item of items) {
+    const key = `${item.kind}:${item.id}`;
+    if (!excluded.has(key) && !distinct.has(key)) distinct.set(key, item);
+  }
+  return [...distinct.values()].slice(0, limit);
+}
+
 export type WorkCard = {
   kind: WorkKind;
   id: string;
@@ -78,7 +90,10 @@ export type WorkStory = {
     edges: Awaited<ReturnType<typeof evidenceGraph>>['edges'];
     nextCursor: number | null;
   };
-  similarWork: { status: 'available' | 'unavailable'; items: WorkCard[] };
+  similarWork: {
+    status: 'available' | 'unavailable';
+    items: Array<WorkCard & { matchReasons: string[] }>;
+  };
   focus: null | { path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
 };
 
@@ -452,19 +467,32 @@ export async function evidenceWorkStory(input: {
   };
   if (primary?.text) {
     try {
-      const similar = await searchIntentions(input.tenantId, primary.text, { limit: 4 });
-      const items = similar.filter(result => result.id !== primary.id).slice(0, 3).flatMap(result => {
+      const similar = await searchIntentions(input.tenantId, primary.text, { limit: 10 });
+      const items = similar.flatMap(result => {
         const candidate = records.intentions.find(row => row.id === result.id);
         if (!candidate) return [];
         const candidateCommits = candidate.sessionId
           ? records.commitSessions.filter(row => row.sessionId === candidate.sessionId).map(row => row.commitId) : [];
         const candidatePr = candidateCommits.map(id => prForCommit(records, id)).find(Boolean) ?? null;
-        if (candidatePr) return [cardForPr(input.tenantId, records, frictionRows, candidatePr)];
+        if (candidatePr) return [{
+          ...cardForPr(input.tenantId, records, frictionRows, candidatePr),
+          matchReasons: result.matchReasons,
+        }];
         const candidateCommit = records.commits.find(row => candidateCommits.includes(row.id));
-        return candidateCommit ? [cardForCommit(input.tenantId, records, frictionRows, candidateCommit)]
-          : [cardForIntention(input.tenantId, records, frictionRows, candidate)];
+        return candidateCommit ? [{
+          ...cardForCommit(input.tenantId, records, frictionRows, candidateCommit),
+          matchReasons: result.matchReasons,
+        }] : [{
+          ...cardForIntention(input.tenantId, records, frictionRows, candidate),
+          matchReasons: result.matchReasons,
+        }];
       });
-      story.similarWork = { status: 'available', items: [...new Map(items.map(item => [`${item.kind}:${item.id}`, item])).values()] };
+      const selfKeys = [
+        ...(pr ? [`pull_request:${pr.id}`] : []),
+        ...commitIds.map(id => `direct_commit:${id}`),
+        ...(input.rootType === 'intention' ? [`unfinished_intention:${input.rootId}`] : []),
+      ];
+      story.similarWork = { status: 'available', items: distinctRelatedWork(items, selfKeys) };
     } catch {
       story.similarWork = { status: 'unavailable', items: [] };
     }

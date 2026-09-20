@@ -13,10 +13,18 @@ import {
   SEMANTIC_DIMENSIONS,
   normalizeEmbedding,
   reciprocalRankFusion,
+  semanticCandidateIsRelevant,
+  semanticQueryForEmbedding,
   semanticSafeError,
 } from './semantic';
 import { compareIntentionSearchResults, edgesForNodePage, uniqueGraphEdges } from './service';
-import { currentPullRequestCommitIds, exactRangeTraceIds, isTestCommand, keyInsight } from './workspace';
+import {
+  currentPullRequestCommitIds,
+  distinctRelatedWork,
+  exactRangeTraceIds,
+  isTestCommand,
+  keyInsight,
+} from './workspace';
 import {
   task5VerificationCorpus,
   validateTask5VerificationCorpus,
@@ -148,6 +156,17 @@ test('semantic vectors are normalized and dimension checked', () => {
   assert.equal(normalized[0], 0.6);
   assert.equal(normalized[1], 0.8);
   assert.throws(() => normalizeEmbedding([1, 2]), /semantic_invalid_dimensions/);
+});
+
+test('semantic keyword queries expand concurrency concepts and reject weak vector-only matches', () => {
+  assert.equal(
+    semanticQueryForEmbedding('authentication credential race condition'),
+    'Find work about concurrent requests involving authentication credential.',
+  );
+  assert.equal(semanticCandidateIsRelevant({ exact: false, vectorScore: 0.5999 }), false);
+  assert.equal(semanticCandidateIsRelevant({ exact: false, vectorScore: 0.6 }), true);
+  assert.equal(semanticCandidateIsRelevant({ exact: false, lexicalRank: 1, vectorScore: 0.2 }), true);
+  assert.equal(semanticCandidateIsRelevant({ exact: true }), true);
 });
 
 test('hybrid search uses stable reciprocal rank fusion', () => {
@@ -370,4 +389,17 @@ test('Task5 semantic runtime stays compatible with Intel macOS and reindex retri
   assert.match(service, /inArray\(evidenceSemanticJobs\.state, \['completed', 'failed', 'skipped'\]\)/);
   assert.match(service, /attemptCount: 0/);
   assert.match(service, /safeErrorCode: null/);
+});
+
+test('similar work excludes the current story before deduplication and limiting', () => {
+  const related = distinctRelatedWork([
+    { kind: 'pull_request', id: 'current', title: 'Current via another intention' },
+    { kind: 'pull_request', id: 'related', title: 'Related first match' },
+    { kind: 'pull_request', id: 'related', title: 'Related duplicate' },
+    { kind: 'unfinished_intention', id: 'open', title: 'Open investigation' },
+  ], ['pull_request:current']);
+  assert.deepEqual(related.map(item => `${item.kind}:${item.id}`), [
+    'pull_request:related',
+    'unfinished_intention:open',
+  ]);
 });

@@ -5,8 +5,28 @@ export const SEMANTIC_DIMENSIONS = 384;
 export const SEMANTIC_RRF_K = 60;
 export const SEMANTIC_CANDIDATE_LIMIT = 50;
 export const SEMANTIC_MAX_ATTEMPTS = 5;
+export const SEMANTIC_MIN_COSINE_SCORE = 0.60;
 
 export type EmbeddingKind = 'document' | 'query';
+
+export function semanticQueryForEmbedding(query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return trimmed;
+  if (/\brace conditions?\b/i.test(trimmed)) {
+    const subject = trimmed.replace(/\brace conditions?\b/ig, '').replace(/\s+/g, ' ').trim();
+    return `Find work about concurrent requests involving ${subject || 'shared state'}.`;
+  }
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 8 && !/[.!?]$/.test(trimmed)) return `Find work about ${trimmed}.`;
+  return trimmed;
+}
+
+export function semanticCandidateIsRelevant(input: {
+  exact: boolean; lexicalRank?: number; vectorScore?: number;
+}): boolean {
+  return input.exact || Boolean(input.lexicalRank)
+    || (input.vectorScore ?? Number.NEGATIVE_INFINITY) >= SEMANTIC_MIN_COSINE_SCORE;
+}
 
 export interface EmbeddingEngine {
   readonly model: string;

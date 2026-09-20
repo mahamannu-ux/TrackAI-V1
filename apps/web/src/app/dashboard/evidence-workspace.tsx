@@ -43,6 +43,20 @@ function shortDate(value: string) {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value));
 }
 
+function matchReason(reason: string) {
+  const labels: Record<string, string> = {
+    exact_phrase: 'Exact intention phrase',
+    lexical: 'Shared terms',
+    semantic: 'Similar intention',
+    semantic_concept_expansion: 'Concurrency concept match',
+    exact_intention: 'Exact intention',
+    commit: 'Commit match',
+    file_path: 'File match',
+    evidence_metadata: 'Evidence metadata match',
+  };
+  return labels[reason] ?? reason.replaceAll('_', ' ');
+}
+
 const perspectiveCopy: Record<EvidencePerspective, { label: string; description: string }> = {
   leader: { label: 'Leader', description: 'Outcomes, intentions and workflow insights' },
   developer: { label: 'Developer', description: 'Changes, tests and code provenance' },
@@ -50,7 +64,7 @@ const perspectiveCopy: Record<EvidencePerspective, { label: string; description:
 };
 
 function WorkCard({ card, selected, onSelect }: {
-  card: EvidenceWorkCard; selected: boolean; onSelect: () => void;
+  card: EvidenceWorkCard & { matchReasons?: string[] }; selected: boolean; onSelect: () => void;
 }) {
   return <button onClick={onSelect} className={`w-full rounded-xl border p-4 text-left transition ${
     selected ? 'border-violet-500/60 bg-violet-500/10' : 'border-slate-800 bg-slate-900/50 hover:border-slate-700'
@@ -60,6 +74,7 @@ function WorkCard({ card, selected, onSelect }: {
       <Badge tone={tone(card.outcome)}>{card.outcome.replace('_', ' ')}</Badge>
     </div>
     <div className="mt-3 line-clamp-2 text-sm text-slate-300">{card.intention.text ?? 'No available intention'}</div>
+    {card.matchReasons && card.matchReasons.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{card.matchReasons.map(reason => <Badge key={reason}>{matchReason(reason)}</Badge>)}</div>}
     <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500"><span>{card.counts.commits} commit{card.counts.commits === 1 ? '' : 's'}</span><span>·</span><span>{card.counts.reworkedLines} reworked lines</span><span>·</span><span>{shortDate(card.updatedAt)}</span></div>
   </button>;
 }
@@ -129,7 +144,7 @@ function DetailPane({ story, selected, canReadRaw, onLineWhy }: {
   const evidence = selected.startsWith('evidence:')
     ? story.graph.nodes.find(item => `${item.type}:${item.id}` === selected.slice('evidence:'.length)) : null;
 
-  if (selected === 'overview') return <div className="space-y-5"><div><h3 className="text-lg font-semibold text-white">Work story</h3><p className="mt-2 text-sm text-slate-400">{story.summary.why.primary ?? 'The available evidence does not contain an intention.'}</p></div>{story.similarWork.items.length > 0 && <section><h4 className="text-sm font-medium text-white">Similar work</h4><div className="mt-3 space-y-2">{story.similarWork.items.map(item => <div key={`${item.kind}:${item.id}`} className="rounded-lg border border-slate-800 p-3"><div className="flex justify-between gap-3"><div className="text-sm text-slate-200">{item.title}</div><Badge tone={tone(item.outcome)}>{item.outcome}</Badge></div><div className="mt-2 text-xs text-slate-500">{item.keyInsight}</div></div>)}</div></section>} {story.similarWork.status === 'unavailable' && <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">Similar-work search is unavailable until the local semantic model is ready.</div>}</div>;
+  if (selected === 'overview') return <div className="space-y-5"><div><h3 className="text-lg font-semibold text-white">Work story</h3><p className="mt-2 text-sm text-slate-400">{story.summary.why.primary ?? 'The available evidence does not contain an intention.'}</p></div>{story.similarWork.items.length > 0 && <section><h4 className="text-sm font-medium text-white">Similar work</h4><div className="mt-3 space-y-2">{story.similarWork.items.map(item => <div key={`${item.kind}:${item.id}`} className="rounded-lg border border-slate-800 p-3"><div className="flex justify-between gap-3"><div className="text-sm text-slate-200">{item.title}</div><Badge tone={tone(item.outcome)}>{item.outcome}</Badge></div><div className="mt-2 flex flex-wrap gap-1.5">{item.matchReasons.map(reason => <Badge key={reason}>{matchReason(reason)}</Badge>)}</div><div className="mt-2 text-xs text-slate-500">{item.keyInsight}</div></div>)}</div></section>} {story.similarWork.status === 'unavailable' && <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">Similar-work search is unavailable until the local semantic model is ready.</div>}</div>;
   if (intention) return <div><div className="flex gap-2"><Badge tone={tone(intention.state)}>{intention.state}</Badge><Badge>{intention.confidence}% confidence</Badge><Badge>{intention.lifecycle}</Badge></div><h3 className="mt-4 text-lg font-semibold text-white">Intention</h3><p className="mt-2 text-slate-300">{intention.text}</p><p className="mt-4 text-xs text-slate-500">An intention is a customer goal. It remains separate from the original prompt and may relate to several commits.</p></div>;
   if (selected === 'lifecycle') return <div className="space-y-5"><div><h3 className="text-lg font-semibold text-white">Outcome and lifecycle</h3><p className="mt-2 text-sm text-slate-400">{story.summary.outcome.label}</p></div>{story.lifecycle.pullRequest && <div className="rounded-lg border border-slate-800 p-3 text-sm"><div className="text-white">{story.lifecycle.pullRequest.title}</div><div className="mt-1 text-slate-500">{story.lifecycle.pullRequest.headRef ?? 'unknown branch'} → {story.lifecycle.pullRequest.baseRef ?? 'unknown base'} · {story.lifecycle.pullRequest.state}</div></div>}{story.lifecycle.merge && <div className="rounded-lg border border-slate-800 p-3 text-sm text-slate-300">Merge commit <span className="font-mono text-violet-300">{story.lifecycle.merge.sha.slice(0, 12)}</span></div>}{story.lifecycle.deployments.length ? story.lifecycle.deployments.map(item => <div key={item.id} className="rounded-lg border border-emerald-500/20 p-3 text-sm"><div className="text-emerald-200">{item.environment} · {item.status}</div><div className="mt-1 text-xs text-slate-500">{shortDate(item.deployedAt)}{item.production ? ' · production' : ''}</div></div>) : <div className="text-sm text-slate-500">No deployment is observed for this work.</div>}</div>;
   if (commit) return <div><h3 className="text-lg font-semibold text-white">{commit.subject}</h3><div className="mt-2 font-mono text-sm text-violet-300">{commit.sha}</div><div className="mt-4 text-sm text-slate-400">{commit.files.length} changed file{commit.files.length === 1 ? '' : 's'}{commit.historical ? ' · removed from the current PR' : ''}</div></div>;
