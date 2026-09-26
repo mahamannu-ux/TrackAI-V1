@@ -71,6 +71,27 @@
       "when": 1785698956953,
       "tag": "0009_mute_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789809396478,
+      "tag": "0010_cooing_darkhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789814113553,
+      "tag": "0011_plain_xavin",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789829746036,
+      "tag": "0012_gray_warbird",
+      "breakpoints": true
     }
   ]
 }

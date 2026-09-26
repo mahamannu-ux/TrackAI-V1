@@ -135,6 +135,115 @@ export type EvidenceFlowResponse = {
   developmentOnly?: boolean; correlation?: string; nodes: EvidenceFlowNode[];
 };
 
+export type EvidenceState = 'observed' | 'inferred' | 'corrected';
+export type EvidenceAvailability = 'available' | 'unavailable' | 'redacted' | 'expired';
+export type EvidenceGraphNode = {
+  type: string; id: string; label: string; occurredAt?: string | null;
+  evidenceState: EvidenceState; availability: EvidenceAvailability;
+  data?: Record<string, unknown>;
+};
+export type EvidenceGraphEdge = {
+  fromType: string; fromId: string; toType: string; toId: string;
+  relationship: string; evidenceState: EvidenceState; confidence: number; basis: string;
+};
+export type EvidenceGraphResponse = {
+  root: { type: string; id: string };
+  nodes: EvidenceGraphNode[]; edges: EvidenceGraphEdge[]; nextCursor: number | null;
+};
+export type EvidenceExplanation = {
+  intention: { text: string | null; evidenceState: EvidenceState | null; confidence: number | null };
+  outcome: string;
+  friction: {
+    toolCalls: number; toolResults: number; unavailableEvidence: number;
+    failedTools: number; slowTools: number; reworkSignals: number;
+  };
+  learnings: string[]; openItems: string[]; graph: EvidenceGraphResponse;
+};
+export type EvidenceSearchResult = {
+  id: string; sessionId: string | null; text: string;
+  evidenceState: EvidenceState; confidence: number; availability: EvidenceAvailability; score: number;
+  lexicalRank: number | null; vectorRank: number | null;
+  lexicalScore: number | null; vectorScore: number | null;
+  match: 'exact' | 'hybrid' | 'lexical' | 'semantic'; matchReasons: string[];
+  model: string; modelRevision: string; commitIds: string[];
+};
+
+export type EvidenceSearchFilters = {
+  limit?: number; repositoryId?: string; commitId?: string; sessionId?: string;
+  tool?: string; model?: string; path?: string;
+};
+
+export type EvidenceSemanticHealth = {
+  model: string; configuredRevision: string; dimensions: number;
+  intentions: number; availableIntentions: number; indexes: number;
+  jobs: { pending: number; processing: number; completed: number; failed: number; skipped: number };
+};
+
+export type EvidenceWorkKind = 'pull_request' | 'direct_commit' | 'unfinished_intention';
+export type EvidenceOutcome = 'open' | 'merged' | 'deployed' | 'closed' | 'direct_change' | 'unfinished';
+export type EvidenceCoverage = 'recorded' | 'partial' | 'unavailable';
+export type EvidenceWorkCard = {
+  kind: EvidenceWorkKind; id: string; title: string;
+  repository: { id: string; name: string } | null; branch: string | null;
+  outcome: EvidenceOutcome; updatedAt: string;
+  intention: { text: string | null; count: number; state: EvidenceState | null };
+  keyInsight: string;
+  evidenceQuality: {
+    attribution: EvidenceCoverage; intention: EvidenceCoverage;
+    rawContent: EvidenceCoverage; lifecycle: EvidenceCoverage;
+  };
+  counts: { commits: number; reworkedLines: number; evidenceGaps: number };
+};
+export type EvidenceWorkspaceResponse = {
+  insights: { outcomes: string; attention: number; evidenceGaps: number };
+  pullRequests: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+  directChanges: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+  unfinishedWork: { items: EvidenceWorkCard[]; nextCursor: number | null; total: number };
+};
+export type EvidenceWorkStory = {
+  root: { type: 'pull_request' | 'commit' | 'intention' | 'code'; id: string; title: string; repository: string | null; branch: string | null };
+  summary: {
+    why: { primary: string | null; additional: number; state: EvidenceState | null; confidence: number | null };
+    outcome: { status: EvidenceOutcome; label: string };
+    keyInsight: string;
+    evidenceQuality: EvidenceWorkCard['evidenceQuality'];
+  };
+  intentions: Array<{ id: string; text: string; state: EvidenceState; confidence: number; lifecycle: string; sessionId: string | null }>;
+  lifecycle: {
+    pullRequest: null | { id: string; title: string; state: string; headRef: string | null; baseRef: string | null };
+    merge: null | { sha: string; mergedAt: string | null };
+    deployments: Array<{ id: string; environment: string; status: string; production: boolean; deployedAt: string }>;
+  };
+  changes: Array<{
+    id: string; sha: string; subject: string; branch: string | null; historical: boolean;
+    files: Array<{ id: string; path: string; aiLines: number; humanLines: number; unknownLines: number; ranges: Array<Record<string, unknown>> }>;
+  }>;
+  insights: {
+    failedTools: number; retries: number; slowTools: number; promptLoops: number;
+    reworkedLines: number; abandoned: boolean; evidenceGaps: number;
+    tests: Array<{ eventId: string; label: string; status: 'passed' | 'failed' | 'unknown' }>;
+    signals: Array<{
+      eventId: string;
+      kind: 'failed_tool' | 'retry' | 'slow_tool' | 'prompt_loop' | 'evidence_gap';
+      label: string; toolName: string | null; status: string | null;
+      durationMs: number | null; attempt: number | null; occurredAt: string;
+      evidenceState: EvidenceState; availability: EvidenceAvailability;
+    }>;
+    unresolved: string[];
+  };
+  graph: EvidenceGraphResponse;
+  similarWork: {
+    status: 'available' | 'unavailable';
+    items: Array<EvidenceWorkCard & { matchReasons: string[] }>;
+  };
+  focus: null | { commitId: string; path: string; line: number; attribution: 'exact' | 'missing'; traceIds: string[] };
+};
+export type EvidenceWorkspaceSearchResult = EvidenceWorkCard & { matchReasons: string[]; score: number };
+export type EvidenceWorkspaceSearchFilters = {
+  repositoryId?: string; branch?: string; from?: string; to?: string; agent?: string;
+  model?: string; outcome?: string; resultType?: string; limit?: number;
+};
+
 export type AdminContext = {
   tenantId: string;
   subject: string;
@@ -250,6 +359,70 @@ export const getSession = (id: string) => apiFetch<Record<string, any>>(`/api/te
 export const getCommits = () => apiFetch<CommitListItem[]>('/api/telemetry/commits');
 export const getCommit = (id: string) => apiFetch<Record<string, any>>(`/api/telemetry/commits/${encodeURIComponent(id)}`);
 export const getCommitEvidenceFlow = (id: string) => apiFetch<EvidenceFlowResponse>(`/api/telemetry/commits/${encodeURIComponent(id)}/evidence-flow`);
+export const getEvidenceExplanation = (commitId: string) => apiFetch<EvidenceExplanation>(
+  `/api/evidence/commits/${encodeURIComponent(commitId)}/explain`,
+);
+export const getEvidenceWorkspace = (cursor = 0, limit = 20) => apiFetch<EvidenceWorkspaceResponse>(
+  `/api/evidence/workspace?cursor=${cursor}&limit=${limit}`,
+);
+export const getEvidenceWorkStory = (kind: EvidenceWorkKind, id: string) => {
+  const rootType = kind === 'pull_request' ? 'pull_request'
+    : kind === 'direct_commit' ? 'commit' : 'intention';
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/stories/${rootType}/${encodeURIComponent(id)}`,
+  );
+};
+export const getEvidenceLineWhy = (commitId: string, path: string, line: number) => {
+  const parameters = new URLSearchParams({ path, line: String(line) });
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/commits/${encodeURIComponent(commitId)}/why?${parameters.toString()}`,
+  );
+};
+export const getEvidenceStoryLineWhy = (
+  kind: EvidenceWorkKind, id: string, commitId: string, path: string, line: number,
+) => {
+  const rootType = kind === 'pull_request' ? 'pull_request'
+    : kind === 'direct_commit' ? 'commit' : 'intention';
+  const parameters = new URLSearchParams({ commitId, path, line: String(line) });
+  return apiFetch<EvidenceWorkStory>(
+    `/api/evidence/stories/${rootType}/${encodeURIComponent(id)}?${parameters.toString()}`,
+  );
+};
+export const searchEvidenceWorkspace = (query: string, filters: EvidenceWorkspaceSearchFilters = {}) => {
+  const parameters = new URLSearchParams({ q: query });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') parameters.set(key, String(value));
+  });
+  return apiFetch<{ query: string; results: EvidenceWorkspaceSearchResult[] }>(
+    `/api/evidence/workspace-search?${parameters.toString()}`,
+  );
+};
+export const searchEvidenceIntentions = (query: string, filters: EvidenceSearchFilters = {}) => {
+  const parameters = new URLSearchParams({ q: query });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') parameters.set(key, String(value));
+  });
+  return apiFetch<{ query: string; results: EvidenceSearchResult[] }>(
+    `/api/evidence/search?${parameters.toString()}`,
+  );
+};
+export const getEvidenceRaw = (eventId: string) => apiFetch<Record<string, unknown>>(
+  `/api/evidence/events/${encodeURIComponent(eventId)}/raw`,
+);
+export const getEvidenceFriction = () => apiFetch<{ sessions: Array<Record<string, unknown>> }>(
+  '/api/evidence/analytics/friction',
+);
+export const getEvidenceSettings = () => apiFetch<{
+  rawCollectionEnabled: boolean; provider: 'opencode'; retentionDays: number;
+  consentedAt: string | null; disabledAt: string | null;
+}>('/api/admin/evidence/settings');
+export const getEvidenceSemanticHealth = () => apiFetch<EvidenceSemanticHealth>(
+  '/api/admin/evidence/semantic-health',
+);
+export const setEvidenceCollection = (rawCollectionEnabled: boolean) => apiFetch(
+  '/api/admin/evidence/settings',
+  { method: 'PUT', body: JSON.stringify({ rawCollectionEnabled }) },
+);
 export const getPullRequestIntelligence = (id: string) => apiFetch<Record<string, any>>(`/api/pull-requests/${encodeURIComponent(id)}/intelligence`);
 export const getDashboardSummary = () => apiFetch<DashboardSummary>('/api/dashboard/summary');
 export const getLifecycle = (query = '') => apiFetch<LifecycleResponse>(`/api/metrics/lifecycle${query}`);

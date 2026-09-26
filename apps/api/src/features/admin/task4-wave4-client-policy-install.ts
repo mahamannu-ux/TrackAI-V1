@@ -81,6 +81,7 @@ async function main(): Promise<void> {
 
   const now = new Date();
   const grantRows = await db.select({
+    repositoryId: scmRepositories.id,
     repositoryUrl: scmRepositories.normalizedUrl,
     fallbackUrl: scmRepositories.url,
     branchPatterns: machineRepositoryGrants.branchPatterns,
@@ -120,11 +121,14 @@ async function main(): Promise<void> {
     throw new Error('Active server credential is absent from the local keyring');
   }
 
-  const repositories = [...new Set(grantRows.map(row => (
-    canonicalRepositoryUrl(row.repositoryUrl ?? row.fallbackUrl)
-  )))]
-    .sort().map(repositoryUrl => ({
+  const repositoryByUrl = new Map(grantRows.map(row => [
+    canonicalRepositoryUrl(row.repositoryUrl ?? row.fallbackUrl),
+    row.repositoryId,
+  ]));
+  const repositories = [...repositoryByUrl.entries()]
+    .sort(([left], [right]) => left.localeCompare(right)).map(([repositoryUrl, repositoryId]) => ({
       repository_url: repositoryUrl,
+      repository_id: repositoryId,
       tenant_id: tenant.id,
       api_base_url: apiBaseUrl,
       credential_key_id: selectedCredential.keyId,

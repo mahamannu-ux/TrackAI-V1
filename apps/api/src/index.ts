@@ -8,6 +8,11 @@ import telemetryIngestRouter from './features/telemetry/ingest.routes';
 import { authenticateMachine } from './core/middleware/machine-auth';
 import telemetryReadRouter from './features/telemetry/read.routes';
 import adminRouter from './features/admin/admin.routes';
+import {
+  evidenceAdminRouter,
+  evidenceReadRouter,
+  evidenceWorkerRouter,
+} from './features/evidence/evidence.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
@@ -44,6 +49,7 @@ app.use(express.json({ limit: '5mb' }));
 // Native Git AI worker uploads use tenant-bound machine credentials, not a
 // browser JWT. Keep this route outside the interactive /api middleware chain.
 app.use('/worker', authenticateMachine, telemetryIngestRouter);
+app.use('/worker/evidence', authenticateMachine, evidenceWorkerRouter);
 
 // ---------------------------------------------------------------------------
 // Health Check (unauthenticated)
@@ -60,7 +66,9 @@ app.get('/health', (_req, res) => {
 // Authentication and tenant resolution apply to every protected API route, in order.
 app.use('/api', authenticateJWT, tenantMiddleware);
 app.use('/api', telemetryReadRouter);
+app.use('/api/evidence', evidenceReadRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/evidence', evidenceAdminRouter);
 
 
 // Fixed Error Handler
