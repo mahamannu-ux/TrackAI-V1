@@ -31,7 +31,8 @@ product behavior or repeat unfinished feature work from earlier tasks.
 | Program | Owns | Task14 consumes |
 |---|---|---|
 | Task4 | Encryption, tenant isolation, machine/GitHub credentials, queue reliability, retention, export, monitoring, audit and Task4 release gates | Stable security and operations contracts plus their verification evidence |
-| Task6 | Organization policy and signed endpoint policy bundles | Stable policy distribution and enforcement contracts |
+| Task6 Security | Local coding-agent detection and privacy-safe finding contracts | Stable supported-rule, event, finding and agent-capability contracts |
+| Task6 Policy | Deferred organization policy and signed endpoint bundles | Stable policy distribution and enforcement contracts only after that customer-driven feature exists |
 | Task8 | Customer identity/onboarding, roles, self-service installation and first-data journey | Repeatable onboarding acceptance flow |
 | Task9 | OS packages, MDM deployment, device posture, inventory, updates and offboarding | Installable artifacts and fleet conformance results |
 | Task13 | Agent/host/platform implementation and route evidence | Exact supported agent, surface and OS matrix |
@@ -52,9 +53,10 @@ the following unresolved boundaries carry forward:
 | Large production exports | **Task14 · T14.1, T14.5, T14.6, T14.10** | Replace the 32 MiB single-file limit with bounded chunking/compression and protected object storage; test download, restore and scale. |
 | Dependency and artifact release gate | **Task14 · T14.7** | Re-run vulnerability policy against the release dependency set and require signed artifacts, SBOM and provenance. Historical Task4 audit findings are evidence, not a frozen vulnerability list. |
 | Legacy static ingestion-token retirement | **Task14 · T14.8, T14.10**, consuming Task8/9 rollout | Certify that supported deployments use managed machine credentials and that the transitional static-token path is disabled. |
-| Destructive retention behavior | **Task6 defines policy; Task14 certifies deployment** | Task6 decides retention/deletion semantics and approvals. Task14 tests backup, restore, execution safety and audit after that contract exists. Task4 remains safely `retain`. |
+| Destructive retention behavior | **Task6 Policy defines future configurability; Task14 certifies deployment** | Task5's fixed 30-day evidence deletion and Task4's operational contracts remain authoritative today. Task14 tests backup, restore, execution safety and audit; it does not invent policy semantics. |
 | Enterprise-scale administration UX | **Task10** | Pagination, bulk operations, inverse machine/repository views, accessibility and scale testing. |
-| General rule catalogs and Cedar-like evaluation | **Task6** | Policy vocabulary, inheritance, exceptions, simulation and signed endpoint bundles. |
+| Coding-agent rule catalogs | **Task6 Security** | Curated pinned rule inventory, local monitor evaluation, safe findings and host/OS conformance. |
+| Cedar-like organization policy | **Task6 Policy** | Deferred vocabulary, inheritance, exceptions, simulation and signed endpoint bundles. |
 | Additional agent/OS route coverage | **Task13 and Task9** | Route fidelity and managed macOS/Windows/Linux deployment; Task14 certifies only the supported matrix they produce. |
 
 No other yellow row in Task4's chronological evidence log should be copied

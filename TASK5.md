@@ -35,9 +35,9 @@ workflow. A related component or passing unit test alone is not a live pass.
 | ID | Milestone | Implementation and portability | Implemented | Tested & verified | Manual involvement | Dependencies | Priority/order | Evidence / remaining work |
 |---|---|---|---:|---:|---|---|---|---|
 | **T5.1** | Evidence Taxonomy and Identity | Preserve GitAI commit, session, checkpoint and trace identities. Add separate evidence events, intentions, versioned relationships, evidence states and availability without redefining Task2 data. | 🟢 ✅ | 🟢 ✅ | None for the identity/taxonomy scope. | Task2 identity and lifecycle contracts | **Wave 2 · 1** | Live pgvector CI proves zero/one/many commit sessions and a single commit traversing to multiple distinct sessions, traces, checkpoints and intentions without identity collapse. |
-| **T5.2** | Fixed Evidence Safety Contract | Require tenant opt-in, tenant isolation, content/metadata separation, envelope encryption, secret scanning, audited raw access and 30-day deletion on portable PostgreSQL. | 🟢 ✅ | 🟢 ✅ | None for the fixed Task5 safety floor; configurable policy remains Task6. | Task4 security foundation | **Wave 2 · 2** | Live CI proves consent, tenant isolation, encryption, redaction, role-authorized audited raw access, `no-store`, safe logging, correction expiry inheritance and complete raw/derived deletion. |
+| **T5.2** | Fixed Evidence Safety Contract | Require tenant opt-in, tenant isolation, content/metadata separation, envelope encryption, secret scanning, audited raw access and 30-day deletion on portable PostgreSQL. | 🟢 ✅ | 🟢 ✅ | None for the fixed Task5 safety floor; configurable policy remains deferred Task6 Policy. | Task4 security foundation | **Wave 2 · 2** | Live CI proves consent, tenant isolation, encryption, redaction, role-authorized audited raw access, `no-store`, safe logging, correction expiry inheritance and complete raw/derived deletion. |
 | **T5.3** | OpenCode Evidence Ingestion and Storage | Ingest idempotent OpenCode prompt, response, reasoning and tool events while preserving provider IDs and GitAI session/trace/checkpoint identities. | 🟢 ✅ | 🟢 ✅ | None for the OpenCode-only Task5 scope. | T5.1–T5.2; Task4 managed transport | **Wave 3 · 3** | GitAI reads synthetic OpenCode SQLite with stable redacted request bodies; TrackAI accepts that contract over managed-machine HTTP, deduplicates replay and preserves unavailable reasoning. Other providers wait for Task13. |
-| **T5.4** | Work-Item Linkage | Link GitHub Issues, Jira or Linear only with explicit customer configuration. | ⚪ — | ⚪ — | Customer-led future decision. | Customer configuration and provider authorization | **Deferred** | Deliberately excluded from Task5. Reconsider with a customer or during Task14. |
+| **T5.4** | Work-Item Linkage | Link GitHub Issues, Jira or Linear only with explicit customer configuration. | ⚪ — | ⚪ — | Customer-led future decision. | Customer configuration and provider authorization | **Deferred** | Deliberately excluded from Task5. Reconsider with a customer or a later integration task; Task14 may certify deployment but does not own the feature. |
 | **T5.5** | Evidence Graph APIs | Traverse commit, file/line, session, trace, checkpoint, intention and evidence event in both directions with tenant-safe filters and pagination. | 🟢 ✅ | 🟢 ✅ | None for the Task5 API/query scope. | T5.1–T5.3 | **Wave 4 · 4** | Ephemeral pgvector CI proves lossless, non-duplicating pagination, alternate roots, explicit relationship bases and tenant isolation. The gate exposed and fixed both cross-page edge loss and duplicate normalized/stored links. |
 | **T5.6** | Visual Evidence Explorer | Present plain-language explanation, supporting graph/timeline, reverse navigation, search and privileged raw reveal. | 🟢 ✅ | 🟢 ✅ | Later customer wording and styling refinement is non-blocking. | T5.5; Task10 owns later styling only | **Wave 5 · 5** | Controlled role-appropriate browser walkthroughs pass. The PR-led workspace now separates browsing from a full-width focused investigation, progressively reveals changes, insights and low-level evidence, and retains lifecycle/session/commit/PR/repository/contributor views for diagnostics. |
 | **T5.7** | Pain-Point and Quality Analytics | Explain failures, retries, slow tools, prompt loops, rework, abandoned work and weak outcomes without employee scoring. | 🟢 ✅ | 🟢 ✅ | Broader customer wording refinement may continue, but does not block the functional scope. | T5.3, T5.5; Task2 metrics | **Wave 5 · 6** | Live CI proves failed/retried/slow/unmatched tools, prompt loops, Task2 rework, failed/unknown tests, abandoned work and weak outcomes become compact evidence-linked story insights. |
@@ -157,7 +157,7 @@ algorithms are in
 - OpenCode is the only Task5 raw-content provider.
 - Raw content and derived intention text are envelope-encrypted separately from
   operational metadata.
-- Secret scanning runs before storage and cannot be disabled by Task6 policy.
+- Secret scanning runs before storage and cannot be disabled by Task6 Policy.
 - Raw retrieval is limited to approved administrator/security roles, audited
   and `no-store`.
 - Metadata, vectors and lexical indexes are tenant-bound and RLS-protected.
@@ -208,8 +208,9 @@ algorithms are in
 |---|---|
 | Lifecycle metric and attribution meaning | Task2 |
 | Reliable delivery, credentials, RLS foundation, retention and operations | Task4 |
-| Work-item/Jira/Linear linkage | T5.4, deferred to customer/Task14 review |
-| Configurable policy language and signed policy bundles | Task6 |
+| Work-item/Jira/Linear linkage | T5.4, deferred to customer/later integration work |
+| Coding-agent security monitoring | Task6 Security |
+| Configurable policy language and signed policy bundles | Task6 Policy |
 | Design-system polish and scaled interaction design | Task10 |
 | Public API/SDK productization | Task11 |
 | Providers other than OpenCode | Task13 |
@@ -245,10 +246,12 @@ remains deferred and does not block the release.
   regression-tested throughout Task5.
 - T5.9a intention derivation, further product-owner UX feedback and E5-12
   sign-off remain visible parallel work. They are not hidden prerequisites or
-  reasons to hold back the verified engineering foundation from Task6.
-- Task6 owns configurable capture, access, redaction, retention, deletion and
-  export policy. It may strengthen but must not weaken Task5's fixed safety
-  floor. Task13 owns providers beyond OpenCode; Task14/customer work owns T5.4.
+  reasons to hold back the verified engineering foundation from Task6 Security.
+- Task6 Policy owns later configurable capture, access, redaction, retention,
+  deletion and export policy. It may strengthen but must not weaken Task5's
+  fixed safety floor. Task6 Security owns coding-agent threat monitoring;
+  Task13 owns providers beyond OpenCode. T5.4 remains customer-driven feature
+  work, while Task14 may later certify its deployment without owning it.
 
 ## Working directories and checkpoints
 

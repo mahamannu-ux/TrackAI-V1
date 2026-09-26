@@ -66,7 +66,8 @@ The first implementation wave should be metadata-only:
 
 | Work | Owner |
 |---|---|
-| General policy/Cedar engine and signed endpoint bundles | Task6 |
+| Coding-agent threat monitoring | Task6 Security |
+| General policy/Cedar engine and signed endpoint bundles | Task6 Policy (deferred) |
 | Scaled administration/design-system overhaul | Task10 |
 | Public SDK/API productization | Task11 |
 | Agent and host route expansion | Task13 |
