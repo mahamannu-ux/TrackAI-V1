@@ -193,8 +193,8 @@ Logs, errors, metrics and audit details follow the same restriction.
 
 | ID | Workstream | Implemented | Tested & verified | Manual involvement | Dependencies | Priority/order | Evidence / remaining work |
 |---|---|---:|---:|---|---|---|---|
-| **S6.1** | Event and capability contract | 🔴 ☐ | 🔴 ☐ | Review customer-safe vocabulary and unsupported-capability wording. | Task2 semantics; Task13 taxonomy | **Wave 2 · 1** | Define versioned normalized events that distinguish requested actions, outcomes, fidelity and unavailable evidence. |
-| **S6.2** | Numbat inventory and rule selection | 🔴 ☐ | 🔴 ☐ | Security review of every accepted/rejected rule and its false-positive risk. | S6.1; upstream pinned source/license | **Wave 2 · 2** | Record provenance, required inputs, host fidelity, privacy needs and explicit acceptance/rejection. |
+| **S6.1** | Event and capability contract | 🟡 ◐ | 🔴 ☐ | Review customer-safe vocabulary and unsupported-capability wording. | Task2 semantics; Task13 taxonomy | **Wave 2 · 1** | Draft `trackai.security-event/0.1` and `trackai.security-finding/0.1` vocabularies are recorded in [`docs/TASK6_SECURITY_WAVE2_DISCOVERY.md`](docs/TASK6_SECURITY_WAVE2_DISCOVERY.md). Schema fixtures and product/security review remain. |
+| **S6.2** | Numbat inventory and rule selection | 🟡 ◐ | 🔴 ☐ | Security review of every accepted/rejected rule and its false-positive risk. | S6.1; upstream pinned source/license | **Wave 2 · 2** | Numbat commit `f0778c09` and its 51 YAML candidates are pinned. Three high-signal command rules are proposed for review; the other 48 still require per-rule dispositions. |
 | **S6.3** | Embedded local evaluator | 🔴 ☐ | 🔴 ☐ | Review resource limits and monitor-only behavior before live execution. | S6.1–S6.2; GitAI architecture | **Wave 3 · 3** | Deterministic bounded evaluation of the release-pinned rule set with `off`/`monitor` only. |
 | **S6.4** | Privacy-safe finding delivery | 🔴 ☐ | 🔴 ☐ | Controlled offline/restart, revocation and two-tenant verification. | S6.1, S6.3; Task4 delivery | **Wave 4 · 4** | Use Task4 credentials and immutable scope binding without uploading source content. |
 | **S6.5** | Server storage, access, audit and UI | 🔴 ☐ | 🔴 ☐ | Administrator, auditor and ordinary-user walkthrough. | S6.4; Task4 authorization; Task5 privacy | **Wave 5 · 5** | Tenant-isolated findings with clear certainty/capability labels and restricted audited access. |
@@ -203,22 +203,29 @@ Logs, errors, metrics and audit details follow the same restriction.
 
 ## Execution waves
 
-| Wave | Scope | Subtasks | Exit gate |
-|---|---|---|---|
-| **1** | Canonical tracker, handoff and clean baselines | All | Both repositories start from verified merged checkpoints; tracker and evidence register are authoritative. |
-| **2** | Security vocabulary and rule discovery | S6.1–S6.2 | Event/capability schema and reviewed pinned rule inventory are accepted before runtime work. |
-| **3** | Local monitor evaluator | S6.3 | Deterministic `off`/`monitor` evaluation passes positive, negative, ambiguous and resource-limit tests. |
-| **4** | Safe durable delivery | S6.4 | Findings contain only approved metadata and survive offline/restart/replay without crossing tenant or repository scope. |
-| **5** | Server and customer surface | S6.5 | RLS, role access, audit, safe logs and understandable monitor-only UI pass. |
-| **6** | Route/platform conformance | S6.6 | Every claimed agent/host/OS route has live evidence; missing capability is shown as unavailable. |
-| **7** | Release regression and handoff | S6.1–S6.6 | Task2, Task4 and Task5 regressions plus all required E6 gates pass; exact supported matrix is recorded. |
+| Wave | Scope | Subtasks | Implemented | Tested & verified | Exit gate |
+|---|---|---|---:|---:|---|
+| **1** | Canonical tracker, handoff and clean baselines | All | 🟡 ◐ | 🟡 ◐ | Both repositories start from verified merged checkpoints; tracker and evidence register are authoritative. |
+| **2** | Security vocabulary and rule discovery | S6.1–S6.2 | 🟡 ◐ | 🔴 ☐ | Event/capability schema and reviewed pinned rule inventory are accepted before runtime work. |
+| **3** | Local monitor evaluator | S6.3 | 🔴 ☐ | 🔴 ☐ | Deterministic `off`/`monitor` evaluation passes positive, negative, ambiguous and resource-limit tests. |
+| **4** | Safe durable delivery | S6.4 | 🔴 ☐ | 🔴 ☐ | Findings contain only approved metadata and survive offline/restart/replay without crossing tenant or repository scope. |
+| **5** | Server and customer surface | S6.5 | 🔴 ☐ | 🔴 ☐ | RLS, role access, audit, safe logs and understandable monitor-only UI pass. |
+| **6** | Route/platform conformance | S6.6 | 🔴 ☐ | 🔴 ☐ | Every claimed agent/host/OS route has live evidence; missing capability is shown as unavailable. |
+| **7** | Release regression and handoff | S6.1–S6.6 | 🔴 ☐ | 🔴 ☐ | Task2, Task4 and Task5 regressions plus all required E6 gates pass; exact supported matrix is recorded. |
+
+### Wave 1 starting checkpoints
+
+| Repository | Remote `main` SHA | Task6 branch | Worktree state | Baseline status |
+|---|---|---|---|---:|
+| TrackAI | `957ba318482a244840e785e6b1e79fcd3d196f8c` | `feature/task6-security` | Clean isolated worktree | 🟡 ◐ |
+| GitAI | `0097645d3179d4baa3b6bff043149b08dbf79155` | `feature/task6-security` | Clean isolated worktree | 🟡 ◐ |
 
 ## Controlled evidence-gate register
 
 | Gate | Scenario | Main mapping | Implemented | Tested & verified | Required sanitized evidence | Manual involvement |
 |---|---|---|---:|---:|---|---|
-| **E6-1** | Normalized event and capability contract | S6.1 | 🔴 ☐ | 🔴 ☐ | Version/schema fixtures distinguish request, result, partial and unavailable evidence. | Vocabulary review |
-| **E6-2** | Pinned Numbat inventory and license/provenance | S6.2 | 🔴 ☐ | 🔴 ☐ | Upstream SHA/path/license, TrackAI ID/version and accept/reject reason for every candidate. | Security/legal review |
+| **E6-1** | Normalized event and capability contract | S6.1 | 🟡 ◐ | 🔴 ☐ | Draft v0.1 vocabularies distinguish request, result, partial and unavailable evidence and keep raw evaluator input out of findings. Versioned schema fixtures remain. | Vocabulary review |
+| **E6-2** | Pinned Numbat inventory and license/provenance | S6.2 | 🟡 ◐ | 🔴 ☐ | Upstream commit/license and all 51 candidate identities are pinned; three proposed rules have initial fidelity/privacy review. Per-rule disposition for the remaining 48 and legal/security review remain. | Security/legal review |
 | **E6-3** | Deterministic monitor-only evaluator | S6.3 | 🔴 ☐ | 🔴 ☐ | Positive, negative, ambiguous, malformed, bypass, sequence and false-positive fixtures. | Rule-result review |
 | **E6-4** | Privacy-safe finding contract | S6.4 | 🔴 ☐ | 🔴 ☐ | Captured request/log/database inspection proves no raw command, prompt, payload or secret. | Controlled content review |
 | **E6-5** | Durable authenticated delivery and replay | S6.4 | 🔴 ☐ | 🔴 ☐ | Offline/restart/retry/replay, partial acknowledgement and revocation outcomes. | Physical-machine restart |
@@ -231,6 +238,18 @@ Logs, errors, metrics and audit details follow the same restriction.
 Add dated implementation-evidence rows below this register as work proceeds.
 Each row must name the checkpoint/PR or command, sanitized result, remaining
 work and whether manual verification is still required.
+
+### Dated implementation evidence
+
+| Date | Wave / gate | Checkpoint or command | Sanitized result | Remaining work | Manual verification |
+|---|---|---|---|---|---|
+| 2026-09-26 | Wave 1 start | Remote `main` fetch, exact-SHA worktree creation and `git status --short --branch` | TrackAI `957ba318` and GitAI `0097645d3` resolved from their hosted `main` branches into separate clean `feature/task6-security` worktrees. The canonical tracker, deferred-policy boundary and handoff are present on TrackAI `main`. | Run current TrackAI and GitAI automated baselines and record all pass/failure evidence without hiding failures. | None for checkpoint resolution; live gates remain pending. |
+| 2026-09-26 | Wave 1 TrackAI baseline failure | `npm run build --workspace=apps/web` with no local environment file | Compilation and type checking passed, but static page generation failed closed because the clean worktree had no Supabase URL or public anonymous key. No credential was copied from an older worktree. | Rerun with bounded synthetic build-only values; retain this failure history. | None. |
+| 2026-09-26 | Wave 1 TrackAI baseline | API build, web build with synthetic process-only values, `drizzle-kit check`, and `npm audit --json` | API build passed 129 tests and TypeScript; web production build passed without creating an environment file; Drizzle reported a valid schema. Dependency audit reported 41 existing advisories: 13 moderate, 27 high and 1 critical, including direct `next`, `express`, `postcss`, `autoprefixer`, ESLint and Drizzle toolchain findings. | Review dependency remediation separately; complete GitAI test/build/lint baseline. | None for automated results. |
+| 2026-09-26 | Wave 1 GitAI baseline failure | `task test` inside the Codex sandbox | Compilation and 2,184 library tests passed. The run stopped in `async_mode`: 8 tests passed and 6 daemon tests failed because GitAI correctly refuses daemon startup when `CODEX_SANDBOX` is set. The failure is environmental and remains recorded. | Rerun the full suite outside the Codex sandbox; do not bypass the safeguard here. | One bounded local terminal run required. |
+| 2026-09-26 | Wave 1 GitAI build/lint | `task build`; `task lint` | Build passed. Lint failed on 11 pre-existing Clippy findings under local Homebrew Rust 1.97.1; GitAI documents Rust 1.93.0 and this machine has no `rustup`, so the required toolchain-equivalent lint gate remains unverified. GitAI worktree stayed unchanged. | Run lint with the documented Rust 1.93.0 toolchain or the repository CI image, then record the result. | Toolchain-controlled lint run required. |
+| 2026-09-26 | Wave 2 / E6-1 draft | [`docs/TASK6_SECURITY_WAVE2_DISCOVERY.md`](docs/TASK6_SECURITY_WAVE2_DISCOVERY.md) | Draft closed event, capability and safe-finding vocabularies preserve requested-versus-observed, partial/unavailable evidence, Task13 dimensions and the raw-content boundary. | Add executable schema fixtures and obtain vocabulary review before S6.3. | Product/security vocabulary review required. |
+| 2026-09-26 | Wave 2 / E6-2 discovery | Numbat `f0778c09dc48281aa93a3887d05096c0a1f3f9f7`, `LICENSE`, `rules/**/*.yaml` and agent/enforcement documentation | Apache-2.0 source pinned; 51 built-ins enumerated. OpenCode is monitor-only. Three command rules are proposed; chains, content rules, path-sensitive rules and Git configuration/hook rules remain unaccepted. | Complete 48 per-rule decisions, provenance/modification plan, fixtures and security/legal review. | Product/security approval of the first subset required. |
 
 ## Verification gates
 
