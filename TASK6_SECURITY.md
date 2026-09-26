@@ -1,0 +1,276 @@
+# Task6 Security — Coding-Agent Security
+
+**Canonical active Task6 Security tracker**
+
+Status: **🟡 ◐ Active planning; implementation has not begun**
+
+Last updated: **2026-09-26**
+
+Portfolio roadmap: [`ROUGH_ROADMAP.md`](ROUGH_ROADMAP.md)
+
+Deferred organization-policy tracker: [`TASK6_POLICY.md`](TASK6_POLICY.md)
+
+Task5 evidence authority: [`TASK5.md`](TASK5.md)
+
+Agent/host coverage authority: [`AGENT_COVERAGE.md`](AGENT_COVERAGE.md)
+
+Implementation handoff: [`docs/handoffs/TASK5_TO_TASK6_SECURITY.md`](docs/handoffs/TASK5_TO_TASK6_SECURITY.md)
+
+## Status and evidence rules
+
+| Symbol | Meaning |
+|---|---|
+| 🟢 ✅ | Complete for the stated scope and manually verified live where required |
+| 🟡 ◐ | Partially implemented, automated-test-only, or awaiting a required live/manual gate |
+| 🔴 ☐ | Not implemented or not tested |
+| ⚪ — | Explicitly deferred or not applicable |
+
+Implementation and verification are separate columns. Passing a unit test does
+not make a live gate green. A wave turns green only when its named exit gate is
+recorded with sanitized evidence. Intermediate failures remain in the dated
+evidence log until a later green result supersedes them; they are not rewritten
+or hidden.
+
+## Purpose
+
+Task6 Security adds local coding-agent threat detection using a curated,
+version-pinned subset of Numbat-style rules. The first release is deliberately
+small: a tenant administrator may choose **off** or **monitor**, rules execute
+locally, and TrackAI receives only privacy-safe finding metadata.
+
+This task does not build the general organization policy engine, Cedar-like
+authorization, customer-authored rules, or dynamic signed bundle distribution.
+Those designs are retained in [`TASK6_POLICY.md`](TASK6_POLICY.md) and remain
+deferred until customer requirements justify them.
+
+## Product boundary
+
+### In scope now
+
+- A closed normalized event and agent-capability contract.
+- A reviewed and version-pinned subset of upstream Numbat rules.
+- Local evaluation in GitAI with rules shipped in the normal client release.
+- Explicit tenant-administrator `off` or `monitor` control.
+- Privacy-safe finding upload, tenant isolation, restricted access and audit.
+- Honest reporting of pre-action, post-action, partial and unavailable evidence.
+- Rule provenance, licensing, positive/negative tests and false-positive review.
+- Compatibility testing across the agents, hosts and operating systems that
+  TrackAI actually claims to support.
+
+### Not in the initial release
+
+- Blocking or automatic denial.
+- Customer-authored or customer-overridden rules.
+- Cedar-like organization authorization.
+- Policy inheritance, exceptions, approvals or simulation.
+- Dynamic rule download, signing, distribution, activation or rollback.
+- General capture, upload, redaction, retention, access or export policy.
+- Claims of protection for hosts that cannot provide the required event or hook.
+
+Blocking is a separate future gate. It may be piloted only for a small reviewed
+rule set on hosts with a verified synchronous pre-action hook and an explicit
+recovery contract.
+
+## Inherited safety floor
+
+Task6 Security consumes rather than redefines these contracts:
+
+| Authority | Existing protection Task6 must preserve |
+|---|---|
+| Task2 | Missing or suppressed evidence is `Unavailable`, never invented zero; observed evidence and corrections remain distinct. |
+| Task4 | Tenant/machine/repository/branch authorization, managed credentials, durable delivery, server-side admission, audit and tenant isolation. |
+| Task5 | Tenant-admin opt-in for raw OpenCode evidence, always-on secret scanning, envelope-encrypted raw content separate from metadata, administrator/auditor-only audited raw access with `no-store`, content-free logs and complete 30-day deletion propagation. |
+
+Task5 consent is currently tenant-wide and default-off; it is not a
+repository-level policy. Task6 Security must not reinterpret that switch as
+consent to upload raw security inputs. Prompts, responses, available reasoning,
+tool arguments/results, intentions, summaries and embeddings remain sensitive
+customer data.
+
+Security rules may inspect transient local fields needed for a decision. That
+does not authorize TrackAI to persist or upload those fields. Any later policy
+work may make the baseline stricter but may not disable secret scanning, tenant
+isolation, encryption, restricted access, safe logging or deletion propagation.
+
+## Numbat adoption contract
+
+Numbat is an upstream input, not an unreviewed product promise. Its built-in
+catalog is detection-enabled and does not block by default. A pre-action match
+describes a requested action, not a confirmed outcome. The authoritative rule
+definitions are the versioned YAML files, not the catalog summary.
+
+The current upstream catalog covers secrets, exfiltration, integrity,
+execution, reconnaissance, privilege, lateral movement, impact, source
+control, tampering, persistence and ordered sequences. Rules have stable IDs
+and rule-owned versions, evaluate normalized events with CEL-like predicates,
+and may evaluate one event or an ordered sequence. The upstream `enforce` flag
+is separate from severity, and operator rules may replace built-ins by stable
+ID. TrackAI will not enable that override mechanism in its initial release.
+
+Enforcement depends on a coding-agent host's synchronous pre-action hook: the
+detector requests a native deny, while the host is the actual enforcement
+point. Post-action, OTLP and at-rest observations cannot prevent an action that
+already happened. Deployment may use user, project or managed/system hook
+scopes, but writing configuration is not proof that a host loaded it. TrackAI
+must verify activation and record the real capability per route. Numbat is
+Apache-2.0 licensed; copied or adapted work must retain required notices and
+identify modifications.
+
+References:
+
+- [Built-in rule catalog](https://github.com/perplexityai/numbat/blob/main/docs/rule-catalog.md)
+- [Writing rules](https://github.com/perplexityai/numbat/blob/main/docs/rules.md)
+- [Normalized event model](https://github.com/perplexityai/numbat/blob/main/docs/event-model.md)
+- [Enforcement behavior](https://github.com/perplexityai/numbat/blob/main/docs/enforcement.md)
+- [Deployment guidance](https://github.com/perplexityai/numbat/blob/main/docs/deployment.md)
+- [Apache-2.0 license](https://github.com/perplexityai/numbat/blob/main/LICENSE)
+
+For every accepted rule, record:
+
+| Field | Required evidence |
+|---|---|
+| Source | Upstream repository, path, commit SHA and license. |
+| Identity | Stable TrackAI ID, upstream ID and upstream rule version. |
+| Modification | Whether the rule is copied, adapted or independently implemented. |
+| Inputs | Required event types and fields, including whether sensitive transient content is needed. |
+| Fidelity | Agents/hosts that provide pre-action, post-action, incomplete or no usable evidence. |
+| Effect | `monitor` in the initial release. Severity never implies blocking. |
+| Certainty | Requested action, observed result or incomplete/ambiguous evidence. |
+| Output | Exact safe finding fields; raw matching content is excluded. |
+| Tests | Positive, negative, ambiguous, malformed, bypass, false-positive and compatibility fixtures. |
+
+The accepted inventory and rule count are discovery outputs. Documentation must
+not promise that every upstream rule is supported.
+
+## Runtime model
+
+```text
+agent/host activity
+  → host adapter and capability label
+  → closed normalized event
+  → local embedded rule evaluator
+  → local finding with rule and evidence certainty
+  → privacy-safe projection
+  → existing Task4 authenticated durable delivery
+  → authoritative server tenant admission
+  → tenant-isolated finding, audit and admin/auditor view
+```
+
+Rules are pinned and shipped with the GitAI release. Upgrading a rule requires a
+normal reviewed client release with provenance and regression evidence. This
+avoids building the deferred signing/distribution control plane before it is
+needed.
+
+### Local decision states
+
+| State | Meaning |
+|---|---|
+| `off` | Tenant administrator has not enabled security monitoring; no finding is produced or uploaded. |
+| `no_match` | Required evidence was available and no enabled rule matched. This normally stays local. |
+| `monitor_match` | A rule matched; no action was blocked. |
+| `unavailable` | The host or adapter did not expose enough evidence to evaluate correctly. |
+| `error` | The rule pack, parser or evaluator failed safely; no successful protection claim is made. |
+
+### Safe server finding
+
+The initial upload contract may contain only bounded metadata such as:
+
+- tenant, machine, repository and session correlation IDs already authorized
+  by Task4;
+- rule ID and version;
+- rule category and severity;
+- source agent/host and capability class;
+- `monitor` decision;
+- requested/observed/unavailable certainty;
+- result category, occurrence time and client/rule-pack version; and
+- deduplication and delivery identifiers.
+
+It must not contain raw commands, prompts, responses, reasoning, file content,
+tool arguments/results, detected secret values or arbitrary content previews.
+Logs, errors, metrics and audit details follow the same restriction.
+
+## Master Task6 Security matrix
+
+| ID | Workstream | Implemented | Tested & verified | Manual involvement | Dependencies | Priority/order | Evidence / remaining work |
+|---|---|---:|---:|---|---|---|---|
+| **S6.1** | Event and capability contract | 🔴 ☐ | 🔴 ☐ | Review customer-safe vocabulary and unsupported-capability wording. | Task2 semantics; Task13 taxonomy | **Wave 2 · 1** | Define versioned normalized events that distinguish requested actions, outcomes, fidelity and unavailable evidence. |
+| **S6.2** | Numbat inventory and rule selection | 🔴 ☐ | 🔴 ☐ | Security review of every accepted/rejected rule and its false-positive risk. | S6.1; upstream pinned source/license | **Wave 2 · 2** | Record provenance, required inputs, host fidelity, privacy needs and explicit acceptance/rejection. |
+| **S6.3** | Embedded local evaluator | 🔴 ☐ | 🔴 ☐ | Review resource limits and monitor-only behavior before live execution. | S6.1–S6.2; GitAI architecture | **Wave 3 · 3** | Deterministic bounded evaluation of the release-pinned rule set with `off`/`monitor` only. |
+| **S6.4** | Privacy-safe finding delivery | 🔴 ☐ | 🔴 ☐ | Controlled offline/restart, revocation and two-tenant verification. | S6.1, S6.3; Task4 delivery | **Wave 4 · 4** | Use Task4 credentials and immutable scope binding without uploading source content. |
+| **S6.5** | Server storage, access, audit and UI | 🔴 ☐ | 🔴 ☐ | Administrator, auditor and ordinary-user walkthrough. | S6.4; Task4 authorization; Task5 privacy | **Wave 5 · 5** | Tenant-isolated findings with clear certainty/capability labels and restricted audited access. |
+| **S6.6** | Agent and OS conformance | 🔴 ☐ | 🔴 ☐ | Real supported agent/host/OS experiments; customer wording review. | S6.1–S6.5; Task13 matrix | **Wave 6 · 6** | Every claimed route passes; unsupported routes are labelled honestly. |
+| **S6.7** | Optional blocking pilot | ⚪ — | ⚪ — | Separate product/security approval is mandatory. | Completed monitor release; verified synchronous hook | **Deferred** | Not part of the initial release. Requires recovery, bypass, false-positive and host-confirmation gates. |
+
+## Execution waves
+
+| Wave | Scope | Subtasks | Exit gate |
+|---|---|---|---|
+| **1** | Canonical tracker, handoff and clean baselines | All | Both repositories start from verified merged checkpoints; tracker and evidence register are authoritative. |
+| **2** | Security vocabulary and rule discovery | S6.1–S6.2 | Event/capability schema and reviewed pinned rule inventory are accepted before runtime work. |
+| **3** | Local monitor evaluator | S6.3 | Deterministic `off`/`monitor` evaluation passes positive, negative, ambiguous and resource-limit tests. |
+| **4** | Safe durable delivery | S6.4 | Findings contain only approved metadata and survive offline/restart/replay without crossing tenant or repository scope. |
+| **5** | Server and customer surface | S6.5 | RLS, role access, audit, safe logs and understandable monitor-only UI pass. |
+| **6** | Route/platform conformance | S6.6 | Every claimed agent/host/OS route has live evidence; missing capability is shown as unavailable. |
+| **7** | Release regression and handoff | S6.1–S6.6 | Task2, Task4 and Task5 regressions plus all required E6 gates pass; exact supported matrix is recorded. |
+
+## Controlled evidence-gate register
+
+| Gate | Scenario | Main mapping | Implemented | Tested & verified | Required sanitized evidence | Manual involvement |
+|---|---|---|---:|---:|---|---|
+| **E6-1** | Normalized event and capability contract | S6.1 | 🔴 ☐ | 🔴 ☐ | Version/schema fixtures distinguish request, result, partial and unavailable evidence. | Vocabulary review |
+| **E6-2** | Pinned Numbat inventory and license/provenance | S6.2 | 🔴 ☐ | 🔴 ☐ | Upstream SHA/path/license, TrackAI ID/version and accept/reject reason for every candidate. | Security/legal review |
+| **E6-3** | Deterministic monitor-only evaluator | S6.3 | 🔴 ☐ | 🔴 ☐ | Positive, negative, ambiguous, malformed, bypass, sequence and false-positive fixtures. | Rule-result review |
+| **E6-4** | Privacy-safe finding contract | S6.4 | 🔴 ☐ | 🔴 ☐ | Captured request/log/database inspection proves no raw command, prompt, payload or secret. | Controlled content review |
+| **E6-5** | Durable authenticated delivery and replay | S6.4 | 🔴 ☐ | 🔴 ☐ | Offline/restart/retry/replay, partial acknowledgement and revocation outcomes. | Physical-machine restart |
+| **E6-6** | Company A/Company B isolation | S6.4–S6.5 | 🔴 ☐ | 🔴 ☐ | Cross-tenant credential, repository, finding, audit and UI access all fail closed. | Two-tenant live gate |
+| **E6-7** | Role-safe server/API/UI experience | S6.5 | 🔴 ☐ | 🔴 ☐ | Admin/auditor access, ordinary-user denial, `no-store`, safe logs and clear monitor wording. | Browser walkthrough |
+| **E6-8** | Unsupported and incomplete capability | S6.1, S6.6 | 🔴 ☐ | 🔴 ☐ | Unsupported route reports `unavailable`; post-action evidence is never presented as prevention. | Real host comparison |
+| **E6-9** | Supported agent/OS conformance | S6.6 | 🔴 ☐ | 🔴 ☐ | Task13 route IDs map to exact tested agent, host, capture channel and OS combinations. | Real platform runs |
+| **E6-10** | Task2/Task4/Task5 release regression | S6.1–S6.6 | 🔴 ☐ | 🔴 ☐ | Lifecycle semantics, delivery/security and evidence privacy/deletion remain unchanged. | Final release review |
+
+Add dated implementation-evidence rows below this register as work proceeds.
+Each row must name the checkpoint/PR or command, sanitized result, remaining
+work and whether manual verification is still required.
+
+## Verification gates
+
+### Automated
+
+- deterministic rule loading and evaluation;
+- malformed, duplicate and unsupported rule rejection;
+- positive, negative, ambiguous, bypass and false-positive fixtures per rule;
+- single-event and ordered-sequence isolation by tenant/machine/session;
+- requested-action versus observed-outcome assertions;
+- `off`, `monitor_match`, `unavailable` and evaluator-error behavior;
+- no raw content or secret value in findings, logs, errors, metrics or audit;
+- size, expression, sequence-window, memory and latency bounds;
+- immutable rule/version provenance on queued findings;
+- offline persistence, replay deduplication and partial acknowledgement;
+- revoked credential, repository/branch denial and cross-tenant rejection;
+- administrator/auditor access and ordinary-user denial;
+- Task2 lifecycle, Task4 security and Task5 privacy/deletion regressions.
+
+### Manual/live
+
+1. Enable monitor mode for a controlled tenant and keep another tenant off.
+2. Run one benign non-match, one reviewed match and one ambiguous case.
+3. Verify the coding action is not blocked and the UI says monitor-only.
+4. Verify findings contain only the approved metadata fields.
+5. Disconnect the network, restart the client and confirm durable delivery once.
+6. Revoke repository, machine and credential access independently and confirm
+   server denial remains authoritative.
+7. Attempt Company A/Company B crossing and confirm isolation in both directions.
+8. Exercise an unsupported host/route and verify `unavailable`, not a false
+   prevention claim.
+9. Capture client, API and UI logs and verify no customer content or secret.
+10. Disable monitoring and verify new findings stop without rewriting history.
+
+## Completion boundary
+
+The initial Task6 Security release completes when S6.1–S6.6 pass for the exact
+supported agent/host/OS matrix, privacy-safe monitor findings work end to end,
+and Task2/Task4/Task5 regressions remain green. S6.7 blocking is optional and
+does not block the monitor-only release.
+
+Customer-authored rules, organization policy, dynamic signed bundles and
+general enforcement remain deferred to [`TASK6_POLICY.md`](TASK6_POLICY.md).

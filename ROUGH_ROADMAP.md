@@ -1,7 +1,7 @@
 # TrackAI Rough Product Roadmap
 
 **Portfolio index — intentionally non-committal on delivery dates**
-Last updated: **2026-08-02**
+Last updated: **2026-09-26**
 
 This document records major product programs, their dependencies and their
 recommended Codex-task ownership. Individual task trackers remain authoritative
@@ -24,7 +24,8 @@ not a promised release date.
 | **Ongoing Lab** | Lifecycle Correctness Lab | 🟡 ◐ | Continuously prove that Generated, Committed, In-PR, Merged, Production, Reworked and Churned metrics remain truthful across agents and SCM operations. | Controlled fixtures; provider/model coverage; correction semantics; scale tests; release regression; customer-reproducible evidence. | Current Task2; every later program that changes telemetry, SCM or UI. | **Permanent** | High: live IDE, GitHub, tenant and deployment experiments remain essential. | **This Codex task remains the owner.** |
 | **Task4** | Robustness, Security, Administration and Operations | 🟡 ◐ | Make telemetry transport, credentials, tenant/repository policy, retention and operations production-safe. | Durable delivery; encryption; key lifecycle; repository grants; quarantine; admin UI; retention/export; monitoring. | Post-E13 checkpoint and Task2 metric invariants. | **Begins after E13** | High for secrets, GitHub App, multi-tenant, offline and admin verification. | Separate Task4 task; canonical tracker is [`TASK4.md`](TASK4.md). |
 | **[Task5](TASK5.md)** | Evidence Explorer and Intention Intelligence | 🟡 ◐ | Let authorized customers traverse intention → prompt/session/tool activity → code/commit/PR/production and reverse that path for diagnosis and learning. | Evidence taxonomy; privacy; graph; raw evidence; visual explorer; pain analytics; semantic intention review. | Engineering and controlled verification complete and approved for `main`; T5.9a intention research and product-owner UX acceptance continue in parallel. External work-item linkage remains deferred. | **Merge foundation; continue explicit follow-ups** | Hands-on product feedback remains; certification and provider expansion continue in their owning tasks. | [`TASK5.md`](TASK5.md) is the authoritative implementation/status tracker; this roadmap retains only the portfolio summary. |
-| **Task6** | Expanded Policy and Compliance Engine | 🔴 ☐ | Express, simulate, enforce and audit organization/team/repository/branch/agent/model policies; coding-agent security rules; and capture, upload, redaction, retention, access and export policy without hardcoded tenant behavior. | Policy model; inheritance; exceptions; approvals; simulation; signed endpoint bundles; coding-agent security rules; data-minimization and lifecycle controls; enforcement points; evidence/audit. | Task4 keys, grants, admin boundaries, durable queue and monitoring. Architecture seed: [`TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`](TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md). | **After Task4 policy foundation** | High: policy defaults, signing trust, client failure modes, exception/approval semantics and compliance review. | Separate Task6 task. |
+| **Task6 Security** | Coding-Agent Security | 🟡 ◐ | Detect reviewed coding-agent threats locally and deliver privacy-safe, tenant-isolated monitor findings without claiming unsupported prevention. | Normalized security events; Numbat rule discovery; embedded pinned evaluator; safe findings; access/audit UI; agent/OS conformance. | Task4 delivery/authorization, Task5 privacy floor and Task13 route capabilities. Canonical tracker: [`TASK6_SECURITY.md`](TASK6_SECURITY.md). | **Begin now; monitor-only first** | High: rule review, false-positive evaluation and real agent/host experiments. | Active Task6 track. |
+| **Task6 Policy** | Organization Policy Engine | 🔴 ☐ | Later express, simulate, distribute and enforce customer-defined capture, upload, redaction, retention, access, export and authorization policy. | Cedar-like model; inheritance; exceptions; approvals; simulation; signed endpoint bundles; data lifecycle controls. | Customer requirements plus stable Task4/5/6-Security contracts. Canonical tracker: [`TASK6_POLICY.md`](TASK6_POLICY.md); compatibility index: [`TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`](TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md). | **Deferred until customer-driven** | Very high: vocabulary, defaults, signing trust, failure modes and compliance review. | Deferred Task6 track. |
 | **Task7** | GitLab and Bitbucket Integration | 🔴 ☐ | Provide provider-neutral lifecycle behavior and metric parity across GitHub, GitLab and Bitbucket. | SCM adapter contract; provider Apps/OAuth; webhook mapping; PR/MR semantics; deployment mapping; conformance fixtures. | Task4 generalized delivery/idempotency; stable Task2 lifecycle contracts. | **After Task4 transport contracts** | High: provider accounts, installations, webhook configuration and live merges/deployments. | Separate Task7 provider-integration task. |
 | **Task8** | Customer Onboarding and Time-to-Value | 🔴 ☐ | Move a customer safely from tenant and IdP configuration to verified first metrics, with understandable identity, role, machine-assignment and recovery flows. | Okta/Entra/Google setup; claims and group-to-role mapping; admin bootstrap; JIT/optional SCIM; SCM installation; audited machine-custodian assignment; self-service client enrollment; first-data verification. | Task4 admin/policy; Task7 adapters where applicable; Task9 optional managed deployment. | **After Task4 admin foundations** | Very high: customer IdP configuration, role mapping, customer-admin/regular-user acceptance and usability trials. | Separate Task8 task. |
 | **Task9** | MDM and Managed Developer Fleet | 🔴 ☐ | Let enterprise administrators deploy, configure, inventory, update and revoke TrackAI/Git AI across managed macOS, Windows and Linux devices. | Signed packages/profiles; unattended install; device identity/posture and assigned-user evidence; managed configuration; fleet inventory; update/rollback; offboarding; OS secret-store integration. | Task4 developer keys, machine identity, repository grants and offline queue; Task14 secret-store adapter contract. | **After Task4 machine enrollment** | Very high: managed-device access, MDM vendor profiles, user/device reconciliation and restart/offboarding tests. | Separate Task9 task. |
@@ -61,9 +62,9 @@ Authoritative status, execution waves and evidence gates are maintained in
 | ID | Subtask | Status | Outcome | Dependencies / privacy gate | Manual involvement |
 |---|---|---:|---|---|---|
 | **T5.1** | Evidence Taxonomy and Identity | 🟢 ✅ | Preserve GitAI commit/session/checkpoint/trace meanings and add separate evidence-event, intention, relationship, evidence-state and availability contracts. | Task2 session/trace/commit identity findings; E15. | Domain model accepted; future changes require review. |
-| **T5.2** | Fixed Evidence Safety Contract | 🟢 ✅ | Enforce tenant opt-in, separation of metadata/content, encryption, always-on secret scanning, audited privileged raw access and 30-day deletion. Task6 owns later configurability. | Task4 encryption, identity, policy and retention contracts. | Controlled security acceptance passes; customer-specific review belongs to Tasks12/14. |
+| **T5.2** | Fixed Evidence Safety Contract | 🟢 ✅ | Enforce tenant opt-in, separation of metadata/content, encryption, always-on secret scanning, audited privileged raw access and 30-day deletion. Deferred Task6 Policy owns later configurability. | Task4 encryption, identity, policy and retention contracts. | Controlled security acceptance passes; customer-specific review belongs to Tasks12/14. |
 | **T5.3** | OpenCode Evidence Ingestion and Storage | 🟢 ✅ | Accept idempotent OpenCode prompt/response/reasoning/tool evidence, retain provider identities and store encrypted content separately from metadata. | T5.1–T5.2; Task4 delivery/encryption/retention. | Verified with the isolated GitAI/OpenCode collector; other providers wait for Task13. |
-| **T5.4** | Work-Item Linkage | ⚪ — | Deferred. Reconsider GitHub Issue, Jira and Linear linkage with a customer or during Task14 readiness; do not infer ticket relationships now. | Customer configuration and provider authorization. | Customer-led future decision. |
+| **T5.4** | Work-Item Linkage | ⚪ — | Deferred. Reconsider GitHub Issue, Jira and Linear linkage with a customer or a later integration task; do not infer ticket relationships now. | Customer configuration and provider authorization. | Customer-led future decision; Task14 may certify deployment but does not own this feature. |
 | **T5.5** | Evidence Graph APIs | 🟢 ✅ | Support forward and reverse traversal with tenant-safe filters, pagination, evidence/confidence and availability while keeping GitAI entities authoritative. | T5.1–T5.3; Task11 may later publish selected contracts. | Live database traversal and pagination gates pass. |
 | **T5.6** | Visual Evidence Explorer | 🟢 ✅ | Provide a functional summary, supporting graph/timeline, code-provenance drill-down, semantic search and explicit privileged raw-content reveal. | T5.5; Task10 owns later design-system polish. | Role-appropriate walkthroughs pass through one focused, progressive-disclosure workspace; Task10 owns styling. |
 | **T5.7** | Pain-Point and Quality Analytics | 🟢 ✅ | Explain failed/retried/slow tools, prompt loops, Task2 rework, abandoned sessions and weak outcomes using transparent evidence rather than employee scores. | T5.3, T5.5; Task2 metric invariants. | Synthetic interpretation gates pass; customer-specific wording may evolve later. |
@@ -88,7 +89,8 @@ Authoritative status, execution waves and evidence gates are maintained in
 
 | Program | Referenceable workstreams |
 |---|---|
-| **Task6 — Policy Engine** | **T6.1** policy vocabulary and inheritance; **T6.2** repository/branch/agent/model rules; **T6.3** approvals and exceptions; **T6.4** dry-run simulation; **T6.5** enforcement adapters; **T6.6** violation evidence and audit; **T6.7** compliance reporting; **T6.8** external rule-catalog evaluation; **T6.9** signed endpoint-bundle provisioning; **T6.10** capture/upload/redaction/retention/access/export policy families. |
+| **Task6 Security — active** | **S6.1** event/capability contract; **S6.2** Numbat inventory/provenance; **S6.3** embedded pinned evaluator; **S6.4** privacy-safe finding delivery; **S6.5** storage/access/audit/UI; **S6.6** agent/OS conformance; **S6.7** optional later blocking pilot. |
+| **Task6 Policy — deferred** | **P6.1** vocabulary/inheritance; **P6.2** repository/branch/agent/model rules; **P6.3** approvals/exceptions; **P6.4** simulation; **P6.5** enforcement adapters; **P6.6** policy evidence/audit; **P6.7** compliance reporting; **P6.8** signed bundle provisioning; **P6.9** capture/upload/redaction/retention/access/export families. |
 | **Task7 — SCM Expansion** | **T7.1** provider-neutral contract; **T7.2** GitLab App/OAuth; **T7.3** Bitbucket App/OAuth; **T7.4** webhook/event parity; **T7.5** MR/PR and merge semantics; **T7.6** pipeline/deployment mapping; **T7.7** cross-provider conformance suite. |
 | **Task8 — Onboarding** | **T8.1** tenant and Okta/Entra/Google IdP wizard; **T8.2** issuer/audience/callback/claims verification; **T8.3** group-to-role, initial-admin and break-glass lifecycle; **T8.4** JIT access and optional SCIM lifecycle; **T8.5** SCM/repository onboarding; **T8.6** audited machine-user/custodian assignment; **T8.7** self-service client enrollment; **T8.8** admin/auditor/regular-user acceptance; **T8.9** first-data diagnostics, recovery and time-to-value analytics. |
 | **Task9 — MDM/Fleet** | **T9.1** signed macOS/Windows/Linux packages; **T9.2** unattended deployment; **T9.3** device identity/posture and assigned-user evidence; **T9.4** managed configuration and policy provisioning; **T9.5** inventory/health; **T9.6** staged update and rollback; **T9.7** revocation/offboarding; **T9.8** OS secret-store adapter integration; **T9.9** MDM-to-TrackAI assignment reconciliation; **T9.10** fleet security/E2E. |
@@ -135,24 +137,24 @@ Task10 must preserve the Task4 security rule that the server is authoritative.
 Client filtering, disabled buttons, previews and policy simulations improve safety
 but never replace tenant-bound server enforcement or immutable audit.
 
-### Task6 external rule-catalog discovery expansion
+### Task6 Security and Policy split
 
-The future policy task will evaluate external open-source rule catalogs,
-including the user-identified Numbat candidate corpus, without copying their
-surface syntax directly into TrackAI. Discovery must inventory each candidate
-rule, record source/license/provenance, identify its evidence requirements and
-classify it as advisory, approval-gated or enforceable. Each accepted rule then
-needs an explicit execution contract: Cedar-like principal/action/resource/
-context authorization where applicable, or normalized-event and sequence
-evaluation for coding-agent behavior. Both forms require organization/team/
-repository/branch inheritance, conflicts and exceptions, human-readable
-allow/deny explanations, simulation fixtures, audit evidence and explicit
-behavior when required evidence is unavailable. The inventory and exact rule
-count remain discovery outputs, not a Task4 contract.
+The active Security track evaluates a curated, pinned subset of the Numbat
+candidate corpus locally. It records source/license/provenance, required
+evidence, host fidelity, false-positive behavior and safe finding output. The
+first release supports explicit `off` or `monitor` only, ships rules with GitAI
+and does not depend on dynamic signed bundles. The accepted inventory and exact
+rule count remain discovery outputs.
+
+The deferred Policy track owns Cedar-like organization authorization, policy
+inheritance, conflicts, exceptions, simulation and signed distribution. It
+also owns future customer-authored capture, upload, redaction, retention,
+access and export policy. It may tighten but cannot weaken Task5's fixed safety
+floor.
 
 Task4's editable branch set remains a high-level resource-access foundation.
-It must not grow ad hoc agent/model/compliance semantics ahead of Task6's
-versioned vocabulary and evaluator.
+It must not grow ad hoc agent/model/compliance semantics ahead of the relevant
+Task6 Security or deferred Task6 Policy contract.
 
 ## Dependency and execution model
 
@@ -163,17 +165,24 @@ flowchart LR
     T2 --> T13["Task13 Agent/Surface Coverage"]
     T4 --> T13
     T5 --> T13
-    T4 --> T6["Task6 Policy Engine"]
+    T4 --> T6S["Task6 Security"]
+    T5 --> T6S
+    T13 --> T6S
+    T4 --> T6P["Task6 Policy (deferred)"]
+    T5 --> T6P
+    T6S --> T6P
     T4 --> T8["Task8 Onboarding"]
     T4 --> T9["Task9 MDM"]
     T9 --> T13
     T4 --> T7["Task7 SCM Expansion"]
     T5 --> T10["Task10 UX Overhaul"]
-    T6 --> T10
+    T6S --> T10
+    T6P --> T10
     T7 --> T8
     T4 --> T11["Task11 API/SDK"]
     T5 --> T11
-    T6 --> T11
+    T6S --> T11
+    T6P --> T11
     T8 --> T12["Task12 Customer Trust"]
     T9 --> T12
     T10 --> T12
@@ -193,8 +202,9 @@ flowchart LR
 2. Begin Task4 after the documented E13 checkpoint.
 3. Task5 is complete on its dedicated branch; consume its verified evidence
    contracts in Tasks6/10/12/13/14 without redefining GitAI identities.
-4. Begin Task6/7/8/9 only when their Task4 gates are stable; provider and UX
-   research may occur earlier without committing production contracts.
+4. Begin Task6 Security with `off`/`monitor` and embedded release-pinned rules.
+   Keep Task6 Policy deferred until customer requirements justify its control
+   plane. Tasks7/8/9 proceed against their own stable Task4 gates.
 5. Stabilize public resource contracts before Task11 SDK generation.
 6. Build Task12 incrementally from verified evidence, then consolidate the
    complete customer trust and verification experience.
@@ -211,7 +221,8 @@ flowchart LR
 - Every major program uses a dedicated branch, worktree, Codex task, tracker
   and versioned handoff.
 - This roadmap is the portfolio index; it does not replace `Task2.md`,
-  `TASK4.md`, `AGENT_COVERAGE.md`, `TASK14.md` or future program trackers.
+  `TASK4.md`, `TASK5.md`, `TASK6_SECURITY.md`, `TASK6_POLICY.md`,
+  `AGENT_COVERAGE.md`, `TASK14.md` or future program trackers.
 - Shared schemas and public contracts integrate only at named checkpoint SHAs.
 - The implementing task records what changed; the Lifecycle Lab independently
   reruns affected metric scenarios.
@@ -221,8 +232,9 @@ flowchart LR
 ## Assumptions
 
 - Task2 remains the lifecycle metric-semantics authority.
-- Task5 is complete under its canonical tracker; future policy, styling,
-  provider and certification work remains with Tasks6/10/12/13/14.
+- Task5 is complete under its canonical tracker; active coding-agent security
+  belongs to Task6 Security, while customer-driven organization policy remains
+  deferred in Task6 Policy.
 - Raw prompts, responses and tool content are sensitive customer data.
 - Task13 owns route implementation status; Task2 retains bridge tests and the
   Lifecycle Lab independently validates every route.

@@ -76,7 +76,8 @@ RRF and deterministic reranking. Derived rows are deleted with the source.
 | Supply keyrings through KMS/secret manager and certify rotation | Tasks4/14 |
 | Configure production Supabase/OIDC tenants and administrator bootstrap | Tasks8/14 |
 | Deploy API/web with TLS, service identity, canary and rollback | Task14 |
-| Make evidence policies customer-configurable | Task6 |
+| Add coding-agent threat monitoring | Task6 Security |
+| Make evidence policies customer-configurable | Task6 Policy (deferred) |
 | Add providers beyond OpenCode | Task13 |
 | Produce customer trust evidence and deployment certification | Tasks12/14 |
 

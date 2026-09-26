@@ -95,11 +95,13 @@ login and Laptop 12's machine credential are checked separately.
 |---|---|---|
 | Task8 — Customer Onboarding | Help the customer connect IdP/SCM, assign roles, enroll a first machine and verify first data | Mass deployment or cloud reliability engineering |
 | Task9 — MDM/Fleet | Install and manage software across many company devices; report device/user/posture facts; update and offboard | Deciding dashboard roles or operating TrackAI's SaaS backend |
-| Task6 — Policy | Define and distribute what may be captured, uploaded, redacted, retained, accessed or exported | Installing packages or operating databases |
+| Task6 Security — active | Detect reviewed coding-agent threats locally and upload safe monitor findings | General customer policy, package installation or database operations |
+| Task6 Policy — deferred | Later define and distribute customer rules for capture, upload, redaction, retention, access or export | Coding-agent rule implementation, package installation or database operations |
 | Task14 — Production Readiness | Make the server, secret stores, release process, backup/restore and deployment modes production-safe | Redefining Task4 security semantics or customer policy meaning |
 
 Task14 defines how platform secret adapters must behave. Task9 packages and
-deploys those adapters. Task8 explains the setup to the customer. Task6 later
+deploys those adapters. Task8 explains the setup to the customer. Task6
+Security handles local monitor-only threat detection now; Task6 Policy later
 decides the customer's detailed capture/upload rules.
 
 ## 3. How does an Okta/Entra person map to a machine?
