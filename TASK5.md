@@ -1,7 +1,7 @@
 # Task5 — GitAI-Based Evidence Explorer and Intention Intelligence
 
 **Authoritative Task5 tracker**  
-Last updated: **2026-09-20**
+Last updated: **2026-09-26**
 
 Task5 turns GitAI provenance into a permission-aware customer investigation
 experience. [`Task2.md`](Task2.md) remains authoritative for lifecycle metric
@@ -223,10 +223,32 @@ Task4 regressions remain green, semantic search uses real embeddings, and the
 customer workflow works without raw database inspection. T5.4 remains deferred
 and does not block completion.
 
-**Completion result (2026-09-20): 🟡 ◐ Engineering-complete; product-owner UAT
-pending.** All automated, live-data and controlled Codex browser gates pass.
-Task5 closes only after the product owner completes E5-12 and records feedback.
-T5.4 remains explicitly deferred.
+**Release decision (2026-09-26): approved for integration into `main`; tracked
+follow-ups continue in parallel.** The implemented Task5 scope is engineering-
+complete and its automated, live-data and controlled browser gates pass. The
+merge does not claim that T5.9a intention-derivation research or the evolving
+product-owner UX review is complete: those remain explicit follow-ups. T5.4
+remains deferred and does not block the release.
+
+### Release and closure notes
+
+- TrackAI contributes the tenant-safe evidence schema, OpenCode ingestion
+  contract, graph/work-story APIs, PR-led Evidence Workspace, progressive
+  evidence trail, reverse file/line attribution, friction analytics, local BGE
+  intention embeddings, hybrid search, retention/deletion propagation and
+  continuous verification.
+- GitAI contributes the read-only OpenCode SQLite collector, deterministic
+  provider identities, pre-serialization secret redaction, replay-stable
+  batches and managed TrackAI delivery integration.
+- Task2 metric meanings and Task4 authorization, encryption, delivery,
+  retention, audit and safe-logging contracts remain authoritative and were
+  regression-tested throughout Task5.
+- T5.9a intention derivation, further product-owner UX feedback and E5-12
+  sign-off remain visible parallel work. They are not hidden prerequisites or
+  reasons to hold back the verified engineering foundation from Task6.
+- Task6 owns configurable capture, access, redaction, retention, deletion and
+  export policy. It may strengthen but must not weaken Task5's fixed safety
+  floor. Task13 owns providers beyond OpenCode; Task14/customer work owns T5.4.
 
 ## Working directories and checkpoints
 
@@ -236,7 +258,7 @@ T5.4 remains explicitly deferred.
 | TrackAI working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/TrackAI-V1` |
 | Required Task4 TrackAI ancestor | `91e5724269789f4aa1b357d0665f88bd01af8852` |
 | Required GitAI Task4 client ancestor | `2d240fb939313f0cfbe43b71b779a1ac683dfb5d` |
-| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528`, `11a4025`, `056c475`, `31df089`, `016b207`, `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377` |
+| TrackAI implementation checkpoints | `2fcfc9b`, `44de334`, `2a3e528`, `11a4025`, `056c475`, `31df089`, `016b207`, `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486`, `57f0377`, `4ba677d`, `b78c636`, `e3cc680`, `f34746d`, `5247b3c`, `e664651` |
 | GitAI Task5 branch | `feature/task5-opencode-evidence` |
 | GitAI isolated working copy | `/Users/manishmahajan/Documents/Codex/2026-09-19/trackai-task5/work/git-ai-task5` |
 | GitAI OpenCode collector checkpoint | `a8d93aa20` |
@@ -433,3 +455,4 @@ completed on 2026-09-20 and is recorded in the final Wave 7 row below.
 | 2026-09-20 | Semantic intention retrieval and relevance | 🟢 ✅ | TrackAI `e45c57c`, `6cacaf7`, `1c381e4`, `d980c23` and `865909e`, CI run `35495908579`: the pinned local BGE artifact produces normalized 384-dimensional embeddings; pgvector cosine and PostgreSQL lexical retrieval are fused with RRF and deterministically reranked. Exact priority, semantic paraphrases, graded hard negatives, explainable channel reasons and two-tenant isolation pass. E5-9 and T5.9 are complete. |
 | 2026-09-20 | Cross-platform Task2/Task4/GitAI regression | 🟢 ✅ | GitAI `00262a33f`, `06128fcf3` and `cb1db62df`, PR 1: all 44 applicable checks pass. Full macOS, Ubuntu and Windows suites, lint, format, docs, CodeQL, agent/OpenCode E2E, performance smoke and Git compatibility are green. The gate found and fixed one Windows portability warning, one stale migration-version assertion and one one-second fixture race. E5-11 is complete. |
 | 2026-09-20 | Controlled customer browser acceptance | 🟡 ◐ | TrackAI `f269626`, `f65b1a4`, `e880fbe`, `c5de2ff`, `ac4d486` and `57f0377`; final CI run `35519778360`: role-appropriate customer workflows pass. Exact/missing attribution, insights, search, similar work, authorized raw reveal/audit and ordinary-user denial were exercised, and 127 tests plus every live gate pass. Product-owner UAT remains before E5-12 and Task5 close. |
+| 2026-09-26 | Task5 integration candidate and UX follow-up boundary | 🟡 ◐ | TrackAI `4ba677d` through `e664651` add the product-owner runbook, focused investigation state, contextual insight drill-down, customer-first intent/line explanations, full-width hybrid evidence trail and navigation-state preservation. The release candidate passes 129 API/security/metric tests, API/web TypeScript and the production web build. Approved for `main`; T5.9a and evolving product-owner UX acceptance continue in parallel. |
