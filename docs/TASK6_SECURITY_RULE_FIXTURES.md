@@ -6,6 +6,8 @@ Last updated: **2026-09-29**
 
 Approval recorded: **2026-09-29**
 
+Machine-checkable fixture vocabulary approved: **2026-09-29**
+
 These cases define expected behavior for the three approved monitor-only rules.
 They are documentation fixtures only. The command tokens must never be executed
 during documentation or schema tests.
@@ -79,6 +81,8 @@ command tokens, paths, URLs, destinations and outputs remain local.
 The expectations below were approved on 2026-09-29 and converted into the
 versioned fixture set at
 [`contracts/task6/fixtures/rule-behavior-fixtures.json`](contracts/task6/fixtures/rule-behavior-fixtures.json).
+Its safe normalized input and expected-result vocabulary was approved on the
+same date. Any change to that vocabulary or an expected result requires review.
 Before S6.3 runtime work, an evaluator test harness must consume the set and
 confirm:
 

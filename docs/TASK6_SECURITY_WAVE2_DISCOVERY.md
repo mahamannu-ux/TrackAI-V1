@@ -168,8 +168,8 @@ review artifacts, not executable tests or runtime behavior.
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Review the versioned event, safe-finding and 32-case fixture schemas; require
-   the future S6.3 evaluator test harness to consume them unchanged.
+2. Keep the approved versioned event, safe-finding and 32-case fixture schemas
+   unchanged; require the future S6.3 evaluator test harness to consume them.
 3. Apply the approved Apache-2.0 notice and modification-marking plan before
    any Numbat-derived material enters S6.3.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures

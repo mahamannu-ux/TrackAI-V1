@@ -1,8 +1,10 @@
 # Task6 Security 0.1 data contracts
 
-Status: **Review artifacts; not connected to runtime**
+Status: **Approved Wave 2 contracts; not connected to runtime**
 
 Last updated: **2026-09-29**
+
+Fixture vocabulary approval recorded: **2026-09-29**
 
 These versioned JSON Schemas turn the approved Wave 2 vocabulary into files a
 schema validator can check. They do not add detection, upload, storage, policy
@@ -32,3 +34,4 @@ two `valid-*` files to pass and the two `invalid-*` files to fail.
 These are contract checks only. All 32 approved rule-behavior cases are now in
 one machine-checkable fixture set. A future S6.3 evaluator test harness must
 consume them without weakening or silently changing their expected outcomes.
+Any schema or expected-result change requires another product/security review.
