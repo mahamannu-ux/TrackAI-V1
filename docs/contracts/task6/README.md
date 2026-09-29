@@ -15,7 +15,8 @@ or blocking behavior.
 | File | Purpose | Privacy rule |
 |---|---|---|
 | `security-event.schema.json` | Local event used for on-device evaluation | Its `input` is temporary and must remain on the device. |
-| `security-finding.schema.json` | Small finding allowed to cross the Task4 delivery boundary | Unknown fields are rejected, including raw commands, paths, URLs and outputs. |
+| `security-finding-upload.schema.json` | Small client batch allowed to cross the Task4 delivery boundary | Tenant and machine identity are omitted and derived by the authenticated server; unknown fields are rejected. |
+| `security-finding.schema.json` | Final finding after authenticated server enrichment | Unknown fields are rejected, including raw commands, paths, URLs and outputs. |
 | `rule-fixtures.schema.json` | Closed format for the 32 approved rule and safety cases | Uses safe normalized facts, not executable command strings. |
 | `fixtures/manifest.json` | Lists safe examples and their expected result | Valid examples contain placeholders; invalid examples prove raw content and blocking are rejected. |
 
@@ -30,8 +31,9 @@ or blocking behavior.
 | Server content | Authorized IDs and bounded categories only |
 
 The schemas use JSON Schema Draft 7 so the repository's installed validator can
-check them without adding a new dependency. The fixture manifest expects the
-two `valid-*` files to pass and the two `invalid-*` files to fail.
+check them without adding a new dependency. The fixture manifest records the
+expected result for every valid and invalid contract example, including
+raw-content and client-identity rejection.
 
 These are contract checks only. All 32 approved rule-behavior cases are now in
 one machine-checkable fixture set. A future S6.3 evaluator test harness must
