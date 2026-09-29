@@ -200,3 +200,30 @@ test('security storage migration enables RLS without direct browser policies', (
   assert.match(migration, /CREATE TRIGGER security_findings_immutable/);
   assert.match(migration, /BEFORE UPDATE OR DELETE ON "security_findings"/);
 });
+
+test('security storage migration dry-run is bounded and always rolls back', () => {
+  const dryRun = readFileSync(
+    path.resolve(process.cwd(), 'src/features/security-findings/task6-storage-migration-dry-run.ts'),
+    'utf8',
+  );
+  const packageJson = JSON.parse(readFileSync(
+    path.resolve(process.cwd(), 'package.json'),
+    'utf8',
+  )) as { scripts: Record<string, string> };
+
+  assert.equal(
+    packageJson.scripts['verify:task6-storage-migration-dry-run'],
+    'tsx src/features/security-findings/task6-storage-migration-dry-run.ts',
+  );
+  assert.match(dryRun, /Task6 storage tables already exist/);
+  assert.match(dryRun, /SET LOCAL lock_timeout/);
+  assert.match(dryRun, /SET LOCAL statement_timeout/);
+  assert.match(dryRun, /cross_tenant_machine=blocked/);
+  assert.match(dryRun, /cross_tenant_repository=blocked/);
+  assert.match(dryRun, /duplicate_delivery=blocked/);
+  assert.match(dryRun, /changed_duplicate_delivery=blocked/);
+  assert.match(dryRun, /finding_update=blocked/);
+  assert.match(dryRun, /finding_delete=blocked/);
+  assert.match(dryRun, /migration_dry_run=rolled-back/);
+  assert.doesNotMatch(dryRun, /commandText|promptText|responseText|rawPayload/);
+});
