@@ -13,6 +13,9 @@ This is an inventory and review artifact only. Three rules were approved on
 implemented, tested, uploaded or allowed to block. Fixtures, technical review
 and license handling remain required before runtime work.
 
+Plain-language approval brief:
+[`TASK6_SECURITY_REMAINING_RULE_REVIEW.md`](TASK6_SECURITY_REMAINING_RULE_REVIEW.md).
+
 ## Disposition vocabulary
 
 | Disposition | Meaning |
