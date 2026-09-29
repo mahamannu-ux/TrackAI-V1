@@ -1,8 +1,10 @@
 # Task6 Security remaining-rule review
 
-Status: **Ready for product/security approval**
+Status: **Approved**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 The first three rules are already approved. This review covers the other 48
 Numbat candidates. The detailed rule-by-rule record remains
@@ -20,9 +22,9 @@ Numbat candidates. The detailed rule-by-rule record remains
 
 ## Recommendation
 
-Approve the grouped decisions above. This keeps version 0.1 limited to the
-three high-signal monitor-only rules and avoids alerts that are incomplete,
-misleading or triggered by normal development work.
+The grouped decisions above were approved on 2026-09-29. Version 0.1 remains
+limited to the three high-signal monitor-only rules, avoiding alerts that are
+incomplete, misleading or triggered by normal development work.
 
 Approval does not permanently reject the 46 deferred candidates. Each can
 return through a later review after its missing evidence, parser, path handling,

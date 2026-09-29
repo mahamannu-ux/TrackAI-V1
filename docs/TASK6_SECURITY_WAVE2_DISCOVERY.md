@@ -160,9 +160,9 @@ review artifacts, not executable tests or runtime behavior.
 - E6-1 stays yellow because the versioned schemas and four boundary fixtures
   are written and schema-checked, but the vocabulary still requires
   product/security review and a real route check.
-- E6-2 stays yellow because the 51 draft dispositions still require
-  product/security review and the 32 machine-checkable cases have not yet run
-  against an evaluator. The Apache-2.0 handling plan is approved.
+- E6-2 is green for Wave 2 discovery: all 51 dispositions, the three-rule
+  subset, 32 safe cases and Apache-2.0 handling plan are approved and pinned.
+  Running those cases against code belongs to the separate S6.3/E6-3 gate.
 
 ## Required review before runtime work
 
@@ -172,5 +172,5 @@ review artifacts, not executable tests or runtime behavior.
    unchanged; require the future S6.3 evaluator test harness to consume them.
 3. Apply the approved Apache-2.0 notice and modification-marking plan before
    any Numbat-derived material enters S6.3.
-4. Approve or change all 51 draft inventory dispositions and complete fixtures
-   for any accepted first-subset rule before any S6.3 evaluator implementation.
+4. Keep all 51 approved dispositions and the pinned source stable. Any change
+   reopens E6-2 before S6.3 evaluator implementation.

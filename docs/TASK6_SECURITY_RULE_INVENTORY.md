@@ -1,8 +1,10 @@
 # Task6 Security pinned rule inventory
 
-Status: **Initial three-rule subset approved; remaining dispositions under review**
+Status: **All 51 dispositions approved for version 0.1**
 
 Last updated: **2026-09-29**
+
+Full disposition approval recorded: **2026-09-29**
 
 Source: `perplexityai/numbat` at
 `f0778c09dc48281aa93a3887d05096c0a1f3f9f7`, Apache-2.0. The authoritative
@@ -149,7 +151,7 @@ first-class outcomes; missing fields never become `no_match`.
 | Exclude from v0.1 | 2 |
 | **Total** | **51** |
 
-The counts are review bookkeeping, not an implementation commitment. E6-2
-remains yellow until the remaining dispositions are reviewed, the three
-approved rules have positive/negative/ambiguous fixtures, and Apache-2.0 notice
-and modification handling are agreed.
+The counts are review bookkeeping, not a broader implementation commitment.
+The three accepted rules, 48 remaining dispositions, safe fixture vocabulary
+and Apache-2.0 handling plan are approved for version 0.1. Any rule, source pin
+or disposition change reopens E6-2 review.
