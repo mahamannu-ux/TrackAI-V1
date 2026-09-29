@@ -13,6 +13,7 @@ import {
   evidenceReadRouter,
   evidenceWorkerRouter,
 } from './features/evidence/evidence.routes';
+import securityFindingsRouter from './features/security-findings/security-findings.routes';
 import dotenv from 'dotenv';
 
 // MUST BE FIRST - before any process.env references
@@ -48,6 +49,7 @@ app.use(express.json({ limit: '5mb' }));
 
 // Native Git AI worker uploads use tenant-bound machine credentials, not a
 // browser JWT. Keep this route outside the interactive /api middleware chain.
+app.use('/worker/security', authenticateMachine, securityFindingsRouter);
 app.use('/worker', authenticateMachine, telemetryIngestRouter);
 app.use('/worker/evidence', authenticateMachine, evidenceWorkerRouter);
 
