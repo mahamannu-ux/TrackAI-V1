@@ -1,8 +1,10 @@
 # Task6 Security activation review
 
-Status: **Ready for product/security approval**
+Status: **Approved**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 The local evaluator works, but it is not connected to live OpenCode requests.
 The tenant administrator must remain the authority for `off` or `monitor`.
@@ -18,6 +20,7 @@ The tenant administrator must remain the authority for `off` or `monitor`.
 Raw commands remain on the computer in every mode. No finding upload, server
 storage, blocking or Policy engine is part of this approval.
 
-Recommendation: approve this boundary, but keep the production hook disconnected
-until a tenant-authorized setting can reach GitAI through the existing managed
-credential and machine scope.
+This boundary was approved on 2026-09-29. The production hook remains
+disconnected until a tenant-authorized setting can reach GitAI through the
+existing managed credential and machine scope. Any new local production
+override or change to fail-closed behavior requires another review.
