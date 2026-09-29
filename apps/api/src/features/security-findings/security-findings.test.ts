@@ -81,7 +81,8 @@ test('authenticated admission derives tenant and machine and checks repository g
     authorization: { mode: 'monitor', validUntil: null, revokedAt: null },
     batch,
     receivedAt: new Date('2026-09-30T08:01:00Z'),
-    repositoryGrantAllows: async repositoryId => {
+    repositoryGrantAllows: async (repositoryId, branch) => {
+      assert.equal(branch, null, 'v0.1 findings require a repository-wide grant');
       checked.push(repositoryId);
       return repositoryId === 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     },
