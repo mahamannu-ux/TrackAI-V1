@@ -197,4 +197,6 @@ test('security storage migration enables RLS without direct browser policies', (
   );
   assert.match(migration, /security_findings_tenant_machine_fk/);
   assert.match(migration, /security_findings_tenant_repository_fk/);
+  assert.match(migration, /CREATE TRIGGER security_findings_immutable/);
+  assert.match(migration, /BEFORE UPDATE OR DELETE ON "security_findings"/);
 });

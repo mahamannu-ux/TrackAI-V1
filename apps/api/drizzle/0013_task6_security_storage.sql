@@ -97,4 +97,13 @@ ALTER TABLE "tenant_security_monitor_settings" ADD CONSTRAINT "tenant_security_m
 CREATE INDEX "security_findings_tenant_repository_occurred_idx" ON "security_findings" USING btree ("tenant_id","repository_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "security_findings_tenant_machine_received_idx" ON "security_findings" USING btree ("tenant_id","machine_id","received_at");--> statement-breakpoint
 ALTER TABLE "tenant_security_monitor_settings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "security_findings" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "security_findings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE OR REPLACE FUNCTION reject_security_finding_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'security findings are immutable';
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER security_findings_immutable
+BEFORE UPDATE OR DELETE ON "security_findings"
+FOR EACH ROW EXECUTE FUNCTION reject_security_finding_mutation();
