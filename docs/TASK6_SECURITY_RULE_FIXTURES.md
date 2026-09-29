@@ -1,6 +1,6 @@
 # Task6 Security approved-rule fixture plan
 
-Status: **Approved expectations; not executable**
+Status: **Approved expectations; machine-checkable fixture set added**
 
 Last updated: **2026-09-29**
 
@@ -76,8 +76,11 @@ command tokens, paths, URLs, destinations and outputs remain local.
 
 ## Review exit
 
-The expectations below were approved on 2026-09-29. Before S6.3 runtime work,
-they must still be converted into versioned executable fixtures that confirm:
+The expectations below were approved on 2026-09-29 and converted into the
+versioned fixture set at
+[`contracts/task6/fixtures/rule-behavior-fixtures.json`](contracts/task6/fixtures/rule-behavior-fixtures.json).
+Before S6.3 runtime work, an evaluator test harness must consume the set and
+confirm:
 
 1. each positive case should alert;
 2. each negative case should stay quiet;

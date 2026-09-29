@@ -1,0 +1,269 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/contracts/task6/rule-fixtures.schema.json",
+  "title": "Task6 approved rule fixtures 0.1",
+  "description": "Safe normalized test inputs. These fixtures contain no executable command strings and do not implement an evaluator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "cases"],
+  "properties": {
+    "schemaVersion": { "const": "trackai.security-rule-fixtures/0.1" },
+    "cases": {
+      "type": "array",
+      "minItems": 32,
+      "maxItems": 32,
+      "items": { "$ref": "#/definitions/case" }
+    }
+  },
+  "definitions": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caseId", "ruleId", "input", "expected"],
+      "properties": {
+        "caseId": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "maxLength": 96
+        },
+        "ruleId": {
+          "enum": [
+            "trackai.exec.destructive_recursive_delete",
+            "trackai.exec.download_pipe_shell",
+            "trackai.exec.reverse_shell",
+            "all_approved_rules"
+          ]
+        },
+        "input": {
+          "oneOf": [
+            { "$ref": "#/definitions/deleteInput" },
+            { "$ref": "#/definitions/downloadInput" },
+            { "$ref": "#/definitions/reverseShellInput" },
+            { "$ref": "#/definitions/sharedInput" }
+          ]
+        },
+        "expected": { "$ref": "#/definitions/expected" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ruleId": { "const": "trackai.exec.destructive_recursive_delete" }
+            }
+          },
+          "then": {
+            "properties": { "input": { "$ref": "#/definitions/deleteInput" } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ruleId": { "const": "trackai.exec.download_pipe_shell" }
+            }
+          },
+          "then": {
+            "properties": { "input": { "$ref": "#/definitions/downloadInput" } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ruleId": { "const": "trackai.exec.reverse_shell" }
+            }
+          },
+          "then": {
+            "properties": { "input": { "$ref": "#/definitions/reverseShellInput" } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "ruleId": { "const": "all_approved_rules" } }
+          },
+          "then": {
+            "properties": { "input": { "$ref": "#/definitions/sharedInput" } }
+          }
+        }
+      ]
+    },
+    "baseInput": {
+      "type": "object",
+      "properties": {
+        "executionContext": {
+          "enum": ["parsed_command", "documentation", "printed_text", "application_code"]
+        },
+        "parserStatus": { "enum": ["complete", "partial", "failed"] }
+      }
+    },
+    "deleteInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "executionContext",
+        "parserStatus",
+        "dialect",
+        "recursive",
+        "forced",
+        "targetClass",
+        "targetExpansion"
+      ],
+      "properties": {
+        "kind": { "const": "delete" },
+        "executionContext": {
+          "enum": ["parsed_command", "documentation", "printed_text"]
+        },
+        "parserStatus": { "enum": ["complete", "partial", "failed"] },
+        "dialect": { "enum": ["posix", "powershell", "cmd", "unavailable"] },
+        "recursive": { "type": "boolean" },
+        "forced": { "type": "boolean" },
+        "targetClass": {
+          "enum": [
+            "filesystem_root",
+            "user_home",
+            "repository_build",
+            "temporary_folder",
+            "other",
+            "unavailable"
+          ]
+        },
+        "targetExpansion": {
+          "enum": ["confirmed", "literal", "not_applicable", "unavailable"]
+        }
+      }
+    },
+    "downloadInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "executionContext",
+        "parserStatus",
+        "downloadSource",
+        "outputDisposition",
+        "interpreterClass",
+        "interpreterInput"
+      ],
+      "properties": {
+        "kind": { "const": "download_pipeline" },
+        "executionContext": {
+          "enum": ["parsed_command", "documentation", "printed_text"]
+        },
+        "parserStatus": { "enum": ["complete", "partial", "failed"] },
+        "downloadSource": { "enum": ["http", "https", "unavailable"] },
+        "outputDisposition": { "enum": ["pipeline", "saved_file", "unavailable"] },
+        "interpreterClass": {
+          "enum": ["shell", "script_interpreter", "other", "none", "unavailable"]
+        },
+        "interpreterInput": {
+          "enum": [
+            "downloader_stdout",
+            "local_file",
+            "redirected",
+            "command_string",
+            "none",
+            "unavailable"
+          ]
+        }
+      }
+    },
+    "reverseShellInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "executionContext",
+        "parserStatus",
+        "networkMode",
+        "transportClass",
+        "executedProgramClass"
+      ],
+      "properties": {
+        "kind": { "const": "reverse_shell" },
+        "executionContext": {
+          "enum": ["parsed_command", "documentation", "printed_text", "application_code"]
+        },
+        "parserStatus": { "enum": ["complete", "partial", "failed"] },
+        "networkMode": {
+          "enum": ["connect_back", "bind", "listener", "normal_socket", "unavailable"]
+        },
+        "transportClass": {
+          "enum": ["device_redirect", "netcat_family", "socat", "generic_socket", "unavailable"]
+        },
+        "executedProgramClass": {
+          "enum": ["recognized_shell", "non_shell", "none", "unavailable"]
+        }
+      }
+    },
+    "sharedInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "scenario"],
+      "properties": {
+        "kind": { "const": "shared_safety" },
+        "scenario": {
+          "enum": [
+            "request_without_result",
+            "request_with_failed_result",
+            "request_with_successful_result",
+            "duplicate_delivery",
+            "two_tenants",
+            "unsafe_projection",
+            "monitoring_off",
+            "unsupported_route"
+          ]
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "localDecision",
+        "findingCount",
+        "phase",
+        "resultCategory",
+        "customerClaim",
+        "privacyProjection",
+        "tenantIsolation"
+      ],
+      "properties": {
+        "localDecision": {
+          "enum": ["off", "no_match", "monitor_match", "unavailable", "error"]
+        },
+        "findingCount": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "phase": {
+          "enum": ["requested", "observed_result", "partial", "unavailable", "not_applicable"]
+        },
+        "resultCategory": {
+          "enum": [
+            "not_observed",
+            "success",
+            "failure",
+            "cancelled",
+            "unknown",
+            "unavailable",
+            "not_applicable"
+          ]
+        },
+        "customerClaim": {
+          "enum": [
+            "requested",
+            "requested_and_host_reported_failure",
+            "requested_and_host_reported_success",
+            "unavailable",
+            "none"
+          ]
+        },
+        "privacyProjection": { "enum": ["safe_metadata_only", "reject"] },
+        "tenantIsolation": { "enum": ["separate", "not_applicable"] },
+        "alertTitle": {
+          "enum": [
+            "Large deletion requested",
+            "Downloaded content requested for immediate execution",
+            "Remote command channel requested"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -161,15 +161,15 @@ review artifacts, not executable tests or runtime behavior.
   are written and schema-checked, but the vocabulary still requires
   product/security review and a real route check.
 - E6-2 stays yellow because the 51 draft dispositions still require
-  product/security review, the 32 rule-behavior cases are not executable, and
-  Apache-2.0 notice/modification handling is not yet approved.
+  product/security review and the 32 machine-checkable cases have not yet run
+  against an evaluator. The Apache-2.0 handling plan is approved.
 
 ## Required review before runtime work
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Review the versioned event and safe-finding schemas, then convert the 32
-   approved rule-behavior cases into executable evaluator fixtures.
+2. Review the versioned event, safe-finding and 32-case fixture schemas; require
+   the future S6.3 evaluator test harness to consume them unchanged.
 3. Apply the approved Apache-2.0 notice and modification-marking plan before
    any Numbat-derived material enters S6.3.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
