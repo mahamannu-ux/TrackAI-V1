@@ -118,19 +118,21 @@ control 2 and tampering 3.
 Every candidate now has a draft input, AC-CLI-03 fidelity, false-positive risk
 and disposition in
 [`TASK6_SECURITY_RULE_INVENTORY.md`](TASK6_SECURITY_RULE_INVENTORY.md). These
-are review proposals, not accepted rules: 3 are proposed for first review, 46
-are deferred by an explicit reason, and 2 Numbat/policy-specific rules are
-proposed for exclusion from v0.1.
+include 3 rules approved on 2026-09-29 for the first monitor-only subset, 46
+rules deferred by an explicit reason, and 2 Numbat/policy-specific rules
+proposed for exclusion from v0.1. Approval does not authorize runtime work
+before schemas, fixtures and license handling are ready.
 
-### Proposed first review subset
+### Approved first monitor-only subset
 
-These are proposals for product/security approval, not accepted release rules.
+These three rules were approved on 2026-09-29 for the first monitor-only
+subset. They are not implemented or verified yet.
 
 | TrackAI proposal | Upstream identity | Required transient input | AC-CLI-03 fidelity | False-positive focus | Proposed disposition |
 |---|---|---|---|---|---|
-| `trackai.exec.destructive_recursive_delete` | `exec.destructive_recursive_delete` v1.5 | Pre-action Bash/PowerShell/cmd command plus bounded structured parse | Requested action is available from a loaded OpenCode before-hook; execution outcome requires a later correlated result | Quoted examples, dry-run forms, unresolved home variables and repository-only cleanup must remain negative | **Review for initial subset** |
-| `trackai.exec.download_pipe_shell` | `exec.download_pipe_shell` v1.4 | Pre-action command plus bounded pipeline parse | Requested action available; no prevention claim | Local scripts, redirected stdin, comments, examples and non-executing downloads must remain negative | **Review for initial subset** |
-| `trackai.exec.reverse_shell` | `exec.reverse_shell` v1.3 | Pre-action command plus bounded executable/argument parse | Requested action available; outcome may be unavailable | Benign socket examples, documentation text and non-executed strings must remain negative | **Review for initial subset** |
+| `trackai.exec.destructive_recursive_delete` | `exec.destructive_recursive_delete` v1.5 | Pre-action Bash/PowerShell/cmd command plus bounded structured parse | Requested action is available from a loaded OpenCode before-hook; execution outcome requires a later correlated result | Quoted examples, dry-run forms, unresolved home variables and repository-only cleanup must remain negative | **Approved; monitor only** |
+| `trackai.exec.download_pipe_shell` | `exec.download_pipe_shell` v1.4 | Pre-action command plus bounded pipeline parse | Requested action available; no prevention claim | Local scripts, redirected stdin, comments, examples and non-executing downloads must remain negative | **Approved; monitor only** |
+| `trackai.exec.reverse_shell` | `exec.reverse_shell` v1.3 | Pre-action command plus bounded executable/argument parse | Requested action available; outcome may be unavailable | Benign socket examples, documentation text and non-executed strings must remain negative | **Approved; monitor only** |
 
 All three remain `monitor`, even when the event arrives pre-action. The safe
 finding records only the rule identity and bounded categorical result; it does
@@ -157,7 +159,7 @@ not include the matching command or parsed arguments.
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Approve, change or reject the three-rule proposed first subset.
+2. Record customer-safe alert wording for the approved three-rule subset.
 3. Confirm Apache-2.0 notice and modification-marking expectations.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
    for any accepted first-subset rule before any S6.3 evaluator implementation.

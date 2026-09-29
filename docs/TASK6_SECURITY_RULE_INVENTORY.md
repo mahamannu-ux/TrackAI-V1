@@ -1,6 +1,6 @@
 # Task6 Security pinned rule inventory
 
-Status: **Draft dispositions for product/security review**
+Status: **Initial three-rule subset approved; remaining dispositions under review**
 
 Last updated: **2026-09-29**
 
@@ -8,15 +8,16 @@ Source: `perplexityai/numbat` at
 `f0778c09dc48281aa93a3887d05096c0a1f3f9f7`, Apache-2.0. The authoritative
 inputs are the 51 enabled YAML files under `rules/**/*.yaml` at that commit.
 
-This is an inventory and review artifact only. No rule is accepted, executed,
-uploaded or allowed to block by this document. Every proposed release rule
-remains `monitor` and requires fixtures plus product/security approval.
+This is an inventory and review artifact only. Three rules were approved on
+2026-09-29 for the first monitor-only subset. Approval does not mean they are
+implemented, tested, uploaded or allowed to block. Fixtures, technical review
+and license handling remain required before runtime work.
 
 ## Disposition vocabulary
 
 | Disposition | Meaning |
 |---|---|
-| **Review first** | Candidate for the smallest initial monitor-only subset. |
+| **Approved first subset** | Approved for the smallest initial monitor-only subset; implementation still gated. |
 | **Defer: parser** | Requires more shell/dialect parsing and false-positive fixtures. |
 | **Defer: path** | Requires normalized path, expansion and cross-OS fidelity work. |
 | **Defer: route** | AC-CLI-03 does not yet prove the required event/capability reliably. |
@@ -47,10 +48,10 @@ first-class outcomes; missing fields never become `no_match`.
 | Upstream rule | Required transient evidence | AC-CLI-03 fidelity and main risk | Proposed disposition |
 |---|---|---|---|
 | `exec.agent_runtime_bypass_flags` v1.3 | Structured command executable and permission-bypass flags | Requested command is observable; legitimate sandbox/debug invocations need explicit negatives | **Defer: product conflict** |
-| `exec.destructive_recursive_delete` v1.5 | Structured Bash/PowerShell/cmd command, targets and expansions | High-signal requested action; unresolved variables, dry runs and repo cleanup must stay negative | **Review first** |
-| `exec.download_pipe_shell` v1.4 | Structured pipeline, downloader, URL class and interpreter stdin semantics | High-signal requested action; downloads without execution and local scripts must stay negative | **Review first** |
+| `exec.destructive_recursive_delete` v1.5 | Structured Bash/PowerShell/cmd command, targets and expansions | High-signal requested action; unresolved variables, dry runs and repo cleanup must stay negative | **Approved first subset**; monitor only |
+| `exec.download_pipe_shell` v1.4 | Structured pipeline, downloader, URL class and interpreter stdin semantics | High-signal requested action; downloads without execution and local scripts must stay negative | **Approved first subset**; monitor only |
 | `exec.encoded_payload_shell` v1.4 | Decoder/interpreter pipeline and redirection semantics | Observable request, but shell dialect and stdin variants need broader fixtures | **Defer: parser** |
-| `exec.reverse_shell` v1.3 | Executable, arguments, redirections and network-shell pattern | High-signal requested action; documentation strings and benign socket examples must stay negative | **Review first** |
+| `exec.reverse_shell` v1.3 | Executable, arguments, redirections and network-shell pattern | High-signal requested action; documentation strings and benign socket examples must stay negative | **Approved first subset**; monitor only |
 | `exec.reverse_tunnel` v1.3 | Structured SSH/tunneling command and reverse-listener arguments | Requested command observable; legitimate developer tunnels are common | **Defer: parser**; high false-positive review |
 
 ### Exfiltration
@@ -136,7 +137,7 @@ first-class outcomes; missing fields never become `no_match`.
 
 | Proposed disposition | Count |
 |---|---:|
-| Review first | 3 |
+| Approved first subset | 3 |
 | Defer: sequence | 6 |
 | Defer: parser | 15 |
 | Defer: path | 10 |
@@ -146,6 +147,6 @@ first-class outcomes; missing fields never become `no_match`.
 | **Total** | **51** |
 
 The counts are review bookkeeping, not an implementation commitment. E6-2
-remains yellow until reviewers approve or change each disposition, the three
-proposed rules have positive/negative/ambiguous fixtures, and Apache-2.0 notice
+remains yellow until the remaining dispositions are reviewed, the three
+approved rules have positive/negative/ambiguous fixtures, and Apache-2.0 notice
 and modification handling are agreed.
