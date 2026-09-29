@@ -1,8 +1,10 @@
 # Task6 Security customer alert wording
 
-Status: **Draft for customer review**
+Status: **Approved for the first monitor-only subset**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 These alerts are for the first monitor-only release. They tell a customer what
 the coding agent requested. They do not claim that TrackAI blocked the action
@@ -46,4 +48,3 @@ or that the action succeeded.
 | “The command succeeded.” | This requires a separate successful result event. |
 | “No risk was found.” when evidence is missing | Missing evidence is unavailable, not a clean result. |
 | Any raw command, path, URL, destination or output | These fields remain local and sensitive. |
-

@@ -165,8 +165,8 @@ review artifacts, not executable tests or runtime behavior.
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Approve or change the drafted customer-safe alert wording and fixture
-   expectations for the approved three-rule subset.
+2. Convert the approved customer-safe alert wording and fixture expectations
+   into versioned schemas and executable fixtures.
 3. Confirm Apache-2.0 notice and modification-marking expectations.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
    for any accepted first-subset rule before any S6.3 evaluator implementation.

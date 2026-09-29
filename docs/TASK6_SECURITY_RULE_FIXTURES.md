@@ -1,8 +1,10 @@
 # Task6 Security approved-rule fixture plan
 
-Status: **Draft test cases; not executable**
+Status: **Approved expectations; not executable**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 These cases define expected behavior for the three approved monitor-only rules.
 They are documentation fixtures only. The command tokens must never be executed
@@ -74,11 +76,11 @@ command tokens, paths, URLs, destinations and outputs remain local.
 
 ## Review exit
 
-Before S6.3 runtime work, reviewers must confirm:
+The expectations below were approved on 2026-09-29. Before S6.3 runtime work,
+they must still be converted into versioned executable fixtures that confirm:
 
 1. each positive case should alert;
 2. each negative case should stay quiet;
 3. each incomplete case says unavailable;
 4. customer wording is accurate and calm; and
 5. no fixture authorizes raw security input upload or blocking.
-
