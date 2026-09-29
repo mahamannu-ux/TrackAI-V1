@@ -436,6 +436,7 @@ test('Task6 live route verifier is restricted to its disposable database', () =>
   assert.match(verifier, /exact_replay=acknowledged/);
   assert.match(verifier, /changed_replay=blocked/);
   assert.match(verifier, /cross_tenant_repository=blocked/);
+  assert.match(verifier, /reverse_cross_tenant_repository=blocked/);
   assert.match(verifier, /monitor_off=blocked/);
   assert.match(verifier, /revoked_credential=blocked/);
   assert.match(verifier, /raw_content_capture=absent/);

@@ -236,6 +236,19 @@ async function main(): Promise<void> {
     requireResult(monitorOff, 200, {
       errors: [{ index: 0, error: 'security_monitoring_not_active' }],
     }, 'monitor off');
+    await db.update(tenantSecurityMonitorSettings).set({
+      mode: 'monitor',
+      version: 2,
+      updatedAt: new Date(),
+    }).where(eq(tenantSecurityMonitorSettings.tenantId, tenantB));
+    const reverseCrossing = await post(
+      baseUrl,
+      credentialB.plaintext,
+      batch(finding(repositoryA, 'reverse-cross-tenant')),
+    );
+    requireResult(reverseCrossing, 200, {
+      errors: [{ index: 0, error: 'repository_not_authorized' }],
+    }, 'reverse cross-tenant repository');
 
     const secret = 'task6-live-secret-must-not-appear';
     const rawContent = await post(baseUrl, credentialA.plaintext, batch(finding(
@@ -274,6 +287,7 @@ async function main(): Promise<void> {
     console.log('exact_replay=acknowledged');
     console.log('changed_replay=blocked');
     console.log('cross_tenant_repository=blocked');
+    console.log('reverse_cross_tenant_repository=blocked');
     console.log('monitor_off=blocked');
     console.log('revoked_credential=blocked');
     console.log('raw_content_capture=absent');
