@@ -417,3 +417,26 @@ test('Task6 upload router is mounted behind existing machine authentication', ()
     /app\.use\('\/worker\/security', authenticateMachine, securityFindingsRouter\)/,
   );
 });
+
+test('Task6 live route verifier is restricted to its disposable database', () => {
+  const verifier = readFileSync(
+    path.resolve(process.cwd(), 'src/features/security-findings/task6-route-live-verify.ts'),
+    'utf8',
+  );
+  const packageJson = JSON.parse(readFileSync(
+    path.resolve(process.cwd(), 'package.json'),
+    'utf8',
+  )) as { scripts: Record<string, string> };
+  assert.equal(
+    packageJson.scripts['verify:task6-route-live'],
+    'tsx src/features/security-findings/task6-route-live-verify.ts',
+  );
+  assert.match(verifier, /TASK6_EPHEMERAL_DATABASE/);
+  assert.match(verifier, /trackai_task6_security_live/);
+  assert.match(verifier, /exact_replay=acknowledged/);
+  assert.match(verifier, /changed_replay=blocked/);
+  assert.match(verifier, /cross_tenant_repository=blocked/);
+  assert.match(verifier, /monitor_off=blocked/);
+  assert.match(verifier, /revoked_credential=blocked/);
+  assert.match(verifier, /raw_content_capture=absent/);
+});
