@@ -1,8 +1,10 @@
 # Task6 Security Numbat license plan
 
-Status: **Draft for legal/security approval; no upstream code copied**
+Status: **Approved for the first monitor-only subset; no upstream code copied**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 This plan applies only if Task6 later copies or adapts Numbat rule definitions,
 tests or implementation material. It does not authorize S6.3 runtime work.
@@ -43,8 +45,9 @@ those dependencies. Do not use Numbat names or marks as a TrackAI endorsement.
 
 ## Approval gate
 
-Legal/security approval must confirm the proposed notice location and modified-
-file wording before any Numbat-derived runtime material enters S6.3. The final
-release review must compare the shipped files with this source record.
+The proposed notice location and modified-file wording were approved on
+2026-09-29. Any later source, license, notice-location or wording change requires
+another legal/security review. The final release review must compare the shipped
+files with this source record.
 
 This is an engineering compliance plan, not legal advice.

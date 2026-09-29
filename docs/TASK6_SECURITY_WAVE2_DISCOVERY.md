@@ -170,7 +170,7 @@ review artifacts, not executable tests or runtime behavior.
    unavailable evidence in customer-safe language.
 2. Review the versioned event and safe-finding schemas, then convert the 32
    approved rule-behavior cases into executable evaluator fixtures.
-3. Approve or change the Apache-2.0 notice and modification-marking plan in
-   [`TASK6_SECURITY_NUMBAT_LICENSE_PLAN.md`](TASK6_SECURITY_NUMBAT_LICENSE_PLAN.md).
+3. Apply the approved Apache-2.0 notice and modification-marking plan before
+   any Numbat-derived material enters S6.3.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
    for any accepted first-subset rule before any S6.3 evaluator implementation.
