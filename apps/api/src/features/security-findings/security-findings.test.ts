@@ -11,6 +11,11 @@ import {
   admitSecurityFindingBatch,
   validateSecurityFindingUploadBatch,
 } from './contract';
+import {
+  persistSecurityFindingBatchWithStore,
+  type SecurityFindingStorageTransaction,
+  type SecurityFindingTransactionRunner,
+} from './storage-service';
 
 function safeFinding(overrides: Record<string, unknown> = {}) {
   return {
@@ -226,4 +231,99 @@ test('security storage migration dry-run is bounded and always rolls back', () =
   assert.match(dryRun, /finding_delete=blocked/);
   assert.match(dryRun, /migration_dry_run=rolled-back/);
   assert.doesNotMatch(dryRun, /commandText|promptText|responseText|rawPayload/);
+});
+
+function storageRunner(input: {
+  authorization?: { mode: 'off' | 'monitor'; validUntil: Date | null; revokedAt: Date | null } | null;
+  grant?: boolean;
+  existing?: SecurityFindingStorageTransaction['findExisting'];
+  insert?: SecurityFindingStorageTransaction['insertIfAbsent'];
+} = {}): { runner: SecurityFindingTransactionRunner; transactions: () => number } {
+  let completedTransactions = 0;
+  const runner: SecurityFindingTransactionRunner = async callback => {
+    const transaction: SecurityFindingStorageTransaction = {
+      loadAuthorization: async () => input.authorization === undefined
+        ? { mode: 'monitor', validUntil: null, revokedAt: null }
+        : input.authorization,
+      repositoryGrantAllows: async () => input.grant ?? true,
+      findExisting: input.existing ?? (async () => []),
+      insertIfAbsent: input.insert ?? (async () => true),
+    };
+    const result = await callback(transaction);
+    completedTransactions += 1;
+    return result;
+  };
+  return { runner, transactions: () => completedTransactions };
+}
+
+test('finding storage acknowledges only after its transaction commits', async () => {
+  const fixture = storageRunner();
+  const batch = validateSecurityFindingUploadBatch(safeBatch());
+  const result = await persistSecurityFindingBatchWithStore({
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    batch,
+    receivedAt: new Date('2026-09-30T08:01:00Z'),
+  }, fixture.runner);
+
+  assert.deepEqual(result.acknowledged, [{
+    index: 0,
+    findingId: 'finding-001',
+    deliveryId: 'delivery-001',
+    outcome: 'stored',
+  }]);
+  assert.deepEqual(result.errors, []);
+  assert.equal(fixture.transactions(), 1);
+});
+
+test('finding storage acknowledges exact replay but rejects changed reuse', async () => {
+  const batch = validateSecurityFindingUploadBatch(safeBatch());
+  const canonical = {
+    ...batch.findings[0],
+    schemaVersion: 'trackai.security-finding/0.1' as const,
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+  };
+  const exact = storageRunner({
+    existing: async () => [canonical],
+    insert: async () => false,
+  });
+  const exactResult = await persistSecurityFindingBatchWithStore({
+    tenantId: canonical.tenantId,
+    machineId: canonical.machineId,
+    batch,
+    receivedAt: new Date('2026-09-30T08:01:00Z'),
+  }, exact.runner);
+  assert.equal(exactResult.acknowledged[0].outcome, 'replayed');
+
+  const changed = storageRunner({
+    existing: async () => [{ ...canonical, resultCategory: 'success' }],
+  });
+  const changedResult = await persistSecurityFindingBatchWithStore({
+    tenantId: canonical.tenantId,
+    machineId: canonical.machineId,
+    batch,
+    receivedAt: new Date('2026-09-30T08:01:00Z'),
+  }, changed.runner);
+  assert.deepEqual(changedResult.acknowledged, []);
+  assert.deepEqual(changedResult.errors, [{ index: 0, error: 'identity_collision' }]);
+});
+
+test('finding storage fails closed when monitoring or repository permission is inactive', async () => {
+  const batch = validateSecurityFindingUploadBatch(safeBatch());
+  const base = {
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    batch,
+    receivedAt: new Date('2026-09-30T08:01:00Z'),
+  };
+  const off = storageRunner({ authorization: null });
+  const denied = storageRunner({ grant: false });
+
+  assert.deepEqual((await persistSecurityFindingBatchWithStore(base, off.runner)).errors, [
+    { index: 0, error: 'monitor_inactive' },
+  ]);
+  assert.deepEqual((await persistSecurityFindingBatchWithStore(base, denied.runner)).errors, [
+    { index: 0, error: 'repository_grant_inactive' },
+  ]);
 });
