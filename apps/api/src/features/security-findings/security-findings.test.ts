@@ -285,7 +285,7 @@ test('finding storage acknowledges exact replay but rejects changed reuse', asyn
     machineId: '22222222-2222-4222-8222-222222222222',
   };
   const exact = storageRunner({
-    existing: async () => [canonical],
+    existing: async () => [{ ...canonical, occurredAt: '2026-09-30T08:00:00.000Z' }],
     insert: async () => false,
   });
   const exactResult = await persistSecurityFindingBatchWithStore({
