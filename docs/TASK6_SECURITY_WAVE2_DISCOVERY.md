@@ -157,17 +157,17 @@ review artifacts, not executable tests or runtime behavior.
   `source.git_remote_tamper` remain under review because legitimate GitAI hook
   installation, credential-helper setup and repository onboarding are expected
   negative controls.
-- E6-1 stays yellow because the versioned schemas and four boundary fixtures
-  are written and schema-checked, but the vocabulary still requires
-  product/security review and a real route check.
+- E6-1 is green for Wave 2 discovery: the versioned schemas, four boundary
+  fixtures and customer-safe vocabulary are schema-checked and approved. Real
+  host conformance remains separately gated by E6-8/E6-9.
 - E6-2 is green for Wave 2 discovery: all 51 dispositions, the three-rule
   subset, 32 safe cases and Apache-2.0 handling plan are approved and pinned.
   Running those cases against code belongs to the separate S6.3/E6-3 gate.
 
-## Required review before runtime work
+## Approved boundary before runtime work
 
-1. Confirm the vocabulary distinguishes requested, observed, partial and
-   unavailable evidence in customer-safe language.
+1. Keep the approved requested, observed, partial and unavailable vocabulary
+   unchanged. Any change reopens E6-1.
 2. Keep the approved versioned event, safe-finding and 32-case fixture schemas
    unchanged; require the future S6.3 evaluator test harness to consume them.
 3. Apply the approved Apache-2.0 notice and modification-marking plan before

@@ -6,6 +6,8 @@ Last updated: **2026-09-29**
 
 Fixture vocabulary approval recorded: **2026-09-29**
 
+Contract-boundary approval recorded: **2026-09-29**
+
 These versioned JSON Schemas turn the approved Wave 2 vocabulary into files a
 schema validator can check. They do not add detection, upload, storage, policy
 or blocking behavior.

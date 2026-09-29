@@ -1,8 +1,10 @@
 # Task6 Security contract review
 
-Status: **Ready for product/security approval**
+Status: **Approved**
 
 Last updated: **2026-09-29**
+
+Approval recorded: **2026-09-29**
 
 This review covers what TrackAI may understand locally and what it may send to
 the server. The exact schemas are under [`contracts/task6`](contracts/task6/README.md).
@@ -24,5 +26,7 @@ the server. The exact schemas are under [`contracts/task6`](contracts/task6/READ
 | Claim that TrackAI blocked an action | Rejected |
 | Initial route | OpenCode terminal route `AC-CLI-03` only |
 
-Approval means these boundaries may be used by a future S6.3 evaluator. It does
-not approve an evaluator, upload path, policy engine or blocking.
+These boundaries were approved on 2026-09-29 for use by a future S6.3
+evaluator. The approval does not authorize an evaluator, upload path, policy
+engine or blocking. Any boundary change requires another product/security
+review.
