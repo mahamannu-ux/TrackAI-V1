@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import {
+  securityFindings,
+  tenantSecurityMonitorSettings,
+} from '../../core/db/schema';
 import {
   admitSecurityFindingBatch,
   validateSecurityFindingUploadBatch,
@@ -142,4 +147,36 @@ test('off expired and revoked monitor authorization fail closed', async () => {
     }),
     /not active/,
   );
+});
+
+test('security storage schema is tenant-bound and contains metadata only', () => {
+  const settings = getTableConfig(tenantSecurityMonitorSettings);
+  const findings = getTableConfig(securityFindings);
+  const settingColumns = new Set(settings.columns.map(column => column.name));
+  const findingColumns = new Set(findings.columns.map(column => column.name));
+
+  assert.deepEqual([...settingColumns].sort(), [
+    'created_at', 'id', 'mode', 'revoked_at', 'tenant_id', 'updated_at',
+    'updated_by', 'valid_until', 'version',
+  ].sort());
+  assert.deepEqual([...findingColumns].sort(), [
+    'activation', 'agent_family', 'availability', 'capture_channel', 'client_version',
+    'completeness', 'correlation_id', 'delivery_id', 'effect', 'finding_id', 'host_mode',
+    'host_surface', 'id', 'machine_id', 'native_effect', 'occurred_at', 'operating_system',
+    'phase', 'received_at', 'repository_id', 'result_category', 'route_id', 'rule_category',
+    'rule_id', 'rule_pack_version', 'rule_severity', 'rule_version', 'session_id',
+    'source_event_id', 'tenant_id', 'timing',
+  ].sort());
+  for (const column of findingColumns) {
+    assert.equal(
+      /command|prompt|response|reasoning|path|url|argument|output|payload|content|secret|credential/.test(column),
+      false,
+      `${column} must not store raw or secret-bearing content`,
+    );
+  }
+  assert.equal(settings.uniqueConstraints.length, 1);
+  assert.equal(settings.checks.length >= 2, true);
+  assert.equal(findings.uniqueConstraints.length, 2);
+  assert.equal(findings.foreignKeys.length >= 3, true);
+  assert.equal(findings.checks.length >= 8, true);
 });
