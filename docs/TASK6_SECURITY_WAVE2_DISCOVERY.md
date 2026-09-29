@@ -138,6 +138,12 @@ All three remain `monitor`, even when the event arrives pre-action. The safe
 finding records only the rule identity and bounded categorical result; it does
 not include the matching command or parsed arguments.
 
+Customer-facing wording is drafted in
+[`TASK6_SECURITY_CUSTOMER_ALERTS.md`](TASK6_SECURITY_CUSTOMER_ALERTS.md). The
+positive, negative, incomplete and shared safety cases are drafted in
+[`TASK6_SECURITY_RULE_FIXTURES.md`](TASK6_SECURITY_RULE_FIXTURES.md). These are
+review artifacts, not executable tests or runtime behavior.
+
 ### Explicit early deferrals
 
 - All six ordered chains are deferred from the first subset until bounded
@@ -159,7 +165,8 @@ not include the matching command or parsed arguments.
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Record customer-safe alert wording for the approved three-rule subset.
+2. Approve or change the drafted customer-safe alert wording and fixture
+   expectations for the approved three-rule subset.
 3. Confirm Apache-2.0 notice and modification-marking expectations.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
    for any accepted first-subset rule before any S6.3 evaluator implementation.
