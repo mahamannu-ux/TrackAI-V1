@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "trackai.security-event/0.1",
+  "eventId": "evt-example-001",
+  "occurredAt": "2026-09-29T10:00:00Z",
+  "eventType": "command_exec",
+  "phase": "requested",
+  "availability": "available",
+  "completeness": "complete",
+  "correlationId": "corr-example-001",
+  "capability": {
+    "routeId": "AC-CLI-03",
+    "agentFamily": "opencode",
+    "modelProvider": "example-provider",
+    "hostSurface": "terminal",
+    "hostMode": "cli",
+    "captureChannel": "provider-plugin",
+    "operatingSystem": "macos",
+    "timing": "pre_action",
+    "nativeEffect": "observe_only",
+    "activation": "observed"
+  },
+  "input": {
+    "kind": "command",
+    "commandText": "example-tool --safe-placeholder",
+    "parserStatus": "complete",
+    "shellFamily": "posix",
+    "executable": "example-tool",
+    "arguments": ["--safe-placeholder"]
+  }
+}

@@ -157,16 +157,19 @@ review artifacts, not executable tests or runtime behavior.
   `source.git_remote_tamper` remain under review because legitimate GitAI hook
   installation, credential-helper setup and repository onboarding are expected
   negative controls.
+- E6-1 stays yellow because the versioned schemas and four boundary fixtures
+  are written and schema-checked, but the vocabulary still requires
+  product/security review and a real route check.
 - E6-2 stays yellow because the 51 draft dispositions still require
-  product/security review, the three-rule fixture set is not written, and
+  product/security review, the 32 rule-behavior cases are not executable, and
   Apache-2.0 notice/modification handling is not yet approved.
 
 ## Required review before runtime work
 
 1. Confirm the vocabulary distinguishes requested, observed, partial and
    unavailable evidence in customer-safe language.
-2. Convert the approved customer-safe alert wording and fixture expectations
-   into versioned schemas and executable fixtures.
+2. Review the versioned event and safe-finding schemas, then convert the 32
+   approved rule-behavior cases into executable evaluator fixtures.
 3. Confirm Apache-2.0 notice and modification-marking expectations.
 4. Approve or change all 51 draft inventory dispositions and complete fixtures
    for any accepted first-subset rule before any S6.3 evaluator implementation.
