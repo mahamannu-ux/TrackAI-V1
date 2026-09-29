@@ -16,6 +16,7 @@ import {
   type SecurityFindingStorageTransaction,
   type SecurityFindingTransactionRunner,
 } from './storage-service';
+import { createSecurityFindingUploadHandler } from './security-findings.routes';
 
 function safeFinding(overrides: Record<string, unknown> = {}) {
   return {
@@ -326,4 +327,93 @@ test('finding storage fails closed when monitoring or repository permission is i
   assert.deepEqual((await persistSecurityFindingBatchWithStore(base, denied.runner)).errors, [
     { index: 0, error: 'repository_grant_inactive' },
   ]);
+});
+
+function routeResponse() {
+  const headers = new Map<string, string>();
+  let statusCode = 200;
+  let body: unknown;
+  return {
+    response: {
+      setHeader: (name: string, value: string) => { headers.set(name.toLowerCase(), value); },
+      status: (value: number) => {
+        statusCode = value;
+        return { json: (payload: unknown) => { body = payload; } };
+      },
+      json: (payload: unknown) => { body = payload; },
+    },
+    result: () => ({ headers, statusCode, body }),
+  };
+}
+
+test('finding upload route requires managed authentication and returns safe partial errors', async () => {
+  let persisted = 0;
+  const handler = createSecurityFindingUploadHandler({
+    persist: async input => {
+      persisted += 1;
+      assert.equal(input.tenantId, '11111111-1111-4111-8111-111111111111');
+      assert.equal(input.machineId, '22222222-2222-4222-8222-222222222222');
+      return {
+        acknowledged: [{
+          index: 0, findingId: 'finding-001', deliveryId: 'delivery-001', outcome: 'stored',
+        }],
+        errors: [{ index: 1, error: 'repository_grant_inactive' }],
+      };
+    },
+    logError: () => assert.fail('successful request must not log'),
+  });
+  const denied = routeResponse();
+  await handler({
+    body: safeBatch(),
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: 'client-header-is-not-authoritative',
+    managedMachineCredential: false,
+  }, denied.response);
+  assert.equal(denied.result().statusCode, 403);
+  assert.equal(persisted, 0);
+
+  const accepted = routeResponse();
+  await handler({
+    body: safeBatch(safeFinding(), safeFinding({
+      findingId: 'finding-002', deliveryId: 'delivery-002',
+    })),
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    managedMachineCredential: true,
+  }, accepted.response);
+  assert.equal(accepted.result().statusCode, 200);
+  assert.equal(accepted.result().headers.get('cache-control'), 'no-store');
+  assert.deepEqual(accepted.result().body, {
+    errors: [{ index: 1, error: 'repository_not_authorized' }],
+  });
+  assert.equal(persisted, 1);
+});
+
+test('finding upload route never echoes or logs rejected raw content', async () => {
+  const secret = 'customer-secret-command-value';
+  const logs: string[] = [];
+  const handler = createSecurityFindingUploadHandler({
+    persist: async () => assert.fail('invalid content must not reach storage'),
+    logError: message => logs.push(message),
+  });
+  const rejected = routeResponse();
+  await handler({
+    body: safeBatch(safeFinding({ commandText: secret })),
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    managedMachineCredential: true,
+  }, rejected.response);
+
+  const captured = JSON.stringify(rejected.result().body) + logs.join('');
+  assert.equal(rejected.result().statusCode, 400);
+  assert.equal(captured.includes(secret), false);
+  assert.deepEqual(logs, []);
+});
+
+test('Task6 upload router is mounted behind existing machine authentication', () => {
+  const indexSource = readFileSync(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
+  assert.match(
+    indexSource,
+    /app\.use\('\/worker\/security', authenticateMachine, securityFindingsRouter\)/,
+  );
 });
