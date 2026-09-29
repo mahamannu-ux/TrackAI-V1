@@ -2,7 +2,7 @@
 
 Status: **🟡 ◐ Draft for product/security review**
 
-Last updated: **2026-09-26**
+Last updated: **2026-09-29**
 
 This document is the Wave 2 working record for S6.1 and S6.2. The canonical
 status remains in [`TASK6_SECURITY.md`](../TASK6_SECURITY.md).
@@ -115,6 +115,13 @@ summary: chains 6, execution 6, exfiltration 4, impact 4, integrity 2, lateral
 movement 1, persistence 6, privilege 6, reconnaissance 3, secrets 8, source
 control 2 and tampering 3.
 
+Every candidate now has a draft input, AC-CLI-03 fidelity, false-positive risk
+and disposition in
+[`TASK6_SECURITY_RULE_INVENTORY.md`](TASK6_SECURITY_RULE_INVENTORY.md). These
+are review proposals, not accepted rules: 3 are proposed for first review, 46
+are deferred by an explicit reason, and 2 Numbat/policy-specific rules are
+proposed for exclusion from v0.1.
+
 ### Proposed first review subset
 
 These are proposals for product/security approval, not accepted release rules.
@@ -142,9 +149,9 @@ not include the matching command or parsed arguments.
   `source.git_remote_tamper` remain under review because legitimate GitAI hook
   installation, credential-helper setup and repository onboarding are expected
   negative controls.
-- The remaining catalog is neither accepted nor rejected yet. E6-2 stays
-  yellow until every candidate has a per-rule provenance, input, fidelity,
-  privacy, false-positive and disposition row.
+- E6-2 stays yellow because the 51 draft dispositions still require
+  product/security review, the three-rule fixture set is not written, and
+  Apache-2.0 notice/modification handling is not yet approved.
 
 ## Required review before runtime work
 
@@ -152,6 +159,5 @@ not include the matching command or parsed arguments.
    unavailable evidence in customer-safe language.
 2. Approve, change or reject the three-rule proposed first subset.
 3. Confirm Apache-2.0 notice and modification-marking expectations.
-4. Complete the remaining 48 per-rule inventory decisions and fixtures before
-   any S6.3 evaluator implementation.
-
+4. Approve or change all 51 draft inventory dispositions and complete fixtures
+   for any accepted first-subset rule before any S6.3 evaluator implementation.
