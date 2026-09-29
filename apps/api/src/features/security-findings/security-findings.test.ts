@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import {
   securityFindings,
@@ -179,4 +181,20 @@ test('security storage schema is tenant-bound and contains metadata only', () =>
   assert.equal(findings.uniqueConstraints.length, 2);
   assert.equal(findings.foreignKeys.length >= 3, true);
   assert.equal(findings.checks.length >= 8, true);
+});
+
+test('security storage migration enables RLS without direct browser policies', () => {
+  const migration = readFileSync(
+    path.resolve(process.cwd(), 'drizzle/0013_task6_security_storage.sql'),
+    'utf8',
+  );
+  assert.match(migration, /ALTER TABLE "tenant_security_monitor_settings" ENABLE ROW LEVEL SECURITY/);
+  assert.match(migration, /ALTER TABLE "security_findings" ENABLE ROW LEVEL SECURITY/);
+  assert.doesNotMatch(migration, /CREATE POLICY/i);
+  assert.doesNotMatch(
+    migration,
+    /"(?:command|prompt|response|reasoning|path|url|argument|output|payload|content|secret|credential)[^"]*"/i,
+  );
+  assert.match(migration, /security_findings_tenant_machine_fk/);
+  assert.match(migration, /security_findings_tenant_repository_fk/);
 });
