@@ -201,11 +201,12 @@ Logs, errors, metrics and audit details follow the same restriction.
 | **S6.6** | Agent and OS conformance | 🔴 ☐ | 🔴 ☐ | Real supported agent/host/OS experiments; customer wording review. | S6.1–S6.5; Task13 matrix | **Wave 6 · 6** | Every claimed route passes; unsupported routes are labelled honestly. |
 | **S6.7** | Optional blocking pilot | ⚪ — | ⚪ — | Separate product/security approval is mandatory. | Completed monitor release; verified synchronous hook | **Deferred** | Not part of the initial release. Requires recovery, bypass, false-positive and host-confirmation gates. |
 
-### Open deferred production subtask
+### Open production subtasks
 
 | ID | Subtask | Status | Production requirement | Current Task6 boundary |
 |---|---|---|---|---|
 | **D6.1** | Policy-owned signed activation | ⚪ Open / deferred | The production Policy subsystem must issue a signed, machine-bound activation value. GitAI must verify signature, machine scope, expiry, replay protection, revocation and key rotation locally. | The approved interim daemon value is short-lived, memory-only and fail-closed. It cannot close D6.1, and Task6 does not implement the Policy subsystem or signature format. |
+| **D6.2** | Expanded route and platform conformance | 🔴 Open / production blocker | Linux, native Windows, WSL and the intended other-agent, IDE, desktop, remote and cloud routes must each be built, tested and live-verified under their exact Task13 route IDs before production. | The current development claim is only OpenCode terminal/TUI on macOS. Shared code or schema fixtures cannot promote another route or platform. |
 
 ## Execution waves
 

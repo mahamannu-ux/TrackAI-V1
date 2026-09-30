@@ -201,6 +201,15 @@ Task13 does not block Task4. Task4 must keep its contracts host- and
 OS-neutral so later routes do not require weakening tenant, repository or key
 boundaries.
 
+### Task6 production dependency
+
+The approved Task6 development claim is limited to OpenCode terminal/TUI on
+macOS (`AC-CLI-03`). A production Task6 launch is blocked until Linux, native
+Windows, WSL and the intended other-agent, IDE, desktop, remote and cloud
+routes are implemented and live-verified separately. A passing macOS
+OpenCode route, shared parser or schema fixture is not evidence for another
+route or operating system. The canonical Task6 tracker records this as D6.2.
+
 ## Research sources and evidence precedence
 
 1. TrackAI controlled live acceptance and stored evidence.

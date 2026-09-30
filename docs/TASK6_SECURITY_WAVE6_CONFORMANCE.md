@@ -1,6 +1,6 @@
 # Task6 Security Wave 6 Conformance Boundary
 
-Status: **Draft for product approval**
+Status: **Approved for the narrow development claim on 2026-10-01**
 
 This document limits the first Task6 Security customer claim to the route that
 has already passed a real end-to-end host test. It does not broaden Task13
@@ -45,6 +45,14 @@ The **Security findings** page should show:
 
 This is a coverage statement only. It does not add a Policy engine, signing,
 dynamic rules, raw evidence or blocking. D6.1 remains open.
+
+## Production blocker
+
+The narrow macOS claim is not production approval. Before production,
+Linux, native Windows, WSL and the intended other-agent, IDE, desktop, remote
+and cloud routes must be built, tested and live-verified under their exact
+Task13 route IDs. One route cannot inherit evidence from another. This
+requirement is tracked as D6.2 in the canonical Task6 tracker and by Task13.
 
 ## Exit checks
 
