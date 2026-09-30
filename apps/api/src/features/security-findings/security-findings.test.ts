@@ -649,6 +649,12 @@ test('task6_ui presents findings as monitor-only metadata to authorized roles', 
   assert.match(dashboardSource, /Security findings/);
   assert.match(dashboardSource, /Monitor only/);
   assert.match(dashboardSource, /TrackAI did not block this action/);
+  assert.match(dashboardSource, /loadSecurityFindings/);
+  assert.match(dashboardSource, /Refresh findings/);
+  assert.doesNotMatch(
+    dashboardSource,
+    /getAdminEvidenceExports\(\),\s*getAdminSecurityFindings\(\)/,
+  );
   assert.doesNotMatch(dashboardSource, /finding\.commandText|finding\.prompt|finding\.payload/);
 });
 
