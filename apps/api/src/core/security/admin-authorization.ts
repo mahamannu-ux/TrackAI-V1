@@ -4,6 +4,7 @@ export const ADMIN_ACTIONS = [
   'backfill.manage',
   'github_app.manage',
   'audit.read',
+  'security_findings.read',
   'operations.read',
   'retention.manage',
   'export.manage',
@@ -52,6 +53,7 @@ export function adminMembershipAllows(
   if (membership.role === 'tenant_admin') return true;
   return membership.role === 'tenant_auditor'
     && (input.action === 'audit.read'
+      || input.action === 'security_findings.read'
       || input.action === 'operations.read'
       || input.action === 'evidence.raw.read');
 }

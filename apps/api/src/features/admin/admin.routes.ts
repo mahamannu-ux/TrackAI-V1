@@ -42,6 +42,7 @@ import {
 import { LocalFileEvidenceExportSink } from '../../core/operations/evidence-export-sink';
 import { planTenantRetentionRun } from '../../core/operations/retention-run-service';
 import { getTenantOperationalMonitoring } from '../../core/operations/operational-monitoring-service';
+import { createSecurityFindingAdminReadHandler } from '../security-findings/admin-read';
 
 const router = Router();
 const requireGitHubAdmin = requireAdminAction('github_app.manage');
@@ -49,6 +50,7 @@ const requireMachineAdmin = requireAdminAction('machine.manage');
 const requireRepositoryAdmin = requireAdminAction('repository.manage');
 const requireBackfillAdmin = requireAdminAction('backfill.manage');
 const requireAuditRead = requireAdminAction('audit.read');
+const requireSecurityFindingRead = requireAdminAction('security_findings.read');
 const requireOperationsRead = requireAdminAction('operations.read');
 const requireRetentionAdmin = requireAdminAction('retention.manage');
 const requireExportAdmin = requireAdminAction('export.manage');
@@ -168,6 +170,11 @@ router.get('/audit', requireAuditRead, async (req, res) => {
     badRequest(res, error);
   }
 });
+
+const readSecurityFindings = createSecurityFindingAdminReadHandler();
+router.get('/security-findings', requireSecurityFindingRead, (req, res) => (
+  readSecurityFindings(req, res)
+));
 
 router.get('/operations/retention-policy', requireOperationsRead, async (req, res) => {
   try {
