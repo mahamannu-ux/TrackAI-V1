@@ -17,6 +17,10 @@ import {
   type SecurityFindingTransactionRunner,
 } from './storage-service';
 import { createSecurityFindingUploadHandler } from './security-findings.routes';
+import {
+  createSecurityActivationLease,
+  createSecurityActivationHandler,
+} from './activation';
 
 function safeFinding(overrides: Record<string, unknown> = {}) {
   return {
@@ -440,4 +444,57 @@ test('Task6 live route verifier is restricted to its disposable database', () =>
   assert.match(verifier, /monitor_off=blocked/);
   assert.match(verifier, /revoked_credential=blocked/);
   assert.match(verifier, /raw_content_capture=absent/);
+});
+
+test('security activation lease is short-lived and fail-closed', () => {
+  const now = new Date('2026-09-30T10:00:00Z');
+  assert.deepEqual(createSecurityActivationLease(null, now), {
+    schemaVersion: 'trackai.security-activation/0.1',
+    mode: 'off',
+    version: 0,
+    issuedAt: '2026-09-30T10:00:00.000Z',
+    refreshAfter: '2026-09-30T10:01:00.000Z',
+    expiresAt: '2026-09-30T10:05:00.000Z',
+  });
+  const monitor = createSecurityActivationLease({
+    mode: 'monitor',
+    version: 3,
+    validUntil: new Date('2026-09-30T10:03:00Z'),
+    revokedAt: null,
+  }, now);
+  assert.equal(monitor.mode, 'monitor');
+  assert.equal(monitor.expiresAt, '2026-09-30T10:03:00.000Z');
+  for (const setting of [
+    { mode: 'off' as const, version: 4, validUntil: null, revokedAt: null },
+    { mode: 'monitor' as const, version: 5, validUntil: now, revokedAt: null },
+    { mode: 'monitor' as const, version: 6, validUntil: null, revokedAt: now },
+  ]) {
+    assert.equal(createSecurityActivationLease(setting, now).mode, 'off');
+  }
+});
+
+test('security activation endpoint requires managed authentication and is not cacheable', async () => {
+  const handler = createSecurityActivationHandler({
+    load: async (tenantId, machineId, now) => {
+      assert.equal(tenantId, '11111111-1111-4111-8111-111111111111');
+      assert.equal(machineId, '22222222-2222-4222-8222-222222222222');
+      return createSecurityActivationLease({
+        mode: 'monitor', version: 2, validUntil: null, revokedAt: null,
+      }, now);
+    },
+    logError: () => assert.fail('successful activation fetch must not log'),
+  });
+  const denied = routeResponse();
+  await handler({ managedMachineCredential: false }, denied.response);
+  assert.equal(denied.result().statusCode, 403);
+
+  const accepted = routeResponse();
+  await handler({
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    managedMachineCredential: true,
+  }, accepted.response);
+  assert.equal(accepted.result().statusCode, 200);
+  assert.equal(accepted.result().headers.get('cache-control'), 'no-store');
+  assert.equal((accepted.result().body as { mode: string }).mode, 'monitor');
 });
