@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "trackai.security-contract-fixtures/0.1",
+  "cases": [
+    {
+      "file": "valid-request-event.json",
+      "schema": "../security-event.schema.json",
+      "expectedValid": true
+    },
+    {
+      "file": "valid-monitor-finding.json",
+      "schema": "../security-finding.schema.json",
+      "expectedValid": true
+    },
+    {
+      "file": "invalid-finding-with-raw-command.json",
+      "schema": "../security-finding.schema.json",
+      "expectedValid": false
+    },
+    {
+      "file": "invalid-blocking-finding.json",
+      "schema": "../security-finding.schema.json",
+      "expectedValid": false
+    },
+    {
+      "file": "valid-security-finding-upload.json",
+      "schema": "../security-finding-upload.schema.json",
+      "expectedValid": true
+    },
+    {
+      "file": "invalid-security-finding-upload-raw-content.json",
+      "schema": "../security-finding-upload.schema.json",
+      "expectedValid": false
+    },
+    {
+      "file": "invalid-security-finding-upload-client-identity.json",
+      "schema": "../security-finding-upload.schema.json",
+      "expectedValid": false
+    },
+    {
+      "file": "rule-behavior-fixtures.json",
+      "schema": "../rule-fixtures.schema.json",
+      "expectedValid": true
+    }
+  ]
+}

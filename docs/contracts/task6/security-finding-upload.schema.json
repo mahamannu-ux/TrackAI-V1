@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/contracts/task6/security-finding-upload.schema.json",
+  "title": "TrackAI privacy-safe security finding upload 0.1",
+  "description": "Client-to-server metadata-only batch. The authenticated server derives tenant and machine identity. Unknown or content-bearing fields are rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "findings"],
+  "properties": {
+    "schemaVersion": { "const": "trackai.security-finding-upload/0.1" },
+    "findings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/definitions/uploadFinding" }
+    }
+  },
+  "definitions": {
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "An authorized opaque identifier that is not derived from customer content."
+    },
+    "uploadFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "findingId", "deliveryId", "repositoryId", "sessionId", "sourceEventId",
+        "rule", "capability", "effect", "phase", "availability", "completeness",
+        "resultCategory", "occurredAt", "clientVersion", "rulePackVersion"
+      ],
+      "properties": {
+        "findingId": { "$ref": "#/definitions/opaqueId" },
+        "deliveryId": { "$ref": "#/definitions/opaqueId" },
+        "repositoryId": { "$ref": "#/definitions/opaqueId" },
+        "sessionId": { "$ref": "#/definitions/opaqueId" },
+        "sourceEventId": { "$ref": "#/definitions/opaqueId" },
+        "correlationId": { "$ref": "#/definitions/opaqueId" },
+        "rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "category", "severity"],
+          "properties": {
+            "id": {
+              "enum": [
+                "trackai.exec.destructive_recursive_delete",
+                "trackai.exec.download_pipe_shell",
+                "trackai.exec.reverse_shell"
+              ]
+            },
+            "version": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "category": { "const": "execution" },
+            "severity": { "enum": ["high", "critical"] }
+          }
+        },
+        "capability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "routeId", "agentFamily", "hostSurface", "hostMode", "captureChannel",
+            "operatingSystem", "timing", "nativeEffect", "activation"
+          ],
+          "properties": {
+            "routeId": { "const": "AC-CLI-03" },
+            "agentFamily": { "const": "opencode" },
+            "hostSurface": { "const": "terminal" },
+            "hostMode": { "const": "cli" },
+            "captureChannel": { "const": "provider-plugin" },
+            "operatingSystem": {
+              "enum": ["macos", "linux", "windows", "wsl", "unavailable"]
+            },
+            "timing": {
+              "enum": ["pre_action", "post_action", "at_rest", "unavailable"]
+            },
+            "nativeEffect": { "const": "observe_only" },
+            "activation": {
+              "enum": ["configured", "loaded", "observed", "unavailable"]
+            }
+          }
+        },
+        "effect": { "const": "monitor" },
+        "phase": {
+          "enum": ["requested", "observed_result", "partial", "unavailable"]
+        },
+        "availability": {
+          "enum": ["available", "unavailable", "redacted", "expired"]
+        },
+        "completeness": { "enum": ["complete", "partial"] },
+        "resultCategory": {
+          "enum": ["not_observed", "success", "failure", "cancelled", "unknown", "unavailable"]
+        },
+        "occurredAt": { "type": "string", "format": "date-time", "maxLength": 64 },
+        "clientVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "rulePackVersion": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    }
+  }
+}

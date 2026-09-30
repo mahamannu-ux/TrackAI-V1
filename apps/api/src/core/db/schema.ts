@@ -287,6 +287,127 @@ export const machineRepositoryGrants = pgTable('machine_repository_grants', {
     sql`${table.effectiveUntil} is null or ${table.effectiveUntil} > ${table.effectiveFrom}`),
 }));
 
+/** Narrow Task6 activation setting. This is independent from Task5 evidence consent. */
+export const tenantSecurityMonitorSettings = pgTable('tenant_security_monitor_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  mode: text('mode').$type<'off' | 'monitor'>().notNull().default('off'),
+  version: integer('version').notNull().default(1),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  updatedBy: text('updated_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantUnique: unique('tenant_security_monitor_settings_tenant_key').on(table.tenantId),
+  modeCheck: check('tenant_security_monitor_settings_mode_check',
+    sql`${table.mode} in ('off', 'monitor')`),
+  versionCheck: check('tenant_security_monitor_settings_version_check', sql`${table.version} >= 1`),
+  intervalCheck: check('tenant_security_monitor_settings_interval_check', sql`
+    (${table.validUntil} is null or ${table.validUntil} > ${table.createdAt})
+    and (${table.revokedAt} is null or ${table.revokedAt} >= ${table.createdAt})
+  `),
+}));
+
+/** Immutable, metadata-only Task6 monitor findings accepted from managed machines. */
+export const securityFindings = pgTable('security_findings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  repositoryId: uuid('repository_id').notNull(),
+  findingId: text('finding_id').notNull(),
+  deliveryId: text('delivery_id').notNull(),
+  sessionId: text('session_id').notNull(),
+  sourceEventId: text('source_event_id').notNull(),
+  correlationId: text('correlation_id'),
+  ruleId: text('rule_id').notNull(),
+  ruleVersion: text('rule_version').notNull(),
+  ruleCategory: text('rule_category').notNull(),
+  ruleSeverity: text('rule_severity').notNull(),
+  routeId: text('route_id').notNull(),
+  agentFamily: text('agent_family').notNull(),
+  hostSurface: text('host_surface').notNull(),
+  hostMode: text('host_mode').notNull(),
+  captureChannel: text('capture_channel').notNull(),
+  operatingSystem: text('operating_system').notNull(),
+  timing: text('timing').notNull(),
+  nativeEffect: text('native_effect').notNull(),
+  activation: text('activation').notNull(),
+  effect: text('effect').notNull(),
+  phase: text('phase').notNull(),
+  availability: text('availability').notNull(),
+  completeness: text('completeness').notNull(),
+  resultCategory: text('result_category').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  clientVersion: text('client_version').notNull(),
+  rulePackVersion: text('rule_pack_version').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantDeliveryUnique: unique('security_findings_tenant_delivery_key')
+    .on(table.tenantId, table.deliveryId),
+  tenantFindingUnique: unique('security_findings_tenant_finding_key')
+    .on(table.tenantId, table.findingId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_findings_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'security_findings_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  tenantRepositoryOccurredIndex: index('security_findings_tenant_repository_occurred_idx')
+    .on(table.tenantId, table.repositoryId, table.occurredAt),
+  tenantMachineReceivedIndex: index('security_findings_tenant_machine_received_idx')
+    .on(table.tenantId, table.machineId, table.receivedAt),
+  ruleIdCheck: check('security_findings_rule_id_check', sql`${table.ruleId} in (
+    'trackai.exec.destructive_recursive_delete',
+    'trackai.exec.download_pipe_shell',
+    'trackai.exec.reverse_shell'
+  )`),
+  ruleCategoryCheck: check('security_findings_rule_category_check',
+    sql`${table.ruleCategory} = 'execution'`),
+  ruleSeverityCheck: check('security_findings_rule_severity_check',
+    sql`${table.ruleSeverity} in ('high', 'critical')`),
+  routeCheck: check('security_findings_route_check', sql`
+    ${table.routeId} = 'AC-CLI-03'
+    and ${table.agentFamily} = 'opencode'
+    and ${table.hostSurface} = 'terminal'
+    and ${table.hostMode} = 'cli'
+    and ${table.captureChannel} = 'provider-plugin'
+    and ${table.nativeEffect} = 'observe_only'
+  `),
+  operatingSystemCheck: check('security_findings_operating_system_check',
+    sql`${table.operatingSystem} in ('macos', 'linux', 'windows', 'wsl', 'unavailable')`),
+  timingCheck: check('security_findings_timing_check',
+    sql`${table.timing} in ('pre_action', 'post_action', 'at_rest', 'unavailable')`),
+  activationCheck: check('security_findings_activation_check',
+    sql`${table.activation} in ('configured', 'loaded', 'observed', 'unavailable')`),
+  effectCheck: check('security_findings_effect_check', sql`${table.effect} = 'monitor'`),
+  phaseCheck: check('security_findings_phase_check',
+    sql`${table.phase} in ('requested', 'observed_result', 'partial', 'unavailable')`),
+  availabilityCheck: check('security_findings_availability_check',
+    sql`${table.availability} in ('available', 'unavailable', 'redacted', 'expired')`),
+  completenessCheck: check('security_findings_completeness_check',
+    sql`${table.completeness} in ('complete', 'partial')`),
+  resultCategoryCheck: check('security_findings_result_category_check', sql`
+    ${table.resultCategory} in (
+      'not_observed', 'success', 'failure', 'cancelled', 'unknown', 'unavailable'
+    )
+  `),
+  boundedMetadataCheck: check('security_findings_bounded_metadata_check', sql`
+    length(${table.findingId}) between 1 and 128
+    and length(${table.deliveryId}) between 1 and 128
+    and length(${table.sessionId}) between 1 and 128
+    and length(${table.sourceEventId}) between 1 and 128
+    and (${table.correlationId} is null or length(${table.correlationId}) between 1 and 128)
+    and length(${table.ruleVersion}) between 1 and 32
+    and length(${table.clientVersion}) between 1 and 64
+    and length(${table.rulePackVersion}) between 1 and 64
+  `),
+}));
+
 /** Append-only security administration audit trail. */
 export const securityAuditEvents = pgTable('security_audit_events', {
   id: uuid('id').defaultRandom().primaryKey(),

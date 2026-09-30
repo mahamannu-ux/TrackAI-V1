@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "trackai.security-finding-upload/0.1",
+  "findings": [{
+    "findingId": "finding-example-103",
+    "deliveryId": "delivery-example-103",
+    "tenantId": "client-must-not-choose-tenant",
+    "machineId": "client-must-not-choose-machine",
+    "repositoryId": "repository-example-001",
+    "sessionId": "session-example-001",
+    "sourceEventId": "evt-example-103",
+    "rule": { "id": "trackai.exec.reverse_shell", "version": "1.3", "category": "execution", "severity": "high" },
+    "capability": { "routeId": "AC-CLI-03", "agentFamily": "opencode", "hostSurface": "terminal", "hostMode": "cli", "captureChannel": "provider-plugin", "operatingSystem": "macos", "timing": "pre_action", "nativeEffect": "observe_only", "activation": "observed" },
+    "effect": "monitor",
+    "phase": "requested",
+    "availability": "available",
+    "completeness": "complete",
+    "resultCategory": "not_observed",
+    "occurredAt": "2026-09-29T14:02:00Z",
+    "clientVersion": "0.1.0-example",
+    "rulePackVersion": "0.1.0-example"
+  }]
+}

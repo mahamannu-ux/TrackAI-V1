@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "trackai.security-finding/0.1",
+  "findingId": "finding-example-001",
+  "deliveryId": "delivery-example-001",
+  "tenantId": "tenant-example-a",
+  "machineId": "machine-example-001",
+  "repositoryId": "repository-example-001",
+  "sessionId": "session-example-001",
+  "sourceEventId": "evt-example-001",
+  "correlationId": "corr-example-001",
+  "rule": {
+    "id": "trackai.exec.destructive_recursive_delete",
+    "version": "1.5",
+    "category": "execution",
+    "severity": "critical"
+  },
+  "capability": {
+    "routeId": "AC-CLI-03",
+    "agentFamily": "opencode",
+    "hostSurface": "terminal",
+    "hostMode": "cli",
+    "captureChannel": "provider-plugin",
+    "operatingSystem": "macos",
+    "timing": "pre_action",
+    "nativeEffect": "observe_only",
+    "activation": "observed"
+  },
+  "effect": "monitor",
+  "phase": "requested",
+  "availability": "available",
+  "completeness": "complete",
+  "resultCategory": "not_observed",
+  "occurredAt": "2026-09-29T10:00:00Z",
+  "clientVersion": "0.1.0-example",
+  "rulePackVersion": "0.1.0-example"
+}

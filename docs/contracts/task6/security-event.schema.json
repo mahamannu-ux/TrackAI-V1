@@ -1,0 +1,323 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/contracts/task6/security-event.schema.json",
+  "title": "TrackAI local security event 0.1",
+  "description": "A bounded event evaluated locally. The input object is transient and must never be copied into a server finding, log, metric, error, or audit record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "occurredAt",
+    "eventType",
+    "phase",
+    "availability",
+    "completeness",
+    "capability",
+    "input"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "trackai.security-event/0.1"
+    },
+    "eventId": {
+      "$ref": "#/definitions/opaqueId"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 64
+    },
+    "eventType": {
+      "enum": [
+        "command_exec",
+        "command_result",
+        "file_read",
+        "file_write",
+        "file_delete",
+        "network_indicator",
+        "tool_call",
+        "tool_result",
+        "permission_requested",
+        "permission_approved",
+        "permission_denied",
+        "unavailable"
+      ]
+    },
+    "phase": {
+      "enum": ["requested", "observed_result", "partial", "unavailable"]
+    },
+    "availability": {
+      "enum": ["available", "unavailable", "redacted", "expired"]
+    },
+    "completeness": {
+      "enum": ["complete", "partial"]
+    },
+    "correlationId": {
+      "$ref": "#/definitions/opaqueId"
+    },
+    "capability": {
+      "$ref": "#/definitions/capability"
+    },
+    "input": {
+      "oneOf": [
+        { "$ref": "#/definitions/commandInput" },
+        { "$ref": "#/definitions/fileInput" },
+        { "$ref": "#/definitions/networkInput" },
+        { "$ref": "#/definitions/toolInput" },
+        { "$ref": "#/definitions/permissionInput" },
+        { "$ref": "#/definitions/unavailableInput" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "eventType": { "enum": ["command_exec", "command_result"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": { "$ref": "#/definitions/commandInput" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": { "enum": ["file_read", "file_write", "file_delete"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": { "$ref": "#/definitions/fileInput" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": { "const": "network_indicator" }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": { "$ref": "#/definitions/networkInput" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": { "enum": ["tool_call", "tool_result"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": { "$ref": "#/definitions/toolInput" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "enum": [
+              "permission_requested",
+              "permission_approved",
+              "permission_denied"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "input": { "$ref": "#/definitions/permissionInput" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "eventType": { "const": "unavailable" }
+        }
+      },
+      "then": {
+        "properties": {
+          "phase": { "enum": ["partial", "unavailable"] },
+          "availability": { "enum": ["unavailable", "redacted", "expired"] },
+          "completeness": { "const": "partial" },
+          "input": { "$ref": "#/definitions/unavailableInput" }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "opaqueId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Opaque correlation value that is not derived from customer content."
+    },
+    "boundedText": {
+      "type": "string",
+      "maxLength": 8192
+    },
+    "boundedToken": {
+      "type": "string",
+      "maxLength": 1024
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "routeId",
+        "agentFamily",
+        "modelProvider",
+        "hostSurface",
+        "hostMode",
+        "captureChannel",
+        "operatingSystem",
+        "timing",
+        "nativeEffect",
+        "activation"
+      ],
+      "properties": {
+        "routeId": { "const": "AC-CLI-03" },
+        "agentFamily": { "const": "opencode" },
+        "modelProvider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "hostSurface": { "const": "terminal" },
+        "hostMode": { "const": "cli" },
+        "captureChannel": { "const": "provider-plugin" },
+        "operatingSystem": {
+          "enum": ["macos", "linux", "windows", "wsl", "unavailable"]
+        },
+        "timing": {
+          "enum": ["pre_action", "post_action", "at_rest", "unavailable"]
+        },
+        "nativeEffect": { "const": "observe_only" },
+        "activation": {
+          "enum": ["configured", "loaded", "observed", "unavailable"]
+        }
+      }
+    },
+    "commandInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "commandText", "parserStatus"],
+      "properties": {
+        "kind": { "const": "command" },
+        "commandText": { "$ref": "#/definitions/boundedText" },
+        "parserStatus": { "enum": ["complete", "partial", "failed"] },
+        "shellFamily": {
+          "enum": ["posix", "powershell", "cmd", "unavailable"]
+        },
+        "executable": { "$ref": "#/definitions/boundedToken" },
+        "arguments": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/definitions/boundedToken" }
+        },
+        "pipeline": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["executable", "arguments", "inputSource"],
+            "properties": {
+              "executable": { "$ref": "#/definitions/boundedToken" },
+              "arguments": {
+                "type": "array",
+                "maxItems": 256,
+                "items": { "$ref": "#/definitions/boundedToken" }
+              },
+              "inputSource": {
+                "enum": ["none", "previous_stage", "file", "other", "unavailable"]
+              }
+            }
+          }
+        },
+        "resultCategory": {
+          "enum": ["success", "failure", "cancelled", "unknown", "unavailable"]
+        },
+        "exitCode": {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        }
+      }
+    },
+    "fileInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operation", "semanticPath"],
+      "properties": {
+        "kind": { "const": "file" },
+        "operation": { "enum": ["read", "write", "delete"] },
+        "semanticPath": { "$ref": "#/definitions/boundedText" }
+      }
+    },
+    "networkInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "network" },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 4096,
+          "pattern": "^https?://"
+        },
+        "destination": { "$ref": "#/definitions/boundedToken" }
+      },
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["destination"] }
+      ]
+    },
+    "toolInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "toolId", "argumentCategory"],
+      "properties": {
+        "kind": { "const": "tool" },
+        "toolId": { "$ref": "#/definitions/boundedToken" },
+        "argumentCategory": {
+          "enum": ["command", "file", "network", "permission", "other", "unavailable"]
+        },
+        "resultCategory": {
+          "enum": ["success", "failure", "cancelled", "unknown", "unavailable"]
+        }
+      }
+    },
+    "permissionInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "category"],
+      "properties": {
+        "kind": { "const": "permission" },
+        "category": {
+          "enum": ["command", "filesystem", "network", "tool", "other", "unavailable"]
+        }
+      }
+    },
+    "unavailableInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reasonCategory"],
+      "properties": {
+        "kind": { "const": "unavailable" },
+        "reasonCategory": {
+          "enum": ["not_exposed", "redacted", "expired", "unsupported", "parse_failed"]
+        }
+      }
+    }
+  }
+}
