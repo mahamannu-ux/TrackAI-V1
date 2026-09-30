@@ -21,6 +21,11 @@ import {
   createSecurityActivationLease,
   createSecurityActivationHandler,
 } from './activation';
+import { adminMembershipAllows } from '../../core/security/admin-authorization';
+import {
+  createSecurityFindingAdminReadHandler,
+  readSecurityFindingsWithStore,
+} from './admin-read';
 
 function safeFinding(overrides: Record<string, unknown> = {}) {
   return {
@@ -497,4 +502,135 @@ test('security activation endpoint requires managed authentication and is not ca
   assert.equal(accepted.result().statusCode, 200);
   assert.equal(accepted.result().headers.get('cache-control'), 'no-store');
   assert.equal((accepted.result().body as { mode: string }).mode, 'monitor');
+});
+
+test('task6_read authorization allows active administrators and auditors only', () => {
+  const admin = {
+    tenantId: 'tenant-a', subject: 'admin-a', role: 'tenant_admin' as const,
+    status: 'active' as const, revokedAt: null,
+  };
+  const auditor = { ...admin, subject: 'auditor-a', role: 'tenant_auditor' as const };
+  assert.equal(adminMembershipAllows(admin, {
+    tenantId: 'tenant-a', subject: 'admin-a', action: 'security_findings.read',
+  }), true);
+  assert.equal(adminMembershipAllows(auditor, {
+    tenantId: 'tenant-a', subject: 'auditor-a', action: 'security_findings.read',
+  }), true);
+  assert.equal(adminMembershipAllows(auditor, {
+    tenantId: 'tenant-b', subject: 'auditor-a', action: 'security_findings.read',
+  }), false);
+  assert.equal(adminMembershipAllows({ ...auditor, status: 'revoked', revokedAt: new Date() }, {
+    tenantId: 'tenant-a', subject: 'auditor-a', action: 'security_findings.read',
+  }), false);
+  assert.equal(adminMembershipAllows(null, {
+    tenantId: 'tenant-a', subject: 'ordinary-user', action: 'security_findings.read',
+  }), false);
+});
+
+test('task6_read service binds the tenant and records an audited read', async () => {
+  const calls: unknown[] = [];
+  const findings = await readSecurityFindingsWithStore({
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    actorId: 'auditor-subject',
+    actorRole: 'tenant_auditor',
+    limit: 999,
+  }, {
+    readAndAudit: async input => {
+      calls.push(input);
+      return [{
+        id: 'finding-row-1',
+        repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        machineId: '22222222-2222-4222-8222-222222222222',
+        findingId: 'finding-001',
+        ruleId: 'trackai.exec.download_pipe_shell',
+        ruleVersion: '1.4',
+        ruleSeverity: 'high',
+        effect: 'monitor',
+        phase: 'requested',
+        occurredAt: new Date('2026-09-30T08:00:00Z'),
+        receivedAt: new Date('2026-09-30T08:00:01Z'),
+        commandText: 'must-not-leave-the-service',
+      }];
+    },
+  });
+
+  assert.deepEqual(calls, [{
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    actorId: 'auditor-subject',
+    actorRole: 'tenant_auditor',
+    limit: 200,
+  }]);
+  assert.equal(JSON.stringify(findings).includes('must-not-leave-the-service'), false);
+  assert.deepEqual(findings, [{
+    id: 'finding-row-1',
+    repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    machineId: '22222222-2222-4222-8222-222222222222',
+    findingId: 'finding-001',
+    ruleId: 'trackai.exec.download_pipe_shell',
+    ruleVersion: '1.4',
+    ruleSeverity: 'high',
+    effect: 'monitor',
+    phase: 'requested',
+    occurredAt: new Date('2026-09-30T08:00:00Z'),
+    receivedAt: new Date('2026-09-30T08:00:01Z'),
+  }]);
+});
+
+test('task6_read route is no-store and does not expose raw fields', async () => {
+  const secret = 'customer-command-must-not-cross';
+  const inputs: unknown[] = [];
+  const handler = createSecurityFindingAdminReadHandler({
+    read: async input => {
+      inputs.push(input);
+      return [{
+        id: 'finding-row-1',
+        repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        machineId: '22222222-2222-4222-8222-222222222222',
+        findingId: 'finding-001',
+        ruleId: 'trackai.exec.download_pipe_shell',
+        ruleVersion: '1.4',
+        ruleSeverity: 'high',
+        effect: 'monitor',
+        phase: 'requested',
+        occurredAt: new Date('2026-09-30T08:00:00Z'),
+        receivedAt: new Date('2026-09-30T08:00:01Z'),
+        commandText: secret,
+      }];
+    },
+    logError: () => assert.fail('successful read must not log'),
+  });
+  const accepted = routeResponse();
+  await handler({
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    user: { sub: 'auditor-subject' },
+    adminRole: 'tenant_auditor',
+    query: { limit: '50' },
+  }, accepted.response);
+
+  assert.equal(accepted.result().statusCode, 200);
+  assert.equal(accepted.result().headers.get('cache-control'), 'no-store');
+  assert.equal(JSON.stringify(accepted.result().body).includes(secret), false);
+  assert.deepEqual(inputs, [{
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    actorId: 'auditor-subject',
+    actorRole: 'tenant_auditor',
+    limit: 50,
+  }]);
+
+  const denied = routeResponse();
+  await handler({
+    tenantId: '11111111-1111-4111-8111-111111111111',
+    user: { sub: 'ordinary-user' },
+    query: {},
+  }, denied.response);
+  assert.equal(denied.result().statusCode, 403);
+  assert.equal(inputs.length, 1);
+});
+
+test('task6_read route is mounted behind the administrator authorization boundary', () => {
+  const routeSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/admin/admin.routes.ts'),
+    'utf8',
+  );
+  assert.match(routeSource, /router\.get\('\/security-findings', requireSecurityFindingRead/);
 });
