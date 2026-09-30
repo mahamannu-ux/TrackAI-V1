@@ -15,6 +15,11 @@ const users = [
     subject: 'task5-acceptance-admin',
   },
   {
+    email: 'auditor@task5.acceptance.invalid',
+    password: 'task6-auditor-only',
+    subject: 'task6-acceptance-auditor',
+  },
+  {
     email: 'developer@task5.acceptance.invalid',
     password: 'task5-viewer-only',
     subject: 'task5-acceptance-viewer',
@@ -112,7 +117,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.listen(port, '127.0.0.1', () => {
   console.log('task5_acceptance_auth=ready');
-  console.log(`acceptance_email=${users[0].email}`);
-  console.log(`acceptance_viewer_email=${users[1].email}`);
+  console.log(`acceptance_admin_email=${users[0].email}`);
+  console.log(`acceptance_auditor_email=${users[1].email}`);
+  console.log(`acceptance_viewer_email=${users[2].email}`);
   console.log(`acceptance_url=http://127.0.0.1:${port}`);
 });
