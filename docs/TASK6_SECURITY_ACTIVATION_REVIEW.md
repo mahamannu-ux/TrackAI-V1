@@ -24,3 +24,16 @@ This boundary was approved on 2026-09-29. The production hook remains
 disconnected until a tenant-authorized setting can reach GitAI through the
 existing managed credential and machine scope. Any new local production
 override or change to fail-closed behavior requires another review.
+
+## Approved interim delivery and open production follow-up
+
+The approved Task6 interim path uses a daemon-held, short-lived value fetched
+with the existing managed-machine credential. It is memory-only, defaults to
+`off`, and returns to `off` after expiry, restart, revocation or refresh failure.
+
+**Open deferred subtask D6.1:** before production rollout, activation must be
+owned by the production Policy subsystem and delivered as a signed,
+machine-bound value that GitAI verifies locally. Key rotation, replay
+protection, expiry, revocation and recovery must be reviewed with that
+subsystem. Task6 must not invent that future policy or signature design, and
+the interim daemon cache does not close D6.1.
