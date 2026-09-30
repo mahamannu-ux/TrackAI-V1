@@ -300,6 +300,15 @@ export type AdminAuditResources = { events: Array<{
   targetId: string; details: Record<string, unknown>; occurredAt: string;
 }> };
 
+export type AdminSecurityFindingResources = { findings: Array<{
+  id: string; machineId: string; repositoryId: string; findingId: string;
+  ruleId: 'trackai.exec.destructive_recursive_delete' | 'trackai.exec.download_pipe_shell' | 'trackai.exec.reverse_shell';
+  ruleVersion: string; ruleSeverity: 'high' | 'critical'; effect: 'monitor';
+  phase: 'requested' | 'observed_result' | 'partial' | 'unavailable';
+  operatingSystem: 'macos' | 'linux' | 'windows' | 'wsl' | 'unavailable';
+  occurredAt: string; receivedAt: string;
+}> };
+
 export type AdminOperationsResources = {
   evaluatedAt: string;
   health: 'healthy' | 'attention' | 'critical';
@@ -432,6 +441,9 @@ export const getAdminRepositoryPolicies = () => apiFetch<AdminRepositoryResource
 export const getAdminBackfillAuthorizations = () => apiFetch<AdminBackfillResources>('/api/admin/backfill-authorizations');
 export const getAdminGitHubInstallations = () => apiFetch<AdminGitHubResources>('/api/admin/github-app/installations');
 export const getAdminAudit = (limit = 100) => apiFetch<AdminAuditResources>(`/api/admin/audit?limit=${limit}`);
+export const getAdminSecurityFindings = (limit = 100) => (
+  apiFetch<AdminSecurityFindingResources>(`/api/admin/security-findings?limit=${limit}`)
+);
 export const getAdminOperationalMonitoring = () => (
   apiFetch<AdminOperationsResources>('/api/admin/operations/monitoring')
 );

@@ -12,7 +12,7 @@ import {
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
   getSessions, getAdminContext, getAdminAudit, getAdminBackfillAuthorizations,
   getAdminEvidenceExports, getAdminGitHubInstallations, getAdminMachines, getAdminOperationalMonitoring,
-  getAdminRepositoryPolicies,
+  getAdminRepositoryPolicies, getAdminSecurityFindings,
   downloadAdminEvidenceExport,
   issueAdminMachineCredential, registerAdminMachine, revokeAdminMachine,
   revokeAdminMachineCredential,
@@ -22,7 +22,7 @@ import {
   authorizeAdminRepositoryBackfill, revokeAdminRepositoryBackfill,
   type AdminAuditResources, type AdminBackfillResources, type AdminContext,
   type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
-  type AdminRepositoryResources,
+  type AdminRepositoryResources, type AdminSecurityFindingResources,
   type CommitListItem, type Contributor, type DashboardSummary,
   type EvidenceExplanation, type EvidenceGraphNode, type EvidenceSearchResult, type EvidenceSemanticHealth,
   type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
@@ -311,12 +311,13 @@ type AdminResources = {
   repositories: AdminRepositoryResources | null;
   backfills: AdminBackfillResources | null;
   github: AdminGitHubResources | null;
+  findings: AdminSecurityFindingResources;
   audit: AdminAuditResources;
   operations: AdminOperationsResources;
   exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'repositories' | 'history' | 'github' | 'operations' | 'audit';
+type AdminSection = 'overview' | 'machines' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
@@ -325,6 +326,7 @@ const adminNavigation: Array<{ id: AdminSection; label: string; description: str
   { id: 'history', label: 'Historical import', description: 'Allow selected older evidence' },
   { id: 'github', label: 'GitHub App', description: 'Connected organizations' },
   { id: 'operations', label: 'Operations', description: 'Evidence health and retention' },
+  { id: 'findings', label: 'Security findings', description: 'Monitor-only observations' },
   { id: 'audit', label: 'Security audit', description: 'Who changed what' },
 ];
 
@@ -640,11 +642,11 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
     {mutationError && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-sm text-rose-200">{mutationError}</div>}
     {oneTimeCredential && <div ref={credentialPanelRef} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5"><div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold text-amber-100">Save this one-time machine credential now</h2><p className="mt-1 text-sm text-amber-200/80">Copy the full value beginning with <span className="font-mono">trk_v1.</span>. It is not stored by the server and cannot be shown again.</p></div><button onClick={() => { setOneTimeCredential(null); setCredentialCopied(false); }} className="rounded-lg border border-amber-400/30 px-3 py-2 text-sm text-amber-100">Dismiss after saving</button></div><div className="mt-4 text-xs uppercase tracking-wider text-slate-400">Reference key ID — do not put this alone in the keyring</div><div className="mt-1 break-all font-mono text-sm text-slate-300">{oneTimeCredential.keyId}</div><div className="mt-4 flex items-center justify-between"><div className="text-xs uppercase tracking-wider text-amber-300">Complete one-time credential — starts with trk_v1.</div><button onClick={() => void navigator.clipboard.writeText(oneTimeCredential.plaintext).then(() => setCredentialCopied(true)).catch(() => setMutationError('Browser clipboard access failed; select the complete credential manually.'))} className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950">{credentialCopied ? 'Copied' : 'Copy complete credential'}</button></div><div className="mt-2 break-all rounded-lg border border-amber-400/20 bg-slate-950 p-3 font-mono text-sm text-amber-100">{oneTimeCredential.plaintext}</div></div>}
     {active && resources && <>
-      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-7">
+      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-8">
         {adminNavigation.map(item => <button key={item.id} type="button" onClick={() => setAdminSection(item.id)} className={`rounded-lg px-3 py-3 text-left transition ${adminSection === item.id ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><span className="block text-sm font-medium">{item.label}</span><span className={`mt-1 block text-xs ${adminSection === item.id ? 'text-violet-100' : 'text-slate-500'}`}>{item.description}</span></button>)}
       </nav>
       {adminSection === 'overview' && <section className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Active machines" value={resources.machines?.machines.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Enrolled repositories" value={resources.repositories?.enrollments.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="GitHub installations" value={resources.github?.installations.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Recent audit events" value={resources.audit.events.length} /></div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Metric label="Active machines" value={resources.machines?.machines.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Enrolled repositories" value={resources.repositories?.enrollments.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="GitHub installations" value={resources.github?.installations.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Monitor findings" value={resources.findings.findings.length} /><Metric label="Recent audit events" value={resources.audit.events.length} /></div>
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><h2 className="font-semibold text-white">Recommended setup flow</h2><p className="mt-1 text-sm text-slate-500">Complete the first four steps for each developer installation. Historical import is optional.</p><div className="mt-5 grid gap-3 lg:grid-cols-5">{[
           ['1', 'Register machine', 'Create one logical installation.', 'machines' as AdminSection],
           ['2', 'Install key', 'Issue and securely install its credential.', 'machines' as AdminSection],
@@ -707,6 +709,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
         <div className="space-y-2"><div><h3 className="font-medium text-white">Evidence export history</h3><p className="mt-1 text-xs text-slate-500">Completed files are checksum-verified again and tenant authorization is re-checked before download. This Task4 adapter limits each single JSON artifact to 32 MiB; production-scale exports will use chunked, compressed object storage.</p></div><TableShell headers={['Created', 'Window', 'Records', 'Purpose', 'Status', 'Action']}>{resources.exports.exports.length ? resources.exports.exports.map((exportJob) => <tr key={exportJob.id}><td className="px-5 py-4 text-slate-500">{date(exportJob.createdAt)}</td><td className="px-5 py-4 text-slate-500">{date(exportJob.scopeFrom)} → {date(exportJob.scopeUntil)}</td><td className="px-5 py-4 text-slate-300">{Object.values(exportJob.recordCounts).reduce((total, value) => total + value, 0)}</td><td className="px-5 py-4"><Badge tone={exportJob.archivePurpose ? 'violet' : 'slate'}>{exportJob.archivePurpose ? 'Archive' : 'Review'}</Badge></td><td className="px-5 py-4"><Badge tone={exportJob.status === 'completed' ? 'green' : exportJob.status === 'failed' ? 'amber' : 'slate'}>{exportJob.status}</Badge></td><td className="px-5 py-4">{exportJob.status === 'completed' && context?.membership?.role === 'tenant_admin' ? <button disabled={downloadingExportId !== null} onClick={() => void downloadExport(exportJob.id)} className="text-sm text-violet-300 hover:text-violet-200 disabled:opacity-50">{downloadingExportId === exportJob.id ? 'Checking…' : 'Download verified JSON'}</button> : <span className="text-xs text-slate-500">{context?.membership?.role === 'tenant_auditor' ? 'Read-only auditor' : 'Not available'}</span>}</td></tr>) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No evidence exports have been created for this tenant.</td></tr>}</TableShell></div>
         <div className="text-xs text-slate-600">Evaluated {date(resources.operations.evaluatedAt)}</div>
       </section>}
+      {adminSection === 'findings' && <section className="space-y-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">Security findings</h2><p className="mt-1 text-sm text-slate-500">Reviewed metadata from supported OpenCode command requests. Raw commands, URLs, paths, outputs, prompts, and secret values are not stored here.</p></div><Badge tone="violet">Monitor only</Badge></div><div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-100"><strong>TrackAI did not block this action.</strong> A finding means a reviewed pattern was requested and observed by the supported pre-action hook; it does not prove that the command succeeded.</div><TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{resources.findings.findings.length ? resources.findings.findings.map(finding => { const repository = resources.repositories?.repositories.find(row => row.id === finding.repositoryId); return <tr key={finding.id}><td className="px-5 py-4 text-slate-500">{date(finding.occurredAt)}</td><td className="px-5 py-4"><div className="font-medium text-white">{finding.ruleId.replace('trackai.exec.', '').replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">Version {finding.ruleVersion} · {finding.phase.replace('_', ' ')}</div></td><td className="px-5 py-4"><Badge tone={finding.ruleSeverity === 'critical' ? 'amber' : 'violet'}>{finding.ruleSeverity}</Badge></td><td className="px-5 py-4 text-slate-400">{repository?.name ?? finding.repositoryId.slice(0, 8)}</td><td className="px-5 py-4 text-slate-400">{finding.operatingSystem}</td><td className="px-5 py-4"><Badge tone="slate">Monitor only</Badge></td></tr>; }) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No monitor findings have been received for this tenant.</td></tr>}</TableShell></section>}
       {adminSection === 'audit' && <section><div className="mb-4"><h2 className="font-semibold text-white">Security audit</h2><p className="mt-1 text-sm text-slate-500">Immutable history of administrative security changes. Revoking a resource does not erase its earlier entries.</p></div><TableShell headers={['Time', 'Action', 'Actor type', 'Target']}>{resources.audit.events.map((event) => <tr key={event.id}><td className="px-5 py-4 text-slate-500">{date(event.occurredAt)}</td><td className="px-5 py-4 font-medium text-white">{event.action}</td><td className="px-5 py-4 text-slate-400">{event.actorType}</td><td className="px-5 py-4 text-slate-500">{event.targetType}</td></tr>)}</TableShell></section>}
     </>}
   </div>;
@@ -749,17 +752,18 @@ export default function DashboardPage() {
         setAdminLoading(true);
         void (async () => {
           try {
-            const [audit, operations, exports] = await Promise.all([
+            const [audit, operations, exports, findings] = await Promise.all([
               getAdminAudit(), getAdminOperationalMonitoring(), getAdminEvidenceExports(),
+              getAdminSecurityFindings(),
             ]);
             if (adminData.membership?.role === 'tenant_auditor') {
-              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, audit, operations, exports });
+              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, findings, audit, operations, exports });
             } else {
               const [machines, repositories, backfills, github] = await Promise.all([
                 getAdminMachines(), getAdminRepositoryPolicies(),
                 getAdminBackfillAuthorizations(), getAdminGitHubInstallations(),
               ]);
-              setAdminResources({ machines, repositories, backfills, github, audit, operations, exports });
+              setAdminResources({ machines, repositories, backfills, github, findings, audit, operations, exports });
             }
             setAdminError(null);
           } catch (cause) {
