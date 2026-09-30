@@ -634,3 +634,20 @@ test('task6_read route is mounted behind the administrator authorization boundar
   );
   assert.match(routeSource, /router\.get\('\/security-findings', requireSecurityFindingRead/);
 });
+
+test('task6_ui presents findings as monitor-only metadata to authorized roles', () => {
+  const apiSource = readFileSync(
+    path.resolve(process.cwd(), '../web/src/lib/api.ts'),
+    'utf8',
+  );
+  const dashboardSource = readFileSync(
+    path.resolve(process.cwd(), '../web/src/app/dashboard/page.tsx'),
+    'utf8',
+  );
+  assert.match(apiSource, /export type AdminSecurityFindingResources/);
+  assert.match(apiSource, /getAdminSecurityFindings/);
+  assert.match(dashboardSource, /Security findings/);
+  assert.match(dashboardSource, /Monitor only/);
+  assert.match(dashboardSource, /TrackAI did not block this action/);
+  assert.doesNotMatch(dashboardSource, /finding\.commandText|finding\.prompt|finding\.payload/);
+});
