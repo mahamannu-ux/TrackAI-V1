@@ -654,6 +654,11 @@ test('task6_ui presents findings as monitor-only metadata to authorized roles', 
   assert.match(dashboardSource, /Contact your administrator if you need access/);
   assert.match(dashboardSource, /Support details/);
   assert.match(dashboardSource, /Account identifier \(not a secret\)/);
+  assert.match(dashboardSource, /Verified route: OpenCode terminal\/TUI on macOS/);
+  assert.match(
+    dashboardSource,
+    /Other agents, surfaces and operating systems are not yet verified for Task6 Security monitoring/,
+  );
   assert.doesNotMatch(dashboardSource, /Verified JWT subject|Give this exact subject/);
   assert.doesNotMatch(
     dashboardSource,
