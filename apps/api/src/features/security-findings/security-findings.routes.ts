@@ -4,6 +4,7 @@ import {
   persistSecurityFindingBatch,
   type PersistSecurityFindingBatchResult,
 } from './storage-service';
+import { createSecurityActivationHandler } from './activation';
 
 interface SecurityFindingRouteRequest {
   body: unknown;
@@ -83,6 +84,8 @@ export function createSecurityFindingUploadHandler(
 
 const securityFindingsRouter = Router();
 const uploadSecurityFindings = createSecurityFindingUploadHandler();
+const readSecurityActivation = createSecurityActivationHandler();
+securityFindingsRouter.get('/activation', (req, res) => readSecurityActivation(req, res));
 securityFindingsRouter.post('/findings', (req, res) => uploadSecurityFindings(req, res));
 
 export default securityFindingsRouter;
