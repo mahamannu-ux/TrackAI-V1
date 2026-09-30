@@ -651,3 +651,29 @@ test('task6_ui presents findings as monitor-only metadata to authorized roles', 
   assert.match(dashboardSource, /TrackAI did not block this action/);
   assert.doesNotMatch(dashboardSource, /finding\.commandText|finding\.prompt|finding\.payload/);
 });
+
+test('task6_acceptance fixture is synthetic guarded and covers all three roles', () => {
+  const seedSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/security-findings/task6-acceptance-seed.ts'),
+    'utf8',
+  );
+  const authSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/evidence/task5-acceptance-auth.ts'),
+    'utf8',
+  );
+  const packageJson = JSON.parse(readFileSync(
+    path.resolve(process.cwd(), 'package.json'),
+    'utf8',
+  )) as { scripts: Record<string, string> };
+  assert.equal(
+    packageJson.scripts['seed:task6-acceptance'],
+    'tsx src/features/security-findings/task6-acceptance-seed.ts',
+  );
+  assert.match(seedSource, /TASK6_EPHEMERAL_DATABASE !== '1'/);
+  assert.match(seedSource, /task6-acceptance-auditor/);
+  assert.match(seedSource, /trackai\.exec\.download_pipe_shell/);
+  assert.doesNotMatch(seedSource, /commandText|promptText|rawPayload|customer-secret/);
+  assert.match(authSource, /auditor@task5\.acceptance\.invalid/);
+  assert.match(authSource, /developer@task5\.acceptance\.invalid/);
+  assert.match(authSource, /admin@task5\.acceptance\.invalid/);
+});
