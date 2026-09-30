@@ -57,7 +57,7 @@ the following unresolved boundaries carry forward:
 | Enterprise-scale administration UX | **Task10** | Pagination, bulk operations, inverse machine/repository views, accessibility and scale testing. |
 | Coding-agent rule catalogs | **Task6 Security** | Curated pinned rule inventory, local monitor evaluation, safe findings and host/OS conformance. |
 | Cedar-like organization policy | **Task6 Policy** | Deferred vocabulary, inheritance, exceptions, simulation and signed endpoint bundles. |
-| Additional agent/OS route coverage | **Task13 and Task9** | Route fidelity and managed macOS/Windows/Linux deployment; Task14 certifies only the supported matrix they produce. |
+| Additional agent/OS route coverage | **Task13 and Task9**, then **Task14 · T14.10** | Route fidelity and managed macOS/Linux/native-Windows/WSL deployment must satisfy Task6 D6.2 and [`docs/handoffs/TASK6_TO_TASK13_TASK14.md`](docs/handoffs/TASK6_TO_TASK13_TASK14.md). Task14 must not certify production while D6.2 is open. |
 
 No other yellow row in Task4's chronological evidence log should be copied
 here. Later green evidence supersedes those interim checkpoints.

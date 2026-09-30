@@ -208,7 +208,9 @@ macOS (`AC-CLI-03`). A production Task6 launch is blocked until Linux, native
 Windows, WSL and the intended other-agent, IDE, desktop, remote and cloud
 routes are implemented and live-verified separately. A passing macOS
 OpenCode route, shared parser or schema fixture is not evidence for another
-route or operating system. The canonical Task6 tracker records this as D6.2.
+route or operating system. The canonical Task6 tracker records this as D6.2;
+the owned closure checklist is
+[`docs/handoffs/TASK6_TO_TASK13_TASK14.md`](docs/handoffs/TASK6_TO_TASK13_TASK14.md).
 
 ## Research sources and evidence precedence
 
