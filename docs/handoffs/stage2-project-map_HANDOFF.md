@@ -2,7 +2,7 @@
 
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
 
-Branch `docs/stage2-project-map` (stacked on `docs/adopt-agent-kit` at `e1d7e37`; rebase onto `main` once PR #8 merges).
+Branch `docs/stage2-project-map` (base: `docs/adopt-agent-kit` at `e1d7e37`, merged to `main` as PR #8 on 2026-10-08). Session prompt: `docs/prompts/NEXT_CHAT_stage2-project-map_PROMPT.md`.
 
 Stage 2 of the setup brief: the founder's vision as given, a project map for orienting agents, the SushiCorp reuse map with the Attesta starting point, and AGENTS.md §9 gotchas corrected and extended (including those carried over for ported components). Documents only. Read with four read-only research passes (Task2/Task4, Task5/Task6/Task13/Task14 and the console, the GitAI fork, SushiCorp and the catalog); key claims were re-checked in the code.
 
@@ -14,7 +14,7 @@ Stage 2 of the setup brief: the founder's vision as given, a project map for ori
 | Scope | AGENTS.md §2 (plan files), §9 gotcha 3 corrected (0000's Supabase browser policies, composite keys from 0003), gotchas 13–14 (Task2–Task6 traps, GitAI noise), 16–21 (ported components) | ✅ |
 | Quality | `kit-check --unfilled`; `git diff --check` | ✅ |
 | Integration | none needed | n/a |
-| Review | Codex cross-review | ⬜ |
+| Review | Codex cross-review: round 1 fix first (B1 confirmed, dry-run label, missing session prompt, stale PR #8 paperwork), fixed in the third commit | 🟡 re-review pending |
 
 ## Implemented interfaces
 None (documents only).

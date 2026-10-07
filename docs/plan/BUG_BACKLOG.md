@@ -4,7 +4,7 @@ Problems found outside a session's own scope. Each is fixed later by the Task th
 
 | # | Found | Problem (evidence) | Owner Task | Size | Status |
 |---|---|---|---|---|---|
-| B1 | 2026-10-07 orchestrator | Churned may never be computed: `churned` is declared and read (`features/telemetry/lifecycle.ts:8,133`) but no code path writes that stage, so it would always show Unavailable. The founder recalls testing churn: verify against the Lifecycle Lab before changing anything | Task2 | verify S, fix M-L | ⬜ |
+| B1 | 2026-10-07 orchestrator | Churned is not computed: `churned` is declared and read (`features/telemetry/lifecycle.ts:8,133`) but no production write, projection or rebuild path emits that stage, so Churned is always Unavailable unless fixture rows are injected (confirmed by Codex review 2026-10-08) | Task2 | M-L | ⬜ |
 | B2 | 2026-10-07 orchestrator | Dashboard reloads all rows of 19 tables per request and polls about 12 endpoints every 15 s (`features/telemetry/read.routes.ts:85-117`, `dashboard/page.tsx:778-825`); will not scale | Task2 (read path), Task10 (polling) | L | ⬜ |
 | B3 | 2026-10-07 orchestrator | Security monitoring can only be turned on by SQL seed: no admin API or UI writes `tenant_security_monitor_settings` (`features/security-findings/task6-acceptance-seed.ts:74-79`) | Task6.a | M | ⬜ |
 | B4 | 2026-10-07 orchestrator | `dashboard/page.tsx` is 885 lines / 109 KB with one 415-line admin component; primitives duplicated across files | Task10 | L | ⬜ |

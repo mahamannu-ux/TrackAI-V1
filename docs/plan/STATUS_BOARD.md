@@ -19,7 +19,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude | — | ⬜ | ⬜ | Founder sends the updated Attesta .md |
 | Audit and auditor surface (Task number to be assigned) | — | — | ⬜ | ⬜ | Scope later (audit events for D6.1, P6.8, T14.7; parts in Task11) |
-| Kit adoption | Claude | `docs/adopt-agent-kit` | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | Codex re-review of the fix commit, then push |
+| Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
 
 Rules: symbols per AGENTS.md §11; "n/a: none needed" when a Task has no integration tests; the founder's run, never the sandbox, makes integration ✅.
 

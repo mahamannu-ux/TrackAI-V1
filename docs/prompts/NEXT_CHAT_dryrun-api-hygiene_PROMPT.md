@@ -51,7 +51,7 @@ None: no catalogued component is involved (two hygiene fixes and a deletion).
 - Handoff from `docs/templates/HANDOFF_TEMPLATE.md`, **under 60 lines**, with Effort.
 - `docs/plan/STATUS_BOARD.md`: add rows for `dryrun-api-hygiene` (you) and `dryrun-web-dead-view` (Muse, not started); remaining-plan actual for yours.
 - Clean tree. Do **not** push, open a PR or merge.
-- **Final reply** in the AGENTS.md §12.4 shape: the effort line; decisions; one bash block (unit tests, then under `# after the cross-agent review` your push and `gh pr create --base main --head task/dryrun-api-hygiene --title "[dryrun-api-hygiene] API hygiene fixes" --body-file docs/handoffs/dryrun-api-hygiene_HANDOFF.md --repo mahamannu-ux/TrackAI-V1`); your review request in a `text` block; then a **"Paste to Muse:"** block containing Muse's prompt text (everything below its line), preceded by the founder commands to start Muse from Muse's prompt.
+- **Final reply** in the AGENTS.md §12.4 shape: the effort line; decisions; one bash block (unit tests, then under `# after the independent review` your push and `gh pr create --base main --head task/dryrun-api-hygiene --title "[dryrun-api-hygiene] API hygiene fixes" --body-file docs/handoffs/dryrun-api-hygiene_HANDOFF.md --repo mahamannu-ux/TrackAI-V1`); your review request in a `text` block; then a **"Paste to Muse:"** block containing Muse's prompt text (everything below its line), preceded by the founder commands to start Muse from Muse's prompt.
 
 ## Lessons so far
 - **adopt-agent-kit (Claude):** project-specific rules drafted without the author's knowledge took three review rounds; you are the authority on this code, so state facts from it, not from memory.

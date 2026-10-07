@@ -76,7 +76,7 @@ Sizes: S ≤ 0.05× T6, M ≈ 0.1–0.2× T6, L ≥ 0.3× T6. Fixes are tracked 
 
 ```text
 Task / area            Solid                                                         Needs improving                                                       Size
-Task2 lifecycle        Invariants enforced in code; lineage kinds; revert/rework;    Churned may never be written; verify (founder recalls testing it)    B1
+Task2 lifecycle        Invariants enforced in code; lineage kinds; revert/rework;    Churned is never written: always Unavailable (confirmed by Codex)    B1
                        audited corrections; Lifecycle Lab                            T2.11e/g tokens, T2.20 identity links, T2.21 trends, E16 SCM cases    M each
                                                                                      Read path loads 19 tables per request every 15 s, in memory           L
 Task2/4 ingestion      Idempotent batches, partial ack, policy binding, immutable    Normalization is synchronous, outside one transaction; recovery is   M
