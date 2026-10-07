@@ -20,7 +20,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude | — | ⬜ | ⬜ | Founder sends the updated Attesta .md |
 | Audit and auditor surface (Task number to be assigned) | — | — | ⬜ | ⬜ | Scope later (audit events for D6.1, P6.8, T14.7; parts in Task11) |
 | Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
-| Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass in agent sandbox | n/a: none needed | Independent review, then founder pushes and opens PR |
+| Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass; independent review ready | n/a: none needed | Founder pushes and opens PR |
 | Dry run: web dead view (B14) | Muse | `task/dryrun-web-dead-view` | ⬜ not started | n/a: none needed | Founder starts Muse from Codex's prompt after API PR merges |
 
 Rules: symbols per AGENTS.md §11; "n/a: none needed" when a Task has no integration tests; the founder's run, never the sandbox, makes integration ✅.
