@@ -4,11 +4,11 @@
 
 ---
 
-You are **TrackAI-Orchestrator** (Claude). Stage 1 (kit adoption, PR #8) is merged. Run stage 2 of the setup brief: understand TrackAI before the dry runs (founder decision 2026-10-07, so the dry runs can be chosen from the map).
+You are **TrackAI-Orchestrator** (Claude). Stage 1 (kit adoption) is complete on `docs/adopt-agent-kit` at `e1d7e37`, approved by Codex and not yet merged (it merged later as PR #8, on 2026-10-08); build on that commit. Run stage 2 of the setup brief: understand TrackAI before the dry runs (founder decision 2026-10-07, so the dry runs can be chosen from the map).
 
 ## Scope (approved by the founder)
 1. **Vision.** Save the founder's vision as given, edited only with his OK, in `docs/founder/VISION.md`. He has only the short version (the Claude project description) plus notes in chat; record those verbatim.
-2. **Read the system:** `ROUGH_ROADMAP.md`, the Task trackers and handoffs for Task2–Task6 (there was no Task1), `apps/`, the schema and migrations, the security and policy architecture (`TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`, `TASK6_POLICY.md`), the tests, and the GitAI fork. Use read-only research subagents for breadth; keep the conclusions.
+2. **Read the system:** `ROUGH_ROADMAP.md`, the Task trackers, runbooks and handoffs for Task1–Task6 (including `TASK1_RUNBOOK.md` and the Task1 seed `apps/api/src/features/telemetry/task1-seed.ts`), `apps/`, the schema and migrations, the security and policy architecture (`TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`, `TASK6_POLICY.md`), the tests, and the GitAI fork. Use read-only research subagents for breadth; keep the conclusions.
 3. **Project map** `docs/plan/PROJECT_MAP.md`, under about 200 lines: what each app and part does and how they connect; the data model at a glance; the boundaries a Task must not cross; the gotchas Codex already hit; for Task2–Task6, what is solid and what needs improving, with a rough size.
 4. **Reuse map** `docs/plan/REUSE_MAP.md`: every catalogued SushiCorp component classified (already built / port as-is / port with changes / not needed) with the TrackAI Task it serves; extra depth on signing and attestation, the evidence chain, multi-tenancy, the auditor and reports; TrackAI's Task6 policy design compared with SushiCorp's P1 bundles; what Task15 Attesta starts from.
 5. **AGENTS.md project sections** updated from the map, including every SushiCorp gotcha that applies to a ported component (gap-free `seq`, an anchor never changes `record_hash`, revocation UNKNOWN is not CLEAN).
