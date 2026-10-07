@@ -1,6 +1,6 @@
 # Agent Working Agreement — TrackAI
 
-> Adopted agent-kit 0.1.0 (`~/dev/agent-kit` @ `a4e0b51`, 2026-10-07). Sections marked **[PROJECT SLOT]** are TrackAI's own; every other section is the kit's and changes only through a kit update. Project slots marked *draft, Codex to confirm* were written from the repository by the orchestrator and wait for Codex's review.
+> Adopted agent-kit 0.1.0 (`~/dev/agent-kit` @ `a4e0b51`, 2026-10-07). Sections marked **[PROJECT SLOT]** are TrackAI's own; every other section is the kit's and changes only through a kit update. The project slots were drafted by the orchestrator from the repository and corrected and confirmed by Codex in the adoption review (2026-10-07).
 
 **Read this in full before writing any code.** It governs every coding agent on this repository (Claude, Codex, Muse in OpenCode, or any other). `CLAUDE.md` imports this file and adds only Claude specifics.
 
@@ -21,7 +21,7 @@ TrackAI is an AI code provenance, security, attribution and engineering-producti
 4. **Never paste or print a secret** (keys, tokens, passwords, connection strings with credentials, PEM material, Supabase keys) into a chat, a file, a log or a commit.
 5. **Stage explicit paths.** Never `git add -A` or `git add .`, least of all in a copy where a package install or build ran.
 
-TrackAI-wide hard rules (from Task2–Task6; *draft, Codex to confirm*):
+TrackAI-wide hard rules (from Task2–Task6):
 
 6. **Raw customer content is sensitive IP.** Raw prompts, responses, tool payloads and commands are never returned by ordinary APIs, never logged, never put in documentation and never in non-synthetic fixtures. The one deliberate exception is Task5's raw reveal: off by default, tenant-bound, limited to approved administrator/auditor roles, explicitly requested per event, audited and sent `no-store`. Do not widen it or add another path without a founder decision.
 7. **Honest states.** Keep observed vs audited, detected vs blocked, zero vs `Unavailable`, exact vs confidence-based linkage distinct. Monitor-only evidence is never described as prevention.
@@ -30,7 +30,7 @@ TrackAI-wide hard rules (from Task2–Task6; *draft, Codex to confirm*):
 
 ---
 
-## 2. Repository layout [PROJECT SLOT] (*draft, Codex to confirm*)
+## 2. Repository layout [PROJECT SLOT]
 
 Do not invent top-level directories. The structure below is fixed:
 
@@ -86,34 +86,27 @@ Commit at each stage. Rebase on `main` before handing off. Never force-push a br
 
 ---
 
-## 4. Task ownership [PROJECT SLOT] (*draft, Codex to confirm*)
+## 4. Task ownership [PROJECT SLOT]
 
 Ownership is by **concern and file**, not by whole directory: several directories hold more than one Task's code (for example `features/telemetry/` holds Task2 metric code and Task4 delivery and enforcement code). When in doubt, the `task<N>-*` file prefix, the Task tracker and `git log` for the file decide; if they disagree, ask.
 
 | Concern | Owning Task | Where it lives (main files) |
 |---|---|---|
-| Lifecycle **metric semantics** (Generated … Churned), PR matching, lifecycle projections and rebuilds | Task2 + Lifecycle Lab | `features/telemetry/{lifecycle,model-lifecycle,pr-matching,authorship-note,decoder,service,read.routes}.ts`, `features/telemetry/task2-*`, `features/scm/{lifecycle-service,parser,provider-event}.ts` |
-| **Transport and security** around that flow: durable delivery, idempotency, watermarks, repository enforcement and scope, provider delivery ledger, webhook crypto, GitHub App credentials | Task4 | `features/telemetry/{ingest.routes,repository-enforcement,repository-scope,repository-url,watermark-policy,audit}.ts`, `features/scm/{provider-delivery-store,crypto,github-app}.ts`, every `task4-*` file |
+| Lifecycle **metric semantics** (Generated … Churned), PR matching, lifecycle projections and rebuilds, observed/audited metric corrections | Task2 + Lifecycle Lab | `features/telemetry/{lifecycle,model-lifecycle,pr-matching,authorship-note,decoder,audit,read.routes}.ts`, `features/telemetry/task2-*`, `features/scm/lifecycle-service.ts` |
+| Legacy development-only OpenCode prompt-to-commit adapter (not Task5's governed evidence path) | Task2 | `features/telemetry/opencode-evidence.ts` |
+| **Transport and security** around that flow: durable delivery, idempotency, watermarks, repository enforcement and scope, provider-delivery idempotency, retry and projection ordering, provider delivery ledger, webhook crypto | Task4 | `features/telemetry/{repository-enforcement,repository-scope,watermark-policy}.ts`, `features/scm/{provider-event,provider-delivery-store,crypto}.ts`, every `task4-*` file |
 | Identity, credentials, encryption, grants, admin, retention, export, monitoring | Task4 | `core/security/`, `core/operations/`, `core/middleware/`, `features/admin/`, `features/operations/` |
-| Evidence taxonomy, ingestion, graph, raw reveal, analytics, semantic search | Task5 | `features/evidence/`, `features/telemetry/opencode-evidence.ts`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` |
+| Governed evidence: taxonomy, ingestion, graph, raw reveal, analytics, semantic search | Task5 | `features/evidence/`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` |
 | Coding-agent security findings (monitor-only) | Task6 Security | `features/security-findings/`, `docs/contracts/task6/`; GitAI security evaluator |
 | Organization policy engine | Task6 Policy (deferred) | none yet |
 | Route and surface coverage | Task13 | `AGENT_COVERAGE.md`; adapters mostly in GitAI |
 | Signed provenance attestation | Task15 Attesta | named in its first prompt |
 | Task7–Task12, Task14 | see `ROUGH_ROADMAP.md` | none yet |
-| **Shared** (changed only when the prompt pre-approves it) | — | `core/db/schema.ts`, `core/db/tenant.ts`, `apps/api/src/index.ts`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/lib/` |
+| **Mixed Task2/Task4** (shared: changed only when the prompt pre-approves it) | Task2 + Task4 | `features/telemetry/{service,ingest.routes,repository-url,types}.ts`, `features/scm/{scm.routes,parser,github-app}.ts` |
+| **Shared platform** (changed only when the prompt pre-approves it) | — | `core/db/` (connection entry point `index.ts`, `schema.ts`, `tenant.ts`), `apps/api/src/index.ts`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/lib/` |
 
 Paths are under `apps/api/src/` unless shown otherwise.
 
----|---|---|
-| Task2 + Lab | `apps/api/src/features/telemetry/`, `apps/api/src/features/scm/` (lifecycle, PR matching) | Lifecycle metrics and SCM correctness; the permanent Lifecycle Correctness Lab |
-| Task4 | `apps/api/src/core/security/`, `apps/api/src/core/operations/`, `apps/api/src/core/middleware/`, `apps/api/src/features/admin/`, `apps/api/src/features/operations/` | Robustness, security, administration, operations |
-| Task5 | `apps/api/src/features/evidence/`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` | Evidence Explorer and intention intelligence |
-| Task6 Security | `apps/api/src/features/security-findings/`, `docs/contracts/task6/`; GitAI security evaluator | Coding-agent security (monitor-only) |
-| Task6 Policy | (none yet; deferred) | Organization policy engine |
-| Task7–Task14 | (none yet) | See `ROUGH_ROADMAP.md` |
-| Task15 Attesta | (to be named in its first prompt) | Signed provenance attestation (ported from SushiCorp) |
-| shared | `apps/api/src/core/db/schema.ts`, `apps/api/src/index.ts`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/lib/` | Changed only when the prompt pre-approves it |
 
 ---
 
@@ -140,7 +133,7 @@ Every session prompt has a **"Port from"** section (possibly "none, because …"
 - **Every handoff has an "Integration test impact" section**, even if it says "none": tests added, the exact command, prerequisites, blocking or non-blocking (and for what), and status. Update the matching rows of the integration test registry in `docs/plan/STATUS_BOARD.md`.
 - **Shared test fixtures are frozen.** Ask before adding or changing one.
 
-Toolchain (*draft, Codex to confirm*):
+Toolchain:
 - Node 20+ (CI uses 20). One `npm ci` per worktree; run tools through `npm run …` / `npm exec`, never a global install.
 - Integration databases: `scripts/it-db.sh <command>` starts a throwaway PostgreSQL 16 with pgvector on a free port (Docker image `pgvector/pgvector:pg16`, or local binaries with the pgvector extension), exports `DATABASE_URL`, sets `TASK5_EPHEMERAL_DATABASE=1`, `TASK6_EPHEMERAL_DATABASE=1` and throwaway encryption keys, applies the migrations, runs the command, then removes the database. Example: `scripts/it-db.sh npm run verify:task5-graph-live -w apps/api`. A verifier that insists on a database name sets it: `IT_PG_DATABASES=trackai_task6_security_live IT_PG_EXPORTS=DATABASE_URL=trackai_task6_security_live scripts/it-db.sh npm run verify:task6-route-live -w apps/api`.
 - Older runbooks use a fixed Docker port (`55432`) and a test auth server on `54321`; they still work for the founder's walkthroughs, but new commands for agents and the founder use `scripts/it-db.sh` and never a fixed port.
@@ -169,7 +162,7 @@ Every session ends with `docs/handoffs/<name>_HANDOFF.md`, written from `docs/te
 
 ---
 
-## 9. Project gotchas [PROJECT SLOT] (*draft, Codex to confirm*)
+## 9. Project gotchas [PROJECT SLOT]
 
 These have already caused bugs or near-misses. Do not reintroduce them.
 
@@ -189,7 +182,7 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 
 ---
 
-## 10. Style [PROJECT SLOT] (*draft, Codex to confirm*)
+## 10. Style [PROJECT SLOT]
 
 - TypeScript `strict` in both apps. The API targets ES2022 and builds to CommonJS; the web app targets ES2017 with ESNext modules (Next.js). API tests use `node:test` via `tsx` and live beside the code (`*.test.ts`), registered in `apps/api/package.json`'s `test` script; the web app has no unit tests yet.
 - Database access: Drizzle. Some existing routes query directly (`features/telemetry/read.routes.ts`, `features/scm/scm.routes.ts`); **new code puts queries in the feature service** and keeps route handlers thin. Tenant-owned access goes through `withTenant()`.

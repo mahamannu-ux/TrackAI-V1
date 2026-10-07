@@ -32,7 +32,7 @@ You are reviewing another agent's finished work on **TrackAI** (`~/AIProjects/Tr
       - Files only in the Task's directories plus what the prompt pre-approved; nothing outside `~/AIProjects`.
       - No imports across Task boundaries except the ones the prompt allows.
       - No secrets in code, fixtures, docs or logs; no new reads of configuration that the project's gotchas forbid.
-      - Commits authored `mahamannu-ux <mahamannu@gmail.com>` with `<ID>: …` messages; explicit staging (no build output, no dependency folders committed).
+      - Commits authored `mahamannu-ux <mahamannu@gmail.com>` with `<ID>: …` messages (docs-only sessions: `<session name>: …`, AGENTS.md §3); explicit staging (no build output, no dependency folders committed).
       - Nothing pushed or merged by the agent.
    2. **Scope.** Everything the prompt asked for is there, and nothing it put out of scope.
    3. **Correctness against the contracts it consumes** (routes, error shapes, paging, events described in upstream handoffs). Pay most attention to authentication, tenant isolation, the read-only role, idempotency and retries, and anything that must write nothing.

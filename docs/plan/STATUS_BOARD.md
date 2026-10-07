@@ -30,14 +30,14 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 
 | # | Session | Agent | Estimate | Actual | Starts when | Prompt |
 |---|---|---|---|---|---|---|
-| 1 | docs/adopt-agent-kit: AGENTS.md, CLAUDE.md, procedures, templates, status board, benchmark, npm gates, worktree and integration scripts | Claude | about 0.06× | about 0.06× (by turns) | now | (setup brief) |
+| 1 | docs/adopt-agent-kit: AGENTS.md, CLAUDE.md, procedures, templates, status board, benchmark, npm gates, worktree and integration scripts | Claude | about 0.06× | about 0.07× (by turns) | now | (setup brief) |
 | 2 | Dry run, Codex: a tiny housekeeping item in its first worktree | Codex | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 3 | Dry run, Muse: a tiny housekeeping item in OpenCode | Muse | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 4 | Dry run, Claude: a tiny housekeeping item in a separate session | Claude | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 5 | Project map, reuse map, AGENTS.md project slots (stage 2) | Claude (orchestrator) | about 0.05× | | #2–#4 merged | — |
 | 6 | Task15 Attesta: primer, then sessions | Claude first | (primer decides) | | stage 2 done | — |
 
-**Actuals:** adopt-agent-kit ran on estimate by turns, plus one cross-review fix round (draft project slots that did not match the code).
+**Actuals:** adopt-agent-kit ran slightly over (0.07× against 0.06×): two cross-review fix rounds on draft project slots that did not match the code.
 
 ---
 
