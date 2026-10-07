@@ -58,11 +58,11 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // Parse regular application JSON after the raw webhook receiver.
   app.use(express.json({ limit: '5mb' }));
 
-  // Native Git AI worker uploads use tenant-bound machine credentials, not a
-  // browser JWT. Keep this route outside the interactive /api middleware chain.
-  app.use('/worker/security', machineAuthentication, securityFindingsRouter);
-  app.use('/worker', machineAuthentication, telemetryIngestRouter);
-  app.use('/worker/evidence', machineAuthentication, evidenceWorkerRouter);
+  // Native Git AI worker uploads share one tenant-bound machine-auth boundary.
+  app.use('/worker', machineAuthentication);
+  app.use('/worker/security', securityFindingsRouter);
+  app.use('/worker/evidence', evidenceWorkerRouter);
+  app.use('/worker', telemetryIngestRouter);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
