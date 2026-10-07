@@ -17,8 +17,8 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
-| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude | — | ⬜ | ⬜ | Founder sends the updated Attesta .md |
-| Task16 Audit and auditor experience | Claude | — | ⬜ | ⬜ | Scope with or after Task15 |
+| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Answer `docs/plan/TASK15.md` §1 and §7; start Muse on Task15a and Task15b |
+| Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Answer `docs/plan/TASK16.md` §1; start Muse on Task16a |
 | Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
 | Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass; independent review ready | n/a: none needed | Founder pushes and opens PR |
 | Dry run: web dead view (B14) | Muse | `task/dryrun-web-dead-view` | ⬜ not started | n/a: none needed | Founder starts Muse from Codex's prompt after API PR merges |
@@ -38,7 +38,8 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 3 | dryrun-web-dead-view: B14, handed out by Codex | Muse | about 0.01× | | #2's prompt written | written by Codex in #2 |
 | 4 | ~~Dry run, Claude~~ dropped by the founder 2026-10-08 (Claude usage) | — | — | — | — | — |
 | 5 | stage2-project-map: vision, project map, reuse map, AGENTS.md §9 gotchas (stage 2, moved before the dry runs) | Claude (orchestrator) | about 0.05× | about 0.05× (by turns) | #1 merged | (setup brief) |
-| 6 | Task15 Attesta: primer, then sessions | Claude | (primer decides) | | founder's Attesta brief | — |
+| 6 | Task15 Attesta, phase 1 (sessions in `docs/plan/TASK15.md` §5) | Claude + Muse + Codex | about 1.5× | | founder buy-in on TASK15 §1 | `docs/prompts/NEXT_CHAT_Task15-lead_PROMPT.md` |
+| 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4) | Claude + Muse + Codex | about 0.6× | | founder answers TASK16 §1 | `docs/prompts/NEXT_CHAT_Task16-lead_PROMPT.md` |
 | 7 | Task9-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/NEXT_CHAT_Task9-lead_PROMPT.md` |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/NEXT_CHAT_Task13-lead_PROMPT.md` |
 
