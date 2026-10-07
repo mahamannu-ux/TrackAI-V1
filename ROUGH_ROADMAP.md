@@ -8,6 +8,8 @@ recommended Codex-task ownership. Individual task trackers remain authoritative
 for implementation detail. Status represents discovery/implementation maturity,
 not a promised release date.
 
+> **Working style (2026-10-07):** agents follow [`AGENTS.md`](AGENTS.md) (agent-kit 0.1.0). Session-level status, the remaining plan with estimates and actuals, and the integration test registry live in [`docs/plan/STATUS_BOARD.md`](docs/plan/STATUS_BOARD.md); each Task starts with a plain-language primer in [`docs/plan/primers/`](docs/plan/primers/). **Task15 — Attesta** (signed provenance, ported from SushiCorp) is planned; its row is added when its primer is approved.
+
 ## Status legend
 
 | Symbol | Meaning |
