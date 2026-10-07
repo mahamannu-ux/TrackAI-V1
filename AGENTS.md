@@ -46,7 +46,7 @@ supabase/            linked-project stub only; Supabase is the hosted Auth provi
 scripts/             agent-kit scripts: worktree.mk, it-postgres.sh, it-db.sh
 .github/workflows/   CI (task5-verification.yml: unit tests, live verifies on pgvector, typecheck, web build)
 docs/                project documents, never code:
-  plan/              STATUS_BOARD.md, EFFORT_BENCHMARK.md, KIT_ADOPTION.md, primers/, design documents
+  plan/              STATUS_BOARD.md, PROJECT_MAP.md (start here), REUSE_MAP.md, EFFORT_BENCHMARK.md, KIT_ADOPTION.md, primers/
   handoffs/          one handoff per finished session (<name>_HANDOFF.md); older TASKx_TO_TASKy.md notes stay
   prompts/           one prompt per session (NEXT_CHAT_<name>_PROMPT.md)
   agents/            review procedure and the manager prompt
@@ -168,7 +168,7 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 
 1. **Several similarly named checkouts exist** (Codex folders, the upstream GitAI clone, the fork). State the absolute directory and repository before any command; the wrong one can look healthy.
 2. **GitAI review base is the fork's `main`.** Comparing against the upstream or another local clone pulls in older Task2/4/5 work.
-3. **Tenant isolation is application-enforced.** Tenant-owned tables are read and written through `withTenant()` (`apps/api/src/core/db/tenant.ts`); RLS is enabled with no browser policies, so direct Supabase reads from the web are denied. A new table gets both.
+3. **Tenant isolation is application-enforced.** Tenant-owned tables are read and written through `withTenant()` (`apps/api/src/core/db/tenant.ts`); the API's database role bypasses RLS. RLS is enabled on every table with no browser policies, **except** that migration 0000 creates `authenticated` SELECT policies keyed on the JWT email domain for 11 Task1-era tables when it runs on Supabase. Composite `(tenant_id, id)` foreign keys exist only from migration 0003 on. A new table gets `withTenant()`, RLS without browser policies, composite tenant keys and a Company A/B test.
 4. **Migrations are dry-run first.** Generate, inspect, apply on a throwaway database, then the persistent and fresh-schema gates. Never edit a merged migration.
 5. **Live verify scripts refuse non-ephemeral databases** unless `TASK5_EPHEMERAL_DATABASE=1` / `TASK6_EPHEMERAL_DATABASE=1` is set; `scripts/it-db.sh` sets them for its throwaway database only. Never set them against a database you care about.
 6. **Prove which database a live daemon has open** before a GitAI live test, and isolate test runtime databases and configuration from the normal user daemon.
@@ -178,7 +178,18 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 10. **Destructive and revocation actions are dry-run first, with exact scope stated**; never rotate or revoke a credential without an explicit confirmation step.
 11. **Task6 support boundary.** Only the observe-only OpenCode terminal/TUI route on macOS (`AC-CLI-03`) is validated. D6.1 (Policy-owned, signed, machine-bound activation) blocks production activation; D6.2 (Linux, Windows, WSL, other agents and surfaces) blocks any wider route or platform claim. Never describe more than that.
 12. **Task5 raw reveal stays default-off and restricted** (rule 6): tenant opt-in, approved roles, per-event request, audit, `no-store`.
-13. **Sandbox failures are not product failures.** In an agent sandbox, `npm ci` can end with npm's "Exit handler never called" while the log shows DNS denial, and a local PostgreSQL can fail with `shmget`. Classify these as sandbox failures, and retry only that exact command with command-scoped permission (or hand it to the founder); do not change code or configuration to get around them.
+13. **Known traps from Task2–Task6:** admin bootstrap needs a complete Supabase user UUID (a placeholder was once accepted); policy repository URLs go through the canonical `https://` helper (a scheme-less URL quarantined a client); dev uses `.next-dev`, production builds `.next` (sharing them gave 404 chunks); Git AI reset evidence appears only with a successor commit; GitHub App events never reach localhost (use a tunnel or reconciliation); `churned` is declared but never written, so Churned is always `Unavailable`; ingestion normalizes synchronously and stranded `pending` rows are recovered only by `reconcile:task4-wave5-pending` (dry-run first).
+14. **Inherited GitAI noise:** `daemon_mode` tests are flaky under parallel runs and newer Rust adds Clippy findings; neither is a regression of your change, but say so in the handoff.
+15. **Sandbox failures are not product failures.** In an agent sandbox, `npm ci` can end with npm's "Exit handler never called" while the log shows DNS denial, and a local PostgreSQL can fail with `shmget`. Classify these as sandbox failures, and retry only that exact command with command-scoped permission (or hand it to the founder); do not change code or configuration to get around them.
+
+**Gotchas for components ported from SushiCorp** (Task15 Attesta and later; catalog EV-1, EV-2, TR-1, SG-1):
+
+16. **`seq` is gap-free:** allocate it from a `chain_head` row under `SELECT … FOR UPDATE`, never a database sequence (a rolled-back sequence value looks exactly like a deleted record).
+17. **Anchoring never changes `record_hash`;** anchors live in their own append-only table. Store the exact canonical bytes that were hashed; never re-serialize to verify.
+18. **No network call inside the chain-lock transaction;** plan (read) → submit (network) → record (write).
+19. **Revocation `UNKNOWN` is never `CLEAN`:** timeouts, errors and stale responses are UNKNOWN. An unreachable transparency log is never a pass, and the log key is pinned in production.
+20. **Canonicalization is RFC 8785 (JCS),** proven against the ported vectors; refuse integers beyond ±(2^53 − 1) and NaN instead of rounding. Node `pg` returns `bigint` as a string: convert `seq` explicitly.
+21. **Guard triggers under RLS** run as the calling role: make them `SECURITY DEFINER` with a fixed `search_path`, and block TRUNCATE as well as UPDATE and DELETE.
 
 ---
 
