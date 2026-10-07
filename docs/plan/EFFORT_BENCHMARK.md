@@ -32,5 +32,5 @@ In the handoff's Effort table: estimate, actual, agent turns (or prompts), wall-
 
 ```text
 Agent   Session              Estimate  Actual   Main cause of the gap
-Claude  docs/adopt-agent-kit  0.06x    0.05x    (by turns)
+Claude  adopt-agent-kit       0.06x    0.06x    by turns; one review round on draft project slots
 ```

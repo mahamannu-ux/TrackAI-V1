@@ -12,7 +12,7 @@ The founder pastes that request, and nothing else, to the reviewer:
 - **A Muse branch handed out by a Codex lead** (AGENTS.md §12.8): that Codex thread.
 - **A GitAI branch:** the same pairing; the repository is `~/AIProjects/git-ai` (GitHub `mahamannu-ux/git-ai`), the base is `origin/main` (the fork, never `upstream/main`), and the gates are `task test`, `task build`, `task lint` plus GitAI's own `AGENTS.md`.
 
-The reviewer reads this file from `~/AIProjects/TrackAI-v1`; the copy on `main` is authoritative. Nothing is attached, and this file is never edited per review. The procedure is the same whichever agent reviews.
+The reviewer reads this file from `~/AIProjects/TrackAI-v1`; the copy on `main` is authoritative. **One-time bootstrap exception (`docs/adopt-agent-kit` only):** this file did not exist on `main` yet, so that review used the copy on the branch, and the session prompt was the founder's setup brief in the orchestrator chat (summarized in `docs/handoffs/adopt-agent-kit_HANDOFF.md`) rather than a file in `docs/prompts/`. Nothing is attached, and this file is never edited per review. The procedure is the same whichever agent reviews.
 
 ---
 

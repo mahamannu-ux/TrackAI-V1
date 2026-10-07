@@ -18,7 +18,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task7–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance) | Claude | — | ⬜ | ⬜ | Context for the primer, after setup stage 3 |
-| Kit adoption | Claude | `docs/adopt-agent-kit` | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `scripts/it-db.sh` verified in the agent sandbox | Run the adoption block, then Codex reviews |
+| Kit adoption | Claude | `docs/adopt-agent-kit` | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | Codex re-review of the fix commit, then push |
 
 Rules: symbols per AGENTS.md §11; "n/a: none needed" when a Task has no integration tests; the founder's run, never the sandbox, makes integration ✅.
 
@@ -30,14 +30,14 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 
 | # | Session | Agent | Estimate | Actual | Starts when | Prompt |
 |---|---|---|---|---|---|---|
-| 1 | docs/adopt-agent-kit: AGENTS.md, CLAUDE.md, procedures, templates, status board, benchmark, npm gates, worktree and integration scripts | Claude | about 0.06× | about 0.05× (by turns) | now | (setup brief) |
+| 1 | docs/adopt-agent-kit: AGENTS.md, CLAUDE.md, procedures, templates, status board, benchmark, npm gates, worktree and integration scripts | Claude | about 0.06× | about 0.06× (by turns) | now | (setup brief) |
 | 2 | Dry run, Codex: a tiny housekeeping item in its first worktree | Codex | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 3 | Dry run, Muse: a tiny housekeeping item in OpenCode | Muse | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 4 | Dry run, Claude: a tiny housekeeping item in a separate session | Claude | about 0.01× | | #1 merged | `docs/prompts/` (to write) |
 | 5 | Project map, reuse map, AGENTS.md project slots (stage 2) | Claude (orchestrator) | about 0.05× | | #2–#4 merged | — |
 | 6 | Task15 Attesta: primer, then sessions | Claude first | (primer decides) | | stage 2 done | — |
 
-**Actuals:** <one sentence per finished session where actual ≠ estimate: the cause.>
+**Actuals:** adopt-agent-kit ran on estimate by turns, plus one cross-review fix round (draft project slots that did not match the code).
 
 ---
 

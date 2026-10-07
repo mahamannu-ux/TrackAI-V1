@@ -23,7 +23,7 @@ TrackAI is an AI code provenance, security, attribution and engineering-producti
 
 TrackAI-wide hard rules (from Task2–Task6; *draft, Codex to confirm*):
 
-6. **Raw customer content is sensitive IP.** Raw prompts, responses, tool payloads and commands are never returned by dashboard APIs, never logged, never put in fixtures or docs. Use synthetic fixtures only.
+6. **Raw customer content is sensitive IP.** Raw prompts, responses, tool payloads and commands are never returned by ordinary APIs, never logged, never put in documentation and never in non-synthetic fixtures. The one deliberate exception is Task5's raw reveal: off by default, tenant-bound, limited to approved administrator/auditor roles, explicitly requested per event, audited and sent `no-store`. Do not widen it or add another path without a founder decision.
 7. **Honest states.** Keep observed vs audited, detected vs blocked, zero vs `Unavailable`, exact vs confidence-based linkage distinct. Monitor-only evidence is never described as prevention.
 8. **Task2 owns lifecycle metric semantics** (Generated, Committed, In-PR, Merged, Production, Reworked, Churned). No other Task redefines them without an explicit cross-Task change.
 9. **The server is authoritative.** Client filtering, disabled buttons and previews never replace tenant-bound server enforcement and audit.
@@ -56,7 +56,12 @@ docs/                project documents, never code:
   TASK*_*.md         Task design and evidence documents written before the kit (kept in place)
 ```
 
-The root also holds the pre-kit planning documents, kept where they are because many documents link them: `ROUGH_ROADMAP.md` (portfolio index), the Task trackers (`Task2.md`, `TASK4.md`, `TASK5.md`, `TASK6_SECURITY.md`, `TASK6_POLICY.md`, `TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`, `AGENT_COVERAGE.md` for Task13, `TASK14.md`), runbooks and `prod-checklist-for-dummies.md`. New Task trackers go in `docs/plan/`. Besides those, only `AGENTS.md`, `CLAUDE.md`, `Makefile` and the npm manifests live in the root.
+The root also holds pre-kit files, kept where they are because many documents link them:
+- planning: `ROUGH_ROADMAP.md` (portfolio index), the Task trackers (`Task2.md`, `TASK4.md`, `TASK5.md`, `TASK6_SECURITY.md`, `TASK6_POLICY.md`, `TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`, `AGENT_COVERAGE.md` for Task13, `TASK14.md`), `TASK1_RUNBOOK.md`, `TASK2_RUNBOOK.md`, `prod-checklist-for-dummies.md`;
+- `.ai-blueprint.md` (an early architecture note; partly outdated, the code wins), `.gitignore`, `.github/`, `supabase/`;
+- `package.json`, `package-lock.json`.
+
+New Task trackers go in `docs/plan/`. Besides the files above, only `AGENTS.md`, `CLAUDE.md` and `Makefile` are added to the root.
 
 ---
 
@@ -71,7 +76,7 @@ Each agent works in its own **git worktree** on its own branch, never in the mai
 | GitAI worktree | `~/AIProjects/TrackAI-wt/<name>-gitai`, made with `make gitai-worktree M=<name>` (from the TrackAI main checkout) |
 | Task ID | `Task<N>`; a session within it `Task<N><letter>` (`Task15a`, `Task15b`) |
 | Branch | `task/<name>`, where `<name>` is `<ID>-<slug>` (`task/Task15a-attesta-chain`); GitAI: `task/<name>-gitai`; docs-only: `docs/<name>` |
-| Commit message | `<ID>: <imperative summary>` |
+| Commit message | `<ID>: <imperative summary>`; docs-only sessions use the session name (`adopt-agent-kit: …`) |
 | PR title | `[<ID>] <Task name>` |
 | PR body | The session's handoff file |
 
@@ -83,8 +88,24 @@ Commit at each stage. Rebase on `main` before handing off. Never force-push a br
 
 ## 4. Task ownership [PROJECT SLOT] (*draft, Codex to confirm*)
 
-| ID | Directories | Task |
+Ownership is by **concern and file**, not by whole directory: several directories hold more than one Task's code (for example `features/telemetry/` holds Task2 metric code and Task4 delivery and enforcement code). When in doubt, the `task<N>-*` file prefix, the Task tracker and `git log` for the file decide; if they disagree, ask.
+
+| Concern | Owning Task | Where it lives (main files) |
 |---|---|---|
+| Lifecycle **metric semantics** (Generated … Churned), PR matching, lifecycle projections and rebuilds | Task2 + Lifecycle Lab | `features/telemetry/{lifecycle,model-lifecycle,pr-matching,authorship-note,decoder,service,read.routes}.ts`, `features/telemetry/task2-*`, `features/scm/{lifecycle-service,parser,provider-event}.ts` |
+| **Transport and security** around that flow: durable delivery, idempotency, watermarks, repository enforcement and scope, provider delivery ledger, webhook crypto, GitHub App credentials | Task4 | `features/telemetry/{ingest.routes,repository-enforcement,repository-scope,repository-url,watermark-policy,audit}.ts`, `features/scm/{provider-delivery-store,crypto,github-app}.ts`, every `task4-*` file |
+| Identity, credentials, encryption, grants, admin, retention, export, monitoring | Task4 | `core/security/`, `core/operations/`, `core/middleware/`, `features/admin/`, `features/operations/` |
+| Evidence taxonomy, ingestion, graph, raw reveal, analytics, semantic search | Task5 | `features/evidence/`, `features/telemetry/opencode-evidence.ts`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` |
+| Coding-agent security findings (monitor-only) | Task6 Security | `features/security-findings/`, `docs/contracts/task6/`; GitAI security evaluator |
+| Organization policy engine | Task6 Policy (deferred) | none yet |
+| Route and surface coverage | Task13 | `AGENT_COVERAGE.md`; adapters mostly in GitAI |
+| Signed provenance attestation | Task15 Attesta | named in its first prompt |
+| Task7–Task12, Task14 | see `ROUGH_ROADMAP.md` | none yet |
+| **Shared** (changed only when the prompt pre-approves it) | — | `core/db/schema.ts`, `core/db/tenant.ts`, `apps/api/src/index.ts`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/lib/` |
+
+Paths are under `apps/api/src/` unless shown otherwise.
+
+---|---|---|
 | Task2 + Lab | `apps/api/src/features/telemetry/`, `apps/api/src/features/scm/` (lifecycle, PR matching) | Lifecycle metrics and SCM correctness; the permanent Lifecycle Correctness Lab |
 | Task4 | `apps/api/src/core/security/`, `apps/api/src/core/operations/`, `apps/api/src/core/middleware/`, `apps/api/src/features/admin/`, `apps/api/src/features/operations/` | Robustness, security, administration, operations |
 | Task5 | `apps/api/src/features/evidence/`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` | Evidence Explorer and intention intelligence |
@@ -162,14 +183,17 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 8. **A green command is not a correct metric.** Lifecycle changes need the Lifecycle Lab's controlled scenarios, not just unit tests.
 9. **Activation is fail-closed and tenant/repository-bound** (Task6). Off, disconnected, expired and restarted states produce no finding and no upload.
 10. **Destructive and revocation actions are dry-run first, with exact scope stated**; never rotate or revoke a credential without an explicit confirmation step.
+11. **Task6 support boundary.** Only the observe-only OpenCode terminal/TUI route on macOS (`AC-CLI-03`) is validated. D6.1 (Policy-owned, signed, machine-bound activation) blocks production activation; D6.2 (Linux, Windows, WSL, other agents and surfaces) blocks any wider route or platform claim. Never describe more than that.
+12. **Task5 raw reveal stays default-off and restricted** (rule 6): tenant opt-in, approved roles, per-event request, audit, `no-store`.
+13. **Sandbox failures are not product failures.** In an agent sandbox, `npm ci` can end with npm's "Exit handler never called" while the log shows DNS denial, and a local PostgreSQL can fail with `shmget`. Classify these as sandbox failures, and retry only that exact command with command-scoped permission (or hand it to the founder); do not change code or configuration to get around them.
 
 ---
 
 ## 10. Style [PROJECT SLOT] (*draft, Codex to confirm*)
 
-- TypeScript `strict`; ES2022; the API builds to CommonJS. Tests use `node:test` via `tsx` and live beside the code (`*.test.ts`), registered in `apps/api/package.json`'s `test` script.
-- Database access through Drizzle in `core/db` and the feature services, not in route handlers; tenant-owned access through `withTenant()`.
-- Routes: `/worker/*` for machine-authenticated GitAI uploads, `/api/*` for JWT plus tenant middleware, `/api/admin/*` for administrators.
+- TypeScript `strict` in both apps. The API targets ES2022 and builds to CommonJS; the web app targets ES2017 with ESNext modules (Next.js). API tests use `node:test` via `tsx` and live beside the code (`*.test.ts`), registered in `apps/api/package.json`'s `test` script; the web app has no unit tests yet.
+- Database access: Drizzle. Some existing routes query directly (`features/telemetry/read.routes.ts`, `features/scm/scm.routes.ts`); **new code puts queries in the feature service** and keeps route handlers thin. Tenant-owned access goes through `withTenant()`.
+- Routes (`apps/api/src/index.ts`): `/health` (unauthenticated); `/api/v1/webhooks/*` (raw body, provider signature verification); `/worker/*` (machine-authenticated GitAI uploads, including `/worker/security` and `/worker/evidence`); `/api/*` (Supabase JWT plus tenant middleware); `/api/admin/*` (administrators).
 - HTTP responses with sensitive data send `Cache-Control: no-store` and safe error codes, never raw values.
 - Comments explain why. Docs in plain language, short tables, stable IDs.
 - Existing trackers keep their legend (🟢 ✅ / 🟡 ◐ / 🔴 ☐ / ⚪ —); new documents use §11's three symbols (✅ = 🟢 ✅, 🟡 = 🟡 ◐, ⬜ = 🔴 ☐, n/a = ⚪ —).
