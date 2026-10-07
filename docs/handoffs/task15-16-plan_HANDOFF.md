@@ -2,7 +2,7 @@
 
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
 
-Branch `docs/task15-16-plan` (stacked on `docs/codex-task-lead` at `21f989f`; merge that PR first). Prompt: `docs/prompts/NEXT_CHAT_task15-16-plan_PROMPT.md`.
+Branch `docs/task15-16-plan` (base: `main` at `1911626`; it also carries the `codex-task-lead` commit, so one PR delivers both). Prompt: `docs/prompts/NEXT_CHAT_task15-16-plan_PROMPT.md`.
 
 ## At a glance
 | | Item | Status |
@@ -17,9 +17,9 @@ Branch `docs/task15-16-plan` (stacked on `docs/codex-task-lead` at `21f989f`; me
 ## Founder decisions needed
 | Status | Item | Blocks |
 |---|---|---|
-| ⬜ **FOUNDER:** | Buy-in on `TASK15.md` §1 (R1–R11) | Task15c contract and every Claude Attesta session |
-| ⬜ **FOUNDER:** | New dependency `canonicalize` (Task15a) | Task15a |
-| ⬜ **FOUNDER:** | `TASK16.md` §1 (D1–D5) | Task16b onward |
+| ✅ | ~~Buy-in on `TASK15.md` §1 (R1–R11)~~ approved 2026-10-08 | — |
+| ✅ | ~~New dependency `canonicalize` (Task15a)~~ approved 2026-10-08 | — |
+| ✅ | ~~`TASK16.md` §1 (D1–D5)~~ approved 2026-10-08 | — |
 
 ## Known limitations
 | Status | Limitation | Impact |

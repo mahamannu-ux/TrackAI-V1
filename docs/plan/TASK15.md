@@ -1,6 +1,6 @@
 # Task15 — Attesta: signed AI-code provenance and the shared trust layer
 
-*Tracker and plan. Written 2026-10-08 by TrackAI-Orchestrator from the founder's brief (`docs/founder/ATTESTA_BRIEF.md`), `docs/plan/REUSE_MAP.md` and the code. Symbols per AGENTS.md §11. Section 1 waits for the founder's buy-in; sections 3–5 assume the recommendations in section 1 and say where a "no" would change them.*
+*Tracker and plan. Written 2026-10-08 by TrackAI-Orchestrator from the founder's brief (`docs/founder/ATTESTA_BRIEF.md`), `docs/plan/REUSE_MAP.md` and the code. Symbols per AGENTS.md §11. The founder approved section 1 on 2026-10-08 (section 7).*
 
 **In one paragraph.** For every commit and pull request TrackAI already knows, from Task2, which lines were AI-assisted, by which agent and model, in which session, who committed and who merged, and under which policy. Attesta turns that knowledge into **evidence a third party can check without trusting TrackAI**: a signed statement per commit and PR, kept in a tamper-evident ledger, timestamped by an independent authority and anchored in a public transparency log, and exportable as an evidence pack with an offline verifier. Attesta also owns the signer, key hierarchy, rotation and revocation that Task6 (signed activation, policy bundles), Task9 and Task14 reuse.
 
@@ -8,7 +8,7 @@
 
 ---
 
-## 1. Business review of the brief (founder buy-in needed)
+## 1. Business review of the brief (approved 2026-10-08)
 
 The brief is strong on the wedge: generation-time provenance that scanners (SCANOSS, FOSSA, Sonar) cannot see, built on Sigstore rather than around it. Recommended changes:
 
@@ -136,4 +136,6 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 
 ## 7. Founder decisions
 
-<Filled when the founder answers section 1 and the dependency question (`canonicalize` for A15.1; AWS/Google KMS SDKs for A15.6).>
+1. **2026-10-08:** business review R1–R11 approved as written; architecture decisions in §2 approved.
+2. **2026-10-08:** dependency `canonicalize` approved for A15.1. AWS and Google Cloud KMS SDKs (A15.6) to be confirmed when that session starts.
+3. **2026-10-08:** phase 2 (A15.P2) may be deferred until after the first customer; it starts on a customer trigger, not on the calendar.

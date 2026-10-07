@@ -6,7 +6,7 @@
 
 **Customer story.** Dana is the internal auditor at Acme. She signs in with an auditor invitation that expires after the audit. She opens **Audit** (not Administration), filters "credential revocations and raw-evidence reveals in Q3", sees who did what, when, to which machine or repository, and why. She exports the result as a signed evidence pack and verifies it offline, including that no event was deleted. She can change nothing.
 
-## 1. Decisions for the founder (recommendations)
+## 1. Decisions (approved 2026-10-08)
 | # | Question | Recommendation |
 |---|---|---|
 | D1 | Is Task16 a separate Task from Attesta? | Yes (founder, 2026-10-08); it consumes Attesta's ledger and evidence-pack format rather than building its own. |
@@ -89,4 +89,4 @@ flowchart LR
 | Task16g-audit-db-role | A16.10 | Claude | 0.05× | after 16d |
 
 ## 5. Founder decisions
-<Filled when the founder answers section 1.>
+1. **2026-10-08:** D1–D5 approved as recommended.

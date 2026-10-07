@@ -17,8 +17,8 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
-| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Answer `docs/plan/TASK15.md` §1 and §7; start Muse on Task15a and Task15b |
-| Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Answer `docs/plan/TASK16.md` §1; start Muse on Task16a |
+| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task15a and Task15b; then the Task15 lead chat |
+| Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
 | Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
 | Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass; independent review ready | n/a: none needed | Founder pushes and opens PR |
 | Dry run: web dead view (B14) | Muse | `task/dryrun-web-dead-view` | ⬜ not started | n/a: none needed | Founder starts Muse from Codex's prompt after API PR merges |
