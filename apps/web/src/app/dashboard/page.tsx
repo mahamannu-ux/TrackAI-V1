@@ -6,8 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { EvidenceWorkspace } from './evidence-workspace';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
-  getEvidenceExplanation, getEvidenceFriction, getEvidenceRaw, getEvidenceSemanticHealth, getEvidenceSettings, searchEvidenceIntentions,
-  setEvidenceCollection,
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
   getSessions, getAdminContext, getAdminAudit, getAdminBackfillAuthorizations,
@@ -24,12 +22,11 @@ import {
   type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
   type AdminRepositoryResources, type AdminSecurityFindingResources,
   type CommitListItem, type Contributor, type DashboardSummary,
-  type EvidenceExplanation, type EvidenceGraphNode, type EvidenceSearchResult, type EvidenceSemanticHealth,
   type EvidenceFlowNode, type EvidenceFlowResponse, type LifecycleResponse,
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
 
-type View = 'workspace' | 'lifecycle' | 'evidence' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
+type View = 'workspace' | 'lifecycle' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration';
 type Detail = { kind: 'session' | 'commit' | 'pullRequest'; data: Record<string, any> } | null;
 
 const navigation: Array<{ id: View; label: string }> = [
@@ -149,131 +146,6 @@ function EvidenceFlow({ flow }: { flow: EvidenceFlowResponse }) {
   return <div className="space-y-4">{rendered}</div>;
 }
 
-function EvidenceExplorer({ commits, repositories, sessions, models, adminContext, openCommit }: {
-  commits: CommitListItem[];
-  repositories: Repository[];
-  sessions: SessionListItem[];
-  models: TelemetryModel[];
-  adminContext: AdminContext | null;
-  openCommit: (id: string) => void;
-}) {
-  const [commitId, setCommitId] = useState(commits[0]?.id ?? '');
-  const [explanation, setExplanation] = useState<EvidenceExplanation | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<EvidenceSearchResult[]>([]);
-  const [searchFilters, setSearchFilters] = useState({
-    repositoryId: '', commitId: '', sessionId: '', tool: '', model: '', path: '',
-  });
-  const [raw, setRaw] = useState<Record<string, unknown>>({});
-  const [settings, setSettings] = useState<{ rawCollectionEnabled: boolean; retentionDays: number } | null>(null);
-  const [semanticHealth, setSemanticHealth] = useState<EvidenceSemanticHealth | null>(null);
-  const [friction, setFriction] = useState<Array<Record<string, unknown>>>([]);
-  const [settingsBusy, setSettingsBusy] = useState(false);
-  const canReadRaw = adminContext?.membership?.status === 'active';
-  const canManageConsent = adminContext?.membership?.role === 'tenant_admin'
-    && adminContext.membership.status === 'active';
-
-  useEffect(() => {
-    if (!commitId && commits[0]) setCommitId(commits[0].id);
-  }, [commitId, commits]);
-
-  useEffect(() => {
-    if (!commitId) return;
-    setLoading(true); setError(null); setRaw({});
-    void getEvidenceExplanation(commitId).then(setExplanation)
-      .catch(cause => setError(cause instanceof Error ? cause.message : 'Evidence unavailable'))
-      .finally(() => setLoading(false));
-  }, [commitId]);
-
-  useEffect(() => {
-    if (!canReadRaw) return;
-    void getEvidenceSettings().then(value => setSettings({
-      rawCollectionEnabled: value.rawCollectionEnabled,
-      retentionDays: value.retentionDays,
-    })).catch(() => setSettings(null));
-    void getEvidenceSemanticHealth().then(setSemanticHealth).catch(() => setSemanticHealth(null));
-  }, [canReadRaw]);
-
-  useEffect(() => {
-    void getEvidenceFriction().then(value => setFriction(value.sessions)).catch(() => setFriction([]));
-  }, []);
-
-  async function runSearch() {
-    if (search.trim().length < 2) return;
-    setError(null);
-    try { setSearchResults((await searchEvidenceIntentions(search.trim(), searchFilters)).results); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Search unavailable'); }
-  }
-
-  async function reveal(node: EvidenceGraphNode) {
-    try {
-      const value = await getEvidenceRaw(node.id);
-      setRaw(current => ({ ...current, [node.id]: value }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Raw evidence unavailable'); }
-  }
-
-  async function toggleCollection() {
-    if (!settings || !canManageConsent) return;
-    setSettingsBusy(true); setError(null);
-    try {
-      await setEvidenceCollection(!settings.rawCollectionEnabled);
-      setSettings({ ...settings, rawCollectionEnabled: !settings.rawCollectionEnabled });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Consent update failed'); }
-    finally { setSettingsBusy(false); }
-  }
-
-  const eventNodes = explanation?.graph.nodes.filter(node => node.type === 'event') ?? [];
-  const supportingNodes = explanation?.graph.nodes.filter(node => node.type !== 'event') ?? [];
-  const stateTone = (state: string): 'green' | 'amber' | 'violet' | 'slate' => state === 'observed'
-    ? 'green' : state === 'corrected' ? 'violet' : state === 'inferred' ? 'amber' : 'slate';
-
-  return <div className="space-y-5">
-    <div className="grid gap-4 xl:grid-cols-[2fr,1fr]">
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-        <div className="flex flex-wrap items-end gap-3"><label className="min-w-0 flex-1 text-xs uppercase tracking-wider text-slate-500">Start from a commit<select value={commitId} onChange={event => setCommitId(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm normal-case tracking-normal text-slate-200">{commits.map(commit => <option key={commit.id} value={commit.id}>{commit.sha.slice(0, 8)} · {commit.subject}</option>)}</select></label><button disabled={!commitId} onClick={() => openCommit(commitId)} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300">Commit details</button></div>
-      </div>
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-        <div className="text-xs uppercase tracking-wider text-slate-500">Raw OpenCode collection</div>
-        <div className="mt-2 flex items-center justify-between gap-3"><div><div className="text-sm text-white">{settings ? settings.rawCollectionEnabled ? 'Enabled' : 'Disabled' : canReadRaw ? 'Unavailable' : 'Admin access required'}</div>{settings && <div className="text-xs text-slate-500">Encrypted · {settings.retentionDays}-day retention</div>}</div>{canManageConsent && settings && <button disabled={settingsBusy} onClick={() => void toggleCollection()} className={`rounded-lg px-3 py-2 text-xs ${settings.rawCollectionEnabled ? 'border border-rose-500/40 text-rose-200' : 'bg-violet-600 text-white'}`}>{settings.rawCollectionEnabled ? 'Disable' : 'Enable'}</button>}</div>
-        {semanticHealth && <div className="mt-3 border-t border-slate-800 pt-3 text-xs text-slate-500">Semantic index: {semanticHealth.availableIntentions}/{semanticHealth.intentions} intentions · {semanticHealth.jobs.pending} pending · {semanticHealth.dimensions} dimensions</div>}
-      </div>
-    </div>
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-      <div className="flex gap-2"><input value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void runSearch(); }} placeholder="Search intentions, for example: reduce login failures" className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm"/><button onClick={() => void runSearch()} className="rounded-lg bg-violet-600 px-4 py-2 text-sm text-white">Search intentions</button></div>
-      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-        <select aria-label="Repository filter" value={searchFilters.repositoryId} onChange={event => setSearchFilters(current => ({ ...current, repositoryId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All repositories</option>{repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name}</option>)}</select>
-        <select aria-label="Commit filter" value={searchFilters.commitId} onChange={event => setSearchFilters(current => ({ ...current, commitId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All commits</option>{commits.map(commit => <option key={commit.id} value={commit.id}>{commit.sha.slice(0, 8)} · {commit.subject}</option>)}</select>
-        <select aria-label="Session filter" value={searchFilters.sessionId} onChange={event => setSearchFilters(current => ({ ...current, sessionId: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All sessions</option>{sessions.map(session => <option key={session.id} value={session.id}>{session.displayName ?? session.externalSessionId}</option>)}</select>
-        <select aria-label="Tool filter" value={searchFilters.tool} onChange={event => setSearchFilters(current => ({ ...current, tool: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All tools</option>{[...new Set(models.map(model => model.tool))].map(tool => <option key={tool} value={tool}>{tool}</option>)}</select>
-        <select aria-label="Model filter" value={searchFilters.model} onChange={event => setSearchFilters(current => ({ ...current, model: event.target.value }))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"><option value="">All models</option>{[...new Set(models.flatMap(model => model.model ? [model.model] : []))].map(model => <option key={model} value={model}>{model}</option>)}</select>
-        <input aria-label="File path filter" value={searchFilters.path} onChange={event => setSearchFilters(current => ({ ...current, path: event.target.value }))} placeholder="File path contains…" className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-2 text-xs"/>
-      </div>
-      {searchResults.length > 0 && <div className="mt-4 grid gap-2 md:grid-cols-2">{searchResults.map(result => <button key={result.id} onClick={() => { const linked = commits.find(commit => result.commitIds.includes(commit.id)); if (linked) setCommitId(linked.id); }} className="rounded-lg border border-slate-800 p-3 text-left"><div className="text-sm text-white">{result.text}</div><div className="mt-2 flex flex-wrap gap-2"><Badge tone={stateTone(result.evidenceState)}>{result.evidenceState}</Badge><Badge tone="slate">{result.match}</Badge><span className="text-xs text-slate-500">{result.matchReasons.join(' + ')}{result.lexicalRank ? ` · lexical #${result.lexicalRank}` : ''}{result.vectorRank ? ` · semantic #${result.vectorRank}` : ''}</span></div></button>)}</div>}
-    </div>
-    <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-      <div><h2 className="font-semibold text-white">Workflow friction signals</h2><p className="mt-1 text-sm text-slate-500">System and workflow evidence only—not employee scoring.</p></div>
-      {friction.length ? <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{friction.slice(0, 6).map(row => <div key={String(row.sessionId)} className="rounded-lg border border-slate-800 p-3"><div className="truncate text-xs text-slate-500">Session {String(row.sessionId).slice(0, 12)}</div><div className="mt-2 text-sm text-slate-300">{Number(row.failedToolCalls ?? 0)} failed · {Number(row.retries ?? 0)} retries · {Number(row.slowToolCalls ?? 0)} slow · {Number(row.promptLoops ?? 0)} prompt loops</div><div className="mt-1 text-xs text-slate-500">{Number(row.reworkedLines ?? 0)} reworked lines{row.weakOutcome ? ' · no linked commit outcome' : ''}{row.abandoned ? ' · abandoned' : ''}</div></div>)}</div> : <div className="mt-3 text-sm text-slate-500">No OpenCode friction evidence is available yet.</div>}
-    </section>
-    {error && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div>}
-    {loading && <div className="rounded-xl border border-slate-800 p-6 text-slate-500">Building the evidence story…</div>}
-    {!loading && explanation && <>
-      <section className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-6">
-        <div className="flex items-center justify-between"><div><div className="text-xs uppercase tracking-[0.2em] text-violet-300">Plain-language explanation</div><h2 className="mt-2 text-xl font-semibold text-white">Why does this code exist?</h2></div>{explanation.intention.evidenceState && <Badge tone={stateTone(explanation.intention.evidenceState)}>{explanation.intention.evidenceState}</Badge>}</div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <div><div className="text-xs uppercase text-slate-500">Intention</div><div className="mt-1 text-slate-200">{explanation.intention.text ?? 'Unavailable — no explicit or safely inferred intention was captured.'}</div>{explanation.intention.confidence !== null && <div className="mt-1 text-xs text-slate-500">Confidence {explanation.intention.confidence}%</div>}</div>
-          <div><div className="text-xs uppercase text-slate-500">Outcome</div><div className="mt-1 text-slate-200">{explanation.outcome}</div></div>
-          <div><div className="text-xs uppercase text-slate-500">Friction</div><div className="mt-1 text-sm text-slate-300">{explanation.friction.toolCalls} tool calls · {explanation.friction.failedTools} failed · {explanation.friction.slowTools} slow · {explanation.friction.reworkSignals} reworked lines · {explanation.friction.unavailableEvidence} unavailable/redacted items</div></div>
-          <div><div className="text-xs uppercase text-slate-500">Learnings / open items</div><div className="mt-1 text-sm text-slate-300">{[...explanation.learnings, ...explanation.openItems].join(' ')}</div></div>
-        </div>
-      </section>
-      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><div><h2 className="font-semibold text-white">Supporting evidence</h2><p className="mt-1 text-sm text-slate-500">GitAI identities stay separate. Lines show the evidence basis—not invented causality.</p></div><div className="mt-5 space-y-3">{supportingNodes.sort((a, b) => (a.occurredAt ?? '').localeCompare(b.occurredAt ?? '')).map(node => <div key={`${node.type}:${node.id}`} className="flex items-start justify-between gap-4 rounded-lg border border-slate-800 p-3"><div><div className="text-sm text-white">{node.label}</div><div className="mt-1 text-xs text-slate-500">{node.type.replace('_', ' ')}{node.occurredAt ? ` · ${date(node.occurredAt)}` : ''}</div></div><div className="flex gap-2"><Badge tone={stateTone(node.evidenceState)}>{node.evidenceState}</Badge>{node.availability !== 'available' && <Badge tone="amber">{node.availability}</Badge>}</div></div>)}</div></section>
-      <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><div><h2 className="font-semibold text-white">Provider timeline</h2><p className="mt-1 text-sm text-slate-500">Raw content stays closed until an approved administrator or auditor explicitly opens an item.</p></div><div className="mt-5 space-y-3">{eventNodes.length ? eventNodes.map(node => <div key={node.id} className="rounded-lg border border-slate-800 p-4"><div className="flex items-start justify-between gap-4"><div><div className="text-sm text-white">{node.label}</div><div className="mt-1 text-xs text-slate-500">{date(node.occurredAt ?? null)} · {String(node.data?.model ?? 'model unavailable')}</div></div><div className="flex gap-2"><Badge tone={stateTone(node.evidenceState)}>{node.evidenceState}</Badge>{canReadRaw && node.availability !== 'unavailable' && node.availability !== 'expired' && !raw[node.id] && <button onClick={() => void reveal(node)} className="rounded border border-violet-500/40 px-2 py-1 text-xs text-violet-200">Open raw</button>}</div></div>{raw[node.id] !== undefined && <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-xs text-slate-300">{JSON.stringify(raw[node.id], null, 2)}</pre>}</div>) : <div className="text-sm text-slate-500">No centrally stored OpenCode events are available for the linked sessions.</div>}</div></section>
-    </>}
-  </div>;
-}
-
 function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: () => void; openLinked: (kind: 'session' | 'commit', id: string) => void }) {
   const [evidence, setEvidence] = useState<EvidenceFlowResponse | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
@@ -301,7 +173,6 @@ function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: ()
       {detail.kind === 'pullRequest' && data.mergeResult && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Merge result</h3><button onClick={() => openLinked('commit', data.mergeResult.id)} className="block w-full rounded-lg border border-violet-500/30 bg-violet-500/5 p-3 text-left text-sm text-slate-300 hover:border-violet-400"><span className="font-mono text-violet-300">{data.mergeResult.sha?.slice(0, 12)}</span> {data.mergeResult.subject}<span className="ml-2 text-xs text-slate-500">{data.mergeResult.operationKind}</span></button></section>}
       {Array.isArray(data.commits) && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Commits</h3><div className="space-y-2">{data.commits.map((row: any) => <button key={row.id} onClick={() => openLinked('commit', row.id)} className="block w-full rounded-lg border border-slate-800 p-3 text-left text-sm text-slate-300 hover:border-violet-500/50"><span className="font-mono text-violet-300">{row.sha?.slice(0, 8)}</span> {row.subject}</button>)}</div></section>}
       {Array.isArray(data.sessions) && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Sessions</h3><div className="space-y-2">{data.sessions.map((row: any) => <button key={row.id} onClick={() => openLinked('session', row.id)} className="block w-full rounded-lg border border-slate-800 p-3 text-left text-sm text-slate-300 hover:border-violet-500/50">{row.externalSessionId} · {row.agent}</button>)}</div></section>}
-      {detail.kind === 'session' && <section className="mt-7"><h3 className="font-semibold text-white">Deferred raw analytics</h3><div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-500">{['Traces', 'Checkpoints', 'Tool calls', 'Prompts'].map((label) => <div key={label} className="rounded-lg border border-dashed border-slate-800 p-3">{label}: Task2</div>)}</div></section>}
     </aside>
   </div>;
 }
@@ -866,7 +737,6 @@ export default function DashboardPage() {
           <EvidenceWorkspace repositories={repositories} models={models} adminContext={adminContext} />
         </div>
         {view === 'lifecycle' && <LifecycleFlow data={lifecycle} />}
-        {view === 'evidence' && <EvidenceExplorer commits={commits} repositories={repositories} sessions={sessions} models={models} adminContext={adminContext} openCommit={(id) => void openDetail('commit', id)} />}
         {view === 'sessions' && <TableShell headers={['Session', 'Agent / model', 'Repository', 'Retained / historical commits', 'Tokens', 'Status']}>
           {filteredSessions.sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')).map((row) => <tr key={row.id} onClick={() => void openDetail('session', row.id)} className="cursor-pointer hover:bg-slate-800/40"><td className="px-5 py-4"><div className="font-medium text-white">{row.displayName ?? 'Unnamed session'}</div><div className="mt-1 font-mono text-xs text-slate-500">{row.externalSessionId}</div></td><td className="px-5 py-4"><div>{row.agent}</div><div className="text-xs text-slate-500">{row.models.auditedValue.join(', ') || 'Unknown'} {row.models.corrected && <Badge tone="violet">corrected</Badge>}</div></td><td className="px-5 py-4 text-slate-400">{row.repositories.map((repo) => repo.name).join(', ') || '—'}</td><td className="px-5 py-4">{row.retainedCommitCount} / {row.historicalCommitCount}</td><td className="px-5 py-4">{compact(row.totalTokens)}</td><td className="px-5 py-4"><Badge tone={row.status === 'shipped' ? 'green' : 'amber'}>{row.status}</Badge></td></tr>)}</TableShell>}
         {view === 'commits' && <TableShell headers={['Commit', 'Repository', 'Author', 'Lifecycle', 'Sessions', 'Final AI', 'Human']}>
