@@ -22,12 +22,25 @@ Copy to `docs/plan/primers/<TaskN>_PRIMER.md` when a Task starts, before any ses
 ## The pieces (waves and subtasks)
 One row per subtask. **Value** is what the customer notices; **Size** is the estimate against T6 (1.0× = all of Task6.a); **Could we…** gives the cheaper option if there is one.
 
-| # | Piece, in plain words | Example of what it does | Value to the customer | Size | Could we simplify or defer it? What would we lose? | Founder: keep / simplify / defer / reorder |
-|---|---|---|---|---|---|---|
-| 1 | <subtask> | <tiny example> | <high / medium / low, and why> | about 0.1× | <option and what is lost> | |
+| # | Piece, in plain words | Example of what it does | Value to the customer | Size | Who (Codex / Muse / founder-live) | Could we simplify or defer it? What would we lose? | Founder: keep / simplify / defer / reorder |
+|---|---|---|---|---|---|---|---|
+| 1 | <subtask> | <tiny example> | <high / medium / low, and why> | about 0.1× | Muse | <option and what is lost> | |
 
-## Order and dependencies
-<Which pieces must come first and why, in two or three sentences. Which pieces can run in parallel on different agents.>
+## Sub-task graph
+```mermaid
+flowchart LR
+  subgraph Codex
+    A[1 piece]
+  end
+  subgraph Muse
+    B[2 piece]
+  end
+  subgraph Founder-live
+    C[3 live check]
+  end
+  A --> B --> C
+```
+<Critical path in one line; what can start at once in one line. An arrow means "must finish before".>
 
 ## What we reuse
 <What comes from SushiCorp or elsewhere, in plain words ("the tamper-evident log SushiCorp already built and tested"), and what is new.>
