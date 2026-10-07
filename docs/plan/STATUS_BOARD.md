@@ -37,7 +37,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 5 | Project map, reuse map, AGENTS.md project slots (stage 2) | Claude (orchestrator) | about 0.05× | | #2–#4 merged | — |
 | 6 | Task15 Attesta: primer, then sessions | Claude first | (primer decides) | | stage 2 done | — |
 
-**Actuals:** adopt-agent-kit ran slightly over (0.07× against 0.06×): two cross-review fix rounds on draft project slots that did not match the code.
+**Actuals:** adopt-agent-kit ran slightly over (0.07× against 0.06×): three cross-review fix rounds on draft project slots that did not match the code.
 
 ---
 
