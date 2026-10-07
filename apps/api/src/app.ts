@@ -34,10 +34,7 @@ export const internalErrorHandler: ErrorRequestHandler = (err, req, res, _next) 
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
 
-  res.status(500).json({
-    error: 'Internal Server Error',
-    details: error.message,
-  });
+  res.status(500).json({ error: 'Internal Server Error' });
 };
 
 export function createApp(options: CreateAppOptions = {}): express.Express {

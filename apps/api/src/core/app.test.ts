@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import test from 'node:test';
-import type { Express, RequestHandler } from 'express';
-import { createApp } from '../app';
+import express, { type Express, type RequestHandler } from 'express';
+import { createApp, internalErrorHandler } from '../app';
 
 async function withListeningApp(
   app: Express,
@@ -41,4 +41,35 @@ test('worker evidence requests authenticate exactly once', async () => {
   });
 
   assert.equal(authenticationCalls, 1);
+});
+
+test('a thrown error returns no client details and keeps CORS origin behavior', async () => {
+  const originalFrontendUrl = process.env.FRONTEND_URL;
+  const originalConsoleError = console.error;
+  const logged: unknown[][] = [];
+  process.env.FRONTEND_URL = 'https://frontend.example';
+  console.error = (...values: unknown[]) => { logged.push(values); };
+
+  try {
+    const app = express();
+    app.get('/throws', () => {
+      throw new Error('private implementation detail');
+    });
+    app.use(internalErrorHandler);
+
+    await withListeningApp(app, async baseUrl => {
+      const response = await fetch(`${baseUrl}/throws`, {
+        headers: { origin: 'https://frontend.example' },
+      });
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { error: 'Internal Server Error' });
+      assert.equal(response.headers.get('access-control-allow-origin'), 'https://frontend.example');
+    });
+
+    assert.match(String(logged[0]?.[1]), /private implementation detail/);
+  } finally {
+    console.error = originalConsoleError;
+    if (originalFrontendUrl === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = originalFrontendUrl;
+  }
 });
