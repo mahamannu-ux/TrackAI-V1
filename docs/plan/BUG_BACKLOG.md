@@ -15,8 +15,8 @@ Problems found outside a session's own scope. Each is fixed later by the Task th
 | B9 | 2026-10-07 orchestrator | Legacy static ingest token still live and trusts a client-supplied machine ID (`core/middleware/machine-auth.ts:72-105`) | Task4 | S-M | ⬜ |
 | B10 | 2026-10-07 orchestrator | One global GitHub webhook secret; tenant resolved by org-name string, not installation ID (`features/scm/scm.routes.ts:112-186`) | Task4 / Task7 | M | ⬜ |
 | B11 | 2026-10-07 orchestrator | Raw ingest payloads and webhook bodies stored as plaintext jsonb (`telemetry_ingest_batches.payload`, `provider_event_deliveries.raw_event`) | Task4 | M | ⬜ |
-| B12 | 2026-10-07 orchestrator | Global error handler returns `err.message` to clients (`apps/api/src/index.ts:77-90`) | Task4 | S | assigned to dry run `dryrun-api-hygiene` |
-| B13 | 2026-10-07 orchestrator | `/worker/evidence` runs machine authentication twice because `/worker` is mounted first (`apps/api/src/index.ts:52-54`) | Task4 | S | assigned to dry run `dryrun-api-hygiene` |
+| B12 | 2026-10-07 orchestrator | Global error handler returns `err.message` to clients (`apps/api/src/index.ts:77-90`) | Task4 | S | fixed on `task/dryrun-api-hygiene` |
+| B13 | 2026-10-07 orchestrator | `/worker/evidence` runs machine authentication twice because `/worker` is mounted first (`apps/api/src/index.ts:52-54`) | Task4 | S | fixed on `task/dryrun-api-hygiene` |
 | B14 | 2026-10-07 orchestrator | Orphaned `'evidence'` view and `EvidenceExplorer`/"Deferred raw analytics" placeholders in `dashboard/page.tsx` (`:32,152-276,304,869`; nothing sets the view) | Task5 | S | assigned to dry run `dryrun-web-dead-view` |
 | B15 | 2026-10-07 orchestrator | `AGENT_COVERAGE.md` (Task13) last updated 2026-08-02 | Task13 | S | ⬜ |
 | B16 | 2026-10-07 orchestrator | About 45 `task4-wave*` live-verify scripts live inside `src/features` beside product code; no linter for `apps/api` | Task4 | M, S | ⬜ |
