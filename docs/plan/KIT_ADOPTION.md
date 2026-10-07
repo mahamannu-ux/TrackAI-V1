@@ -27,7 +27,7 @@ Adopted **agent-kit 0.1.0** (`~/dev/agent-kit` @ `a4e0b51`) on 2026-10-07, in PR
 
 ## Open follow-ups (not in this PR)
 - ~~GitAI main checkout re-pointed at the fork~~ (2026-10-07): `main` = `origin/main` = `d26da8e` (fork), `upstream/main` at `6ab2adb` kept for the later sync.
-- GitAI downstream sync from upstream (or cherry-picks): a future Task; size it after a diff of fork vs upstream.
+- ~~GitAI downstream sync~~: not planned (founder 2026-10-08); TrackAI maintains its fork and cherry-picks only when needed (`docs/plan/GITAI_FUTURE_TODO.md`).
 - Numbat: pinned at `f0778c09`; per `docs/TASK6_SECURITY_NUMBAT_LICENSE_PLAN.md` no Numbat code or YAML was copied (three rules re-implemented in GitAI from the reviewed behaviour). Re-pinning is a Task6 follow-up.
 - A linter for `apps/api` (new dev dependency; needs the founder's yes).
 - Moving the root `TASK*.md` trackers into `docs/plan/` with links fixed (housekeeping candidate).
