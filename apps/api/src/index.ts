@@ -1,105 +1,13 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import { authenticateJWT } from './core/middleware/auth';
-import { tenantMiddleware } from './core/middleware/tenant';
-import scmRouter from './features/scm/scm.routes';
-import telemetryIngestRouter from './features/telemetry/ingest.routes';
-import { authenticateMachine } from './core/middleware/machine-auth';
-import telemetryReadRouter from './features/telemetry/read.routes';
-import adminRouter from './features/admin/admin.routes';
-import {
-  evidenceAdminRouter,
-  evidenceReadRouter,
-  evidenceWorkerRouter,
-} from './features/evidence/evidence.routes';
-import securityFindingsRouter from './features/security-findings/security-findings.routes';
-import dotenv from 'dotenv';
+import { createApp, getAllowedOrigins } from './app';
 
-// MUST BE FIRST - before any process.env references
-dotenv.config();
-
-const app = express();
+const app = createApp();
 const PORT = parseInt(process.env.PORT || '8080', 10);
-
-// ---------------------------------------------------------------------------
-// CORS Configuration
-// ---------------------------------------------------------------------------
-// Allow cross-origin requests from the frontend.
-// FRONTEND_URL is configurable per environment:
-//   - Local dev: http://localhost:3000
-//   - Production: https://your-app.vercel.app or your custom domain
-// This decoupled approach ensures the backend doesn't hardcode any frontend URL.
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',');
-
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-TrackAI-Machine-ID'],
-}));
-
-
-// Webhooks need their exact bytes for HMAC validation and must be mounted
-// before the global JSON parser. GitHub may send JSON or form-encoded payloads.
-app.use('/api/v1/webhooks', express.raw({ type: '*/*', limit: '2mb' }), scmRouter);
-
-// Parse regular application JSON after the raw webhook receiver.
-app.use(express.json({ limit: '5mb' }));
-
-// Native Git AI worker uploads use tenant-bound machine credentials, not a
-// browser JWT. Keep this route outside the interactive /api middleware chain.
-app.use('/worker/security', authenticateMachine, securityFindingsRouter);
-app.use('/worker', authenticateMachine, telemetryIngestRouter);
-app.use('/worker/evidence', authenticateMachine, evidenceWorkerRouter);
-
-// ---------------------------------------------------------------------------
-// Health Check (unauthenticated)
-// ---------------------------------------------------------------------------
-// Cloud Run uses this to determine if the container is ready to serve traffic.
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// ---------------------------------------------------------------------------
-// Protected API Routes
-// ---------------------------------------------------------------------------
-// All /api/* routes require a valid Supabase JWT.
-// Authentication and tenant resolution apply to every protected API route, in order.
-app.use('/api', authenticateJWT, tenantMiddleware);
-app.use('/api', telemetryReadRouter);
-app.use('/api/evidence', evidenceReadRouter);
-app.use('/api/admin', adminRouter);
-app.use('/api/admin/evidence', evidenceAdminRouter);
-
-
-// Fixed Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("❌ Caught Backend Error:", err.message);
-  console.error(err.stack);
-
-  // Re-verify the origin header to prevent the browser from masking the error
-  const origin = req.headers.origin;
-  if (origin && (process.env.FRONTEND_URL || '').includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-
-  res.status(500).json({
-    error: "Internal Server Error",
-    details: err.message
-  });
-});
-
-
-// ---------------------------------------------------------------------------
-// Start Server
-// ---------------------------------------------------------------------------
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 TrackAI API server running on port ${PORT}`);
   console.log(`   Health check: http://localhost:${PORT}/health`);
-  console.log(`   CORS allowed origins: ${allowedOrigins.join(', ')}`);
+  console.log(`   CORS allowed origins: ${getAllowedOrigins().join(', ')}`);
 
   console.log("=== API CONFIG CHECK ===");
   console.log("Loaded FRONTEND_URL:", process.env.FRONTEND_URL);
-  console.log("Allowed Origins Array:", allowedOrigins);
+  console.log("Allowed Origins Array:", getAllowedOrigins());
 });

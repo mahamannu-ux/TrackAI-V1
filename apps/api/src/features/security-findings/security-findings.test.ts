@@ -419,11 +419,11 @@ test('finding upload route never echoes or logs rejected raw content', async () 
   assert.deepEqual(logs, []);
 });
 
-test('Task6 upload router is mounted behind existing machine authentication', () => {
-  const indexSource = readFileSync(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
+test('Task6 upload router is mounted behind the shared machine-auth boundary', () => {
+  const appSource = readFileSync(path.resolve(process.cwd(), 'src/app.ts'), 'utf8');
   assert.match(
-    indexSource,
-    /app\.use\('\/worker\/security', authenticateMachine, securityFindingsRouter\)/,
+    appSource,
+    /app\.use\('\/worker', machineAuthentication\);[\s\S]*app\.use\('\/worker\/security', securityFindingsRouter\)/,
   );
 });
 
