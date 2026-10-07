@@ -17,7 +17,8 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
-| Task15 Attesta (signed provenance) | Claude | — | ⬜ | ⬜ | Context for the primer, after setup stage 3 |
+| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude | — | ⬜ | ⬜ | Founder sends the updated Attesta .md |
+| Audit and auditor surface (Task number to be assigned) | — | — | ⬜ | ⬜ | Scope later (audit events for D6.1, P6.8, T14.7; parts in Task11) |
 | Kit adoption | Claude | `docs/adopt-agent-kit` | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | Codex re-review of the fix commit, then push |
 
 Rules: symbols per AGENTS.md §11; "n/a: none needed" when a Task has no integration tests; the founder's run, never the sandbox, makes integration ✅.
@@ -31,9 +32,9 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | # | Session | Agent | Estimate | Actual | Starts when | Prompt |
 |---|---|---|---|---|---|---|
 | 1 | docs/adopt-agent-kit: AGENTS.md, CLAUDE.md, procedures, templates, status board, benchmark, npm gates, worktree and integration scripts | Claude | about 0.06× | about 0.07× (by turns) | now | (setup brief) |
-| 2 | Dry run, Codex: a tiny housekeeping item in its first worktree | Codex | about 0.01× | | #5 merged | `docs/prompts/` (to write) |
-| 3 | Dry run, Muse: a tiny housekeeping item in OpenCode | Muse | about 0.01× | | #5 merged | `docs/prompts/` (to write) |
-| 4 | Dry run, Claude: a tiny housekeeping item in a separate session | Claude | about 0.01× | | #5 merged | `docs/prompts/` (to write) |
+| 2 | dryrun-api-hygiene: B12, B13; Codex leads and writes Muse's prompt | Codex | about 0.01× | | #5 merged | `docs/prompts/NEXT_CHAT_dryrun-api-hygiene_PROMPT.md` |
+| 3 | dryrun-web-dead-view: B14, handed out by Codex | Muse | about 0.01× | | #2's prompt written | written by Codex in #2 |
+| 4 | ~~Dry run, Claude~~ dropped by the founder 2026-10-08 (Claude usage) | — | — | — | — | — |
 | 5 | stage2-project-map: vision, project map, reuse map, AGENTS.md §9 gotchas (stage 2, moved before the dry runs) | Claude (orchestrator) | about 0.05× | about 0.05× (by turns) | #1 merged | (setup brief) |
 | 6 | Task15 Attesta: primer, then sessions | Claude first | (primer decides) | | stage 2 done | — |
 

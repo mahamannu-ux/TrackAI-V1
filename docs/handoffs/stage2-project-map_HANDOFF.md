@@ -9,7 +9,8 @@ Stage 2 of the setup brief: the founder's vision as given, a project map for ori
 ## At a glance
 | | Item | Status |
 |---|---|---|
-| Scope | `docs/founder/VISION.md` (verbatim), `docs/plan/PROJECT_MAP.md`, `docs/plan/REUSE_MAP.md` | ✅ |
+| Scope | `docs/founder/VISION.md` (verbatim, parts 1–3), `docs/plan/PROJECT_MAP.md`, `docs/plan/REUSE_MAP.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md` | ✅ |
+| Scope | Dry-run prompt `docs/prompts/NEXT_CHAT_dryrun-api-hygiene_PROMPT.md` (Codex leads, hands B14 to Muse) | ✅ |
 | Scope | AGENTS.md §2 (plan files), §9 gotcha 3 corrected (0000's Supabase browser policies, composite keys from 0003), gotchas 13–14 (Task2–Task6 traps, GitAI noise), 16–21 (ported components) | ✅ |
 | Quality | `kit-check --unfilled`; `git diff --check` | ✅ |
 | Integration | none needed | n/a |

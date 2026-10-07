@@ -26,3 +26,12 @@ TrackAI is an AI Code Provenance, Security, Attribution and Engg Productivity Pr
 - **Task13** is technically an extension of Task2, covering all combinations of model, IDE, agent and desktop app (such as Claude desktop and the Codex desktop app) to capture AI code generation exhaustively.
 - **Task8, Task12 and Task14** are engineering-focused: customers, deployment and production readiness.
 - A lot of what is wanted from SushiCorp has already been achieved there; reuse it.
+
+## 3. Positioning notes (founder, 2026-10-08)
+
+- TrackAI doesn't really need future Git AI updates. The fork's changes (59 files and more to come) are TrackAI's version to maintain. The Git AI open-source repo does not include the enterprise parts (server, communication, services, dashboard) that TrackAI has already built.
+- TrackAI provides AI attribution data, insights and metrics across machines (Mac, Windows, Linux), coding agents, models, IDEs and desktop apps (such as Claude and Codex). An OpenAI-owned Git AI will likely provide that too, but probably just for OpenAI's models and coding agents.
+- AI code attribution by itself is a pillar, but the real value comes from the **Security and Provenance** layers. TrackAI's target customer is primarily the **CISO**, then the engineering team and the CIO.
+- TrackAI has added Entire.io's feature set (not yet where it should be). Entire.io is a competitor of Git AI; Git AI does not offer Entire.io's features.
+- **Audit and the auditor** are a subtask or Task of their own. Audit information today covers Task6.a security findings and Task4 admin actions (machine grants and revocation, credentials). D6.1 signed activation, Task6.b signed policy bundles and Task14 signed artifacts have no audit events yet but will. There is no API, invitation or report surface like SushiCorp's; some of it belongs to Task11 (API/SDK). Not yet clear.
+- Attesta's shared trust layer (signer, key hierarchy, rotation, revocation) is owned by Attesta and reused by D6.1, Task6.b and Task14.
