@@ -8,6 +8,7 @@ import {
   evidenceWorkerRouter,
 } from './features/evidence/evidence.routes';
 import scmRouter from './features/scm/scm.routes';
+import { fleetAdminRouter, fleetWorkerRouter } from './features/fleet/fleet.routes';
 import securityFindingsRouter from './features/security-findings/security-findings.routes';
 import telemetryIngestRouter from './features/telemetry/ingest.routes';
 import telemetryReadRouter from './features/telemetry/read.routes';
@@ -59,6 +60,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use('/worker', machineAuthentication);
   app.use('/worker/security', securityFindingsRouter);
   app.use('/worker/evidence', evidenceWorkerRouter);
+  app.use('/worker/fleet', fleetWorkerRouter);
   app.use('/worker', telemetryIngestRouter);
 
   app.get('/health', (_req, res) => {
@@ -71,6 +73,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use('/api/evidence', evidenceReadRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/evidence', evidenceAdminRouter);
+  app.use('/api/admin/fleet', fleetAdminRouter);
 
   app.use(internalErrorHandler);
 
