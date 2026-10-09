@@ -89,16 +89,18 @@ export async function recordFleetReport(input: {
       eq(fleetConfigurations.id, input.report.acknowledgement.configurationId),
     ).limit(1);
     if (!acknowledged || acknowledged.epoch !== input.report.acknowledgement.epoch) notFound();
-    if (existing?.acknowledgedEpoch
-      && input.report.acknowledgement.epoch < existing.acknowledgedEpoch) conflict();
+    let desired: typeof fleetConfigurations.$inferSelect | undefined;
     if (existing?.desiredConfigurationId) {
-      const [desired] = await tenant.select(
+      [desired] = await tenant.select(
         fleetConfigurations,
         eq(fleetConfigurations.id, existing.desiredConfigurationId),
       ).limit(1);
       if (!desired) conflict();
       if (input.report.acknowledgement.epoch > desired.epoch) conflict();
     }
+    if (existing?.acknowledgedEpoch
+      && input.report.acknowledgement.epoch < existing.acknowledgedEpoch
+      && input.report.acknowledgement.configurationId !== desired?.id) conflict();
   }
 
   const acknowledgement = input.report.acknowledgement;
@@ -127,11 +129,12 @@ export async function recordFleetReport(input: {
     lastReportAt: input.report.reportedAt,
     updatedAt: new Date(),
   };
+  const { desiredConfigurationId: _desiredConfigurationId, ...observedValues } = values;
   await tenant.upsert(
     fleetMachineStates,
     values,
     [fleetMachineStates.tenantId, fleetMachineStates.machineId],
-    values,
+    observedValues,
   );
 }
 
@@ -189,10 +192,16 @@ export async function createFleetConfiguration(input: {
     const [latest] = await tenant.select(fleetConfigurations).orderBy(
       desc(fleetConfigurations.epoch),
     ).limit(1);
-    const snapshot = await snapshotCurrentPolicy(transaction, input.tenantId, new Date());
+    const generatedAt = new Date();
+    if (input.configuration.validUntil
+      && input.configuration.validUntil.getTime() <= generatedAt.getTime()) {
+      throw new FleetServiceError(400, 'invalid_request');
+    }
+    const snapshot = await snapshotCurrentPolicy(transaction, input.tenantId, generatedAt);
     const [configuration] = await tenant.insert(fleetConfigurations, {
       epoch: (latest?.epoch ?? 0) + 1,
       schemaVersion: 1,
+      generatedAt,
       generatedBy: input.actorId,
       validUntil: input.configuration.validUntil,
       targetClientVersion: input.configuration.targetClientVersion,
@@ -244,7 +253,7 @@ export async function assignFleetConfiguration(input: {
     const machines = await tenant.select(developerMachines, and(
       inArray(developerMachines.id, input.assignment.machineIds),
       eq(developerMachines.status, 'active'),
-    ));
+    )).for('update');
     if (machines.length !== input.assignment.machineIds.length) notFound();
     const assignedAt = new Date();
     for (const machineId of input.assignment.machineIds) {
@@ -390,7 +399,17 @@ export async function applyFleetOffboard(input: {
   reason: string;
 }) {
   const preview = await previewFleetOffboard(input.tenantId, input.machineId);
-  await revokeDeveloperMachine(input.tenantId, input.machineId, input.actorId, input.reason);
+  try {
+    await revokeDeveloperMachine(input.tenantId, input.machineId, input.actorId, input.reason);
+  } catch (error) {
+    const [machine] = await withTenant(db, input.tenantId).select(
+      developerMachines,
+      eq(developerMachines.id, input.machineId),
+    ).limit(1);
+    if (!machine) notFound();
+    if (machine.status !== 'active') conflict();
+    throw error;
+  }
   await db.transaction(async transaction => {
     const tenant = withTenant(transaction as unknown as typeof db, input.tenantId);
     await tenant.update(

@@ -274,10 +274,38 @@ async function main(): Promise<void> {
     actorId: marker,
     assignment: { configurationId: second.id, machineIds: [machineA], reason: 'IT T9 advance' },
   });
+  await recordFleetReport({
+    tenantId: tenantA,
+    machineId: machineA,
+    report: {
+      schemaVersion: 1,
+      reportedAt: new Date(),
+      acknowledgement: { configurationId: second.id, epoch: second.epoch, resultCode: 'applied' },
+      platform: 'macos', osVersion: '15.7', architecture: 'x86_64', gitaiVersion: '1.2.4',
+      serviceState: 'running',
+      queue: { pendingRetryable: 0, waitingRetry: 0, processing: 0, quarantined: 0, rowsWithErrors: 0 },
+      mdmDeviceReference: `${marker}-opaque-device`, mdmUserReference: null,
+      assignmentEvidence: { source: 'jamf', observedAt: new Date() },
+    },
+  });
   await assignFleetConfiguration({
     tenantId: tenantA,
     actorId: marker,
     assignment: { configurationId: first.id, machineIds: [machineA], reason: 'IT T9 rollback' },
+  });
+  await recordFleetReport({
+    tenantId: tenantA,
+    machineId: machineA,
+    report: {
+      schemaVersion: 1,
+      reportedAt: new Date(),
+      acknowledgement: { configurationId: first.id, epoch: first.epoch, resultCode: 'applied' },
+      platform: 'macos', osVersion: '15.7', architecture: 'x86_64', gitaiVersion: '1.2.3',
+      serviceState: 'running',
+      queue: { pendingRetryable: 0, waitingRetry: 0, processing: 0, quarantined: 0, rowsWithErrors: 0 },
+      mdmDeviceReference: `${marker}-opaque-device`, mdmUserReference: null,
+      assignmentEvidence: { source: 'jamf', observedAt: new Date() },
+    },
   });
   const offboard = await applyFleetOffboard({
     tenantId: tenantA, machineId: machineA, actorId: marker, reason: 'IT T9 offboard',
