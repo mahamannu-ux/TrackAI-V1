@@ -1,0 +1,303 @@
+sha	date	subject
+d0f864c5700bdebf0825a504a4836b5ae02ef93f	2026-07-29	perf(daemon): throttle agent_usage emission with an in-memory limiter
+f24cee08d01e7a55278d7b64ae533eee7eb59829	2026-07-30	fix(daemon): scope checkpoint receive timeout
+acbac7ef861819306eec1f8cf830e4489f30937b	2026-07-29	Fix installer version metadata
+1cfa019b4ed6bc617456c24bdb36f29b8cfdbbb8	2026-07-30	Merge pull request #2027 from git-ai-project/fix/installer-version-metadata-jul-29
+5b25b11a6bf1a0fa8bd37e5c634edeb04b680d0e	2026-07-30	Fix macOS package payload permissions
+1b8b91ca8c70b8806280e3c8808d18f58970bd14	2026-07-30	Merge pull request #2051 from git-ai-project/fix/macos-pkg-payload-mode-jul-30
+d6dc68df02675452c7a4f60e7c2c50139dc9d0ad	2026-07-30	Merge pull request #2049 from git-ai-project/agent/scope-checkpoint-receive-timeout
+a0a9bd8f72567a7605afd44182ccaf07c5a7b966	2026-07-31	Fix MSI version smoke test
+aeae70451b03e632738b2e09de923b170f13d3d2	2026-07-30	Merge pull request #2053 from git-ai-project/fix/windows-msi-failure-jul-30
+d2fadb608c6db7df64880c66c766698f085a5712	2026-07-31	chore: bump version to 1.6.20 [skip ci]
+1e400d552a114fb8a5cc8087319363d64d2c8f0d	2026-07-31	Recover remaining unattributed lines as human
+91397d00b0bdbe687dbac5968ec9707415ffa99f	2026-07-31	Merge pull request #2060 from git-ai-project/feat/kh-attr-recovery-jul-31
+f17bf9177e6ae412610ee31961bed8bc0c6087b3	2026-07-01	Resolve Codex model when hook metadata is incomplete
+d63e0912401db970bebb7ca04f2e1bc82cb2ab75	2026-07-31	Address Codex model extraction review feedback
+04f419ebe8d81101609e80fda0c999c738732895	2026-07-31	chore: bump version to 1.6.21 [skip ci]
+f0d6d84d92c32bbb738b1bb8706b30a8994e04ee	2026-07-31	docs: use GitHub Stacks for PR workflow
+c21ec5a38c683fc12fa51dd52ab8fccbbb91f43f	2026-07-31	Merge pull request #1711 from Dame5211/codex/resolve-codex-model-config-fallback
+6eef70e3a8f5f9509d66c3fc2a7364fea8c955d8	2026-07-31	Merge pull request #2061 from git-ai-project/agent/use-github-stacks
+b5a2c825f6eab17232db580d2395558296e3eb7d	2026-07-31	fix(daemon): reuse bounded Tokio runtimes
+ca28abf7c8dcad304ca2f9b11801bdbd75e28e00	2026-08-01	perf(checkpoint): avoid duplicate working-log materialization
+39aec1822eca0d303dd4d51032e279695af7ec19	2026-08-01	fix(daemon): cap glibc allocator arena retention
+746f1d92dea025325babd17f0dafaabc033b6540	2026-08-02	Merge pull request #2056 from git-ai-project/fix/jul-30-repro
+f3bc91371782dd0e598e5534301b1989c55062ea	2026-08-02	Merge pull request #2063 from git-ai-project/fix/checkpoint-working-log-materialization
+098f944d359e09abddd61a6dc2c9ff9646364de6	2026-08-02	Merge pull request #2064 from git-ai-project/fix/daemon-allocator-policy
+0b843cafcb6cab220306272d60c43cc7ce635bf0	2026-08-02	Merge pull request #2029 from git-ai-project/feat/agent-usage-memory-limiter
+52c908ef35acbf33fdbbfb05f828f38e178e622b	2026-07-29	perf(daemon): scope sync.family trace fence to requested family
+a6a222232509a61127d355dd2c2f637f15786e3b	2026-08-02	test(daemon): await idle control connection closure
+abb225a6be69a37d991880ee2f412867a852ee18	2026-08-02	Merge pull request #2068 from git-ai-project/fix/ci-flake-aug-2
+cb748e61d291ebbb00532a46e110b4499d13b784	2026-08-02	Merge pull request #2030 from git-ai-project/fix/per-family-trace-fences
+db79e964cfc00d77742070eec3e72d844b68201f	2026-08-04	build(deps): bump the npm_and_yarn group across 1 directory with 2 updates
+bb9af29f2120ce9a32f04e6b11a233b9ec8bfaff	2026-08-04	chore(intellij-plugin): bump org.jetbrains.qodana
+779a48d84f2880d6b04f2c50624f27b28ed7782b	2026-08-04	chore(intellij-plugin): bump io.sentry.jvm.gradle
+3311022b0a13b601323a408c6588b90fc155ab0a	2026-08-04	chore(opencode-plugin): bump @opencode-ai/plugin
+004eb783da253ee9e39e64c22c597ce5a54344b8	2026-08-04	chore(vscode-plugin): bump posthog-node in /agent-support/vscode
+734746e038d12b0aacbaaf4287fff8654a06456b	2026-08-04	chore(ci): bump the codeql group with 2 updates
+4dc8de9d085b467d4a1d58ec6a3c9c45ecc173d7	2026-08-04	chore(ci): bump JetBrains/qodana-action from 2026.1.3 to 2026.2.0
+5fa6024711f74ee85b4e6b6f13fbb8a719c29d49	2026-08-04	chore(ci): bump actions/setup-java from 5.6.0 to 5.7.0
+a95eb1dbc9087b4a6abb59b8c6a841a72679eb67	2026-08-04	Merge pull request #2081 from git-ai-project/dependabot/npm_and_yarn/agent-support/vscode/npm_and_yarn-6c480c28d7
+bce01a4b331153e987125214ce0e79b69561b0bc	2026-08-04	Merge pull request #2082 from git-ai-project/dependabot/gradle/agent-support/intellij/main/org.jetbrains.qodana-2026.2.0
+abb5ad192bc70bd10d2b5549b06c651d7b6e063f	2026-08-04	Merge pull request #2083 from git-ai-project/dependabot/gradle/agent-support/intellij/main/io.sentry.jvm.gradle-6.17.0
+2e9a03114d55f1b2751fee3520963ee1cd42077f	2026-08-04	chore(deps): bump fast-uri
+a62086c93b3e2c5d5432301ac62bad8929b5e478	2026-08-04	Merge pull request #2084 from git-ai-project/dependabot/npm_and_yarn/agent-support/opencode/main/opencode-ai/plugin-1.18.11
+40f9426a42335ce5fe0abbeb9741572403a49990	2026-08-04	Merge pull request #2085 from git-ai-project/dependabot/npm_and_yarn/agent-support/vscode/main/posthog-node-5.47.3
+788489833a69253ee7335d9ac0a8107d1402f94b	2026-08-04	Merge pull request #2086 from git-ai-project/dependabot/github_actions/main/codeql-ce612e0709
+e36a778f95bda00315ea6302d5f2daa1123a5a48	2026-08-04	Merge pull request #2087 from git-ai-project/dependabot/github_actions/main/JetBrains/qodana-action-2026.2.0
+ec73ff278c243482e566bd1cd97ee7dcd24ddb02	2026-08-04	Merge pull request #2088 from git-ai-project/dependabot/github_actions/main/actions/setup-java-5.7.0
+7c39d10a8e275e5555788e81323b6a9ae7f7f804	2026-08-04	Merge pull request #2089 from git-ai-project/dependabot/npm_and_yarn/agent-support/vscode/npm_and_yarn-5f7cea1f02
+decb5fc02a8aeb0a7146350d1accba1d71f0e48c	2026-08-04	Update README.md
+11087febd548bf529ab2cbaeb5722ba1d195d50b	2026-08-04	Update README.md
+9db26a664fc1a84d8f225b76739a2270fd2dcacb	2026-08-04	Merge pull request #2090 from git-ai-project/svarlamov-patch-1
+4dc3b1ccf1e1e5348a6b026796c50e4cc16438ac	2026-07-16	fix(range-authorship): resolve human additions in stats range command
+e93203f1fa75792730ec4c7398a3e1b619644826	2026-08-04	chore: bump version to 1.6.22 [skip ci]
+7cefda54ad2b94176de8819a0dabe736bea342e3	2026-08-04	Merge pull request #1880 from lubanasachin/fix/range-query-human-addition-evaluation
+61c607a3cb17ef4470cc2da1e7b3ed9feb63dec1	2026-07-31	Add daemon memory limit configuration
+8dfef97cc5907ab0d20a6a8e39320fe73227a7ab	2026-07-31	Enforce daemon peak memory limits
+4372b2aa8733ea545a5c399990a625b6f776d1d2	2026-08-04	Merge pull request #2054 from git-ai-project/feat/daemon-memory-config
+5d887410e6539295fabdf587dec1426c8e0b87dd	2026-08-04	Merge pull request #2055 from git-ai-project/feat/daemon-memory-watchdog
+17a402e12be17daaa4963a21b8641dc3ec646453	2026-08-04	fix(metrics): run metadata backfill once
+2cbdfd3b53af4c0405b89e1000f5a5ad7edbd19a	2026-08-01	feat: add lite mode for daemon note rewrites
+e30a90855142342bf6e80644de45e176254bf0ee	2026-08-02	fix: preserve working logs in lite mode
+ff6889c9ba08c5adf7c3bfef42fd9410e9ffe4ff	2026-08-02	fix: scope lite working-log moves to HEAD
+4239896ff3a80c8ef50b6b62a217319f663f79cf	2026-08-05	test: cover lite update-ref working-log handoff
+1b7bcc6f67eb0458edde5274291eabc2be785008	2026-08-05	fix: bound lite working-log handoffs
+6f14d157c5832cb02d82526f0c3ce922a462db4c	2026-08-05	fix: handle multi-step lite ref updates
+74969edebbaf315c2f483f03e45d10f581dcaec9	2026-08-05	fix: retain lite rebase conflict logs
+25a4fb8e6a23b22f9c2aafc21c9b590bdff3480f	2026-08-05	test: assert deleted committed files
+7df7e2069f7f145cc0c5964338ae1c50b2e4769f	2026-08-05	Merge pull request #2066 from git-ai-project/feat/lite-mode
+6f7ee5cabe7bed20d7c548d75d2548ba149c96e1	2026-08-05	Fix range-diff SHA abbreviation handling (#2101)
+5756c2e5d05b14af2f951b0bb128a81c1204d3b0	2026-08-06	Merge pull request #2102 from git-ai-project/fix/2101-1785894597
+79cb2e83a25e9814d3d9f1e0c291109644362d30	2026-08-07	Fix Copilot VS Code model attribution
+2b26f1ca177426c5a1e340c979a287ef39ad0446	2026-08-07	Handle Copilot model state edge cases
+3bf8bbfebe3bf6e20c5b43f947cbc5a5877a1d5f	2026-08-07	Buffer Copilot chat JSON reads
+b1bbb7650e0421eabaf1ee9d6e0f44be275a87ef	2026-08-07	Bound Copilot session model scans
+355b95e088f767bea6553cda8f59a44be31b2f15	2026-08-07	Stream large Copilot session state
+a2143846d9b2697d37ef9ae4ffcc9e6dd678277a	2026-08-07	Synchronize wltrace checkpoint assertion
+c57c6c24be03ba89ce7d47783841d2f49ba8ee45	2026-08-08	Merge pull request #2113 from git-ai-project/fix/copilot-vscode-model-attribution
+74f5b9335a0b5d5709617ee177557791d776a2f2	2026-08-10	chore: bump version to 1.6.23 [skip ci]
+861c9e94b5167dbd3d3747eb74f1c4cf75e3b739	2026-08-10	Merge pull request #2094 from git-ai-project/agent/metrics-backfill-once
+a464ae758e4954787a895bf7f970d5e951e0f0c5	2026-08-11	chore(ci): bump actions/attest-build-provenance from 4.1.0 to 4.2.2
+b3dc2ad11dc2ba8330270d2f76c7c0604a5e8f07	2026-08-11	chore(ci): bump azure/login from 3.0.0 to 3.0.1
+99d29b8259bec8558cf1cf9420ce65cff2dd2bd0	2026-08-11	chore(ci): bump gradle/actions/setup-gradle from 6.2.0 to 6.3.0
+16655f8fbcf1b27bdba13078662e936d5684890c	2026-08-17	Fix config command output streams
+5b87f2b3873f6ee2236c587e83e46c0826b3e2a2	2026-08-17	Merge pull request #2156 from git-ai-project/fix/config-cmds-stdout
+22ceb60507f90009181bbcf8305e1229e5500937	2026-08-17	chore: bump version to 1.6.24 [skip ci]
+19c97cf8148e08b88851d2f6af11ab47be1ccf33	2026-08-18	chore(intellij-plugin): bump io.sentry.jvm.gradle
+9e694d59a0efb8d8130c02c985a45a59f177270f	2026-08-18	chore(opencode-plugin): bump @opencode-ai/plugin
+2c321c143f4258b6d4d089a8287e7adb77f4b77c	2026-08-19	Normalize lowercase HEAD revisions in git-ai commands
+9dd155d9fa04132e3c3a05c509afdc0029ada6e8	2026-08-19	Handle non-ASCII revision names safely
+b835f972368a4e8681690bcccc29af2cd8274a59	2026-08-19	Make revision fixture case-insensitive safe
+0cfa1bac918c76e4528e16459aa4706e4f029a96	2026-08-19	Merge pull request #2176 from git-ai-project/fix/head-resolution-from-wt
+5a79c60e2a41a6b6c54bd0ea0a99103aa0e4bf94	2026-08-19	Add install-hooks --env flag with Unix shell PATH configuration
+55b2d7c4c894ca089b5f26b12c45af0e21911f30	2026-08-19	Add Windows user PATH and Git Bash config to install-hooks --env
+c40c82dca3dcd25fd77e15d6adc7afc657fe1d48	2026-08-19	Make the trace accept loop accept-and-spawn only
+9d5bcd52c63289a8dedf6cf718dd1a522e13b7cb	2026-08-20	Address review findings for install-hooks --env
+cf1c41e1510341403d0160db1621d69a8fb88bab	2026-08-19	Move shell/env config out of install scripts to install-hooks --env
+143e8e2a798624f126d43a37ba937b7db2b71d8e	2026-08-20	Use install-hooks --env in the MSI and macOS PKG installers
+a7389e3167942bc93f56ba7017b4526354d0b56f	2026-08-20	Merge pull request #2184 from git-ai-project/feat/packaged-installers-env
+9c9d785cdc4f04e93f3d8631dc9d51a2c2739942	2026-08-20	Add WSL installation support to install command
+3b3d01e481b2b600724482736f4da5a7e1952fac	2026-08-20	Avoid exposing WSL install credentials in process args
+635b6f29baf83d1c019816bc255093758e432d07	2026-08-20	Enable WSL installs by default in Windows MSI
+a68103165cf4d886d57758f57e73052440394eec	2026-08-20	Document secure WSL credential forwarding
+6a7d25a75fe4eac694897dc2b3d24de19f6aa134	2026-08-19	Add end-to-end trace drain self-healing to the daemon
+7b0eead7507a72588e1e159a2cc75ac45eac0be5	2026-08-19	Isolate telemetry from core daemon processing
+7e71f693cb7098c27eddb0c5507415e26e46a01e	2026-08-19	Contain control-plane peer errors and make ingest loss loud
+648f8e92ffca28ec06fce5ebe04add5c14bd5329	2026-08-20	Drop unconsumed trace2 frames at ingestion
+3c41054e83e8473878f27ea7b90f8450613900e2	2026-08-20	Merge branch 'fix/2157-trace-frame-filter'
+98d5d6d335d80dfd366b69f92933df62336559da	2026-08-20	Source usage cost estimates from the models.dev catalog
+bb43a7bb2aef9f11082f9e4378832b58030daba7	2026-08-20	Address code-review findings on models.dev pricing
+c98e6e2249efdd3c22686ee37b477bcb9af4ae0d	2026-08-20	Use median family pricing in the fallback
+02cdc176944f06ba592f0ca724179b519bf318f4	2026-08-20	Add weekly workflow to refresh the models.dev pricing snapshot
+f7b494738494221192b078893ba2a2ea6eee0af3	2026-08-21	Harden the pricing snapshot workflow
+c08de56df34cbc9aca2674053e86070e42f4f07f	2026-08-21	Harden GitHub Actions workflows per zizmor audit
+3491236a1b8270fbf30d64fb2233baf2a8aba237	2026-08-21	chore(vscode-plugin): bump ovsx in /agent-support/vscode
+411cf74564477c7f07ee177d432d75c0c3970102	2026-08-21	Add zizmor security gate for workflow changes
+bcefc3c7d388e040fabd916c0bca02b4b3731a70	2026-08-22	Demote periodic flush-skip log lines to debug
+34f8154b22b9ac9d05a71358973e0395cbd11875	2026-08-22	Merge pull request #2201 from git-ai-project/ci/actions-zizmor-gate
+55a1d728fb968fff90c5050470d6bd5d629967c6	2026-08-22	Merge pull request #2202 from git-ai-project/fix/quiet-flush-skip-logs
+2b7dc3b18b4b20c4da139156972c135385bded64	2026-08-23	fix(claude): accept case-insensitive hook tool names
+dc7dba750947e1fd169d9cd6b2fa60b14a61233e	2026-08-23	Merge pull request #2203 from mikemikimike/issue-2154
+c395f5463e3fa51fc8f07191d0db1a94e8b06135	2026-08-23	chore: bump version to 1.6.25 [skip ci]
+6210ebff3b7dceba781cc741fcb365484dfd0534	2026-08-21	Add metrics reingestion database reset
+0a1afdd26cd60ae544fa6c27663f8a599c70c4b9	2026-08-21	Simplify reingestion state assertions
+98c27b210d04c4b47ddd0c3c9ffde1386acb0dcc	2026-08-24	Avoid reingest database contention
+2be48510360071cc89ebef8a1e0ce2de7a213ec3	2026-08-24	Format reingest database changes
+e11298f8d0aa99627c1dc81365996b8709200ee9	2026-08-21	Route metrics reingestion through daemon
+0389b48c535c0a1173838df1d66dfaa08db0f4c8	2026-08-24	Keep reingest flushes nonblocking
+65e22252abac3223321407391b02d00cfc6a65ea	2026-08-24	Format reingest telemetry changes
+28cc324c2f14e594f2a7dbeea1e2a798f392224e	2026-08-21	Add git-ai reingest command
+898567e747ae3db3daf1a94398c53a6f60d17b3c	2026-08-21	Handle non-ASCII reingest durations
+879a39233e9dd7044374c6980d656a12f3093e93	2026-08-24	Harden reingest command diagnostics
+3e2746c8f7e6cef0a0246c8fbcf8472289841d28	2026-08-18	Add `--period` flag to `usage` command
+069981d3dc93491575b18359e192f3d68ee9794e	2026-08-18	Add integration tests for `--period` flag of `usage` command
+7df0141fbcc8844a7a5691d00aa728b1abef8f58	2026-08-18	Deduplicate utility functions across integration tests
+120bcf25cf3a6e69593001f155d32fd42a2f0575	2026-08-24	fix(authorship): copy tool and model onto edge recovery metrics
+2ca1438fffbd6b5808de2137311fea3c75119190	2026-08-24	Merge pull request #2214 from qqzhangyanhua/fix/edge-recovery-metric-model
+793066013ad137562d55bd33e29ad3b37612d14d	2026-08-24	Merge pull request #2167 from ethanhann/feature/implement_period_flag_in_usage_command
+91f35608670b80de688b723e3fb353a33057cea9	2026-08-25	chore(ci): bump the codeql group across 1 directory with 2 updates
+47e0ce7832eaf3b64c9991c3a9d7c19d8a11a0c3	2026-08-25	Add uninstall command alias
+da6bfb52359612976f0a63da644eb3e3418fd962	2026-08-25	Merge pull request #2217 from git-ai-project/fix/add-uninstall-hooks-alias
+ea93be09c0bb45fa4f94e3240d8e0de6b2a18b8e	2026-08-25	Default VS Code line gutters to off
+fa9438c0590800e85247566e42691924a87ba9b1	2026-08-25	Merge pull request #2218 from git-ai-project/feat/vsc-line-gutters-off-by-default
+18ad8876eb042e1ce87d12c00d30f06d3fb7f039	2026-08-25	chore(vscode): bump version to 0.1.23
+beb3c436906bcdeb951fa35b6bf3677d30f19199	2026-08-25	chore(vscode-plugin): bump posthog-node in /agent-support/vscode
+1f09b17729339e23acbbbe6810406e4c2c849d5a	2026-08-25	Default HTTP notes for API key users
+d12818d85ff583746428c6c7081acf651b218075	2026-08-25	Use consistent notes defaults in tests
+6626f6b1906f9c46eadbb06fed7c2af989eb3b89	2026-08-23	Add token_usage parsing core ported from ccusage
+3e55b768d708ffa859d46e240f8e57626659758b	2026-08-24	Fix codex port fidelity: identity keys, total derivation, burst anchoring
+07d820eea1191268c2a3ec4db74e8ffc814b961b	2026-08-24	Address review findings in the parsing core
+8fda0c659b48dd6d068f744f6ba04aecd1cc1d4a	2026-08-24	Accuracy-review fixes and test battery for the parsing core
+9388ce446c3c0d4ef387eba0184d8c1ce808b302	2026-08-24	Pin Codex extraction against real captured token_count lines
+e0b26e73539c3056672536678c3280149119ea91	2026-08-25	Arm the skip machine after a flush release instead of disarming
+aac4bbc496533bba45412efd164afacc2ded8dbb	2026-08-23	Add token-usage state database with dedup and bucket aggregation
+876435d31abeeeb87c05cdcfe48c453c90894596	2026-08-24	Replace dirty-bucket tracking with session-bucket reconciliation
+4b6f3290088794f87e638eb54628c9e09fe643eb	2026-08-24	Address review findings in the token-usage database
+80e36cc1756a05fe3aa214f7cf176105e025cac5	2026-08-24	Add invalidate_session_files for cross-session reconciliation
+305e3d7e4206602d3bc5d156586a082012bdb5c0	2026-08-24	Clamp token counts to a sane ceiling instead of i64::MAX
+1bc9d49e2cb942643a0b51f5ad4b4c36913e4ee3	2026-08-24	Harden the v2 migration and make cross-session reconciliation durable
+65d3dd35d662a79dfa987a676a736515eb07625d	2026-08-24	Use the memory-limited sqlite helper in the v1-fixture test
+fddf23eee3b7cc3e390111994f4ca0a16952e424	2026-08-24	Persist emission repo_url and flag sessions shrunk by the v2 purge
+72cd91d3c163109ac02e1f9d5463d3a157f9eac0	2026-08-23	Add TokenUsage metric event wire format and feature flag
+b27eed9969db63ae94aa4cd4d59f71fdca46ee23	2026-08-24	Add emitted_seq revision to TokenUsageValues
+6fe1829fc6451399ba94356f6a5df51682e4ca45	2026-08-24	Pin the TokenUsage sparse wire encoding
+493805c227cd08b04b06d8b2e4bcdff3d7371084	2026-08-24	Add token-usage daemon worker with backfill and event emission
+b195b2645e4a6acbaaf562f42f166e92f491fdd3	2026-08-24	Harden token-usage worker: emission durability and shutdown wakeup
+ac0fbf8a046ec97e70d2f27e8a5f53840ef8aee6	2026-08-24	Notify token-usage worker from the stream worker's drain path too
+a5124098e33f457805b8dc7cc58e4f57d1dcde46	2026-08-24	Record token-usage processing errors under the rollup session id
+8e159a01ebac461492e5e8fdf561a7883f13c0d0	2026-08-24	Address review findings in the token-usage worker and daemon wiring
+f3056f6b016dd3641eaddcb4a19e4d42ab1e3c76	2026-08-24	Service drain requests while backfill tasks are queued
+5899e41f4326efbe4b9f67e9abc80b91bf684ba0	2026-08-24	Run the sweep scan in spawn_blocking
+1d34d7d1bf4477e4415a29b1703e7102cb6f17ce	2026-08-24	Make cross-session reconciliation DB-only and durable; other follow-ups
+76b18290b9c3be9dc0a32a7c01657b42ef879f05	2026-08-24	Wire the retention prune into this PR's sweep path
+a70eda595a2a420de0c9ccfbd711a487e54953be	2026-08-24	Carry the stored repo_url on DB-only corrections
+8cd192f8ca3dd2564496d984f87d79345505481f	2026-08-24	Accuracy-review fixes for the worker: read robustness, revisions, blame
+1b316d2cf48a74b70e3518fe611bdc19b91925e4	2026-08-24	Omit the external session attribute when no id is recorded
+9d9bafece94b5b4989fefd1face21a74a588249e	2026-08-24	Cover the run loop, ticker, restart backfill, and fork park chain
+218cd14a2d5f7dd7297c5343a5269f117deedcf1	2026-08-25	Remove the flake window from the fork park/release chain test
+e48e0d13937324d1941a29157bbef8d1dc484daa	2026-08-24	Add token-usage emission-dedup e2e coverage and spec
+fc291a02850af71949aa7d752910d4a566fabbf8	2026-08-24	Apply the repo exclude gate to TokenUsage uploads
+6a1f9f61a802ad0a433529a68005601d7fa9f254	2026-08-24	Update the token-usage spec for the review-driven semantics
+585412f36ae358e57d6fd5e6b78ada856752b609	2026-08-24	Correct spec claims to match the implementation
+4f85a380470070bdf5e5cd806f66b06ae1a385d9	2026-08-24	Pin the exclude-gate decisions and document accepted limitations
+9c19c63d307f4fca258a8a27c9f516d4f1b587ab	2026-08-24	Document the accepted limitations the review pinned
+dda16b7ee122cf067e37ec7c18e0d0a813a315e9	2026-08-24	Correct the abandonment scope and add the split-burst residual
+418f0de8345ac00359b1452ca23584f77d097967	2026-08-25	Tighten the split-burst bound to match the flush fix
+4fdb3e301c66dd9e8c632ec27891c8ef6d8fc1e6	2026-08-25	Throttle transcript passes to a ~30% CPU duty cycle
+4347ec8b808d19e788cab162ec8626b910803098	2026-08-25	Gate the CPU throttle to sweep-origin passes only
+576d620daa5895af5fefe8b7dc30d020be241500	2026-08-26	Expose a public notes_add_batch_direct on the crate
+3647cce181296de441fdbc0a0a267214d6faeb46	2026-08-26	Merge pull request #2222 from git-ai-project/expose-notes-add-batch
+f14cdf0780f5080cbb6990e9166833d4bea4c846	2026-08-26	Merge pull request #2219 from git-ai-project/feat/default-http-notes
+e11b42b883d403a3595477cf062b17f5ea8006b3	2026-08-26	bump to 1.7.0
+7ace11b0912d502725720a26e243b15ed328f6f8	2026-08-26	Key codex checkpoint streams by rollout filename, not hook session id
+87b271561a543bbd83ee620033fc4eb96f2c3f09	2026-08-26	Merge pull request #2204 from git-ai-project/fix/codex-stream-identity
+e6bc46217e27064a8e3310316d66d5629a1081b0	2026-08-26	Merge pull request #2199 from git-ai-project/dependabot/npm_and_yarn/agent-support/vscode/main/ovsx-1.1.1
+0f3b7a405022d972d486f3efe87d065f1c94fde3	2026-08-26	Merge pull request #2200 from git-ai-project/dependabot/npm_and_yarn/agent-support/vscode/main/posthog-node-5.49.1
+1d71f243b68ffc3af68727c81926a3cec9e19247	2026-08-26	Merge pull request #2165 from git-ai-project/dependabot/npm_and_yarn/agent-support/opencode/main/opencode-ai/plugin-1.18.18
+9bc401c04c830b0f89d623997588b848835cdb57	2026-08-26	Merge pull request #2164 from git-ai-project/dependabot/gradle/agent-support/intellij/main/io.sentry.jvm.gradle-6.19.0
+a5fca3b42f61e7718bbe05d7f7f68c0ac42b4808	2026-08-26	Merge pull request #2133 from git-ai-project/dependabot/github_actions/main/gradle/actions/setup-gradle-6.3.0
+ea127cb16c5869f0c0426641ac6790aa45f1665b	2026-08-26	Merge pull request #2132 from git-ai-project/dependabot/github_actions/main/azure/login-3.0.1
+1b1dcfe837b2804b13286dd6734ea910cc907cd8	2026-08-26	Merge pull request #2131 from git-ai-project/dependabot/github_actions/main/actions/attest-build-provenance-4.2.2
+50132c0f6f64e5591e77a640ba6a866c1ad5271c	2026-08-26	Merge pull request #2130 from git-ai-project/dependabot/github_actions/main/codeql-97c731b4de
+9af568ff1ebaefcaf69a90dc3565e2a11a3b1f4c	2026-08-26	Compare the codex stream-identity e2e against the canonicalized path
+84f78f68cfa78a988a370666e1759cc6a0f75837	2026-08-26	Merge pull request #2223 from git-ai-project/fix/codex-stream-identity-test-macos
+4f3586c606f834209274a2f20a2100fae5c86625	2026-05-07	fix: force C locale for internal git
+1aed49aabc7cdbf9f52a41f164519a9ad266ddd0	2026-08-26	Merge pull request #1294 from nalajcie/fix/internal-git-c-locale
+878775205b5fb868c2bffdc9397627c70ae3e183	2026-08-26	fix(status): normalize stored pathspecs to NFC
+656ede16d569430b65f93b5b9cfe6cb7af994f8b	2026-08-26	fix(status): post-filter non-ASCII pathspecs
+e12988250e607d9876b7908dc8b97d7bd4aeb354	2026-08-26	Merge pull request #2224 from git-ai-project/fix/status-nfc-pathspecs
+68ad0b87c4c442b5d30967876eb225e9cc0741eb	2026-08-26	chore: bump version to 1.7.1 [skip ci]
+fa3765e577dfac0252592ff2dfa05cedd8164dd6	2026-08-26	Log token usage sweep discovery
+6fbc1ef0f4d40232315efc1b907e7ff5526dbea7	2026-08-26	Merge pull request #2229 from git-ai-project/chore/log-token-usage-v2
+7e87137266d00556367d83d691cc2521b125677b	2026-08-30	fix(daemon): never run family side effects inline on the trace ingest worker
+4172f156cbfd99a10a598fa8a1f86e83736ac6ae	2026-08-30	feat(daemon): log checkpoint admission delayed behind trace ingestion
+a7963cffd60d5c6ad75518edd1c8c80b85b4be69	2026-08-27	feat(pricing): keep models.dev context tiers and fast multipliers in the catalog
+24c2af1f6c90613a78ce8e58c7d29521801f2dc9	2026-08-27	fix(pricing): version the on-disk cache so old formats are never reinterpreted
+18c752993cb5bf22da6029c16c8bd6a200aeee7c	2026-08-27	fix(pricing): load-time overrides, neutral family fallback, lenient tiers
+98ea5d540673e6ec9e3b011cdbebbe47a3c60994	2026-08-28	fix(pricing): longest-match override keys, lenient band deserialize
+540a9bcb062f2b14cceddd9c3cbbc055c147bad3	2026-08-31	fix(pricing): fast multiplier for the bare gpt-5.6 alias id
+564e92c87f5cf7b4c6f4d466affc77806dd2fc5e	2026-09-03	fix(pricing): drop the invented 200K premium for Claude 4.6+ models
+bf08e5ffd8b50c49a11d65e4a1eb795ba9596a6f	2026-08-27	feat(token-usage): extract request speed / Codex service tier per entry
+e5e27efd75f17eb953ccf339175616490b674c31	2026-08-27	test(token-usage): open the assertion connection through the sqlite helpers
+891f868399ba26fb03e529c0ccf1c364429e30fb	2026-08-27	docs(token-usage): claim only what this change ships for usage.speed
+ae4190c8362e10f4dd2d27ef7985146e462c476e	2026-08-27	fix(token-usage): keep quiet-skipped passes free of the config lookup
+315014f51926485f2c099a779ca51f4f0b4aef5b	2026-08-27	fix(token-usage): profile-aware config tier, uniform speed_inferred, version guard
+ab44210cd11259974e43f4735f438cbf2c2f3317	2026-08-28	test(token-usage): cover the newer-schema fail-closed guard
+33482e69625e3e1bc65ffe09e4384d1555caae54	2026-08-27	feat(token-usage): price entries with long-context tiers and fast multipliers
+b107a06e48bb3f3d618f5f774c25c3f4d8b152bb	2026-08-27	perf(token-usage): price entries only when a row is actually written
+f36b5511622a3e877b0307daa58fa0c236d4092d	2026-08-27	fix(token-usage): decide the long-context tier once per priced entry
+ac70009fb040cc0952259d3958daedf129aeb2b8	2026-08-28	refactor(token-usage): one tier-rate rule for both cost shapes
+e0b68c928f9707cce927c3ed24daf5bbc594f59f	2026-09-03	test(token-usage): tier tests use claude-sonnet-4-5
+5c6f2f4474493914fc0813cb09cac2d886f2091c	2026-08-27	feat(token-usage): speed-keyed buckets and repricing fields on the wire
+9276eebb34d1af039c29649d359653f94d6d6b97	2026-08-27	docs(token-usage): state the actual speed_inferred and pricing_catalog semantics
+eef4db88b9102db284ce5e1f3630f87549a2a153	2026-08-27	fix(token-usage): dedicated pricing_catalog attribute, indexed speed grouping
+e94356b22ca5aac54721228719eebaa6a75155e0	2026-08-27	docs(token-usage): pricing catalog rides its dedicated attribute
+3e16cd079ed60c22df47fdbc6b96d567f8dfe1ec	2026-08-28	fix(token-usage): drop the superseded bucket index; spec the clamp carve-out
+280041156c12c879b67222091f3c14972700acf1	2026-09-03	docs(token-usage): scope the 200K premium note to pre-4.6 models
+aa9b0980b80196cd2ae2b471270f1d16e5b6c047	2026-09-03	fix(token-usage): attach the org-configured attribute map to events
+262201056f65346acea89c3f149c7ff8113a03ca	2026-08-27	feat(token-usage): match forked Codex sessions against their parent's usage prefix
+2f6ea5ca91809ccea08122418e443bc69f5a4501	2026-08-27	fix(token-usage): resolve fork parents from archived_sessions too
+adbc0c5f097c1b49c2e9976aa2f77403be5b90c2	2026-08-27	fix(token-usage): verified-empty prefixes, home-rooted scans, prefix cap
+bba3d1537f9619e2ab52fda9b745c7ec55fbfbf0	2026-08-31	fix(token-usage): harden fork parent resolution
+e44618c412f3e9c012ca72c43198a9dbb279be60	2026-08-31	fix(token-usage): 1MiB first-line cap for the parent id probe
+120f6ded5e97a4eef3b33dd102becafe83853464	2026-08-27	feat(token-usage): attribute subagent usage to the subagent's own session
+bc76bc8b57f194355bc5fcf841fb6aef18a2b43a	2026-08-27	docs(token-usage): update record_error comment for leaf attribution
+03c7a58242b242a2949c6ab08657d9a78d9edece	2026-08-27	fix(token-usage): expression bucket index in v5, plain-fork spec clarity
+58fd30c09aad9c99eeb148fbb188e1645d15c490	2026-08-30	perf(token-usage): hold the sweep duty cycle across small files, emission, and reconcile
+1aa21ff8d3a1bef8f1203c39175c2342a3f7f689	2026-08-30	fix(token-usage): reconcile one flagged session per blocking job
+f26be403d692713900cabcbb4e14144c12d1635a	2026-08-30	fix(token-usage): fetch one flagged session with LIMIT 1
+fd51fefc1d00233f7e98a9c75a00dd716e32c8e8	2026-08-31	refactor(token-usage): review follow-ups on the duty-cycle layer
+accc22938e14adf8715b9ec9e8e9b6abadb96903	2026-08-31	fix(token-usage): read pending traffic before the deferred reconcile
+1c9d219789a6516b1bffb6c54910fa6d9508da81	2026-08-31	test(token-usage): giant-transcript CPU/RSS bench
+95b6a0daddef4af5e4eb378c1469e9df5722e95d	2026-08-31	perf(telemetry): pace background metrics flushes on the sweep's ledger
+d5543215d09bf5c64b525510a84e09594bac7394	2026-09-02	fix(token-usage): serialize background pauses, close pacing gaps
+5e56e894201e6baab8b3f620deb262ce5272bdc9	2026-09-02	fix(token-usage): bound every background wait at the pause cap
+f8e39c2c89eef78a9f4b3389653473e332adeeda	2026-09-02	fix(token-usage): settle reconcile flags before the drain ack
+49443a5bddf10af5ecdfe97edf3494c148516fea	2026-09-03	chore: bump version to 1.7.2 [skip ci]
+44cc85b0ad5bf26f5401a430b2f9acd43fdb5163	2026-09-04	test(daemon): fence later work on open trace roots, not sequencer placeholders
+88f6f2f6ffc19eafba11e1eca5334f13de5e236c	2026-09-04	fix(daemon): replace PendingRoot placeholders with the trace-ingress fence
+15c048eadec6ecc9a38a03ad6a9410416b89a565	2026-09-04	test(daemon): bound the family causal fence with a grace window
+2b2920b944caf5efefe39fba19a7f6f4ca5f7cc6	2026-09-04	fix(daemon): bound the family causal fence with a grace window
+d119b617fea25f121d9c34735034acf1ceb4978b	2026-09-04	test(daemon): expose a daemon health snapshot
+04d87b7cd117a8ecfcb89a386eb17adb14ee8f24	2026-09-04	feat(daemon): status.daemon control request and bg status health snapshot
+8824a16b7acabaa0819f63bf5bddbdb7f7f5da29	2026-09-04	test(telemetry): include daemon health in the heartbeat
+ce5c08ceb6fad4421f786209b6d91bf7041a196b	2026-09-04	feat(telemetry): include daemon health in the heartbeat
+1f16720db8553f19622fa83e728a8247ff825727	2026-09-04	chore: bump version to 1.7.3 [skip ci]
+fb48f9530443dd86ca307e5f0e8b545e89bc53e5	2026-09-06	feat(mdm): login-start scripts for macOS, Linux, and Windows
+42fc263c80d9a7d58a16b9871016f9b749eb0d74	2026-09-06	fix(mdm): reject shell metacharacters in --bin paths
+edbd6d80f1f3b3937633ea960aac5333eae129f8	2026-09-06	fix(mdm): pass --bin through the environment and retry bg start at login
+566db8d4884011cea0387c3fef32361163d87798	2026-09-06	fix(mdm): retry bg start in the Windows logon launcher too
+ad2f9eb463efa1cf61cef1e49aaacd44c02c68ea	2026-09-06	fix(mdm): report exhausted bg start retries as a failure
+76b30d6a0cfe362df89789e4306feac7ad00e275	2026-09-06	fix(mdm): also reject carriage returns in --bin paths and document the restriction
+805bdda4484a52523a0258d677fa64fe32175377	2026-09-06	ci(mdm): per-PR end-to-end tests for the login-start scripts
+c8cee8e37cc20e3315a82d30c91e8b5d6abccc23	2026-09-06	test(mdm): wait for the old daemon to exit and cover unusual binary paths
+cce3b6c5528e371bd9b7ee2064d94e59865b6245	2026-09-06	test(mdm): exit 0 explicitly after a passing Windows scenario
+376a992818bf1f69b744f0057bbec84788ddc6a8	2026-09-06	test(mdm): verify launcher retry semantics with a fake binary
+962141fd7408fcff1b0fc63307f4db07e470c9a3	2026-09-06	test(mdm): wait for the launchd launcher to exit before judging job state
+0cd8ede139e5cb5287cd09563ce677525d703547	2026-09-06	ci(mdm): nightly login-start tests against published releases
+5fc7ff2c2ca205b7731efec93d04c802da2984b6	2026-09-06	ci(mdm): runner.temp is only valid at step level in the nightly workflow
+f9d3820a0409992e4aac8ea804d079fc307506c0	2026-09-06	ci(mdm): report release-asset drift as a warning instead of a failed job
+97074e657785cb54b5140180e77d867315961feb	2026-09-06	ci(mdm): compare release assets byte-for-byte via a temp file
+7901a3593ed7be074c18bb69f1ddf319ec031a44	2026-09-06	release: publish MDM login-start scripts as release assets
+33b1c701c04a6f2a3a57d2cfb5519c7c58c44684	2026-09-06	feat(daemon): claim untraced commits from the worktree HEAD reflog
+7c5de8bf337f127c8300fb904f100b521d037d6d	2026-09-06	feat(metrics): record commit_source on the Committed metric
+fa4a1bb244b2d1e99fe7fe2f1b7e3f276cf5ef33	2026-09-06	feat(daemon): untraced commit fixup pass and fixup.scan control request
+e8cf505cb206630a297b4cb6585942aed45122bf	2026-09-06	feat(daemon): persist repo families and fixup cursors across restarts
+db46762000773da845a768990e3d18f55dd1b081	2026-09-06	feat(daemon): periodic untraced commit fixup worker
+412e3fd1611dbf8e54062c963036be1d9949ed6f	2026-09-07	feat(daemon): keep temporary repositories out of the untraced fixup
+c3ce366d11784c935233b9c353a1589126c4e442	2026-09-08	chore: bump version to 1.7.4 [skip ci]
+df1f1c47ceb492364e96d40e35e095979e1e0f8b	2026-09-08	Merge branch 'mdm/login-start-release-assets'
+28ee79faaf96811fce24834695144c5271a6080c	2026-09-08	feat(daemon): bg start --retry-secs for login-time lock races
+4959ee98be06209cef250ff992dc3b07f6945915	2026-09-08	feat(token-usage): enable token_usage_metrics by default in release builds
+b05e467e605444080d8623e73e976789303be864	2026-09-08	fix(daemon): reject --retry-secs windows that overflow the deadline
+7e0dd3455ab0ebdb0f3bc69f90420476d00c488e	2026-09-08	fix(mdm): run git-ai directly from the launchers using bg start --retry-secs
+a28afd9c6ecdd287734b25bace90451ea1e46c26	2026-09-08	ci(mdm): nightly follows the update channel and tolerates pre-retry releases
+3444b0534e1af29b7ccd8fa9a0032a734bb88245	2026-09-08	Merge pull request #2335 from git-ai-project/feat/tok-v2-default
+c555675e86b7f390baa9c56d3191d27974a875fe	2026-09-08	feat(usage): source tokens and cost from TokenUsage events exclusively
+92a897460a204e7143541fe2dc365c10e4cfc155	2026-09-08	fix(usage): keep straddling and cost-only token buckets
+2fb5851db7465681bd1b45b34d245d3cd3c63873	2026-09-08	Merge branch 'mdm/login-start-direct-binary'
+c6da94b266f4e4ca73f780cb2846d97a44629e5a	2026-09-08	Merge pull request #2336 from git-ai-project/feat/usage-tokens-v2
+bbf62f65d4c0cdfb2cfc156cbf36596a57f54073	2026-09-08	chore: bump version to 1.7.5 [skip ci]
+6adc1f264060afe766c82ae31781a61a11deea10	2026-09-08	perf(api): cache git author identity resolution with a 30-minute TTL
+f67fe0d732dfebf6bc229ad7c784e3a8a2d42a66	2026-09-09	Merge pull request #2337 from git-ai-project/feat/reduce-git-author-interval
+0670e7ef27590af0e8ff5409267f3f4b09b8fcb4	2026-09-09	chore: bump version to 1.7.6 [skip ci]
