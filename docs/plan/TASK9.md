@@ -29,13 +29,13 @@
 | T9.1b | Native signed Linux packages | n/a deferred | n/a | n/a | Later Linux wave | Resume when Linux becomes a selected customer platform and a real host exists |
 | T9.2a | Secret-free unattended deployment to already-enrolled Jamf and Intune devices | ⬜ | ⬜ | ⬜ best-effort | Task9b, Task9f, Task9g | Package/configuration deploy without exposing `trk_v1` in arguments, logs or profiles |
 | T9.2b | Linux package/service deployment | n/a deferred | n/a | n/a | Later Linux wave | Same trigger as T9.1b |
-| T9.3 | Closed device identity/posture and assigned-user evidence, never authority | ⬜ | ⬜ | ⬜ | Task9a, Task9f, Task9g | Tenant-bound metadata; stale/mismatch states; self-report grants nothing |
-| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | ⬜ | ⬜ | ⬜ | Task9a, Task9c | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
-| T9.5 | Fleet inventory and safe health | ⬜ | ⬜ | ⬜ | Task9a, Task9e | Current/stale/unreported/unavailable are distinct; no raw content |
-| T9.6 | Staged software/configuration rollout and rollback | ⬜ | ⬜ | ⬜ best-effort two-device | Task9a, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
-| T9.7 | Audited revoke/offboard workflow | ⬜ | ⬜ | ⬜ | Task9a, Task9d, Task9e | Dry-run/impact preview; Task4 revocation blocks upload; cleanup outcome recorded |
+| T9.3 | Closed device identity/posture and assigned-user evidence, never authority | 🟡 Task9a server contract | 🟡 IT-T9-01 | ⬜ | Task9a, Task9f, Task9g | Tenant-bound metadata; stale/mismatch states; self-report grants nothing |
+| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | 🟡 Task9a server interface | 🟡 IT-T9-01 | ⬜ | Task9a, Task9c | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
+| T9.5 | Fleet inventory and safe health | 🟡 Task9a API contract | 🟡 unit + IT-T9-01 | ⬜ | Task9a, Task9e | Current/stale/unreported/unavailable are distinct; no raw content |
+| T9.6 | Staged software/configuration rollout and rollback | 🟡 Task9a assignment primitive | 🟡 IT-T9-01 | ⬜ best-effort two-device | Task9a, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
+| T9.7 | Audited revoke/offboard workflow | 🟡 Task9a server orchestration | 🟡 IT-T9-01 | ⬜ | Task9a, Task9d, Task9e | Dry-run/impact preview; Task4 revocation blocks upload; cleanup outcome recorded |
 | T9.8 | macOS Keychain and Windows Credential Manager/DPAPI machine-credential storage | ⬜ | ⬜ | ⬜ | Task9c, Task9f, Task9g | No plaintext file/log; wrong user/machine and locked/unavailable store fail closed |
-| T9.9 | MDM-to-TrackAI assignment reconciliation | ⬜ | ⬜ | ⬜ best-effort MDM | Task9a, Task9e, Task9f, Task9g | Match/mismatch/unavailable explained; explicit admin confirmation; no auto-authority |
+| T9.9 | MDM-to-TrackAI assignment reconciliation | 🟡 Task9a evidence contract; reconciliation unavailable | 🟡 unit + IT-T9-01 | ⬜ best-effort MDM | Task9a, Task9e, Task9f, Task9g | Match/mismatch/unavailable explained; explicit admin confirmation; no auto-authority |
 | T9.10a | macOS and Windows fleet security/E2E | ⬜ | ⬜ | ⬜ best-effort | Task9f, Task9g | Install → configure → offline work → health → update → rollback → rotate → revoke → offboard |
 | T9.10b | Linux fleet security/E2E | n/a deferred | n/a | n/a | Later Linux wave | Resume with T9.1b/T9.2b/T9.8 Linux |
 
@@ -152,7 +152,7 @@ Task9a and Task9b are the only recommended parallel pair. Task9e can overlap Tas
 
 | ID | What it proves | Prerequisites | Gating | Status |
 |---|---|---|---|---|
-| IT-T9-01 | Disposable PostgreSQL: configuration scope/version/ack, fleet posture, rollout/offboard records, immutable audit and Company A/B isolation | Docker or local PostgreSQL through `scripts/it-db.sh` | Blocking: Task9a and every TrackAI fleet contract change | ⬜ designed |
+| IT-T9-01 | Disposable PostgreSQL: configuration scope/version/ack, fleet posture, rollout/offboard records, immutable audit and Company A/B isolation | Docker or local PostgreSQL through `scripts/it-db.sh` | Blocking: Task9a and every TrackAI fleet contract change | 🟡 agent-verified 2026-10-09; founder run pending |
 | IT-T9-02 | Current Intel Mac: signed PKG, Keychain, managed config, offline queue, update, rollback, credential rotation, revoke and cleanup | Current Mac, disposable TrackAI tenant/runtime | Blocking: supported macOS local route | ⬜ designed |
 | IT-T9-03 | Jamf post-login policy deployment, inventory, update/rollback and offboarding | Jamf Pro test tenant, APNs certificate, enrolled Mac | Blocking only for Jamf-managed claim; procurement best-effort | ⬜ pending access |
 | IT-T9-04 | Hosted Windows x64 builds MSI and performs install/uninstall smoke without plaintext output | GitHub Actions Windows x64 runner | Minimum Windows evidence even without a rental | ⬜ existing basis; Task9 rerun pending |

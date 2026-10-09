@@ -309,6 +309,143 @@ export const tenantSecurityMonitorSettings = pgTable('tenant_security_monitor_se
   `),
 }));
 
+/** Immutable desired-state snapshots for explicitly assigned managed machines. */
+export const fleetConfigurations = pgTable('fleet_configurations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  epoch: integer('epoch').notNull(),
+  schemaVersion: integer('schema_version').notNull().default(1),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
+  generatedBy: text('generated_by').notNull(),
+  validUntil: timestamp('valid_until', { withTimezone: true }),
+  targetClientVersion: text('target_client_version').notNull(),
+  channel: text('channel')
+    .$type<'latest' | 'next' | 'enterprise-latest' | 'enterprise-next'>().notNull(),
+  ring: text('ring'),
+  snapshot: jsonb('snapshot').$type<{
+    repositoryPolicies: Array<{
+      machineId: string;
+      repositoryId: string;
+      enrollmentId: string;
+      grantId: string;
+      branchPatterns: string[];
+      effectiveFrom: string;
+      effectiveUntil: string | null;
+    }>;
+    securityActivation: { mode: 'off' | 'monitor'; version: number };
+  }>().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('fleet_configurations_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantEpochUnique: unique('fleet_configurations_tenant_epoch_key')
+    .on(table.tenantId, table.epoch),
+  tenantGeneratedIndex: index('fleet_configurations_tenant_generated_idx')
+    .on(table.tenantId, table.generatedAt),
+  epochCheck: check('fleet_configurations_epoch_check', sql`${table.epoch} >= 1`),
+  schemaVersionCheck: check('fleet_configurations_schema_version_check',
+    sql`${table.schemaVersion} = 1`),
+  channelCheck: check('fleet_configurations_channel_check', sql`
+    ${table.channel} in ('latest', 'next', 'enterprise-latest', 'enterprise-next')
+  `),
+  boundedMetadataCheck: check('fleet_configurations_bounded_metadata_check', sql`
+    length(${table.generatedBy}) between 1 and 255
+    and length(${table.targetClientVersion}) between 1 and 64
+    and (${table.ring} is null or length(${table.ring}) between 1 and 64)
+    and (${table.validUntil} is null or ${table.validUntil} > ${table.generatedAt})
+    and jsonb_typeof(${table.snapshot}) = 'object'
+    and octet_length(${table.snapshot}::text) <= 65536
+  `),
+}));
+
+/** One desired/observed metadata-only state row per managed machine. */
+export const fleetMachineStates = pgTable('fleet_machine_states', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  desiredConfigurationId: uuid('desired_configuration_id'),
+  acknowledgedConfigurationId: uuid('acknowledged_configuration_id'),
+  acknowledgedEpoch: integer('acknowledged_epoch'),
+  acknowledgementResult: text('acknowledgement_result').$type<
+    'applied' | 'rejected_invalid' | 'rejected_expired' | 'rejected_incompatible'
+    | 'verification_unavailable' | 'verification_rejected' | 'activation_failed' | 'unavailable'
+  >(),
+  platform: text('platform').$type<'macos' | 'windows'>(),
+  osVersion: text('os_version'),
+  architecture: text('architecture').$type<'x86_64' | 'aarch64'>(),
+  gitaiVersion: text('gitai_version'),
+  serviceState: text('service_state').$type<'running' | 'stopped' | 'degraded' | 'unavailable'>(),
+  pendingRetryable: integer('pending_retryable'),
+  waitingRetry: integer('waiting_retry'),
+  processing: integer('processing'),
+  quarantined: integer('quarantined'),
+  rowsWithErrors: integer('rows_with_errors'),
+  mdmDeviceReference: text('mdm_device_reference'),
+  mdmUserReference: text('mdm_user_reference'),
+  assignmentSource: text('assignment_source')
+    .$type<'jamf' | 'intune' | 'manual' | 'unavailable'>(),
+  assignmentObservedAt: timestamp('assignment_observed_at', { withTimezone: true }),
+  lastReportAt: timestamp('last_report_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('fleet_machine_states_tenant_id_id_key')
+    .on(table.tenantId, table.id),
+  tenantMachineUnique: unique('fleet_machine_states_tenant_machine_key')
+    .on(table.tenantId, table.machineId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'fleet_machine_states_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantDesiredConfigurationForeignKey: foreignKey({
+    name: 'fleet_machine_states_tenant_desired_configuration_fk',
+    columns: [table.tenantId, table.desiredConfigurationId],
+    foreignColumns: [fleetConfigurations.tenantId, fleetConfigurations.id],
+  }),
+  tenantAcknowledgedConfigurationForeignKey: foreignKey({
+    name: 'fleet_machine_states_tenant_acknowledged_configuration_fk',
+    columns: [table.tenantId, table.acknowledgedConfigurationId],
+    foreignColumns: [fleetConfigurations.tenantId, fleetConfigurations.id],
+  }),
+  tenantDesiredIndex: index('fleet_machine_states_tenant_desired_idx')
+    .on(table.tenantId, table.desiredConfigurationId),
+  tenantReportIndex: index('fleet_machine_states_tenant_report_idx')
+    .on(table.tenantId, table.lastReportAt),
+  acknowledgementCheck: check('fleet_machine_states_acknowledgement_check', sql`
+    (${table.acknowledgedConfigurationId} is null
+      and ${table.acknowledgedEpoch} is null
+      and ${table.acknowledgementResult} is null)
+    or (${table.acknowledgedConfigurationId} is not null
+      and ${table.acknowledgedEpoch} >= 1
+      and ${table.acknowledgementResult} in (
+        'applied', 'rejected_invalid', 'rejected_expired', 'rejected_incompatible',
+        'verification_unavailable', 'verification_rejected', 'activation_failed', 'unavailable'
+      ))
+  `),
+  postureCheck: check('fleet_machine_states_posture_check', sql`
+    (${table.platform} is null or ${table.platform} in ('macos', 'windows'))
+    and (${table.architecture} is null or ${table.architecture} in ('x86_64', 'aarch64'))
+    and (${table.serviceState} is null or ${table.serviceState} in ('running', 'stopped', 'degraded', 'unavailable'))
+    and (${table.assignmentSource} is null or ${table.assignmentSource} in ('jamf', 'intune', 'manual', 'unavailable'))
+  `),
+  countCheck: check('fleet_machine_states_count_check', sql`
+    (${table.pendingRetryable} is null or ${table.pendingRetryable} between 0 and 1000000)
+    and (${table.waitingRetry} is null or ${table.waitingRetry} between 0 and 1000000)
+    and (${table.processing} is null or ${table.processing} between 0 and 1000000)
+    and (${table.quarantined} is null or ${table.quarantined} between 0 and 1000000)
+    and (${table.rowsWithErrors} is null or ${table.rowsWithErrors} between 0 and 1000000)
+  `),
+  boundedMetadataCheck: check('fleet_machine_states_bounded_metadata_check', sql`
+    (${table.osVersion} is null or length(${table.osVersion}) between 1 and 128)
+    and (${table.gitaiVersion} is null or length(${table.gitaiVersion}) between 1 and 64)
+    and (${table.mdmDeviceReference} is null or length(${table.mdmDeviceReference}) between 1 and 255)
+    and (${table.mdmUserReference} is null or length(${table.mdmUserReference}) between 1 and 255)
+  `),
+  assignmentEvidenceCheck: check('fleet_machine_states_assignment_evidence_check', sql`
+    (${table.assignmentSource} is null and ${table.assignmentObservedAt} is null)
+    or (${table.assignmentSource} is not null and ${table.assignmentObservedAt} is not null)
+  `),
+}));
+
 /** Immutable, metadata-only Task6 monitor findings accepted from managed machines. */
 export const securityFindings = pgTable('security_findings', {
   id: uuid('id').defaultRandom().primaryKey(),
