@@ -1,6 +1,6 @@
 # Session prompt template
 
-Copy to `docs/prompts/NEXT_CHAT_<name>_PROMPT.md`. Everything in `<angle brackets>` is filled per session; delete these two lines.
+Copy numbered-Task prompts to `docs/prompts/Task<N>/NEXT_CHAT_<name>_PROMPT.md`, including the Task lead prompt. Generic or cross-Task prompts may stay directly under `docs/prompts/`. Everything in `<angle brackets>` is filled per session; delete these two lines.
 
 ---
 

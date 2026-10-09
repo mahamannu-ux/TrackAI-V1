@@ -38,7 +38,7 @@ Follow **`docs/agents/TASK_LEAD_PROCEDURE.md`** phase by phase (primer and sub-t
 None catalogued: SushiCorp has no fleet or MDM component (`docs/plan/REUSE_MAP.md`). Record "none, because SushiCorp has no endpoint fleet" in the primer. Reuse inside TrackAI instead: Task4 enrollment, credentials, grants, delivery health and audit.
 
 ### 2.3 Pre-approved for the planning branch
-`docs/plan/primers/Task9_PRIMER.md`, `docs/plan/TASK9.md`, `docs/plan/STATUS_BOARD.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md`, `docs/handoffs/Task9-plan_HANDOFF.md`, `docs/prompts/NEXT_CHAT_Task9*_PROMPT.md`, the Task9 row of `ROUGH_ROADMAP.md`. Code files are pre-approved per session in each session's prompt.
+`docs/plan/primers/Task9_PRIMER.md`, `docs/plan/TASK9.md`, `docs/plan/STATUS_BOARD.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md`, `docs/handoffs/Task9-plan_HANDOFF.md`, `docs/prompts/Task9/NEXT_CHAT_Task9*_PROMPT.md`, the Task9 row of `ROUGH_ROADMAP.md`. Code files are pre-approved per session in each session's prompt.
 
 ### 2.4 Never touch
 `docs/contracts/`, merged migrations, Task5/Task6 code, `AGENT_COVERAGE.md` and Task13's sessions' files. **Shared with Task13:** GitAI `src/mdm/` (agent hook installers), `src/config.rs`, `install.sh` / `install.ps1`, the GitAI daemon startup. If both Tasks need one of these at the same time, stop and ask the founder which Task goes first.

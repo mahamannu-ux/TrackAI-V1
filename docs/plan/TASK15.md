@@ -116,8 +116,8 @@ flowchart LR
 
 | Session | Subtasks | Agent | Estimate | Prompt |
 |---|---|---|---|---|
-| Task15a-attesta-primitives | A15.1 | Muse | 0.08× | `docs/prompts/NEXT_CHAT_Task15a-attesta-primitives_PROMPT.md` |
-| Task15b-attesta-signer | A15.2 | Muse | 0.05× | `docs/prompts/NEXT_CHAT_Task15b-attesta-signer_PROMPT.md` |
+| Task15a-attesta-primitives | A15.1 | Muse | 0.08× | `docs/prompts/Task15/NEXT_CHAT_Task15a-attesta-primitives_PROMPT.md` |
+| Task15b-attesta-signer | A15.2 | Muse | 0.05× | `docs/prompts/Task15/NEXT_CHAT_Task15b-attesta-signer_PROMPT.md` |
 | Task15c-attesta-contract | A15.0 | Claude | 0.05× | written by the lead after buy-in |
 | Task15d-attesta-ledger | A15.3 | Claude | 0.2× | after 15a, 15c |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.08× | after 15a |

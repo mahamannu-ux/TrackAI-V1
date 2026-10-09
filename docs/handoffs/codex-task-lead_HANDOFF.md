@@ -10,7 +10,7 @@ Lets Codex run a whole roadmap Task with Muse: a procedure, two lead prompts, th
 | | Item | Status |
 |---|---|---|
 | Scope | `docs/agents/TASK_LEAD_PROCEDURE.md` (phases, checkpoints, Muse hand-offs, reviews, close) | ✅ |
-| Scope | `docs/prompts/NEXT_CHAT_Task9-lead_PROMPT.md`, `docs/prompts/NEXT_CHAT_Task13-lead_PROMPT.md` | ✅ |
+| Scope | `docs/prompts/Task9/NEXT_CHAT_Task9-lead_PROMPT.md`, `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` | ✅ |
 | Scope | Primer template: "Who" column and Mermaid sub-task graph | ✅ |
 | Scope | AGENTS.md §12.6 (Muse reviews Codex when Claude is unavailable; security-critical waits for the orchestrator), §12.8 pointer | ✅ |
 | Scope | `ROUGH_ROADMAP.md` rows Task15 Attesta and Task16 Audit; status board rows | ✅ |

@@ -48,7 +48,7 @@ scripts/             agent-kit scripts: worktree.mk, it-postgres.sh, it-db.sh
 docs/                project documents, never code:
   plan/              STATUS_BOARD.md, PROJECT_MAP.md (start here), REUSE_MAP.md, EFFORT_BENCHMARK.md, KIT_ADOPTION.md, primers/
   handoffs/          one handoff per finished session (<name>_HANDOFF.md); older TASKx_TO_TASKy.md notes stay
-  prompts/           one prompt per session (NEXT_CHAT_<name>_PROMPT.md)
+  prompts/           active/future Task folders (`Task9/`, `Task13/`, ...), each holding its lead and subtask prompts; generic/one-off prompts may stay at the root
   agents/            review procedure and the manager prompt
   templates/         handoff, session-prompt and Task-primer templates
   founder/           the founder's own documents (vision)
@@ -285,7 +285,7 @@ A different agent reviews every finished session:
 The founder pastes the author's review request and nothing else; the reviewer reads `docs/agents/CROSS_REVIEW_PROMPT.md` from `main` and follows it. The reviewer is **read-only** (never commits to the author's branch), checks the branch against this file, the spec and the handoff, runs the gates, and returns **ready to push** or **fix first** with a numbered list of fixes the founder pastes back. The founder pushes only after "ready to push". Finding nothing is a valid outcome.
 
 ### 12.7 Naming sessions and the standing chats
-- **Name a session after what it handles** (`Task15a-attesta-chain`), never "session A/B". Its prompt is `docs/prompts/NEXT_CHAT_<name>_PROMPT.md`, its branch `task/<name>` (or `docs/<name>`), its handoff `docs/handoffs/<name>_HANDOFF.md`.
+- **Name a session after what it handles** (`Task15a-attesta-chain`), never "session A/B". Its prompt is `docs/prompts/Task<N>/NEXT_CHAT_<name>_PROMPT.md` for a numbered Task (including that Task's lead prompt), its branch `task/<name>` (or `docs/<name>`), and its handoff `docs/handoffs/<name>_HANDOFF.md`. Generic or cross-Task prompts may remain directly under `docs/prompts/`.
 - **Standing chats** do no product code, and restart from their prompt whenever they grow long, because the repository holds the state:
   - **TrackAI-Orchestrator** (`docs/agents/MANAGER_PROMPT.md`): plans Tasks, writes Task primers and session prompts, answers non-Claude agents, reviews their branches, keeps the lessons table and the status board.
   - **FounderQA** (the founder's own chat for product and architecture questions; not set up by the kit here).

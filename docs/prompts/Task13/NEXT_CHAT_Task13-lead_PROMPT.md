@@ -37,7 +37,7 @@ Follow **`docs/agents/TASK_LEAD_PROCEDURE.md`** phase by phase (primer and sub-t
 Candidate: SushiCorp SD-1 (shared contract suite) for T13.9 only; everything else is TrackAI/GitAI-specific. Record the decision and reason in the primer.
 
 ### 2.3 Pre-approved for the planning branch
-`docs/plan/primers/Task13_PRIMER.md`, `AGENT_COVERAGE.md`, `docs/plan/STATUS_BOARD.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md`, `docs/handoffs/Task13-plan_HANDOFF.md`, `docs/prompts/NEXT_CHAT_Task13*_PROMPT.md`, the Task13 row of `ROUGH_ROADMAP.md`. Code files are pre-approved per session in each session's prompt.
+`docs/plan/primers/Task13_PRIMER.md`, `AGENT_COVERAGE.md`, `docs/plan/STATUS_BOARD.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md`, `docs/handoffs/Task13-plan_HANDOFF.md`, `docs/prompts/Task13/NEXT_CHAT_Task13*_PROMPT.md`, the Task13 row of `ROUGH_ROADMAP.md`. Code files are pre-approved per session in each session's prompt.
 
 ### 2.4 Never touch
 `docs/contracts/` (a new route field set is a new contract version, decided at checkpoint 2), merged migrations, Task2 metric semantics without a Lifecycle Lab change, Task9's sessions' files. **Shared with Task9:** GitAI `src/mdm/` (agent hook installers), `src/config.rs`, `install.sh` / `install.ps1`, the GitAI daemon startup. If both Tasks need one of these at the same time, stop and ask the founder which Task goes first.
