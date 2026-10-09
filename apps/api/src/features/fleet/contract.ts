@@ -37,7 +37,7 @@ export interface FleetRepositoryPolicyReference {
 }
 
 export interface FleetConfigurationSnapshot {
-  repositoryPolicies: FleetRepositoryPolicyReference[];
+  repositoryPolicies: Array<FleetRepositoryPolicyReference & { machineId: string }>;
   securityActivation: {
     mode: 'off' | 'monitor';
     version: number;
@@ -276,7 +276,7 @@ export function validateFleetConfigurationSnapshot(value: unknown): FleetConfigu
   }
   const repositoryPolicies = snapshot.repositoryPolicies.map((value, index) => {
     const policy = record(value, [
-      'repositoryId', 'enrollmentId', 'grantId', 'branchPatterns',
+      'machineId', 'repositoryId', 'enrollmentId', 'grantId', 'branchPatterns',
       'effectiveFrom', 'effectiveUntil',
     ], `snapshot.repositoryPolicies[${index}]`);
     if (!Array.isArray(policy.branchPatterns)
@@ -304,6 +304,7 @@ export function validateFleetConfigurationSnapshot(value: unknown): FleetConfigu
       }
     }
     return {
+      machineId: uuid(policy.machineId, `snapshot.repositoryPolicies[${index}].machineId`),
       repositoryId: uuid(policy.repositoryId, `snapshot.repositoryPolicies[${index}].repositoryId`),
       enrollmentId: uuid(policy.enrollmentId, `snapshot.repositoryPolicies[${index}].enrollmentId`),
       grantId: uuid(policy.grantId, `snapshot.repositoryPolicies[${index}].grantId`),
@@ -328,6 +329,7 @@ export function validateFleetConfigurationSnapshot(value: unknown): FleetConfigu
 }
 
 export function configurationEnvelope(input: {
+  machineId: string;
   id: string;
   epoch: number;
   generatedAt: Date;
@@ -347,7 +349,9 @@ export function configurationEnvelope(input: {
     targetClientVersion: input.targetClientVersion,
     channel: input.channel,
     ring: input.ring,
-    repositoryPolicies: snapshot.repositoryPolicies,
+    repositoryPolicies: snapshot.repositoryPolicies
+      .filter(policy => policy.machineId === input.machineId)
+      .map(({ machineId: _machineId, ...policy }) => policy),
     securityActivation: snapshot.securityActivation,
     verification: { required: true, state: 'unavailable' },
   };

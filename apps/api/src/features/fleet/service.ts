@@ -65,7 +65,7 @@ export async function getFleetConfiguration(
     eq(fleetConfigurations.id, state.desiredConfigurationId),
   ).limit(1);
   if (!configuration) conflict();
-  return configurationEnvelope(configuration);
+  return configurationEnvelope({ ...configuration, machineId });
 }
 
 export async function recordFleetReport(input: {
@@ -159,6 +159,7 @@ async function snapshotCurrentPolicy(
     const enrollment = enrollmentById.get(grant.enrollmentId);
     if (!enrollment || !activeMachineIds.has(grant.machineId)) return [];
     return [{
+      machineId: grant.machineId,
       repositoryId: enrollment.repositoryId,
       enrollmentId: enrollment.id,
       grantId: grant.id,

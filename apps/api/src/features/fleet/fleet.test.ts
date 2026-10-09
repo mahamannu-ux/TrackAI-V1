@@ -15,6 +15,7 @@ import { classifyFleetMachineStatus, FleetServiceError } from './service';
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
 const machineA = '33333333-3333-4333-8333-333333333333';
+const machineB = '99999999-9999-4999-8999-999999999999';
 const configurationA = '44444444-4444-4444-8444-444444444444';
 const now = new Date('2026-10-09T10:00:00.000Z');
 
@@ -149,6 +150,7 @@ test('configuration and assignment inputs reject caller policy and unbounded rol
 
 test('configuration envelope exposes the Task15 fail-closed seam and no secret material', () => {
   const envelope = configurationEnvelope({
+    machineId: machineA,
     id: configurationA,
     epoch: 3,
     generatedAt: now,
@@ -158,10 +160,19 @@ test('configuration envelope exposes the Task15 fail-closed seam and no secret m
     ring: null,
     snapshot: {
       repositoryPolicies: [{
+        machineId: machineA,
         repositoryId: '55555555-5555-4555-8555-555555555555',
         enrollmentId: '66666666-6666-4666-8666-666666666666',
         grantId: '77777777-7777-4777-8777-777777777777',
         branchPatterns: ['main'],
+        effectiveFrom: now.toISOString(),
+        effectiveUntil: null,
+      }, {
+        machineId: machineB,
+        repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        enrollmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        grantId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        branchPatterns: ['release/*'],
         effectiveFrom: now.toISOString(),
         effectiveUntil: null,
       }],
@@ -169,6 +180,8 @@ test('configuration envelope exposes the Task15 fail-closed seam and no secret m
     },
   });
   assert.deepEqual(envelope.verification, { required: true, state: 'unavailable' });
+  assert.equal(envelope.repositoryPolicies.length, 1);
+  assert.equal('machineId' in envelope.repositoryPolicies[0], false);
   assert.doesNotMatch(JSON.stringify(envelope), /credential|secret|prompt|raw/i);
 });
 

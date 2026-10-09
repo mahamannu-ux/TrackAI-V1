@@ -324,6 +324,7 @@ export const fleetConfigurations = pgTable('fleet_configurations', {
   ring: text('ring'),
   snapshot: jsonb('snapshot').$type<{
     repositoryPolicies: Array<{
+      machineId: string;
       repositoryId: string;
       enrollmentId: string;
       grantId: string;
