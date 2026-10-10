@@ -79,7 +79,7 @@ flowchart LR
 ## 4. Sessions
 | Session | Subtasks | Agent | Estimate | Prompt |
 |---|---|---|---|---|
-| Task16a-audit-inventory | A16.1, A16.2 | Muse | 0.06× | `docs/prompts/NEXT_CHAT_Task16a-audit-inventory_PROMPT.md` |
+| Task16a-audit-inventory | A16.1, A16.2 | Muse | 0.06× | `docs/prompts/Task16/NEXT_CHAT_Task16a-audit-inventory_PROMPT.md` |
 | Task16b-audit-contract | A16.3 | Claude | 0.05× | lead writes after 16a |
 | Task16c-audit-emitters | A16.5 | Muse | 0.06× | after 16b |
 | Task16d-audit-api | A16.6 | Muse | 0.06× | after 16b |

@@ -111,7 +111,7 @@ The founder approved seven Codex/Muse sessions. TrackAI and GitAI changes always
 |---|---|---|---:|---|---|
 | **Task9a-fleet-control-plane** | TrackAI / Codex | T9.3; T9.4 server interface; T9.5 inventory contract; T9.6 rollout records; T9.7 revoke orchestration; T9.9 reconciliation | about 0.24x target; 0.38x ceiling | Plan merged | new `apps/api/src/features/fleet/`; `core/db/schema.ts`; generated migration `0014_*` + meta; app router mount; focused tests/scripts; package scripts; reuse `machine.manage` |
 | **Task9b-managed-packages** | GitAI / Muse | T9.1a and T9.2a: selectively port upstream macOS/Windows login-start behavior, then harden existing PKG/MSI for secret-free managed deployment | about 0.20x target; 0.25x ceiling | Plan merged; no Task13 overlap in daemon, MDM or packaging files | new top-level `mdm/`; MDM tests/workflow; bounded `bg start --retry-secs`; `packaging/`; bounded release workflow; Linux/nightly/WSL excluded |
-| **Task9c-managed-config-secrets** | GitAI / Codex | T9.4 client fetch/verify/stage/activate; T9.8 macOS/Windows secret-store adapters | about 0.40x | Task9a merged; preferably Task9b merged | new `src/fleet/`; `src/auth/{credential_backend,credentials}.rs`; `src/metrics/delivery.rs`; `src/security/activation.rs`; `src/config.rs`; bounded daemon/startup wiring; Cargo manifests/tests |
+| **Task9c-managed-config-secrets** | GitAI / Codex | T9.4 client fetch/verify/stage/activate; T9.8 macOS/Windows secret-store adapters | about 0.32x target; 0.40x ceiling | Task9a merged; implementation may overlap Task9b tests with disjoint files; rebase/merge after Task9b | new `src/fleet/`; dedicated machine-credential adapter; `src/metrics/delivery.rs`; `src/security/activation.rs`; bounded telemetry-worker wiring; Cargo manifests/tests; never Task9b daemon-command/MDM/package files |
 | **Task9d-fleet-update-offboard** | GitAI / Muse | T9.6 update/rollback mechanics and T9.7 local cleanup/uninstall | about 0.30x | Task9a + Task9c merged | new `src/fleet/` lifecycle modules; `src/commands/upgrade.rs`; bounded install/uninstall and packaging scripts; exact daemon restart tests |
 | **Task9e-fleet-console** | TrackAI / Muse | T9.5 inventory; T9.6 rollout state; T9.7 dry-run/offboard UX; T9.9 mismatch explanation | about 0.25x | Task9a merged; Muse free after Task9b | new `apps/web/src/app/dashboard/fleet-workspace.tsx`; `apps/web/src/lib/api.ts`; minimal `dashboard/page.tsx` integration; focused web/API contract tests |
 | **Task9f-macos-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a current Intel Mac lifecycle; best-effort Jamf, second Mac and Apple Silicon gates | about 0.30x | Task9a–Task9e merged | platform tests/runbooks under GitAI `tests/` and `docs/`; only bounded fixes in Task9-owned files; no new product surface |
@@ -135,7 +135,7 @@ flowchart LR
   P --> A
   P --> B
   A --> C
-  B --> C
+  B -. rebase and merge gate .-> C
   A --> E
   B --> E
   A --> D
@@ -146,7 +146,7 @@ flowchart LR
   F --> G
 ```
 
-Task9a and Task9b are the only recommended parallel pair. Task9e can overlap Task9c after both Wave-1 PRs merge because they are different repositories and agents. Task9d waits for Task9c. Task9f and Task9g remain lead-owned evidence sessions and run serially.
+Task9a and Task9b were the initial parallel pair. After Task9a merges, Task9c implementation may overlap Task9b's long-running tests only while their GitAI file ownership remains disjoint; Task9c rebases on and merges after Task9b. Task9e can overlap Task9c after both Wave-1 PRs merge because they are different repositories and agents. Task9d waits for Task9c. Task9f and Task9g remain lead-owned evidence sessions and run serially.
 
 ## 6. Integration and founder-live evidence registry
 
