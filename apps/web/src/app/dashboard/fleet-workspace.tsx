@@ -161,9 +161,18 @@ export function FleetWorkspace() {
   }, [assignConfigId, checkedIds, knownConfigs, machines]);
 
   function toggleChecked(id: string): void {
+    const machine = (machines ?? []).find(row => row.id === id);
+    if (!machine || machine.machineStatus !== 'active') return;
     setCheckedIds(current => (
       current.includes(id) ? current.filter(row => row !== id) : [...current, id]
     ));
+  }
+
+  function activeCheckedIds(): string[] {
+    const activeIds = new Set(
+      (machines ?? []).filter(row => row.machineStatus === 'active').map(row => row.id),
+    );
+    return [...new Set(checkedIds)].filter(id => activeIds.has(id));
   }
 
   async function create(event: React.FormEvent): Promise<void> {
@@ -227,7 +236,11 @@ export function FleetWorkspace() {
       setAssignError('Enter a valid configuration UUID.');
       return;
     }
-    const uniqueIds = [...new Set(checkedIds)];
+    const uniqueIds = activeCheckedIds();
+    if (checkedIds.length !== uniqueIds.length) {
+      setAssignError('Revoked machines cannot be assigned; deselect them and retry.');
+      return;
+    }
     if (uniqueIds.length < 1 || uniqueIds.length > 100) {
       setAssignError('Select 1 to 100 machines using the inventory checkboxes.');
       return;
@@ -254,7 +267,7 @@ export function FleetWorkspace() {
   }
 
   async function runPreview(): Promise<void> {
-    if (!selected) return;
+    if (!selected || selected.machineStatus !== 'active') return;
     setPreview(null);
     setPreviewError(null);
     setApplyResult(null);
@@ -338,7 +351,7 @@ export function FleetWorkspace() {
         <div className="max-h-[36rem] divide-y divide-slate-800 overflow-y-auto">
           {filtered.map(machine => (
             <div key={machine.id} className={`flex items-start gap-3 p-4 ${selectedId === machine.id ? 'bg-violet-500/10' : ''}`}>
-              <input type="checkbox" checked={checkedIds.includes(machine.id)} onChange={() => toggleChecked(machine.id)} aria-label={`Select ${machine.displayName} for assignment`} className="mt-1" />
+              <input type="checkbox" checked={checkedIds.includes(machine.id)} disabled={machine.machineStatus !== 'active'} title={machine.machineStatus !== 'active' ? 'Revoked machines cannot be assigned' : undefined} onChange={() => toggleChecked(machine.id)} aria-label={`Select ${machine.displayName} for assignment`} className="mt-1" />
               <button type="button" onClick={() => setSelectedId(machine.id)} className="min-w-0 flex-1 text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -407,7 +420,8 @@ export function FleetWorkspace() {
         <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
           <h3 className="font-semibold text-white">Offboard machine</h3>
           <p className="text-xs text-slate-500">Preview first; preview never mutates. Apply revokes server access immediately; local and MDM cleanup are best-effort evidence.</p>
-          <button disabled={!selected || previewBusy} onClick={() => void runPreview()} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-50">{previewBusy ? 'Loading preview…' : selected ? `Preview offboard for ${selected.displayName}` : 'Select a machine first'}</button>
+          <button disabled={!selected || previewBusy || selected.machineStatus !== 'active'} onClick={() => void runPreview()} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-50">{previewBusy ? 'Loading preview…' : selected ? `Preview offboard for ${selected.displayName}` : 'Select a machine first'}</button>
+          {selected && selected.machineStatus !== 'active' && <p className="text-xs text-slate-500">This machine is already revoked; server access is already blocked.</p>}
           {previewError && <div className="rounded-lg border border-rose-500/30 p-3 text-xs text-rose-200">{previewError}</div>}
           {preview && selected && preview.machine.id === selected.id && <div className="space-y-2 text-sm text-slate-300">
             <div><span className="text-slate-500">Machine: </span>{preview.machine.displayName} (<span className="font-mono text-xs">{preview.machine.installationId}</span>)</div>

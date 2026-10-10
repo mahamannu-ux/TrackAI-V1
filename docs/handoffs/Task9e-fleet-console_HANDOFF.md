@@ -14,12 +14,12 @@ New `apps/web/src/app/dashboard/fleet-workspace.tsx` plus typed bindings in `app
 
 ## Deviations
 
-None from the prompt. One review-driven fix: added a sixth local badge tone so `unreported` and `stale` are visually distinct. `xl:grid-cols-8` became `xl:grid-cols-9` for the added nav item.
+None from the prompt. Review-driven fixes (fix-first verdict): added a sixth local badge tone so `unreported` and `stale` are visually distinct; Fleet nav and workspace render only for `tenant_admin` (auditors keep existing read-only behavior with an explanatory note); revoked machines are not selectable for assignment and offboard preview is disabled once revoked; client response types now use the frozen closed unions (platform, architecture, service state, report result, assignment source) instead of `string`.
 
 ## Known limitations
 
 - No configuration-history list route exists by design; the UI offers IDs visible in inventory plus session-created configs and accepts a validated UUID, labeled honestly.
-- Reconciliation stays `unavailable`; MDM evidence is display-only and never authority. Non-admins keep existing read-only/no-access behavior (section renders only for active admins).
+- Reconciliation stays `unavailable`; MDM evidence is display-only and never authority. Auditors see no Fleet nav or controls (the fleet routes 403 for auditors server-side); revoked machines cannot be assigned or re-offboarded from the UI.
 
 ## Test coverage
 

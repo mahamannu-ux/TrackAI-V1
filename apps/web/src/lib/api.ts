@@ -557,6 +557,13 @@ export type FleetMachineState =
   | 'current' | 'stale' | 'unreported' | 'unavailable' | 'mismatch' | 'revoked';
 
 export type FleetChannel = 'latest' | 'next' | 'enterprise-latest' | 'enterprise-next';
+export type FleetPlatform = 'macos' | 'windows';
+export type FleetArchitecture = 'x86_64' | 'aarch64';
+export type FleetServiceState = 'running' | 'stopped' | 'degraded' | 'unavailable';
+export type FleetReportResult =
+  | 'applied' | 'rejected_invalid' | 'rejected_expired' | 'rejected_incompatible'
+  | 'verification_unavailable' | 'verification_rejected' | 'activation_failed' | 'unavailable';
+export type FleetAssignmentSource = 'jamf' | 'intune' | 'manual' | 'unavailable';
 
 export type FleetMachineQueue = {
   pendingRetryable: number;
@@ -582,16 +589,16 @@ export type FleetMachine = {
   observed: {
     acknowledgedConfigurationId: string | null;
     acknowledgedEpoch: number | null;
-    resultCode: string | null;
-    platform: string | null;
+    resultCode: FleetReportResult | null;
+    platform: FleetPlatform | null;
     osVersion: string | null;
-    architecture: string | null;
+    architecture: FleetArchitecture | null;
     gitaiVersion: string | null;
-    serviceState: string | null;
+    serviceState: FleetServiceState | null;
     queue: FleetMachineQueue | null;
     mdmDeviceReference: string | null;
     mdmUserReference: string | null;
-    assignmentEvidence: { source: string; observedAt: string } | null;
+    assignmentEvidence: { source: FleetAssignmentSource; observedAt: string } | null;
     lastReportAt: string | null;
   } | null;
   reconciliation: 'unavailable';
@@ -621,7 +628,7 @@ export type FleetConfiguration = {
 };
 
 export type FleetOffboardPreview = {
-  machine: { id: string; installationId: string; displayName: string; status: string };
+  machine: { id: string; installationId: string; displayName: string; status: 'active' | 'revoked' };
   activeCredentialCount: number;
   activeGrantCount: number;
   desiredConfigurationId: string | null;
