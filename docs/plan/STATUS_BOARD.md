@@ -16,7 +16,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.a Security (monitor-only) | Codex | `feature/task6-security` / PRs #5–#7; GitAI PR #2 | ✅ merged | 🟡 D6.1 signed activation and D6.2 platform coverage open | — (Task13/Task14 own D6.2) |
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7, Task8, Task10–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
-| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; GitAI Task9b PR #3 open; Task9c/Task9e prompts ready | 🟡 server contract merged; endpoint PR awaiting hosted validation | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Merge Task9b after CI, then start Task9c; Task9e may overlap in TrackAI |
+| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; Task9e merged in PR #18; GitAI Task9b PR #3 open; Task9c prompt ready | 🟡 server contract merged; endpoint PR awaiting hosted validation | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Merge Task9b after CI, then start Task9c; Task9e may overlap in TrackAI |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task15a and Task15b; then the Task15 lead chat |
 | Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
@@ -46,7 +46,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7b | Task9b-managed-packages: upstream-derived macOS/Windows login-start plus secret-free PKG/MSI hardening | Muse | about 0.20× target; 0.25× ceiling | | GitAI PR #3 open; hosted macOS/Windows and package smokes pending | `docs/prompts/Task9/NEXT_CHAT_Task9b-managed-packages_PROMPT.md` |
 | 7c | Task9c-managed-config-secrets: client activation and macOS/Windows secret stores | Codex | about 0.32× target; 0.40× ceiling | | start after GitAI Task9b PR #3 merges | `docs/prompts/Task9/NEXT_CHAT_Task9c-managed-config-secrets_PROMPT.md` |
 | 7d | Task9d-fleet-update-offboard: endpoint update, rollback and cleanup | Muse | about 0.30× | | Task9a and Task9c merged | written after Task9c |
-| 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.20× target; 0.25× ceiling | about 0.15× | implementation done, cross-agent review pending; no push/PR yet | `docs/prompts/Task9/NEXT_CHAT_Task9e-fleet-console_PROMPT.md` |
+| 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.20× target; 0.25× ceiling | about 0.17× | merged in PR #18 | `docs/prompts/Task9/NEXT_CHAT_Task9e-fleet-console_PROMPT.md` |
 | 7f | Task9f-macos-conformance: current Intel Mac lifecycle plus best-effort Jamf/second-Mac gates | Codex | about 0.30× | | Task9a–Task9e merged | written after implementation sessions |
 | 7g | Task9g-windows-conformance: Windows x64 CI floor plus best-effort native/Intune gates | Codex | about 0.35× | | Task9a–Task9e and Task9f merged; host/tenant if available | written after macOS conformance |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
