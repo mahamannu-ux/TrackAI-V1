@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { EvidenceWorkspace } from './evidence-workspace';
+import { FleetWorkspace } from './fleet-workspace';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
   getLifecycle,
@@ -187,11 +188,12 @@ type AdminResources = {
   exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit';
+type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
   { id: 'machines', label: 'Machines & keys', description: 'Installations and credentials' },
+  { id: 'fleet', label: 'Fleet', description: 'Desired state and orchestration' },
   { id: 'repositories', label: 'Repository access', description: 'Enrollment, branches, and grants' },
   { id: 'history', label: 'Historical import', description: 'Allow selected older evidence' },
   { id: 'github', label: 'GitHub App', description: 'Connected organizations' },
@@ -209,6 +211,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
   error: string | null; onChanged: () => void;
 }) {
   const active = context?.membership?.status === 'active';
+  const canManageFleet = active && context?.membership?.role === 'tenant_admin';
   const [machineForm, setMachineForm] = useState({ installationId: '', displayName: '', platform: '' });
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutationBusy, setMutationBusy] = useState(false);
@@ -540,8 +543,8 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
     {mutationError && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-sm text-rose-200">{mutationError}</div>}
     {oneTimeCredential && <div ref={credentialPanelRef} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5"><div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold text-amber-100">Save this one-time machine credential now</h2><p className="mt-1 text-sm text-amber-200/80">Copy the full value beginning with <span className="font-mono">trk_v1.</span>. It is not stored by the server and cannot be shown again.</p></div><button onClick={() => { setOneTimeCredential(null); setCredentialCopied(false); }} className="rounded-lg border border-amber-400/30 px-3 py-2 text-sm text-amber-100">Dismiss after saving</button></div><div className="mt-4 text-xs uppercase tracking-wider text-slate-400">Reference key ID — do not put this alone in the keyring</div><div className="mt-1 break-all font-mono text-sm text-slate-300">{oneTimeCredential.keyId}</div><div className="mt-4 flex items-center justify-between"><div className="text-xs uppercase tracking-wider text-amber-300">Complete one-time credential — starts with trk_v1.</div><button onClick={() => void navigator.clipboard.writeText(oneTimeCredential.plaintext).then(() => setCredentialCopied(true)).catch(() => setMutationError('Browser clipboard access failed; select the complete credential manually.'))} className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-semibold text-slate-950">{credentialCopied ? 'Copied' : 'Copy complete credential'}</button></div><div className="mt-2 break-all rounded-lg border border-amber-400/20 bg-slate-950 p-3 font-mono text-sm text-amber-100">{oneTimeCredential.plaintext}</div></div>}
     {active && resources && <>
-      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-8">
-        {adminNavigation.map(item => <button key={item.id} type="button" onClick={() => selectAdminSection(item.id)} className={`rounded-lg px-3 py-3 text-left transition ${adminSection === item.id ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><span className="block text-sm font-medium">{item.label}</span><span className={`mt-1 block text-xs ${adminSection === item.id ? 'text-violet-100' : 'text-slate-500'}`}>{item.description}</span></button>)}
+      <nav aria-label="Administration sections" className="grid gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-2 sm:grid-cols-2 xl:grid-cols-9">
+        {adminNavigation.filter(item => item.id !== 'fleet' || canManageFleet).map(item => <button key={item.id} type="button" onClick={() => selectAdminSection(item.id)} className={`rounded-lg px-3 py-3 text-left transition ${adminSection === item.id ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><span className="block text-sm font-medium">{item.label}</span><span className={`mt-1 block text-xs ${adminSection === item.id ? 'text-violet-100' : 'text-slate-500'}`}>{item.description}</span></button>)}
       </nav>
       {adminSection === 'overview' && <section className="space-y-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Metric label="Active machines" value={resources.machines?.machines.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Enrolled repositories" value={resources.repositories?.enrollments.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="GitHub installations" value={resources.github?.installations.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Monitor findings" value={securityFindings?.findings.length ?? 'Open to load'} /><Metric label="Recent audit events" value={resources.audit.events.length} /></div>
@@ -561,6 +564,9 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
         {activeAdminMachines.length === 0 && <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-500">No active machine installations.</div>}
         {historicalAdminMachines.length > 0 && <details className="rounded-xl border border-slate-800 bg-slate-900/40"><summary className="cursor-pointer px-5 py-4 text-sm font-medium text-slate-300">Revoked machine history ({historicalAdminMachines.length})</summary><div className="border-t border-slate-800"><TableShell headers={['Machine', 'Installation', 'Status', 'Revoked']}>{historicalAdminMachines.map(machine => <tr key={machine.id}><td className="px-5 py-4 text-slate-300">{machine.displayName}</td><td className="px-5 py-4 font-mono text-xs text-slate-500">{machine.installationId}</td><td className="px-5 py-4"><Badge tone="slate">{machine.status}</Badge></td><td className="px-5 py-4 text-slate-500">{date(machine.revokedAt)}</td></tr>)}</TableShell></div></details>}
       </section>}
+      {adminSection === 'fleet' && (canManageFleet
+        ? <section className="space-y-4"><FleetWorkspace /></section>
+        : <section><div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">Fleet management requires the tenant administrator role. Auditors keep the existing read-only access to audit, findings, and operations.</div></section>)}
       {adminSection === 'repositories' && resources.repositories && <section className="space-y-4">
         <div><h2 className="font-semibold text-white">Repository access</h2><p className="mt-1 text-sm text-slate-500">The list summarizes current access. Select one repository to inspect branch rules, manage machines, or view revoked history.</p></div>
         <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:grid-cols-[1fr_auto]">

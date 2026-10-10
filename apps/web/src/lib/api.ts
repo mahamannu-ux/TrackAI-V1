@@ -545,3 +545,134 @@ export const revokeAdminRepositoryBackfill = (authorizationId: string, reason: s
     { method: 'POST', body: JSON.stringify({ reason }) },
   )
 );
+
+// ---------------------------------------------------------------------------
+// Fleet administration (Task9e client of the frozen Task9a API)
+// ---------------------------------------------------------------------------
+// Exact bindings for the five existing administrator routes behind the
+// `machine.manage` boundary. No route shape is invented here; the server
+// remains authoritative and browser state never substitutes for it.
+
+export type FleetMachineState =
+  | 'current' | 'stale' | 'unreported' | 'unavailable' | 'mismatch' | 'revoked';
+
+export type FleetChannel = 'latest' | 'next' | 'enterprise-latest' | 'enterprise-next';
+export type FleetPlatform = 'macos' | 'windows';
+export type FleetArchitecture = 'x86_64' | 'aarch64';
+export type FleetServiceState = 'running' | 'stopped' | 'degraded' | 'unavailable';
+export type FleetReportResult =
+  | 'applied' | 'rejected_invalid' | 'rejected_expired' | 'rejected_incompatible'
+  | 'verification_unavailable' | 'verification_rejected' | 'activation_failed' | 'unavailable';
+export type FleetAssignmentSource = 'jamf' | 'intune' | 'manual' | 'unavailable';
+
+export type FleetMachineQueue = {
+  pendingRetryable: number;
+  waitingRetry: number;
+  processing: number;
+  quarantined: number;
+  rowsWithErrors: number;
+};
+
+export type FleetMachine = {
+  id: string;
+  installationId: string;
+  displayName: string;
+  status: FleetMachineState;
+  machineStatus: 'active' | 'revoked';
+  desiredConfiguration: {
+    id: string;
+    epoch: number;
+    targetClientVersion: string;
+    channel: FleetChannel;
+    ring: string | null;
+  } | null;
+  observed: {
+    acknowledgedConfigurationId: string | null;
+    acknowledgedEpoch: number | null;
+    resultCode: FleetReportResult | null;
+    platform: FleetPlatform | null;
+    osVersion: string | null;
+    architecture: FleetArchitecture | null;
+    gitaiVersion: string | null;
+    serviceState: FleetServiceState | null;
+    queue: FleetMachineQueue | null;
+    mdmDeviceReference: string | null;
+    mdmUserReference: string | null;
+    assignmentEvidence: { source: FleetAssignmentSource; observedAt: string } | null;
+    lastReportAt: string | null;
+  } | null;
+  reconciliation: 'unavailable';
+  deliveryHealth:
+    | {
+        status: 'current' | 'stale' | 'unreported';
+        observedAt: string | null;
+        receivedAt: string | null;
+        pendingRetryable: number;
+        waitingRetry: number;
+        processing: number;
+        quarantined: number;
+        rowsWithErrors: number;
+      }
+    | { status: 'unavailable' };
+};
+
+export type FleetConfiguration = {
+  id: string;
+  epoch: number;
+  schemaVersion: 1;
+  generatedAt: string;
+  validUntil: string | null;
+  targetClientVersion: string;
+  channel: FleetChannel;
+  ring: string | null;
+};
+
+export type FleetOffboardPreview = {
+  machine: { id: string; installationId: string; displayName: string; status: 'active' | 'revoked' };
+  activeCredentialCount: number;
+  activeGrantCount: number;
+  desiredConfigurationId: string | null;
+  localCleanup: 'best_effort_not_requested_by_server';
+};
+
+export type FleetOffboardResult = {
+  serverRevocation: 'applied';
+  localCleanup: 'best_effort_not_requested_by_server';
+  mdmCleanup: 'not_requested';
+};
+
+export const getFleetMachines = () => apiFetch<{ machines: FleetMachine[] }>(
+  '/api/admin/fleet/machines',
+);
+
+export const createFleetConfiguration = (input: {
+  targetClientVersion: string;
+  channel: FleetChannel;
+  ring: string | null;
+  validUntil: string | null;
+  reason: string;
+}) => apiFetch<{ configuration: FleetConfiguration }>(
+  '/api/admin/fleet/configurations',
+  { method: 'POST', body: JSON.stringify(input) },
+);
+
+export const assignFleetConfiguration = (input: {
+  configurationId: string;
+  machineIds: string[];
+  reason: string;
+}) => apiFetch<{ ok: true }>(
+  '/api/admin/fleet/assignments',
+  { method: 'POST', body: JSON.stringify(input) },
+);
+
+export const previewFleetOffboard = (machineId: string) => apiFetch<FleetOffboardPreview>(
+  `/api/admin/fleet/machines/${encodeURIComponent(machineId)}/offboard/preview`,
+  { method: 'POST', body: JSON.stringify({}) },
+);
+
+export const applyFleetOffboard = (machineId: string, reason: string) => (
+  apiFetch<FleetOffboardResult>(
+    `/api/admin/fleet/machines/${encodeURIComponent(machineId)}/offboard`,
+    { method: 'POST', body: JSON.stringify({ apply: true, reason }) },
+  )
+);
