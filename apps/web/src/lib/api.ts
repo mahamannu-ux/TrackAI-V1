@@ -619,7 +619,7 @@ export type FleetMachine = {
 export type FleetConfiguration = {
   id: string;
   epoch: number;
-  schemaVersion: number;
+  schemaVersion: 1;
   generatedAt: string;
   validUntil: string | null;
   targetClientVersion: string;

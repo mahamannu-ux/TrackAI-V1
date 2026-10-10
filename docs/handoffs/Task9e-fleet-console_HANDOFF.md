@@ -14,7 +14,7 @@ New `apps/web/src/app/dashboard/fleet-workspace.tsx` plus typed bindings in `app
 
 ## Deviations
 
-None from the prompt. Review-driven fixes (fix-first verdict): added a sixth local badge tone so `unreported` and `stale` are visually distinct; Fleet nav and workspace render only for `tenant_admin` (auditors keep existing read-only behavior with an explanatory note); revoked machines are not selectable for assignment and offboard preview is disabled once revoked; client response types now use the frozen closed unions (platform, architecture, service state, report result, assignment source) instead of `string`.
+None from the prompt. Review-driven fixes (fix-first verdict): added a sixth local badge tone so `unreported` and `stale` are visually distinct; Fleet nav and workspace render only for `tenant_admin` (auditors keep existing read-only behavior with an explanatory note); revoked machines are not selectable for assignment and offboard preview is disabled once revoked; client response types now use the frozen closed unions (platform, architecture, service state, report result, assignment source, `schemaVersion: 1`) instead of `string`/`number`; assignment selection is pruned to active machines on every refresh so a revoked row can never stay stuck selected.
 
 ## Known limitations
 

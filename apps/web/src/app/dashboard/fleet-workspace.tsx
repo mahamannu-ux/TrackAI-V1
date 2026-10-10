@@ -95,6 +95,10 @@ export function FleetWorkspace() {
     try {
       const response = await getFleetMachines();
       setMachines(response.machines);
+      const activeIds = new Set(
+        response.machines.filter(row => row.machineStatus === 'active').map(row => row.id),
+      );
+      setCheckedIds(current => current.filter(id => activeIds.has(id)));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Fleet inventory is unavailable.');
     } finally {
