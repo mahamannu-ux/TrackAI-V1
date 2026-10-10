@@ -1,15 +1,15 @@
 # Handoff prompt: Task9c-managed-config-secrets (verified client configuration + OS credential stores), Codex
 
 > **Founder setup (Codex: skip to "You are…"):**
-> 1. Merge the TrackAI PR that adds this prompt. Task9a is already merged in TrackAI PR #16. Update both read-only checkouts: `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only && cd ~/AIProjects/git-ai && git checkout main && git pull --ff-only`.
-> 2. Create the GitAI worktree from TrackAI: `cd ~/AIProjects/TrackAI-v1 && make gitai-worktree M=Task9c-managed-config-secrets`. Start a new Codex task in that exact worktree: `~/AIProjects/TrackAI-wt/Task9c-managed-config-secrets-gitai`, branch `task/Task9c-managed-config-secrets-gitai`.
-> 3. Task9c may start while Muse finishes Task9b tests. It must not touch Task9b's active `src/commands/daemon.rs`, `tests/async_mode.rs`, top-level `mdm/`, packaging or workflow files. Task9c uses the telemetry worker for its bounded background wiring.
+> 1. Merge the TrackAI PR that adds this prompt and merge GitAI Task9b PR #3. Task9a is already merged in TrackAI PR #16. Do not start Task9c from pre-Task9b GitAI `main`.
+> 2. Update both read-only checkouts: `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only && cd ~/AIProjects/git-ai && git checkout main && git pull --ff-only`. Confirm GitAI `main` contains Task9b head `3a4dceb3921a5e17d310303100706f922031e672`.
+> 3. Create the GitAI worktree from TrackAI: `cd ~/AIProjects/TrackAI-v1 && make gitai-worktree M=Task9c-managed-config-secrets`. Start a new Codex task in that exact worktree: `~/AIProjects/TrackAI-wt/Task9c-managed-config-secrets-gitai`, branch `task/Task9c-managed-config-secrets-gitai`.
 > 4. No Jamf, Intune, Windows rental, signing key or real credential is needed. Never paste a credential or secret into chat. Native Keychain/Credential Manager evidence remains Task9f/Task9g.
-> 5. Task9c may implement and commit Phase A now. If Task9b has not merged by the integration checkpoint, Codex must stop with a concise checkpoint rather than poll. Resume the same task after Task9b merges, rebase on GitAI `main`, run Phase B gates, then send the review request to TrackAI-Orchestrator (or Muse if unavailable). Push only after `ready to push`.
+> 5. Task9c uses the telemetry worker for bounded background wiring. Task9b's daemon-command, async-mode, MDM, packaging and workflow surfaces are now frozen inputs, not extension points. Send the final review request to TrackAI-Orchestrator (or Muse if unavailable). Push only after `ready to push`.
 
 ---
 
-You are **Codex**, building **Task9c-managed-config-secrets** in the **GitAI fork** for TrackAI. Task9a has frozen the machine-authenticated server envelope and report routes. This session adds the smallest fail-closed client: parse/fetch/stage/verify/atomically activate configuration, preserve one last-known-good version, store TrackAI machine credentials in macOS Keychain or Windows Credential Manager/DPAPI, and report safe state. It does not implement signing, update/rollback binaries, offboarding, MDM APIs, UI or Linux.
+You are **Codex**, building **Task9c-managed-config-secrets** in the **GitAI fork** for TrackAI. Task9a has frozen the machine-authenticated server envelope and report routes, and Task9b has landed the secret-free PKG/MSI plus per-user login-start contract. This session adds the smallest fail-closed client: parse/fetch/stage/verify/atomically activate configuration, preserve one last-known-good version, store TrackAI machine credentials in macOS Keychain or Windows Credential Manager/DPAPI, and report safe state. It does not implement signing, update/rollback binaries, offboarding, MDM APIs, UI or Linux.
 
 - **Repo:** `~/AIProjects/git-ai` (`main`). **Worktree:** `~/AIProjects/TrackAI-wt/Task9c-managed-config-secrets-gitai`, branch `task/Task9c-managed-config-secrets-gitai`.
 - **GitAI handoff:** return the complete checkpoint in the final reply; do not add a TrackAI process-only handoff file to the GitAI repository.
@@ -19,9 +19,9 @@ You are **Codex**, building **Task9c-managed-config-secrets** in the **GitAI for
 
 1. Read GitAI `AGENTS.md` in full. Also read TrackAI `AGENTS.md` §§1, 5, 5a, 6, 8, 9, 11, 12.3, 12.4 and 12.8 from the read-only checkout.
 2. Verify `pwd`, Git root, branch, HEAD and clean state. You must be in the exact Task9c GitAI worktree/branch above. Set worktree-local identity to `mahamannu-ux <mahamannu@gmail.com>`.
-3. GitAI base must be fork `main` at `d26da8ea1b4b734dc2c1bc99759d87c75a187ee3` or a later descendant. Never base on public `upstream/main`.
-4. Inspect `git worktree list` and the Task9b worktree diff. Proceed only while Task9b owns the files named in founder setup step 3. If it has expanded into `src/fleet/**`, machine-credential files, `src/metrics/delivery.rs`, `src/security/activation.rs` or `src/daemon/telemetry_worker.rs`, stop and report the exact overlap.
-5. Do **not** spend an initial cycle on the full Cargo suite. Baseline only the existing affected modules with `cargo test --lib metrics::delivery` and `cargo test --lib security::activation`; if either command's filter matches no tests, correct the filter before proceeding. Use focused tests while developing, then run each full gate exactly once in Phase B. Classify the known parallel `daemon_mode` flake and newer-Rust Clippy findings honestly.
+3. GitAI base must be fork `main` containing Task9b head `3a4dceb3921a5e17d310303100706f922031e672`. Record the actual Task9b merge SHA. Never base on public `upstream/main`.
+4. Inspect `git worktree list` and verify the new branch is clean and based on that fork-main descendant. If `src/fleet/**`, machine-credential files, `src/metrics/delivery.rs`, `src/security/activation.rs` or `src/daemon/telemetry_worker.rs` already contain unrelated active work, stop and report the exact overlap.
+5. Do **not** spend an initial cycle on the full Cargo suite. Baseline only the existing affected modules with `cargo test --lib metrics::delivery` and `cargo test --lib security::activation`; if either command's filter matches no tests, correct the filter before proceeding. Use focused tests while developing, then run each full gate exactly once at the stable final checkpoint. Classify the known parallel `daemon_mode` flake and newer-Rust Clippy findings honestly.
 6. Estimate one line against T6. Operational target is **about 0.32×**, with the plan's **0.40× ceiling**. Stop before adding a generic policy engine, new server route, update mechanism or third platform.
 
 ## 1. Read before writing code
@@ -41,7 +41,7 @@ You are **Codex**, building **Task9c-managed-config-secrets** in the **GitAI for
 - `src/security/activation.rs` and `src/security/delivery*.rs`.
 - `src/auth/{credential_backend,credentials,mod}.rs`; distinguish human OAuth credentials from TrackAI machine credentials.
 - `src/api/client.rs`, `src/daemon/telemetry_worker.rs`, `src/config.rs`, `src/lib.rs`, command dispatch files and `Cargo.toml`.
-- Task9b's current diff, read-only. Its login-start retry is separate from fleet refresh.
+- Task9b's merged `src/commands/daemon.rs`, login-start scripts, packaging contracts and focused tests, read-only. Login-start retry is separate from fleet refresh.
 
 ## 2. Frozen contracts and decisions
 
@@ -84,7 +84,7 @@ You are **Codex**, building **Task9c-managed-config-secrets** in the **GitAI for
 1. Add a bounded fleet refresh/report call in `src/daemon/telemetry_worker.rs`, outside the latency-sensitive ingestion path. Reuse its existing periodic/background structure; do not add a second daemon, service or unbounded worker.
 2. Fetch/stage/verify/activate first, then send safe posture and the result. Queue fields reuse existing bounded counts. Platform, architecture, GitAI version and service state must be honest; unavailable data stays unavailable rather than zero/healthy.
 3. Credential/store/network/configuration failure must not stop local Git work, corrupt the queue or erase last-known-good. Log only safe category codes and retry on the existing bounded cadence.
-4. Do not edit `src/commands/daemon.rs` or `tests/async_mode.rs`; Task9b owns them until merge and Task9c does not need them.
+4. Do not edit `src/commands/daemon.rs` or `tests/async_mode.rs`; Task9b froze their retry contract and Task9c does not need them.
 
 ## 3. Port from and reuse
 
@@ -121,7 +121,7 @@ If Task9a's envelope cannot satisfy an invariant, stop with the exact missing fi
 
 ## 6. Work plan and tests
 
-### Phase A — may run while Task9b tests
+### Implementation
 
 1. TDD commits prefixed `Task9c-managed-config-secrets:`: closed wire types/verifier seam; atomic state machine; credential store/CLI; delivery/security projection; telemetry refresh/report. Explicitly stage named paths.
 2. Focused tests must prove:
@@ -134,12 +134,11 @@ If Task9a's envelope cannot satisfy an invariant, stop with the exact missing fi
    - stdin installer rejects TTY, oversized/malformed input and never prints the secret;
    - report contains only the closed metadata fields and safe result codes;
    - refresh failures preserve local work, queue and active configuration.
-3. Run focused tests during development. Run `task fmt`, `task lint` and the smallest relevant Cargo test filters once Phase A is coherent.
-4. If Task9b is still unmerged, commit a clean Phase-A checkpoint and stop with: commits, files, focused gates, remaining integration and exact overlap status. Do not create the final handoff/review request yet and do not poll.
+3. Run focused tests during development. Run `task fmt`, `task lint` and the smallest relevant Cargo test filters once the implementation is coherent.
 
-### Phase B — after Task9b merges
+### Final integration
 
-1. Fetch fork `main`, verify Task9b's merge SHA, rebase this branch and inspect the combined daemon/CLI diff. Resolve no behavior by guessing; Task9b's login-start/retry contract remains intact.
+1. Fetch fork `main`, verify the recorded Task9b merge SHA is still an ancestor, rebase if needed and inspect the complete daemon/CLI diff. Resolve no behavior by guessing; Task9b's login-start/retry contract remains intact.
 2. Run focused Task9c tests, Task9b's focused daemon/login-start tests, then exactly one full `task fmt`, `task lint`, `task test` and `task build`. Retry only a specifically identified inherited flake.
 3. Search the diff and test output for `trk_v1`, `api_key`, `credential`, `secret` and confirm every occurrence is type/validation/prohibition logic or synthetic fixture—not a real value, transport path or log.
 4. Re-read the complete diff as an independent reviewer. No native Keychain/Windows success claim comes from mocks or compilation.

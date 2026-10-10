@@ -16,7 +16,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.a Security (monitor-only) | Codex | `feature/task6-security` / PRs #5–#7; GitAI PR #2 | ✅ merged | 🟡 D6.1 signed activation and D6.2 platform coverage open | — (Task13/Task14 own D6.2) |
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7, Task8, Task10–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
-| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; Task9b implementation/testing active; Task9c prompt ready | 🟡 server contract merged; GitAI endpoint work in progress | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Start Task9c on disjoint files; rebase/merge it after Task9b |
+| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; GitAI Task9b PR #3 open; Task9c/Task9e prompts ready | 🟡 server contract merged; endpoint PR awaiting hosted validation | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Merge Task9b after CI, then start Task9c; Task9e may overlap in TrackAI |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task15a and Task15b; then the Task15 lead chat |
 | Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
@@ -43,10 +43,10 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4) | Claude + Muse + Codex | about 0.6× | | founder answers TASK16 §1 | `docs/prompts/Task16/NEXT_CHAT_Task16-lead_PROMPT.md` |
 | 7 | Task9-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex | about 0.05× | about 0.05× (by turns) | complete | `docs/prompts/Task9/NEXT_CHAT_Task9-lead_PROMPT.md` |
 | 7a | Task9a-fleet-control-plane: server contract, inventory, rollout/offboard records and reconciliation | Codex | about 0.24× target; 0.38× ceiling | about 0.24× | merged in PR #16 | `docs/prompts/Task9/NEXT_CHAT_Task9a-fleet-control-plane_PROMPT.md` |
-| 7b | Task9b-managed-packages: upstream-derived macOS/Windows login-start plus secret-free PKG/MSI hardening | Muse | about 0.20× target; 0.25× ceiling | | implementation/testing in progress; owns `src/commands/daemon.rs` and `tests/async_mode.rs` until merge | `docs/prompts/Task9/NEXT_CHAT_Task9b-managed-packages_PROMPT.md` |
-| 7c | Task9c-managed-config-secrets: client activation and macOS/Windows secret stores | Codex | about 0.32× target; 0.40× ceiling | | ready now from merged Task9a; do not touch Task9b's active files; rebase/merge after Task9b | `docs/prompts/Task9/NEXT_CHAT_Task9c-managed-config-secrets_PROMPT.md` |
+| 7b | Task9b-managed-packages: upstream-derived macOS/Windows login-start plus secret-free PKG/MSI hardening | Muse | about 0.20× target; 0.25× ceiling | | GitAI PR #3 open; hosted macOS/Windows and package smokes pending | `docs/prompts/Task9/NEXT_CHAT_Task9b-managed-packages_PROMPT.md` |
+| 7c | Task9c-managed-config-secrets: client activation and macOS/Windows secret stores | Codex | about 0.32× target; 0.40× ceiling | | start after GitAI Task9b PR #3 merges | `docs/prompts/Task9/NEXT_CHAT_Task9c-managed-config-secrets_PROMPT.md` |
 | 7d | Task9d-fleet-update-offboard: endpoint update, rollback and cleanup | Muse | about 0.30× | | Task9a and Task9c merged | written after Task9c |
-| 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.25× | | Task9a merged; Muse free after Task9b | written after Task9a freezes interfaces |
+| 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.20× target; 0.25× ceiling | | Task9a merged; may overlap Task9c after Muse is free | `docs/prompts/Task9/NEXT_CHAT_Task9e-fleet-console_PROMPT.md` |
 | 7f | Task9f-macos-conformance: current Intel Mac lifecycle plus best-effort Jamf/second-Mac gates | Codex | about 0.30× | | Task9a–Task9e merged | written after implementation sessions |
 | 7g | Task9g-windows-conformance: Windows x64 CI floor plus best-effort native/Intune gates | Codex | about 0.35× | | Task9a–Task9e and Task9f merged; host/tenant if available | written after macOS conformance |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
