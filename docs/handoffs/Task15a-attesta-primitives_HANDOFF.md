@@ -13,7 +13,7 @@ Three pure libraries every later Attesta session uses: RFC 8785 canonical JSON, 
 | Scope | all 7 scope items in the prompt | ✅ |
 | Quality | unit tests, typecheck, lint | ✅ |
 | Integration | none needed (pure libraries, no services) | ✅ non-blocking |
-| Review | self-review as reviewer; cross-agent review pending | 🟡 founder pastes review request |
+| Review | self-review plus cross-agent review (fix first); all three fixes applied | 🟡 re-review requested |
 
 ## Implemented interfaces
 ```
@@ -39,6 +39,7 @@ SushiCorp `core/evidence/canonical.py`, `core/evidence/merkle.py` and tests @ `0
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
+| ⬜ **FOUNDER:** | Approve raising the API `engines` floor to `>=20.19.0` in a later shared-surface change (not this branch: root `package.json` is outside this session's pre-approved files) | Later sessions inherit the floor; nothing in this session waits on it |
 | 🟡 | Sandbox-verified only; needs cross-agent review before push | Task15d (ledger) builds against this |
 
 ## Test coverage
@@ -49,6 +50,7 @@ None needed: no database, network, or routes. Later sessions consume these as pu
 
 ## Integration notes
 - `canonicalize` is ESM-only; imported via `esModuleInterop` default import (works in the CJS build).
+- The API now needs Node ≥ 20.19 at runtime: the CJS build loads the ESM package through `require(esm)`, which fails with `ERR_REQUIRE_ESM` on Node ≤ 20.18. CI runs current Node 20, so it passes there.
 - Test glob `src/features/attesta/*.test.ts` appended exactly; the Task15b session makes no further edit to that line.
 
 ## Effort (estimate vs actual)

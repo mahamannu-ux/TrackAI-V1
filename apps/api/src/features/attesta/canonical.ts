@@ -1,7 +1,11 @@
 // Ported from SushiCorp B3 core/evidence/canonical.py @ 0bd67a5 (catalog EV-1).
 // Deviations: (1) JCS via the `canonicalize` npm package instead of Python
-// `rfc8785`; (2) explicit pre-walk validation (the JS package silently drops
-// `unsafe`, so every such value is refused before serialization, except
+// `rfc8785`; (2) snapshot validation: the value is walked once into an
+// inert plain copy (accessor properties refused, each data property read
+// exactly once) and only the copy is serialized, so a getter or Proxy
+// cannot pass validation with one value and hash with another; values the
+// JS package would silently mangle (`undefined`, `Date`, `Map`, class
+// instances, unsafe integers) are refused during the snapshot, except
 // doubles with |n| >= 1e21, which JCS renders in exponent form identically
 // in every implementation (required by the corpus `values` vector and
 // RFC 8785 Appendix B); (3) `CanonicalizationError extends Error` instead of
@@ -35,68 +39,87 @@ function isPlainObject(value: object): boolean {
   return proto === Object.prototype || proto === null;
 }
 
-function assertSerializable(value: unknown, seen: Set<object>): void {
-  if (value === null) return;
-  const kind = typeof value;
-  if (kind === 'boolean' || kind === 'string') {
-    if (kind === 'string' && LONE_SURROGATE_RE.test(value as string)) {
+/**
+ * Validate `value` and return an inert plain copy of it. Every own
+ * enumerable data property is read exactly once; accessor properties are
+ * refused. The serializer only ever sees the copy, so a getter or Proxy
+ * cannot pass validation with one value and serialize with another.
+ */
+function snapshot(value: unknown, seen: Set<object>): unknown {
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') {
+    if (typeof value === 'number') {
+      if (Number.isNaN(value)) throw new CanonicalizationError('NaN cannot be canonicalized');
+      if (!Number.isFinite(value)) {
+        throw new CanonicalizationError('infinite numbers cannot be canonicalized');
+      }
+      // Integers outside the safe range are refused because a JS double may
+      // already have rounded the caller's integer intent, and integer-typed
+      // verifiers in other languages would hash different bytes. Doubles with
+      // |n| >= 1e21 are exempt: JCS (RFC 8785 Section 3.2.2.3, via ES6
+      // NumberToString) renders those in exponent form with identical
+      // shortest-round-trip semantics in every implementation, as the
+      // reference vectors require (corpus `values`: 1E30 -> "1e+30").
+      if (Number.isInteger(value) && !Number.isSafeInteger(value) && Math.abs(value) < 1e21) {
+        throw new CanonicalizationError(`integer ${value} is outside the safe JCS range`);
+      }
+    }
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (LONE_SURROGATE_RE.test(value)) {
       throw new CanonicalizationError('strings with lone surrogates cannot be canonicalized');
     }
-    return;
+    return value;
   }
-  if (kind === 'number') {
-    const n = value as number;
-    if (Number.isNaN(n)) throw new CanonicalizationError('NaN cannot be canonicalized');
-    if (!Number.isFinite(n)) throw new CanonicalizationError('infinite numbers cannot be canonicalized');
-    // Integers outside the safe range are refused because a JS double may
-    // already have rounded the caller's integer intent, and integer-typed
-    // verifiers in other languages would hash different bytes. Doubles with
-    // |n| >= 1e21 are exempt: JCS (RFC 8785 Section 3.2.2.3, via ES6
-    // NumberToString) renders those in exponent form with identical
-    // shortest-round-trip semantics in every implementation, as the
-    // reference vectors require (corpus `values`: 1E30 -> "1e+30").
-    if (Number.isInteger(n) && !Number.isSafeInteger(n) && Math.abs(n) < 1e21) {
-      throw new CanonicalizationError(`integer ${n} is outside the safe JCS range`);
-    }
-    return;
+  if (typeof value === 'bigint') throw new CanonicalizationError('bigint cannot be canonicalized');
+  if (typeof value === 'undefined') throw new CanonicalizationError('undefined cannot be canonicalized');
+  if (typeof value === 'function' || typeof value === 'symbol') {
+    throw new CanonicalizationError(`${typeof value} cannot be canonicalized`);
   }
-  if (kind === 'bigint') throw new CanonicalizationError('bigint cannot be canonicalized');
-  if (kind === 'undefined') throw new CanonicalizationError('undefined cannot be canonicalized');
-  if (kind === 'function' || kind === 'symbol') {
-    throw new CanonicalizationError(`${kind} cannot be canonicalized`);
-  }
-  if (seen.has(value as object)) {
+  const obj = value as object;
+  if (seen.has(obj)) {
     throw new CanonicalizationError('circular values cannot be canonicalized');
   }
-  seen.add(value as object);
+  if (Array.isArray(value)) {
+    seen.add(obj);
+    try {
+      return value.map((item) => snapshot(item, seen));
+    } finally {
+      seen.delete(obj);
+    }
+  }
+  if (!isPlainObject(obj)) {
+    const label = ArrayBuffer.isView(value) ? 'typed arrays' : obj.constructor?.name ?? 'this value';
+    throw new CanonicalizationError(`${label} cannot be canonicalized (plain objects only)`);
+  }
+  if (Object.getOwnPropertySymbols(obj).length > 0) {
+    throw new CanonicalizationError('symbol keys cannot be canonicalized');
+  }
+  seen.add(obj);
   try {
-    if (Array.isArray(value)) {
-      for (const item of value) assertSerializable(item, seen);
-      return;
+    const copy: Record<string, unknown> = {};
+    for (const key of Object.keys(obj)) {
+      const descriptor = Object.getOwnPropertyDescriptor(obj, key);
+      if (descriptor === undefined) {
+        throw new CanonicalizationError(`property ${JSON.stringify(key)} vanished during snapshot`);
+      }
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        throw new CanonicalizationError(`accessor property ${JSON.stringify(key)} cannot be canonicalized`);
+      }
+      copy[key] = snapshot(descriptor.value, seen);
     }
-    if (!isPlainObject(value as object)) {
-      const label = ArrayBuffer.isView(value)
-        ? 'typed arrays'
-        : (value as object).constructor?.name ?? 'this value';
-      throw new CanonicalizationError(`${label} cannot be canonicalized (plain objects only)`);
-    }
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      throw new CanonicalizationError('symbol keys cannot be canonicalized');
-    }
-    for (const entry of Object.entries(value as Record<string, unknown>)) {
-      assertSerializable(entry[1], seen);
-    }
+    return copy;
   } finally {
-    seen.delete(value as object);
+    seen.delete(obj);
   }
 }
 
 /** RFC 8785 canonical JSON text of `value`. Throws `CanonicalizationError`. */
 export function canonicalize(value: unknown): string {
-  assertSerializable(value, new Set());
+  const inert = snapshot(value, new Set());
   let out: string | undefined;
   try {
-    out = canonicalizePackage(value);
+    out = canonicalizePackage(inert);
   } catch (err) {
     throw new CanonicalizationError(
       err instanceof Error ? err.message : 'value cannot be canonicalized',

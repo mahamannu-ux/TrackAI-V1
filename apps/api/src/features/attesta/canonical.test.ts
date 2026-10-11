@@ -146,6 +146,51 @@ test('each refusal throws CanonicalizationError', () => {
   assert.throws(() => canonicalize(undefined), (err: unknown) => err instanceof CanonicalizationError);
 });
 
+test('a getter-backed property is refused, not read twice', () => {
+  let reads = 0;
+  const sneaky: Record<string, unknown> = {};
+  Object.defineProperty(sneaky, 'a', {
+    enumerable: true,
+    get() {
+      reads += 1;
+      return reads === 1 ? 1 : undefined;
+    },
+  });
+  assert.throws(() => canonicalize(sneaky), CanonicalizationError);
+});
+
+test('a Proxy is serialized from a single snapshot read', () => {
+  // A descriptor trap that changes its answer between reads is refused
+  // (fail closed): `Object.keys` consults the descriptor for enumerability
+  // before the snapshot reads the value, so a stateful trap answers twice.
+  let reads = 0;
+  const flipFlop = new Proxy(
+    { a: 1 },
+    {
+      getOwnPropertyDescriptor(_target, p) {
+        reads += 1;
+        const value = reads === 1 ? 1 : undefined;
+        return { enumerable: true, configurable: true, writable: true, value };
+      },
+    },
+  );
+  assert.throws(() => canonicalize(flipFlop), CanonicalizationError);
+  // A stable trap's answer is what gets hashed, not the target's value.
+  const fixed = new Proxy(
+    { a: 1 },
+    {
+      getOwnPropertyDescriptor(_target, p) {
+        void p;
+        return { enumerable: true, configurable: true, writable: true, value: 2 };
+      },
+    },
+  );
+  assert.equal(canonicalize(fixed), '{"a":2}');
+  // A `get` trap is never consulted: only own property descriptors are read.
+  const changingGet = new Proxy({ a: 1 }, { get: () => 999 });
+  assert.equal(canonicalize(changingGet), '{"a":1}');
+});
+
 test('record hash known answer matches the frozen rule', () => {
   assert.equal(
     computeRecordHash('{"a":1}', GENESIS_PREV_HASH),

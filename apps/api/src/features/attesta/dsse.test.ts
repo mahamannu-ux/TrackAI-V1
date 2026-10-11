@@ -113,6 +113,18 @@ test('a signature from another key does not verify', async () => {
   assert.deepEqual(result.verifiedKeyids, []);
 });
 
+test('a non-P-256 key fails closed without throwing', async () => {
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const env = await signEnvelope(IN_TOTO_PAYLOAD_TYPE, Buffer.from('hello'), async (paeBytes) => ({
+    keyid: 'rsa-key',
+    sig: sign('sha256', paeBytes, rsa.privateKey),
+  }));
+  const result = verifyEnvelope(env, { 'rsa-key': rsa.publicKey });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.verifiedKeyids, []);
+  assert.ok(result.errors.some((e) => e.includes('not ECDSA P-256')));
+});
+
 test('malformed envelopes fail without throwing', () => {
   const bad: unknown[] = [null, [], 'x', {}, { payload: 'eA==', payloadType: 't' }];
   for (const b of bad) {

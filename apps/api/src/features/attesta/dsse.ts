@@ -107,6 +107,10 @@ export function verifyEnvelope(
       errors.push(`unknown keyid ${JSON.stringify(keyid)}`);
       continue;
     }
+    if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
+      errors.push(`key for keyid ${JSON.stringify(keyid)} is not ECDSA P-256`);
+      continue;
+    }
     const sigBytes = decodeBase64Strict(sig);
     if (sigBytes === null) {
       errors.push(`signature for keyid ${JSON.stringify(keyid)} is not valid base64`);
