@@ -1,0 +1,19 @@
+apps/api/src/features/attesta/fake-tsa.test.ts
+  s_868114e24798e7::t_e8ebd0ada59285 32-41,70,79,114,116,124,132,153,162,170,193,205,215,221,262,267,339,365,379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "e08d1631c5aad286da8f114ea0087e00f2fa0f51",
+  "prompts": {},
+  "sessions": {
+    "s_868114e24798e7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ed37767f8ffeEApUBEXyuHb7j0",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
