@@ -9,7 +9,7 @@ Three pure libraries every later Attesta session uses: RFC 8785 canonical JSON, 
 ## At a glance
 | | Item | Status |
 |---|---|---|
-| Acceptance | canonical, merkle, dsse libraries with ported vectors, `npm test` green | ✅ 102 new tests, 267 total pass |
+| Acceptance | canonical, merkle, dsse libraries with ported vectors, `npm test` green | ✅ 106 new tests, 271 total pass |
 | Scope | all 7 scope items in the prompt | ✅ |
 | Quality | unit tests, typecheck, lint | ✅ |
 | Integration | none needed (pure libraries, no services) | ✅ non-blocking |
