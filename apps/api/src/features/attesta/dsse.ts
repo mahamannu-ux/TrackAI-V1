@@ -55,7 +55,8 @@ export interface EnvelopeVerification {
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
 function decodeBase64Strict(value: unknown): Buffer | null {
-  if (typeof value !== 'string' || value.length === 0) return null;
+  if (typeof value !== 'string') return null;
+  if (value === '') return Buffer.alloc(0);
   if (value.length % 4 !== 0 || !BASE64_RE.test(value)) return null;
   try {
     return Buffer.from(value, 'base64');

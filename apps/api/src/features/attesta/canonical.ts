@@ -80,6 +80,9 @@ function assertSerializable(value: unknown, seen: Set<object>): void {
         : (value as object).constructor?.name ?? 'this value';
       throw new CanonicalizationError(`${label} cannot be canonicalized (plain objects only)`);
     }
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new CanonicalizationError('symbol keys cannot be canonicalized');
+    }
     for (const entry of Object.entries(value as Record<string, unknown>)) {
       assertSerializable(entry[1], seen);
     }

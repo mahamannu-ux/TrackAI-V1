@@ -130,6 +130,7 @@ test('each refusal throws CanonicalizationError', () => {
     ['undefined as value', { a: undefined }],
     ['function value', { f: () => 1 }],
     ['symbol value', { s: Symbol('s') }],
+    ['symbol key', { [Symbol('k')]: 1 }],
     ['Date', new Date(0)],
     ['Map', new Map([['a', 1]])],
     ['Set', new Set([1])],

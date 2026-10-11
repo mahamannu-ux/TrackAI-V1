@@ -48,6 +48,12 @@ test('sign/verify round-trips with a P-256 key', async () => {
   assert.deepEqual(result.errors, []);
 });
 
+test('an empty payload round-trips', async () => {
+  const env = await signed(IN_TOTO_PAYLOAD_TYPE, Buffer.alloc(0));
+  const result = verifyEnvelope(env, KEYS);
+  assert.equal(result.ok, true);
+});
+
 test('a tampered payload does not verify', async () => {
   const env = await signed(IN_TOTO_PAYLOAD_TYPE, Buffer.from('hello'));
   const tampered: DsseEnvelope = {
