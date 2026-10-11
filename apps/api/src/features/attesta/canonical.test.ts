@@ -191,6 +191,23 @@ test('a Proxy is serialized from a single snapshot read', () => {
   assert.equal(canonicalize(changingGet), '{"a":1}');
 });
 
+test('sparse arrays and array index getters are refused', () => {
+  const sparse: unknown[] = [1, 2];
+  delete sparse[0];
+  const withGetter: unknown[] = ['x'];
+  Object.defineProperty(withGetter, 0, { enumerable: true, get: () => 'x' });
+  const cases: Array<[string, unknown]> = [
+    ['gap literal', [1, , 2]],
+    ['constructed sparse', new Array(2)],
+    ['deleted index', sparse],
+    ['nested gap', { a: [, 'x'] }],
+    ['index getter', withGetter],
+  ];
+  for (const [label, bad] of cases) {
+    assert.throws(() => canonicalize(bad), CanonicalizationError, label);
+  }
+});
+
 test('record hash known answer matches the frozen rule', () => {
   assert.equal(
     computeRecordHash('{"a":1}', GENESIS_PREV_HASH),

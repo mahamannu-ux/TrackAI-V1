@@ -83,7 +83,24 @@ function snapshot(value: unknown, seen: Set<object>): unknown {
   if (Array.isArray(value)) {
     seen.add(obj);
     try {
-      return value.map((item) => snapshot(item, seen));
+      // Read the length once and each element once through its descriptor:
+      // map/for-of skip gaps, which would silently become null on output.
+      const len = value.length;
+      const copy: unknown[] = [];
+      for (let i = 0; i < len; i++) {
+        if (!Object.prototype.hasOwnProperty.call(value, i)) {
+          throw new CanonicalizationError('sparse arrays cannot be canonicalized');
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(value, i);
+        if (descriptor === undefined) {
+          throw new CanonicalizationError(`array index ${i} vanished during snapshot`);
+        }
+        if (descriptor.get !== undefined || descriptor.set !== undefined) {
+          throw new CanonicalizationError(`accessor property ${JSON.stringify(String(i))} cannot be canonicalized`);
+        }
+        copy.push(snapshot(descriptor.value, seen));
+      }
+      return copy;
     } finally {
       seen.delete(obj);
     }
