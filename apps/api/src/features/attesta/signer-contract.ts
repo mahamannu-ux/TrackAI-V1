@@ -7,7 +7,10 @@
 // No custody: TrackAI never holds a customer's private key in production.
 // The local dev signer below holds its own throwaway keys and refuses to run
 // in production; every production signer delegates the cryptographic act to
-// the tenant's own KMS/HSM and only ever returns public material.
+// the tenant's own KMS/HSM and only ever returns public material. Signing is
+// tenant-bound: `sign` takes the tenant it signs for and refuses a
+// credential from another tenant, so a credential ID alone never authorizes
+// cross-tenant use.
 //
 // Ported from SushiCorp A1 adapters/signing/base.py rev 1.1 @ 0bd67a5
 // (catalog SG-1). Deviations: (1) no X.509 certificate chain - Attesta
@@ -20,6 +23,7 @@
 // verified against the published public key before use.
 
 import { createPublicKey, verify } from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 
 /** Base class. Never thrown directly; use one of the two subclasses. */
 export class SigningError extends Error {
@@ -85,10 +89,15 @@ export interface SigningResult {
 export interface SigningAdapter {
   /** Static declaration of what this adapter can do. Never signs. */
   capabilities(): SigningCapabilities;
+  /**
+   * Sign `payload` for `tenantId` with `credentialId`. Throws
+   * SigningRejected for an unknown credential, a credential from another
+   * tenant, or a malformed payload.
+   */
   sign(
     payload: Buffer,
     credentialId: string,
-    opts: { requestId: string },
+    opts: { requestId: string; tenantId: string },
   ): Promise<SigningResult>;
   /**
    * Credentials available to this tenant. Adapters that cannot enumerate
@@ -105,21 +114,37 @@ export interface SigningAdapter {
 }
 
 /**
+ * What `signVerified` signs for. One object (not positional strings that are
+ * easy to swap): the credential to use, the tenant it signs for, and the
+ * caller's request ID.
+ */
+export interface SignVerifiedRequest {
+  credentialId: string;
+  tenantId: string;
+  requestId: string;
+}
+
+/**
  * Sign, then verify before use: fetches the published public key for
- * `credentialId` and throws SigningRejected when the result's key differs
- * from it (byte comparison) or the signature does not verify over `payload`.
- * SigningUnavailable/SigningRejected pass through unchanged; any other error
- * (a contract violation by the adapter) becomes SigningUnavailable.
+ * `credentialId` and throws SigningRejected when the adapter's answer cannot
+ * be trusted — a non-Buffer field, a credential ID or algorithm that differs
+ * from what was asked, a key that differs from the published one (byte
+ * comparison), a published key that is not ECDSA P-256, or a signature that
+ * does not verify over `payload`. The adapter answered but with something
+ * unverifiable, so retrying cannot help: every failure in this block is
+ * terminal. SigningUnavailable/SigningRejected from `sign`/`publicKey` pass
+ * through unchanged; any other error (a contract violation by the adapter)
+ * becomes SigningUnavailable.
  */
 export async function signVerified(
   adapter: SigningAdapter,
   payload: Buffer,
-  credentialId: string,
-  requestId: string,
+  request: SignVerifiedRequest,
 ): Promise<SigningResult> {
+  const { credentialId, tenantId, requestId } = request;
   let result: SigningResult;
   try {
-    result = await adapter.sign(payload, credentialId, { requestId });
+    result = await adapter.sign(payload, credentialId, { requestId, tenantId });
   } catch (err) {
     if (err instanceof SigningError) throw err;
     throw new SigningUnavailable(
@@ -135,13 +160,53 @@ export async function signVerified(
       `signer failed with a non-contract error: ${(err as Error)?.message ?? String(err)}`,
     );
   }
+  if (
+    result === null ||
+    typeof result !== 'object' ||
+    !Buffer.isBuffer(result.signature) ||
+    !Buffer.isBuffer(result.publicKeySpkiDer) ||
+    !Buffer.isBuffer(published)
+  ) {
+    throw new SigningRejected(
+      `signature for ${credentialId} is malformed (request ${requestId})`,
+    );
+  }
+  if (result.credentialId !== credentialId) {
+    throw new SigningRejected(
+      `signature for ${credentialId} came back under ${JSON.stringify(result.credentialId)} (request ${requestId})`,
+    );
+  }
+  if (result.algorithm !== 'ES256') {
+    throw new SigningRejected(
+      `signature for ${credentialId} claims algorithm ${JSON.stringify(result.algorithm)} (request ${requestId})`,
+    );
+  }
   if (!result.publicKeySpkiDer.equals(published)) {
     throw new SigningRejected(
       `signature for ${credentialId} carries a key that differs from the published public key (request ${requestId})`,
     );
   }
-  const key = createPublicKey({ key: published, format: 'der', type: 'spki' });
-  const ok = verify('sha256', payload, { key, dsaEncoding: 'der' }, result.signature);
+  let key: KeyObject;
+  try {
+    key = createPublicKey({ key: published, format: 'der', type: 'spki' });
+  } catch {
+    throw new SigningRejected(
+      `published public key for ${credentialId} is not parseable (request ${requestId})`,
+    );
+  }
+  if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
+    throw new SigningRejected(
+      `published public key for ${credentialId} is not ECDSA P-256 (request ${requestId})`,
+    );
+  }
+  let ok: boolean;
+  try {
+    ok = verify('sha256', payload, { key, dsaEncoding: 'der' }, result.signature);
+  } catch {
+    throw new SigningRejected(
+      `signature for ${credentialId} does not verify (request ${requestId})`,
+    );
+  }
   if (!ok) {
     throw new SigningRejected(
       `signature for ${credentialId} does not verify (request ${requestId})`,

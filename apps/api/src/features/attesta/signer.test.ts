@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
+import { createPublicKey, generateKeyPairSync, sign, verify } from 'node:crypto';
 import {
   signVerified,
   SigningRejected,
   SigningUnavailable,
+  type SignVerifiedRequest,
   type SigningAdapter,
+  type SigningAlgorithm,
   type SigningResult,
 } from './signer-contract';
 import {
@@ -17,13 +19,23 @@ import {
 
 const PAYLOAD = Buffer.from('attesta test payload');
 
-function makeSigner(tenantId = 'tenant-a'): { signer: LocalDevSigner; credentialId: string } {
+function makeSigner(
+  tenantId = 'tenant-a',
+): { signer: LocalDevSigner; credentialId: string; tenantId: string } {
   const credentialId = `dev:${tenantId}-key-1`;
   const signer = new LocalDevSigner({
     credentials: [generateDevCredential(credentialId, tenantId)],
     env: { NODE_ENV: 'test' },
   });
-  return { signer, credentialId };
+  return { signer, credentialId, tenantId };
+}
+
+function req(
+  credentialId: string,
+  tenantId: string,
+  requestId = 'r',
+): SignVerifiedRequest {
+  return { credentialId, tenantId, requestId };
 }
 
 function verifyDer(publicKeySpkiDer: Buffer, payload: Buffer, signature: Buffer): boolean {
@@ -32,8 +44,8 @@ function verifyDer(publicKeySpkiDer: Buffer, payload: Buffer, signature: Buffer)
 }
 
 test('signature verifies with the published public key', async () => {
-  const { signer, credentialId } = makeSigner();
-  const result = await signer.sign(PAYLOAD, credentialId, { requestId: 'r1' });
+  const { signer, credentialId, tenantId } = makeSigner();
+  const result = await signer.sign(PAYLOAD, credentialId, { requestId: 'r1', tenantId });
   assert.equal(result.algorithm, 'ES256');
   assert.equal(result.credentialId, credentialId);
   const published = await signer.publicKey(credentialId);
@@ -42,8 +54,8 @@ test('signature verifies with the published public key', async () => {
 });
 
 test('tampered payload fails verification', async () => {
-  const { signer, credentialId } = makeSigner();
-  const result = await signer.sign(PAYLOAD, credentialId, { requestId: 'r1' });
+  const { signer, credentialId, tenantId } = makeSigner();
+  const result = await signer.sign(PAYLOAD, credentialId, { requestId: 'r1', tenantId });
   const published = await signer.publicKey(credentialId);
   assert.equal(
     verifyDer(published, Buffer.concat([PAYLOAD, Buffer.from('x')]), result.signature),
@@ -52,19 +64,20 @@ test('tampered payload fails verification', async () => {
 });
 
 test('signVerified passes for a good signature', async () => {
-  const { signer, credentialId } = makeSigner();
-  const result = await signVerified(signer, PAYLOAD, credentialId, 'r1');
+  const { signer, credentialId, tenantId } = makeSigner();
+  const result = await signVerified(signer, PAYLOAD, req(credentialId, tenantId, 'r1'));
   assert.equal(result.credentialId, credentialId);
 });
 
 test('signVerified rejects a signature made by a different key', async () => {
-  const { signer, credentialId } = makeSigner();
+  const { signer, credentialId, tenantId } = makeSigner();
   const other = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const otherSpki = other.publicKey.export({ format: 'der', type: 'spki' }) as Buffer;
   const fake: SigningAdapter = {
     capabilities: () => signer.capabilities(),
     sign: async () => ({
-      signature: (await signer.sign(PAYLOAD, credentialId, { requestId: 'r' })).signature,
+      signature: (await signer.sign(PAYLOAD, credentialId, { requestId: 'r', tenantId }))
+        .signature,
       algorithm: 'ES256',
       credentialId,
       publicKeySpkiDer: Buffer.from(otherSpki),
@@ -73,14 +86,17 @@ test('signVerified rejects a signature made by a different key', async () => {
     publicKey: () => signer.publicKey(credentialId),
     health: () => signer.health(),
   };
-  await assert.rejects(signVerified(fake, PAYLOAD, credentialId, 'r'), SigningRejected);
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
 });
 
 test('signVerified rejects a mismatched published public key', async () => {
-  const { signer, credentialId } = makeSigner();
+  const { signer, credentialId, tenantId } = makeSigner();
   const other = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const otherSpki = Buffer.from(other.publicKey.export({ format: 'der', type: 'spki' }));
-  const real = await signer.sign(PAYLOAD, credentialId, { requestId: 'r' });
+  const real = await signer.sign(PAYLOAD, credentialId, { requestId: 'r', tenantId });
   const fake: SigningAdapter = {
     capabilities: () => signer.capabilities(),
     sign: async () => real,
@@ -88,11 +104,108 @@ test('signVerified rejects a mismatched published public key', async () => {
     publicKey: async () => otherSpki,
     health: () => signer.health(),
   };
-  await assert.rejects(signVerified(fake, PAYLOAD, credentialId, 'r'), SigningRejected);
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
+});
+
+test('signVerified rejects an RSA signature claiming to be ES256', async () => {
+  const { signer, credentialId, tenantId } = makeSigner();
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const rsaSpki = Buffer.from(rsa.publicKey.export({ format: 'der', type: 'spki' }));
+  const fake: SigningAdapter = {
+    capabilities: () => signer.capabilities(),
+    sign: async () => ({
+      signature: sign('sha256', PAYLOAD, rsa.privateKey),
+      algorithm: 'ES256',
+      credentialId,
+      publicKeySpkiDer: Buffer.from(rsaSpki),
+    }),
+    listCredentials: (id) => signer.listCredentials(id),
+    publicKey: async () => Buffer.from(rsaSpki),
+    health: () => signer.health(),
+  };
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
+});
+
+test('signVerified rejects a result under the wrong credential id', async () => {
+  const { signer, credentialId, tenantId } = makeSigner();
+  const real = await signer.sign(PAYLOAD, credentialId, { requestId: 'r', tenantId });
+  const fake: SigningAdapter = {
+    capabilities: () => signer.capabilities(),
+    sign: async () => ({ ...real, credentialId: 'dev:other' }),
+    listCredentials: (id) => signer.listCredentials(id),
+    publicKey: () => signer.publicKey(credentialId),
+    health: () => signer.health(),
+  };
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
+});
+
+test('signVerified rejects a result claiming the wrong algorithm', async () => {
+  const { signer, credentialId, tenantId } = makeSigner();
+  const real = await signer.sign(PAYLOAD, credentialId, { requestId: 'r', tenantId });
+  const fake: SigningAdapter = {
+    capabilities: () => signer.capabilities(),
+    sign: async () => ({
+      ...real,
+      algorithm: 'Ed25519' as unknown as SigningAlgorithm,
+    }),
+    listCredentials: (id) => signer.listCredentials(id),
+    publicKey: () => signer.publicKey(credentialId),
+    health: () => signer.health(),
+  };
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
+});
+
+test('signVerified rejects a non-Buffer signature as malformed', async () => {
+  const { signer, credentialId, tenantId } = makeSigner();
+  const real = await signer.sign(PAYLOAD, credentialId, { requestId: 'r', tenantId });
+  const fake: SigningAdapter = {
+    capabilities: () => signer.capabilities(),
+    sign: async () => ({ ...real, signature: 'not-a-buffer' as unknown as Buffer }),
+    listCredentials: (id) => signer.listCredentials(id),
+    publicKey: () => signer.publicKey(credentialId),
+    health: () => signer.health(),
+  };
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
+});
+
+test('signVerified rejects unparseable published key bytes as malformed', async () => {
+  const { signer, credentialId, tenantId } = makeSigner();
+  const garbage = Buffer.from('not a key');
+  const fake: SigningAdapter = {
+    capabilities: () => signer.capabilities(),
+    sign: async () => ({
+      signature: Buffer.from('not a signature'),
+      algorithm: 'ES256',
+      credentialId,
+      publicKeySpkiDer: Buffer.from(garbage),
+    }),
+    listCredentials: (id) => signer.listCredentials(id),
+    publicKey: async () => Buffer.from(garbage),
+    health: () => signer.health(),
+  };
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningRejected,
+  );
 });
 
 test('signVerified wraps a plain Error as SigningUnavailable', async () => {
-  const { signer, credentialId } = makeSigner();
+  const { signer, credentialId, tenantId } = makeSigner();
   const fake: SigningAdapter = {
     capabilities: () => signer.capabilities(),
     sign: async () => {
@@ -102,35 +215,54 @@ test('signVerified wraps a plain Error as SigningUnavailable', async () => {
     publicKey: (id) => signer.publicKey(id),
     health: () => signer.health(),
   };
-  await assert.rejects(signVerified(fake, PAYLOAD, credentialId, 'r'), SigningUnavailable);
+  await assert.rejects(
+    signVerified(fake, PAYLOAD, req(credentialId, tenantId)),
+    SigningUnavailable,
+  );
 });
 
 test('signVerified passes SigningRejected through unchanged', async () => {
-  const { signer } = makeSigner();
+  const { signer, tenantId } = makeSigner();
   await assert.rejects(
-    signVerified(signer, PAYLOAD, 'dev:unknown', 'r'),
+    signVerified(signer, PAYLOAD, req('dev:unknown', tenantId)),
     (err: unknown) => err instanceof SigningRejected,
   );
 });
 
 test('unknown credential, empty and oversize payloads are SigningRejected', async () => {
-  const { signer, credentialId } = makeSigner();
+  const { signer, credentialId, tenantId } = makeSigner();
   await assert.rejects(
-    signer.sign(PAYLOAD, 'dev:unknown', { requestId: 'r' }),
+    signer.sign(PAYLOAD, 'dev:unknown', { requestId: 'r', tenantId }),
     SigningRejected,
   );
   await assert.rejects(
-    signer.sign(Buffer.alloc(0), credentialId, { requestId: 'r' }),
+    signer.sign(Buffer.alloc(0), credentialId, { requestId: 'r', tenantId }),
     SigningRejected,
   );
   await assert.rejects(
     signer.sign(Buffer.alloc(LOCAL_DEV_MAX_PAYLOAD_BYTES + 1), credentialId, {
       requestId: 'r',
+      tenantId,
     }),
     SigningRejected,
   );
   await assert.rejects(
-    signer.sign('text' as unknown as Buffer, credentialId, { requestId: 'r' }),
+    signer.sign('text' as unknown as Buffer, credentialId, { requestId: 'r', tenantId }),
+    SigningRejected,
+  );
+});
+
+test("sign refuses a credential from another tenant", async () => {
+  const signer = new LocalDevSigner({
+    credentials: [generateDevCredential('dev:b-key', 'tenant-b')],
+    env: { NODE_ENV: 'test' },
+  });
+  await assert.rejects(
+    signer.sign(PAYLOAD, 'dev:b-key', { requestId: 'r', tenantId: 'tenant-a' }),
+    SigningRejected,
+  );
+  await assert.rejects(
+    signVerified(signer, PAYLOAD, req('dev:b-key', 'tenant-a')),
     SigningRejected,
   );
 });
@@ -212,8 +344,11 @@ test('publicKey rejects unknown credentials; health reflects loaded keys', async
 });
 
 test('signing results contain no private material', async () => {
-  const { signer, credentialId } = makeSigner();
-  const result: SigningResult = await signer.sign(PAYLOAD, credentialId, { requestId: 'r1' });
+  const { signer, credentialId, tenantId } = makeSigner();
+  const result: SigningResult = await signer.sign(PAYLOAD, credentialId, {
+    requestId: 'r1',
+    tenantId,
+  });
   assert.ok(!JSON.stringify(result).includes('PRIVATE KEY'));
   const listed = await signer.listCredentials('tenant-a');
   assert.ok(!JSON.stringify(listed).includes('PRIVATE KEY'));

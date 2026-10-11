@@ -2,8 +2,9 @@
 //
 // Development only: it holds its own throwaway keys in memory and refuses to
 // run when NODE_ENV is `production` (production signers delegate to the
-// tenant's KMS and implement `signer-contract.ts` instead). Results contain
-// public material only; payloads and keys are never logged.
+// tenant's KMS and implement `signer-contract.ts` instead). Signing is
+// tenant-bound: `sign` refuses a credential from another tenant. Results
+// contain public material only; payloads and keys are never logged.
 //
 // Ported from SushiCorp A1 adapters/signing/local_dev.py @ 0bd67a5 (catalog
 // SG-1). Deviations: (1) no X.509 chain or CRL - Attesta verifies against
@@ -115,12 +116,17 @@ export class LocalDevSigner implements SigningAdapter {
   async sign(
     payload: Buffer,
     credentialId: string,
-    opts: { requestId: string },
+    opts: { requestId: string; tenantId: string },
   ): Promise<SigningResult> {
     const credential = this.credentials.get(credentialId);
     if (credential === undefined) {
       throw new SigningRejected(
         `unknown credential ${JSON.stringify(credentialId)} (request ${opts.requestId})`,
+      );
+    }
+    if (credential.tenantId !== opts.tenantId) {
+      throw new SigningRejected(
+        `credential ${JSON.stringify(credentialId)} does not belong to tenant ${JSON.stringify(opts.tenantId)} (request ${opts.requestId})`,
       );
     }
     if (!Buffer.isBuffer(payload) || payload.length === 0) {
