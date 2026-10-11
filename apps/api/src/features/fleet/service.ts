@@ -18,10 +18,53 @@ import {
   configurationEnvelope,
   type AssignFleetConfigurationInput,
   type CreateFleetConfigurationInput,
+  type FleetAdminConfiguration,
   type FleetConfigurationEnvelope,
   type FleetConfigurationSnapshot,
   type FleetReport,
 } from './contract';
+
+function adminConfiguration(
+  configuration: typeof fleetConfigurations.$inferSelect,
+): FleetAdminConfiguration {
+  const common = {
+    id: configuration.id,
+    epoch: configuration.epoch,
+    generatedAt: configuration.generatedAt,
+    validUntil: configuration.validUntil,
+    channel: configuration.channel,
+    ring: configuration.ring,
+  };
+  if (configuration.schemaVersion === 1) {
+    return {
+      schemaVersion: 1 as const,
+      targetClientVersion: configuration.targetClientVersion,
+      ...common,
+    };
+  }
+  if (configuration.schemaVersion === 2
+    && configuration.clientMinimumVersion
+    && configuration.clientMaximumVersion
+    && configuration.releaseTag
+    && configuration.manifestUrl
+    && configuration.manifestSha256) {
+    return {
+      schemaVersion: 2 as const,
+      clientCompatibility: {
+        minimumVersion: configuration.clientMinimumVersion,
+        maximumVersion: configuration.clientMaximumVersion,
+      },
+      desiredRelease: {
+        version: configuration.targetClientVersion,
+        releaseTag: configuration.releaseTag,
+        manifestUrl: configuration.manifestUrl,
+        manifestSha256: configuration.manifestSha256,
+      },
+      ...common,
+    };
+  }
+  throw new FleetServiceError(409, 'state_conflict');
+}
 
 export class FleetServiceError extends Error {
   constructor(
@@ -198,13 +241,22 @@ export async function createFleetConfiguration(input: {
       throw new FleetServiceError(400, 'invalid_request');
     }
     const snapshot = await snapshotCurrentPolicy(transaction, input.tenantId, generatedAt);
+    const v2 = input.configuration.schemaVersion === 2 ? input.configuration : null;
+    const targetClientVersion = input.configuration.schemaVersion === 2
+      ? input.configuration.desiredRelease.version
+      : input.configuration.targetClientVersion;
     const [configuration] = await tenant.insert(fleetConfigurations, {
       epoch: (latest?.epoch ?? 0) + 1,
-      schemaVersion: 1,
+      schemaVersion: input.configuration.schemaVersion ?? 1,
       generatedAt,
       generatedBy: input.actorId,
       validUntil: input.configuration.validUntil,
-      targetClientVersion: input.configuration.targetClientVersion,
+      targetClientVersion,
+      clientMinimumVersion: v2?.clientCompatibility.minimumVersion ?? null,
+      clientMaximumVersion: v2?.clientCompatibility.maximumVersion ?? null,
+      releaseTag: v2?.desiredRelease.releaseTag ?? null,
+      manifestUrl: v2?.desiredRelease.manifestUrl ?? null,
+      manifestSha256: v2?.desiredRelease.manifestSha256 ?? null,
       channel: input.configuration.channel,
       ring: input.configuration.ring,
       snapshot,
@@ -217,7 +269,13 @@ export async function createFleetConfiguration(input: {
       targetId: configuration.id,
       details: {
         epoch: configuration.epoch,
-        targetClientVersion: configuration.targetClientVersion,
+        schemaVersion: configuration.schemaVersion,
+        ...(configuration.schemaVersion === 1
+          ? { targetClientVersion: configuration.targetClientVersion }
+          : {
+            clientCompatibility: v2?.clientCompatibility,
+            desiredRelease: v2?.desiredRelease,
+          }),
         channel: configuration.channel,
         ring: configuration.ring,
         reason: input.configuration.reason,
@@ -225,16 +283,7 @@ export async function createFleetConfiguration(input: {
         securityActivation: snapshot.securityActivation,
       },
     });
-    return {
-      id: configuration.id,
-      epoch: configuration.epoch,
-      schemaVersion: configuration.schemaVersion,
-      generatedAt: configuration.generatedAt,
-      validUntil: configuration.validUntil,
-      targetClientVersion: configuration.targetClientVersion,
-      channel: configuration.channel,
-      ring: configuration.ring,
-    };
+    return adminConfiguration(configuration);
   });
 }
 
@@ -317,13 +366,7 @@ export async function listFleetMachines(tenantId: string, now = new Date()) {
         displayName: machine.displayName,
         status: classifyFleetMachineStatus({ machineStatus: machine.status, state, now }),
         machineStatus: machine.status,
-        desiredConfiguration: desired ? {
-          id: desired.id,
-          epoch: desired.epoch,
-          targetClientVersion: desired.targetClientVersion,
-          channel: desired.channel,
-          ring: desired.ring,
-        } : null,
+        desiredConfiguration: desired ? adminConfiguration(desired) : null,
         observed: state ? {
           acknowledgedConfigurationId: state.acknowledgedConfigurationId,
           acknowledgedEpoch: state.acknowledgedEpoch,

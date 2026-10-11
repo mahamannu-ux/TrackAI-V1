@@ -23,7 +23,10 @@ import {
 } from './service';
 
 type PgFailure = Error & { code?: string };
-const migrationPath = resolve(__dirname, '../../../drizzle/0014_spotty_serpent_society.sql');
+const migrationPaths = [
+  resolve(__dirname, '../../../drizzle/0014_spotty_serpent_society.sql'),
+  resolve(__dirname, '../../../drizzle/0015_aromatic_blink.sql'),
+];
 
 async function expectDatabaseError(run: () => Promise<unknown>, code: string): Promise<boolean> {
   try {
@@ -35,13 +38,13 @@ async function expectDatabaseError(run: () => Promise<unknown>, code: string): P
 }
 
 async function proveMigrationRoundTrip(): Promise<void> {
-  const migration = await readFile(migrationPath, 'utf8');
+  const migrations = await Promise.all(migrationPaths.map(path => readFile(path, 'utf8')));
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('DROP TABLE fleet_machine_states');
     await client.query('DROP TABLE fleet_configurations');
-    await client.query(migration);
+    for (const migration of migrations) await client.query(migration);
     const applied = await client.query<{ tables: string }>(`
       SELECT count(*)::text AS tables FROM pg_class
       WHERE oid IN ('fleet_configurations'::regclass, 'fleet_machine_states'::regclass)
@@ -60,7 +63,7 @@ async function proveMigrationRoundTrip(): Promise<void> {
     await client.query('BEGIN');
     await client.query('DROP TABLE fleet_machine_states');
     await client.query('DROP TABLE fleet_configurations');
-    await client.query(migration);
+    for (const migration of migrations) await client.query(migration);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -144,7 +147,14 @@ async function main(): Promise<void> {
     tenantId: tenantA,
     actorId: marker,
     configuration: {
-      targetClientVersion: '1.2.4',
+      schemaVersion: 2,
+      clientCompatibility: { minimumVersion: '1.2.3', maximumVersion: '1.2.4' },
+      desiredRelease: {
+        version: '1.2.4',
+        releaseTag: 'v1.2.4',
+        manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.2.4/SHA256SUMS',
+        manifestSha256: 'a'.repeat(64),
+      },
       channel: 'enterprise-next',
       ring: 'early',
       validUntil: null,
@@ -256,6 +266,28 @@ async function main(): Promise<void> {
     `, [tenantA, first.id]),
     '23505',
   );
+  const partialV2Blocked = await expectDatabaseError(
+    () => pool.query(`
+      INSERT INTO fleet_configurations
+        (tenant_id, epoch, schema_version, generated_by, target_client_version, channel, snapshot)
+      SELECT tenant_id, 99, 2, generated_by, '1.2.5', channel, snapshot
+      FROM fleet_configurations WHERE tenant_id = $1 AND id = $2
+    `, [tenantA, first.id]),
+    '23514',
+  );
+  const mixedV1Blocked = await expectDatabaseError(
+    () => pool.query(`
+      INSERT INTO fleet_configurations
+        (tenant_id, epoch, schema_version, generated_by, target_client_version, channel, snapshot,
+         client_minimum_version, client_maximum_version, release_tag, manifest_url, manifest_sha256)
+      SELECT tenant_id, 100, 1, generated_by, '1.2.5', channel, snapshot,
+        '1.2.3', '1.2.5', 'v1.2.5',
+        'https://github.com/mahamannu-ux/git-ai/releases/download/v1.2.5/SHA256SUMS',
+        repeat('b', 64)
+      FROM fleet_configurations WHERE tenant_id = $1 AND id = $2
+    `, [tenantA, first.id]),
+    '23514',
+  );
   const immutableConfiguration = await expectDatabaseError(
     () => pool.query('UPDATE fleet_configurations SET ring = $1 WHERE id = $2', ['changed', first.id]),
     'P0001',
@@ -274,6 +306,24 @@ async function main(): Promise<void> {
     actorId: marker,
     assignment: { configurationId: second.id, machineIds: [machineA], reason: 'IT T9 advance' },
   });
+  const v2Envelope = await getFleetConfiguration(tenantA, machineA);
+  if (!v2Envelope
+    || v2Envelope.schemaVersion !== 2
+    || v2Envelope.clientCompatibility.minimumVersion !== '1.2.3'
+    || v2Envelope.desiredRelease.version !== '1.2.4'
+    || v2Envelope.desiredRelease.releaseTag !== 'v1.2.4'
+    || v2Envelope.desiredRelease.manifestSha256 !== 'a'.repeat(64)
+    || 'targetClientVersion' in v2Envelope
+    || v2Envelope.repositoryPolicies.length !== 1) {
+    throw new Error('Schema-v2 fleet configuration did not round-trip exactly');
+  }
+  const immutableReleaseTuple = await expectDatabaseError(
+    () => pool.query(
+      'UPDATE fleet_configurations SET manifest_sha256 = $1 WHERE id = $2',
+      ['b'.repeat(64), second.id],
+    ),
+    'P0001',
+  );
   await recordFleetReport({
     tenantId: tenantA,
     machineId: machineA,
@@ -361,7 +411,10 @@ async function main(): Promise<void> {
     || !companyBCannotAcknowledgeA
     || !crossTenantDesiredBlocked
     || !duplicateEpochBlocked
+    || !partialV2Blocked
+    || !mixedV1Blocked
     || !immutableConfiguration
+    || !immutableReleaseTuple
     || !immutableAudit
     || Number(proof.rls) !== 2
     || Number(proof.policies) !== 0
@@ -384,6 +437,9 @@ async function main(): Promise<void> {
   console.log('tenant_epochs=monotonic-and-isolated');
   console.log('tenant_foreign_keys=cross-tenant-blocked');
   console.log('configuration_fetch_and_report=passed');
+  console.log('schema_v1_v2_storage_and_round_trip=passed');
+  console.log('partial_or_mixed_v2_storage=blocked');
+  console.log('immutable_release_tuple=passed');
   console.log('assignment_rollback=passed');
   console.log('offboard_revocation=passed');
   console.log('immutable_configuration_and_audit=passed');

@@ -319,6 +319,11 @@ export const fleetConfigurations = pgTable('fleet_configurations', {
   generatedBy: text('generated_by').notNull(),
   validUntil: timestamp('valid_until', { withTimezone: true }),
   targetClientVersion: text('target_client_version').notNull(),
+  clientMinimumVersion: text('client_minimum_version'),
+  clientMaximumVersion: text('client_maximum_version'),
+  releaseTag: text('release_tag'),
+  manifestUrl: text('manifest_url'),
+  manifestSha256: text('manifest_sha256'),
   channel: text('channel')
     .$type<'latest' | 'next' | 'enterprise-latest' | 'enterprise-next'>().notNull(),
   ring: text('ring'),
@@ -343,13 +348,32 @@ export const fleetConfigurations = pgTable('fleet_configurations', {
     .on(table.tenantId, table.generatedAt),
   epochCheck: check('fleet_configurations_epoch_check', sql`${table.epoch} >= 1`),
   schemaVersionCheck: check('fleet_configurations_schema_version_check',
-    sql`${table.schemaVersion} = 1`),
+    sql`${table.schemaVersion} in (1, 2)`),
+  releaseContractCheck: check('fleet_configurations_release_contract_check', sql`
+    (${table.schemaVersion} = 1
+      and ${table.clientMinimumVersion} is null
+      and ${table.clientMaximumVersion} is null
+      and ${table.releaseTag} is null
+      and ${table.manifestUrl} is null
+      and ${table.manifestSha256} is null)
+    or (${table.schemaVersion} = 2
+      and ${table.clientMinimumVersion} is not null
+      and ${table.clientMaximumVersion} is not null
+      and ${table.releaseTag} is not null
+      and ${table.manifestUrl} is not null
+      and ${table.manifestSha256} is not null)
+  `),
   channelCheck: check('fleet_configurations_channel_check', sql`
     ${table.channel} in ('latest', 'next', 'enterprise-latest', 'enterprise-next')
   `),
   boundedMetadataCheck: check('fleet_configurations_bounded_metadata_check', sql`
     length(${table.generatedBy}) between 1 and 255
     and length(${table.targetClientVersion}) between 1 and 64
+    and (${table.clientMinimumVersion} is null or length(${table.clientMinimumVersion}) between 1 and 64)
+    and (${table.clientMaximumVersion} is null or length(${table.clientMaximumVersion}) between 1 and 64)
+    and (${table.releaseTag} is null or length(${table.releaseTag}) between 1 and 128)
+    and (${table.manifestUrl} is null or length(${table.manifestUrl}) between 1 and 512)
+    and (${table.manifestSha256} is null or ${table.manifestSha256} ~ '^[0-9a-f]{64}$')
     and (${table.ring} is null or length(${table.ring}) between 1 and 64)
     and (${table.validUntil} is null or ${table.validUntil} > ${table.generatedAt})
     and jsonb_typeof(${table.snapshot}) = 'object'
