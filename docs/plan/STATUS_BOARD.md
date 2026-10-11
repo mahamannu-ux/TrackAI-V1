@@ -16,7 +16,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task6.a Security (monitor-only) | Codex | `feature/task6-security` / PRs #5–#7; GitAI PR #2 | ✅ merged | 🟡 D6.1 signed activation and D6.2 platform coverage open | — (Task13/Task14 own D6.2) |
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
 | Task7, Task8, Task10–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
-| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; GitAI Task9b PR #3 open; Task9c/Task9e prompts ready | 🟡 server contract merged; endpoint PR awaiting hosted validation | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Merge Task9b after CI, then start Task9c; Task9e may overlap in TrackAI |
+| Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; Task9e merged in PR #18; GitAI Task9b PR #3 and Task9c PR #4 merged; lifecycle correction design pending | 🟡 server contract merged; endpoint PR awaiting hosted validation | 🟡 IT-T9-01 agent-verified; founder run and IT-T9-02–07/IT-M9-01 pending | Merge correction design, then Task9a2/Task9c2; Task9d resumes after both |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task15a and Task15b; then the Task15 lead chat |
 | Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
