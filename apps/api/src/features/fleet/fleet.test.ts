@@ -18,6 +18,25 @@ const machineA = '33333333-3333-4333-8333-333333333333';
 const machineB = '99999999-9999-4999-8999-999999999999';
 const configurationA = '44444444-4444-4444-8444-444444444444';
 const now = new Date('2026-10-09T10:00:00.000Z');
+const manifestSha256 = 'a'.repeat(64);
+
+function v2Configuration(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 2,
+    clientCompatibility: { minimumVersion: '1.6.19', maximumVersion: '1.6.20' },
+    desiredRelease: {
+      version: '1.6.20',
+      releaseTag: 'v1.6.20',
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS',
+      manifestSha256,
+    },
+    channel: 'enterprise-latest',
+    ring: 'early',
+    validUntil: '2026-10-10T10:00:00.000Z',
+    reason: 'pin the exact release',
+    ...overrides,
+  };
+}
 
 function report(overrides: Record<string, unknown> = {}) {
   return {
@@ -138,6 +157,7 @@ test('configuration and assignment inputs reject caller policy and unbounded rol
     reason: 'start the early ring',
   }, now);
   assert.equal(configuration.channel, 'enterprise-latest');
+  assert.equal(configuration.schemaVersion, 1);
   assert.throws(() => parseCreateFleetConfiguration({
     targetClientVersion: '1.2.3', channel: 'latest', reason: 'x', policy: { secret: 'no' },
   }, now), /unsupported fields/);
@@ -148,6 +168,61 @@ test('configuration and assignment inputs reject caller policy and unbounded rol
   }));
 });
 
+test('schema-v2 creation is closed and validates compatibility and immutable release identity', () => {
+  const configuration = parseCreateFleetConfiguration(v2Configuration(), now);
+  assert.equal(configuration.schemaVersion, 2);
+  if (configuration.schemaVersion !== 2) assert.fail('expected schema v2');
+  assert.equal(configuration.clientCompatibility.minimumVersion, '1.6.19');
+  assert.equal(configuration.desiredRelease.manifestSha256, manifestSha256);
+
+  const invalid = [
+    v2Configuration({ clientCompatibility: { minimumVersion: '1.6.21', maximumVersion: '1.6.20' } }),
+    v2Configuration({ clientCompatibility: { minimumVersion: '01.6.19', maximumVersion: '1.6.20' } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object, releaseTag: 'v1.6.20/other',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object, releaseTag: '..',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object,
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/latest/download/SHA256SUMS',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object,
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.19/SHA256SUMS',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object,
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS?x=1',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object,
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS#x',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object,
+      manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20%2fother/SHA256SUMS',
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object, manifestSha256: 'A'.repeat(64),
+    } }),
+    v2Configuration({ desiredRelease: {
+      ...v2Configuration().desiredRelease as object, manifestSha256: 'a'.repeat(63),
+    } }),
+    v2Configuration({ targetClientVersion: '1.6.20' }),
+  ];
+  for (const value of invalid) assert.throws(() => parseCreateFleetConfiguration(value, now));
+  assert.throws(() => parseCreateFleetConfiguration({
+    schemaVersion: 1,
+    targetClientVersion: '1.6.20',
+    channel: 'latest',
+    ring: null,
+    validUntil: null,
+    reason: 'cannot masquerade',
+  }, now), /unsupported fields/);
+});
+
 test('configuration envelope exposes the Task15 fail-closed seam and no secret material', () => {
   const envelope = configurationEnvelope({
     machineId: machineA,
@@ -155,7 +230,13 @@ test('configuration envelope exposes the Task15 fail-closed seam and no secret m
     epoch: 3,
     generatedAt: now,
     validUntil: null,
+    schemaVersion: 1,
     targetClientVersion: '1.2.3',
+    clientMinimumVersion: null,
+    clientMaximumVersion: null,
+    releaseTag: null,
+    manifestUrl: null,
+    manifestSha256: null,
     channel: 'latest',
     ring: null,
     snapshot: {
@@ -180,9 +261,64 @@ test('configuration envelope exposes the Task15 fail-closed seam and no secret m
     },
   });
   assert.deepEqual(envelope.verification, { required: true, state: 'unavailable' });
+  assert.deepEqual(Object.keys(envelope), [
+    'schemaVersion', 'configurationId', 'epoch', 'issuedAt', 'validUntil',
+    'targetClientVersion', 'channel', 'ring', 'repositoryPolicies',
+    'securityActivation', 'verification',
+  ]);
+  assert.equal('clientCompatibility' in envelope, false);
+  assert.equal('desiredRelease' in envelope, false);
   assert.equal(envelope.repositoryPolicies.length, 1);
   assert.equal('machineId' in envelope.repositoryPolicies[0], false);
   assert.doesNotMatch(JSON.stringify(envelope), /credential|secret|prompt|raw/i);
+});
+
+test('schema-v2 envelope separates compatibility from desired release and remains machine-scoped', () => {
+  const envelope = configurationEnvelope({
+    machineId: machineA,
+    id: configurationA,
+    epoch: 4,
+    generatedAt: now,
+    validUntil: null,
+    schemaVersion: 2,
+    targetClientVersion: '1.6.20',
+    clientMinimumVersion: '1.6.19',
+    clientMaximumVersion: '1.6.20',
+    releaseTag: 'v1.6.20',
+    manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS',
+    manifestSha256,
+    channel: 'enterprise-next',
+    ring: null,
+    snapshot: {
+      repositoryPolicies: [{
+        machineId: machineA,
+        repositoryId: '55555555-5555-4555-8555-555555555555',
+        enrollmentId: '66666666-6666-4666-8666-666666666666',
+        grantId: '77777777-7777-4777-8777-777777777777',
+        branchPatterns: ['main'],
+        effectiveFrom: now.toISOString(),
+        effectiveUntil: null,
+      }, {
+        machineId: machineB,
+        repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        enrollmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        grantId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        branchPatterns: ['release/*'],
+        effectiveFrom: now.toISOString(),
+        effectiveUntil: null,
+      }],
+      securityActivation: { mode: 'monitor', version: 2 },
+    },
+  });
+  assert.equal(envelope.schemaVersion, 2);
+  if (envelope.schemaVersion !== 2) assert.fail('expected schema v2');
+  assert.deepEqual(envelope.clientCompatibility, {
+    minimumVersion: '1.6.19', maximumVersion: '1.6.20',
+  });
+  assert.equal(envelope.desiredRelease.version, '1.6.20');
+  assert.equal('targetClientVersion' in envelope, false);
+  assert.equal(envelope.repositoryPolicies.length, 1);
+  assert.deepEqual(envelope.verification, { required: true, state: 'unavailable' });
 });
 
 test('worker routes require managed credentials and derive tenant and machine from authentication', async () => {
@@ -254,6 +390,41 @@ test('admin routes reuse one authorization boundary and keep tenant A separate f
     method: 'GET', url: '/machines', tenantId: tenantB, subject: 'auditor-b',
   });
   assert.equal(auditor.status, 403);
+});
+
+test('admin creation keeps v1 compatible and returns a closed schema-v2 response', async () => {
+  const allow: RequestHandler = (_req, _res, next) => next();
+  let captured: unknown;
+  const router = createFleetAdminRouter(dependencies({
+    createConfiguration: async (input: { configuration: unknown }) => {
+      captured = input.configuration;
+      return {
+        id: configurationA,
+        epoch: 2,
+        schemaVersion: 2,
+        generatedAt: now,
+        validUntil: null,
+        clientCompatibility: { minimumVersion: '1.6.19', maximumVersion: '1.6.20' },
+        desiredRelease: {
+          version: '1.6.20', releaseTag: 'v1.6.20',
+          manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS',
+          manifestSha256,
+        },
+        channel: 'enterprise-latest',
+        ring: 'early',
+      };
+    },
+  }), allow);
+  const result = await invoke(router, {
+    method: 'POST', url: '/configurations', tenantId: tenantA, subject: 'admin-a',
+    body: v2Configuration(),
+  });
+  assert.equal(result.status, 201);
+  assert.equal(result.headers['cache-control'], 'no-store');
+  assert.equal((captured as { schemaVersion: number }).schemaVersion, 2);
+  const response = result.body as { configuration: Record<string, unknown> };
+  assert.equal(response.configuration.schemaVersion, 2);
+  assert.equal('targetClientVersion' in response.configuration, false);
 });
 
 test('assignment supports rollback and offboard preview cannot revoke', async () => {
@@ -332,4 +503,7 @@ test('fleet tables retain tenant composite keys, bounded checks and tenant forei
   assert.ok(states.uniqueConstraints.some(key => key.getName() === 'fleet_machine_states_tenant_machine_key'));
   assert.equal(states.foreignKeys.length, 4);
   assert.ok(states.checks.length >= 5);
+  assert.ok(configurations.checks.some(check => (
+    check.name === 'fleet_configurations_release_contract_check'
+  )));
 });

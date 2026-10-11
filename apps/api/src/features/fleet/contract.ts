@@ -1,4 +1,4 @@
-export const FLEET_SCHEMA_VERSION = 1 as const;
+export const FLEET_REPORT_SCHEMA_VERSION = 1 as const;
 export const FLEET_CHANNELS = [
   'latest',
   'next',
@@ -44,19 +44,61 @@ export interface FleetConfigurationSnapshot {
   };
 }
 
-export interface FleetConfigurationEnvelope {
-  schemaVersion: 1;
+interface FleetConfigurationEnvelopeBase {
   configurationId: string;
   epoch: number;
   issuedAt: string;
   validUntil: string | null;
-  targetClientVersion: string;
   channel: FleetChannel;
   ring: string | null;
   repositoryPolicies: FleetRepositoryPolicyReference[];
   securityActivation: { mode: 'off' | 'monitor'; version: number };
   verification: { required: true; state: 'unavailable' };
 }
+
+export interface FleetConfigurationEnvelopeV1 extends FleetConfigurationEnvelopeBase {
+  schemaVersion: 1;
+  targetClientVersion: string;
+}
+
+export interface FleetClientCompatibility {
+  minimumVersion: string;
+  maximumVersion: string;
+}
+
+export interface FleetDesiredRelease {
+  version: string;
+  releaseTag: string;
+  manifestUrl: string;
+  manifestSha256: string;
+}
+
+export interface FleetConfigurationEnvelopeV2 extends FleetConfigurationEnvelopeBase {
+  schemaVersion: 2;
+  clientCompatibility: FleetClientCompatibility;
+  desiredRelease: FleetDesiredRelease;
+}
+
+export type FleetConfigurationEnvelope =
+  | FleetConfigurationEnvelopeV1
+  | FleetConfigurationEnvelopeV2;
+
+interface FleetAdminConfigurationBase {
+  id: string;
+  epoch: number;
+  generatedAt: Date;
+  validUntil: Date | null;
+  channel: FleetChannel;
+  ring: string | null;
+}
+
+export type FleetAdminConfiguration =
+  | (FleetAdminConfigurationBase & { schemaVersion: 1; targetClientVersion: string })
+  | (FleetAdminConfigurationBase & {
+    schemaVersion: 2;
+    clientCompatibility: FleetClientCompatibility;
+    desiredRelease: FleetDesiredRelease;
+  });
 
 export interface FleetReport {
   schemaVersion: 1;
@@ -86,13 +128,28 @@ export interface FleetReport {
   };
 }
 
-export interface CreateFleetConfigurationInput {
+export interface CreateFleetConfigurationV1Input {
+  schemaVersion?: 1;
   targetClientVersion: string;
   channel: FleetChannel;
   ring: string | null;
   validUntil: Date | null;
   reason: string;
 }
+
+export interface CreateFleetConfigurationV2Input {
+  schemaVersion: 2;
+  clientCompatibility: FleetClientCompatibility;
+  desiredRelease: FleetDesiredRelease;
+  channel: FleetChannel;
+  ring: string | null;
+  validUntil: Date | null;
+  reason: string;
+}
+
+export type CreateFleetConfigurationInput =
+  | CreateFleetConfigurationV1Input
+  | CreateFleetConfigurationV2Input;
 
 export interface AssignFleetConfigurationInput {
   configurationId: string;
@@ -106,6 +163,9 @@ export interface ApplyFleetOffboardInput {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const RELEASE_TAG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 const MAX_QUEUE_COUNT = 1_000_000;
 const MAX_FUTURE_MS = 5 * 60 * 1_000;
 
@@ -168,23 +228,132 @@ function count(value: unknown, name: string): number {
   return value as number;
 }
 
+function semanticVersion(value: unknown, name: string): string {
+  const result = boundedString(value, name, 64);
+  if (!SEMVER.test(result)) throw new Error(`${name} must be a canonical semantic version`);
+  return result;
+}
+
+function compareSemanticVersions(left: string, right: string): number {
+  const leftMatch = SEMVER.exec(left);
+  const rightMatch = SEMVER.exec(right);
+  if (!leftMatch || !rightMatch) throw new Error('semantic version comparison requires valid versions');
+  for (let index = 1; index <= 3; index += 1) {
+    const leftPart = BigInt(leftMatch[index]);
+    const rightPart = BigInt(rightMatch[index]);
+    if (leftPart !== rightPart) return leftPart < rightPart ? -1 : 1;
+  }
+  const leftPre = leftMatch[4]?.split('.') ?? [];
+  const rightPre = rightMatch[4]?.split('.') ?? [];
+  if (leftPre.length === 0 || rightPre.length === 0) {
+    return leftPre.length === rightPre.length ? 0 : leftPre.length === 0 ? 1 : -1;
+  }
+  for (let index = 0; index < Math.max(leftPre.length, rightPre.length); index += 1) {
+    if (leftPre[index] === undefined) return -1;
+    if (rightPre[index] === undefined) return 1;
+    if (leftPre[index] === rightPre[index]) continue;
+    const leftNumeric = /^\d+$/.test(leftPre[index]);
+    const rightNumeric = /^\d+$/.test(rightPre[index]);
+    if (leftNumeric && rightNumeric) {
+      const leftPart = BigInt(leftPre[index]);
+      const rightPart = BigInt(rightPre[index]);
+      if (leftPart !== rightPart) return leftPart < rightPart ? -1 : 1;
+      continue;
+    }
+    if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+    return leftPre[index] < rightPre[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+function clientCompatibility(value: unknown): FleetClientCompatibility {
+  const input = record(value, ['minimumVersion', 'maximumVersion'], 'clientCompatibility');
+  const minimumVersion = semanticVersion(
+    input.minimumVersion,
+    'clientCompatibility.minimumVersion',
+  );
+  const maximumVersion = semanticVersion(
+    input.maximumVersion,
+    'clientCompatibility.maximumVersion',
+  );
+  if (compareSemanticVersions(minimumVersion, maximumVersion) > 0) {
+    throw new Error('clientCompatibility minimumVersion must not exceed maximumVersion');
+  }
+  return { minimumVersion, maximumVersion };
+}
+
+function desiredRelease(value: unknown): FleetDesiredRelease {
+  const input = record(
+    value,
+    ['version', 'releaseTag', 'manifestUrl', 'manifestSha256'],
+    'desiredRelease',
+  );
+  const version = semanticVersion(input.version, 'desiredRelease.version');
+  const releaseTag = boundedString(input.releaseTag, 'desiredRelease.releaseTag', 128);
+  if (!RELEASE_TAG.test(releaseTag) || releaseTag.includes('..')) {
+    throw new Error('desiredRelease.releaseTag is invalid');
+  }
+  const manifestUrl = boundedString(input.manifestUrl, 'desiredRelease.manifestUrl', 512);
+  let parsed: URL;
+  try {
+    parsed = new URL(manifestUrl);
+  } catch {
+    throw new Error('desiredRelease.manifestUrl is invalid');
+  }
+  const expectedUrl = `https://github.com/mahamannu-ux/git-ai/releases/download/${releaseTag}/SHA256SUMS`;
+  if (manifestUrl !== expectedUrl
+    || parsed.username
+    || parsed.password
+    || parsed.search
+    || parsed.hash) {
+    throw new Error('desiredRelease.manifestUrl must use the exact release tag');
+  }
+  const manifestSha256 = boundedString(
+    input.manifestSha256,
+    'desiredRelease.manifestSha256',
+    64,
+  );
+  if (!SHA256.test(manifestSha256)) {
+    throw new Error('desiredRelease.manifestSha256 must be 64 lowercase hexadecimal characters');
+  }
+  return { version, releaseTag, manifestUrl, manifestSha256 };
+}
+
 export function parseCreateFleetConfiguration(
   value: unknown,
   now = new Date(),
 ): CreateFleetConfigurationInput {
-  const input = record(value, [
+  const isV2 = Boolean(value && typeof value === 'object'
+    && !Array.isArray(value)
+    && (value as Record<string, unknown>).schemaVersion === 2);
+  const input = record(value, isV2 ? [
+    'schemaVersion', 'clientCompatibility', 'desiredRelease',
+    'channel', 'ring', 'validUntil', 'reason',
+  ] : [
     'targetClientVersion', 'channel', 'ring', 'validUntil', 'reason',
   ], 'configuration');
   const validUntil = dateValue(input.validUntil, 'validUntil', now, true, false);
   if (validUntil && validUntil.getTime() <= now.getTime()) {
     throw new Error('validUntil must be in the future');
   }
-  return {
-    targetClientVersion: boundedString(input.targetClientVersion, 'targetClientVersion', 64),
+  const common = {
     channel: enumValue(input.channel, FLEET_CHANNELS, 'channel'),
     ring: nullableBoundedString(input.ring, 'ring', 64),
     validUntil,
     reason: boundedString(input.reason, 'reason', 1_000),
+  };
+  if (isV2) {
+    return {
+      schemaVersion: 2,
+      clientCompatibility: clientCompatibility(input.clientCompatibility),
+      desiredRelease: desiredRelease(input.desiredRelease),
+      ...common,
+    };
+  }
+  return {
+    schemaVersion: 1,
+    targetClientVersion: boundedString(input.targetClientVersion, 'targetClientVersion', 64),
+    ...common,
   };
 }
 
@@ -214,7 +383,7 @@ export function parseFleetReport(value: unknown, now = new Date()): FleetReport 
     'architecture', 'gitaiVersion', 'serviceState', 'queue', 'mdmDeviceReference',
     'mdmUserReference', 'assignmentEvidence',
   ], 'report');
-  if (input.schemaVersion !== FLEET_SCHEMA_VERSION) throw new Error('schemaVersion is unsupported');
+  if (input.schemaVersion !== FLEET_REPORT_SCHEMA_VERSION) throw new Error('schemaVersion is unsupported');
   const queue = record(input.queue, [
     'pendingRetryable', 'waitingRetry', 'processing', 'quarantined', 'rowsWithErrors',
   ], 'queue');
@@ -245,7 +414,7 @@ export function parseFleetReport(value: unknown, now = new Date()): FleetReport 
     throw new Error('assignmentEvidence.observedAt cannot be after reportedAt');
   }
   return {
-    schemaVersion: FLEET_SCHEMA_VERSION,
+    schemaVersion: FLEET_REPORT_SCHEMA_VERSION,
     reportedAt,
     acknowledgement,
     platform: enumValue(input.platform, FLEET_PLATFORMS, 'platform'),
@@ -334,25 +503,66 @@ export function configurationEnvelope(input: {
   epoch: number;
   generatedAt: Date;
   validUntil: Date | null;
+  schemaVersion: number;
   targetClientVersion: string;
+  clientMinimumVersion: string | null;
+  clientMaximumVersion: string | null;
+  releaseTag: string | null;
+  manifestUrl: string | null;
+  manifestSha256: string | null;
   channel: FleetChannel;
   ring: string | null;
   snapshot: FleetConfigurationSnapshot;
 }): FleetConfigurationEnvelope {
   const snapshot = validateFleetConfigurationSnapshot(input.snapshot);
-  return {
-    schemaVersion: FLEET_SCHEMA_VERSION,
+  const common = {
     configurationId: input.id,
     epoch: input.epoch,
     issuedAt: input.generatedAt.toISOString(),
     validUntil: input.validUntil?.toISOString() ?? null,
-    targetClientVersion: input.targetClientVersion,
     channel: input.channel,
     ring: input.ring,
     repositoryPolicies: snapshot.repositoryPolicies
       .filter(policy => policy.machineId === input.machineId)
       .map(({ machineId: _machineId, ...policy }) => policy),
     securityActivation: snapshot.securityActivation,
-    verification: { required: true, state: 'unavailable' },
+    verification: { required: true, state: 'unavailable' } as const,
   };
+  if (input.schemaVersion === 1) {
+    return {
+      schemaVersion: 1,
+      configurationId: common.configurationId,
+      epoch: common.epoch,
+      issuedAt: common.issuedAt,
+      validUntil: common.validUntil,
+      targetClientVersion: input.targetClientVersion,
+      channel: common.channel,
+      ring: common.ring,
+      repositoryPolicies: common.repositoryPolicies,
+      securityActivation: common.securityActivation,
+      verification: common.verification,
+    };
+  }
+  if (input.schemaVersion === 2
+    && input.clientMinimumVersion
+    && input.clientMaximumVersion
+    && input.releaseTag
+    && input.manifestUrl
+    && input.manifestSha256) {
+    return {
+      schemaVersion: 2,
+      clientCompatibility: {
+        minimumVersion: input.clientMinimumVersion,
+        maximumVersion: input.clientMaximumVersion,
+      },
+      desiredRelease: {
+        version: input.targetClientVersion,
+        releaseTag: input.releaseTag,
+        manifestUrl: input.manifestUrl,
+        manifestSha256: input.manifestSha256,
+      },
+      ...common,
+    };
+  }
+  throw new Error('stored fleet configuration is invalid');
 }
