@@ -1,0 +1,23 @@
+apps/api/drizzle/0015_aromatic_blink.sql
+  s_39b41d8da557f4::t_19bd8231cf35fd 1-35
+apps/api/drizzle/meta/0015_snapshot.json
+  s_39b41d8da557f4::t_e50565b773ddaa 1-8356
+apps/api/drizzle/meta/_journal.json
+  s_39b41d8da557f4::t_352a5a75504f14 109-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "790c2733490abc77848bdbd44a46893d6194ec13",
+  "prompts": {},
+  "sessions": {
+    "s_39b41d8da557f4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12aef-a266-77f0-bedd-8fcb1f3f8daf",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
