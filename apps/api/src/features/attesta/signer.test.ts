@@ -94,10 +94,13 @@ test('signVerified rejects a mismatched published public key', async () => {
 test('signVerified wraps a plain Error as SigningUnavailable', async () => {
   const { signer, credentialId } = makeSigner();
   const fake: SigningAdapter = {
-    ...signer,
+    capabilities: () => signer.capabilities(),
     sign: async () => {
       throw new Error('boom');
     },
+    listCredentials: (tenantId) => signer.listCredentials(tenantId),
+    publicKey: (id) => signer.publicKey(id),
+    health: () => signer.health(),
   };
   await assert.rejects(signVerified(fake, PAYLOAD, credentialId, 'r'), SigningUnavailable);
 });
