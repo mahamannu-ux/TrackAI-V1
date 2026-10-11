@@ -30,9 +30,9 @@
 | T9.2a | Secret-free unattended deployment to already-enrolled Jamf and Intune devices | ⬜ | ⬜ | ⬜ best-effort | Task9b, Task9f, Task9g | Package/configuration deploy without exposing `trk_v1` in arguments, logs or profiles |
 | T9.2b | Linux package/service deployment | n/a deferred | n/a | n/a | Later Linux wave | Same trigger as T9.1b |
 | T9.3 | Closed device identity/posture and assigned-user evidence, never authority | 🟡 Task9a server contract | 🟡 IT-T9-01 | ⬜ | Task9a, Task9f, Task9g | Tenant-bound metadata; stale/mismatch states; self-report grants nothing |
-| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | 🟡 Task9a server interface | 🟡 IT-T9-01 | ⬜ | Task9a, Task9c | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
+| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | 🟡 Task9a/Task9c v1 merged; lifecycle correction designed | 🟡 IT-T9-01 | ⬜ | Task9a, Task9c, Task9a2, Task9c2 | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
 | T9.5 | Fleet inventory and safe health | 🟡 Task9a API contract | 🟡 unit + IT-T9-01 | ⬜ | Task9a, Task9e | Current/stale/unreported/unavailable are distinct; no raw content |
-| T9.6 | Staged software/configuration rollout and rollback | 🟡 Task9a assignment primitive | 🟡 IT-T9-01 | ⬜ best-effort two-device | Task9a, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
+| T9.6 | Staged software/configuration rollout and rollback | 🟡 assignment primitive merged; immutable release authorization correction required before Task9d | 🟡 IT-T9-01 | ⬜ best-effort two-device | Task9a2, Task9c2, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
 | T9.7 | Audited revoke/offboard workflow | 🟡 Task9a server orchestration | 🟡 IT-T9-01 | ⬜ | Task9a, Task9d, Task9e | Dry-run/impact preview; Task4 revocation blocks upload; cleanup outcome recorded |
 | T9.8 | macOS Keychain and Windows Credential Manager/DPAPI machine-credential storage | ⬜ | ⬜ | ⬜ | Task9c, Task9f, Task9g | No plaintext file/log; wrong user/machine and locked/unavailable store fail closed |
 | T9.9 | MDM-to-TrackAI assignment reconciliation | 🟡 Task9a evidence contract; reconciliation unavailable | 🟡 unit + IT-T9-01 | ⬜ best-effort MDM | Task9a, Task9e, Task9f, Task9g | Match/mismatch/unavailable explained; explicit admin confirmation; no auto-authority |
@@ -50,6 +50,15 @@ Task9a freezes the server-facing vocabulary before dependent GitAI or UI session
 - Metadata: schema version, opaque configuration ID, monotonically increasing epoch, issued/valid times, compatibility range and optional rollout ring.
 - Verification: `verify(bytes, signature metadata) -> verified | rejected | unavailable` behind a Task15-owned interface. Test fakes are allowed; production unsigned success is not.
 - Activation: download to staging, validate the complete document, atomically switch one active pointer, retain one last-known-good version, then acknowledge success or a safe failure code.
+
+### Lifecycle contract correction (2026-10-11)
+
+Task9d correctly stopped before implementation because merged schema v1 cannot safely authorize an exact release: `targetClientVersion` conflates compatibility and desired software, while the existing upgrade flow resolves assets again through a mutable channel. The frozen correction is [`TASK9_LIFECYCLE_CONTRACT_CORRECTION.md`](TASK9_LIFECYCLE_CONTRACT_CORRECTION.md).
+
+- Task9a2 adds a backward-compatible schema-v2 configuration with inclusive client compatibility and an immutable desired-release tuple containing exact tag/manifest URL plus pinned `SHA256SUMS` digest.
+- Task9c2 persists exact verified bytes and exposes release metadata only through a reverified execution-authorization seam.
+- Schema v1 remains readable but never authorizes lifecycle execution. Production remains fail-closed while Task15 verification is unavailable.
+- Task9d resumes only after both correction PRs merge, from corrected GitAI `main`. Task9e PR #18 stays merged and intact.
 
 ### Fleet evidence
 
@@ -105,14 +114,16 @@ Exit gates:
 
 ## 5. Sessions and file ownership
 
-The founder approved seven Codex/Muse sessions. TrackAI and GitAI changes always use separate branches and PRs. Prompts are written from the template after this planning PR merges and before each session starts.
+The founder originally approved seven Codex/Muse sessions. The Task9d design gate added two bounded corrective sessions, without combining repositories: TrackAI Task9a2 first and GitAI Task9c2 second. TrackAI and GitAI changes always use separate branches and PRs.
 
 | Session | Repository / agent | Scope | Estimate | Depends on | Owned/pre-approved implementation surfaces |
 |---|---|---|---:|---|---|
 | **Task9a-fleet-control-plane** | TrackAI / Codex | T9.3; T9.4 server interface; T9.5 inventory contract; T9.6 rollout records; T9.7 revoke orchestration; T9.9 reconciliation | about 0.24x target; 0.38x ceiling | Plan merged | new `apps/api/src/features/fleet/`; `core/db/schema.ts`; generated migration `0014_*` + meta; app router mount; focused tests/scripts; package scripts; reuse `machine.manage` |
 | **Task9b-managed-packages** | GitAI / Muse | T9.1a and T9.2a: selectively port upstream macOS/Windows login-start behavior, then harden existing PKG/MSI for secret-free managed deployment | about 0.20x target; 0.25x ceiling | Plan merged; no Task13 overlap in daemon, MDM or packaging files | new top-level `mdm/`; MDM tests/workflow; bounded `bg start --retry-secs`; `packaging/`; bounded release workflow; Linux/nightly/WSL excluded |
 | **Task9c-managed-config-secrets** | GitAI / Codex | T9.4 client fetch/verify/stage/activate; T9.8 macOS/Windows secret-store adapters | about 0.32x target; 0.40x ceiling | Task9a merged; implementation may overlap Task9b tests with disjoint files; rebase/merge after Task9b | new `src/fleet/`; dedicated machine-credential adapter; `src/metrics/delivery.rs`; `src/security/activation.rs`; bounded telemetry-worker wiring; Cargo manifests/tests; never Task9b daemon-command/MDM/package files |
-| **Task9d-fleet-update-offboard** | GitAI / Muse | T9.6 update/rollback mechanics and T9.7 local cleanup/uninstall | about 0.30x | Task9a + Task9c merged | new `src/fleet/` lifecycle modules; `src/commands/upgrade.rs`; bounded install/uninstall and packaging scripts; exact daemon restart tests |
+| **Task9a2-release-contract-correction** | TrackAI / Codex | Backward-compatible schema-v2 compatibility and immutable release descriptor | about 0.14x target; 0.20x ceiling | Design PR merged; Task9e PR #18 retained | fleet contract/service/tests; shared schema; generated post-0014 migration; no UI or release service |
+| **Task9c2-release-state-correction** | GitAI / Codex | Schema-v2 parser, exact verified bytes and reverified release-authorization seam | about 0.10x target; 0.15x ceiling | Task9a2 merged; GitAI Task9c merge `cc155d692` | `src/fleet/**`; no updater/installer/packaging/MDM edit |
+| **Task9d-fleet-update-offboard** | GitAI / Muse | T9.6 update/rollback mechanics and T9.7 local cleanup/uninstall | about 0.30x | Task9a2 + Task9c2 merged; clean worktree recreated/rebased from corrected GitAI `main` | new `src/fleet/` lifecycle modules; `src/commands/upgrade.rs`; bounded install/uninstall and packaging scripts; exact daemon restart tests |
 | **Task9e-fleet-console** | TrackAI / Muse | T9.5 inventory; T9.6 rollout state; T9.7 dry-run/offboard UX; T9.9 mismatch explanation | about 0.25x | Task9a merged; Muse free after Task9b | new `apps/web/src/app/dashboard/fleet-workspace.tsx`; `apps/web/src/lib/api.ts`; minimal `dashboard/page.tsx` integration; focused web/API contract tests |
 | **Task9f-macos-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a current Intel Mac lifecycle; best-effort Jamf, second Mac and Apple Silicon gates | about 0.30x | Task9a–Task9e merged | platform tests/runbooks under GitAI `tests/` and `docs/`; only bounded fixes in Task9-owned files; no new product surface |
 | **Task9g-windows-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a Windows x64 CI floor; best-effort native Windows/Intune lifecycle | about 0.35x | Task9a–Task9e and Task9f merged; host/tenant if available | Windows tests/runbooks and CI; only bounded fixes in Task9-owned files; existing ARM64 build left build-only and untouched unless it blocks the quick CI path |
@@ -125,8 +136,10 @@ The original estimates are conservative ceilings, not work budgets. Each impleme
 flowchart LR
   P[Task9 planning PR]
   A[Task9a control plane - Codex]
+  A2[Task9a2 release contract correction - Codex]
   B[Task9b packages - Muse]
   C[Task9c config and secrets - Codex]
+  C2[Task9c2 release state correction - Codex]
   D[Task9d update and offboard - Muse]
   E[Task9e console - Muse]
   F[Task9f macOS conformance - Codex]
@@ -138,15 +151,17 @@ flowchart LR
   B -. rebase and merge gate .-> C
   A --> E
   B --> E
-  A --> D
-  C --> D
-  C --> F
+  A --> A2
+  C --> A2
+  A2 --> C2
+  C2 --> D
+  C2 --> F
   D --> F
   E --> F
   F --> G
 ```
 
-Task9a and Task9b were the initial parallel pair. After Task9a merges, Task9c implementation may overlap Task9b's long-running tests only while their GitAI file ownership remains disjoint; Task9c rebases on and merges after Task9b. Task9e can overlap Task9c after both Wave-1 PRs merge because they are different repositories and agents. Task9d waits for Task9c. Task9f and Task9g remain lead-owned evidence sessions and run serially.
+Task9a–Task9c and Task9e have merged. Task9d stopped at its design gate and remains untouched. Task9a2 runs first in TrackAI; only after review and merge does Task9c2 run in a separate GitAI session. Task9d then recreates or rebases its clean worktree from corrected GitAI `main`. Task9f and Task9g remain lead-owned evidence sessions and run serially.
 
 ## 6. Integration and founder-live evidence registry
 
@@ -180,7 +195,7 @@ Agent/sandbox evidence stays partial until the founder runs the real-infrastruct
 
 ## 8. Completion and deferral boundary
 
-Task9 engineering is complete when Task9a–Task9e merge, all scoped automated gates pass and the macOS local lifecycle in Task9f passes. The task can close with conditional platform rows if best-effort procurement fails:
+Task9 engineering is complete when Task9a–Task9e plus Task9a2/Task9c2 merge, Task9d resumes and merges, all scoped automated gates pass and the macOS local lifecycle in Task9f passes. The task can close with conditional platform rows if best-effort procurement fails:
 
 - **Jamf unavailable:** package/local macOS may be supported; Jamf-managed macOS remains unverified.
 - **Second Mac unavailable:** one-device Intel macOS may be supported; rollout-ring and Apple Silicon claims remain unverified.
@@ -200,3 +215,4 @@ The task is not complete merely because 70–85% of estimated work merged. Any u
 5. **2026-10-09:** if Windows and Intune are obtained, do not add ARM64 validation; retain the existing quick build-only CI check if it stays cheap. Without the host/tenant, Windows x64 GitHub Actions build plus MSI install/uninstall is the minimum evidence.
 6. **2026-10-09:** the founder accepts that worst-case remaining work may be 15–25% real-device/MDM validation after engineering is complete; it must remain pending, not be called passed.
 7. **2026-10-09:** Task15 may start shortly. Task9 proceeds with its verifier seam and current single-Mac work; the shared signed trust gate integrates later.
+8. **2026-10-11:** Task9d stopped before code. Correct schema v1 through separate TrackAI Task9a2 and GitAI Task9c2 sessions: immutable N/N-1 release identity, pinned manifest digest, exact-tag downloads, independent compatibility, verified execution authorization and Task15-unavailable fail-closed behavior. Resume Task9d only after both merge; retain Task9e PR #18.
