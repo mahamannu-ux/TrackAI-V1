@@ -2,7 +2,7 @@
 
 *Tracker and plan. Written 2026-10-08 by TrackAI-Orchestrator from the founder's brief (`docs/founder/ATTESTA_BRIEF.md`), `docs/plan/REUSE_MAP.md` and the code. Symbols per AGENTS.md §11. The founder approved section 1 on 2026-10-08 (section 7).*
 
-**In one paragraph.** For every commit and pull request TrackAI already knows, from Task2, which lines were AI-assisted, by which agent and model, in which session, who committed and who merged, and under which policy. Attesta turns that knowledge into **evidence a third party can check without trusting TrackAI**: a signed statement per commit and PR, kept in a tamper-evident ledger, timestamped by an independent authority and anchored in a public transparency log, and exportable as an evidence pack with an offline verifier. Attesta also owns the signer, key hierarchy, rotation and revocation that Task6 (signed activation, policy bundles), Task9 and Task14 reuse.
+**In one paragraph.** For every commit and pull request TrackAI already knows, from Task2, which lines were AI-assisted, by which agent and model, in which session, and who committed. Who merged and which organization policy was in force are not captured yet (`merged_by`, gap G4; AI-usage policy, gap G2 in `docs/plan/ATTESTA_QUESTIONS.md`), and their statement fields start as `unavailable`. Attesta turns that knowledge into **evidence a third party can check without trusting TrackAI**: a signed statement per commit and PR, kept in a tamper-evident ledger, timestamped by an independent authority and anchored in a public transparency log, and exportable as an evidence pack with an offline verifier. Attesta also owns the signer, key hierarchy, rotation and revocation that Task6 (signed activation, policy bundles), Task9 and Task14 reuse.
 
 **Customer story.** Priya, CISO at Acme, gets a due-diligence questionnaire from an acquirer: "What share of your codebase was AI-generated, by which tools, and can you prove it?" She opens TrackAI, filters `payments-service` for the last 12 months, exports an evidence pack and sends it. The acquirer's counsel runs the included verifier on a laptop with no TrackAI account: every statement's signature checks out, nothing in the ledger was altered or removed, and each batch was timestamped and logged publicly at the time. What Priya still cannot claim after phase 1: that the attribution itself is correct beyond what TrackAI observed (honest states stay: observed, partial, Unavailable).
 
@@ -45,8 +45,8 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | ID | Subtask | Who | Size | Depends on | Status |
 |---|---|---|---|---|---|
 | A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ⬜ |
-| A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | 🟡 unit-tested in sandbox, unmerged |
-| A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | 🟡 unit-tested in sandbox, unpushed |
+| A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
+| A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
 | A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ⬜ |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ⬜ |
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
@@ -139,3 +139,5 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 1. **2026-10-08:** business review R1–R11 approved as written; architecture decisions in §2 approved.
 2. **2026-10-08:** dependency `canonicalize` approved for A15.1. AWS and Google Cloud KMS SDKs (A15.6) to be confirmed when that session starts.
 3. **2026-10-08:** phase 2 (A15.P2) may be deferred until after the first customer; it starts on a customer trigger, not on the calendar.
+4. **2026-10-12:** work backwards from customer and auditor questions: `docs/plan/ATTESTA_QUESTIONS.md` (20 questions, Codex's Task2 interview, gaps G1–G5, decisions for A15.0) is an input to A15.0. Predicate versioning approved: additive minor versions, availability on every field, new facts as new statements. The Q&A surfaces are Task10 T10.9 and Task16 A16.13. PR review capture (G3) and `merged_by` (G4) land before production.
+5. **2026-10-11 (lead, during review of 15b):** the signer contract is tenant-bound (`sign` takes `tenantId`; `signVerified(adapter, payload, { credentialId, tenantId, requestId })`).
