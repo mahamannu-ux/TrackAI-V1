@@ -44,11 +44,11 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 
 | ID | Subtask | Who | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ⬜ |
+| A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ⬜ prompt ready |
 | A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
 | A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ⬜ |
-| A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ⬜ |
+| A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ⬜ prompt ready |
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ⬜ |
@@ -118,9 +118,9 @@ flowchart LR
 |---|---|---|---|---|
 | Task15a-attesta-primitives | A15.1 | Muse | 0.08× | `docs/prompts/Task15/NEXT_CHAT_Task15a-attesta-primitives_PROMPT.md` |
 | Task15b-attesta-signer | A15.2 | Muse | 0.05× | `docs/prompts/Task15/NEXT_CHAT_Task15b-attesta-signer_PROMPT.md` |
-| Task15c-attesta-contract | A15.0 | Claude | 0.05× | written by the lead after buy-in |
+| Task15c-attesta-contract | A15.0 (+ outbox migration) | Claude | 0.08× | `docs/prompts/Task15/NEXT_CHAT_Task15c-attesta-contract_PROMPT.md` |
 | Task15d-attesta-ledger | A15.3 | Claude | 0.2× | after 15a, 15c |
-| Task15e-attesta-fakes | A15.4 | Muse | 0.08× | after 15a |
+| Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
 | Task15f-attesta-anchoring | A15.5 | Claude | 0.25× | after 15d, 15e |
 | Task15g-attesta-kms | A15.6 | Muse | 0.08× | after 15b + dependency OK |
 | Task2-attesta-trigger | A15.7 | Codex | 0.1× | after 15c |
