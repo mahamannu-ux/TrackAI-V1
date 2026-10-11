@@ -33,8 +33,9 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 | A16.10 | Database read-only role for auditor reads (AU-1 layer 4) | Claude | 0.05× | A16.6 | ⬜ |
 | A16.11 | Emitters for new sources: Attesta (key create/rotate/revoke, sign, anchor ok/failed, verify run, pack export), D6.1 lease issue, Task6.b bundle publish/activation, T14.7 artifact signing | owning Tasks | — | A16.3 | n/a here |
 | A16.12 | Founder-live auditor walkthrough (Company A/B, admin vs auditor vs developer) | founder-live | 0.02× | A16.8 | ⬜ |
+| A16.13 | Auditor Q&A: the auditor-flagged questions in `docs/plan/ATTESTA_QUESTIONS.md` answered from signed Attesta statements, each with the statements behind it, timestamps, anchors, a verify action and pack export; read-only. Shares queries with Task10's T10.9 where possible | Claude design, Muse build | sized when the question list is complete | A16.6, A16.8, Task15 A15.9 | ⬜ |
 
-**Total:** about 0.6× T6 (Claude about 0.25×, Muse about 0.25×, Codex 0.1×).
+**Total:** about 0.6× T6 before A16.13 (Claude about 0.25×, Muse about 0.25×, Codex 0.1×).
 
 ## 3. Sub-task graph
 
@@ -87,6 +88,8 @@ flowchart LR
 | Task16f-audit-console | A16.8 | Claude design note, Muse build | 0.1× | after 16d |
 | Task4-auditor-invitations | A16.9 | Codex | 0.1× | after 16b |
 | Task16g-audit-db-role | A16.10 | Claude | 0.05× | after 16d |
+| Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i |
 
 ## 5. Founder decisions
 1. **2026-10-08:** D1–D5 approved as recommended.
+2. **2026-10-12:** add A16.13 Auditor Q&A, driven by the question catalogue `docs/plan/ATTESTA_QUESTIONS.md` (founder, in the Task15 lead chat).
