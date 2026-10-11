@@ -6,7 +6,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 
 ## Task status board
 
-*Last updated 2026-10-09 (Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
+*Last updated 2026-10-12 (Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
 
 | Task | Owner (agent) | Branch / PR | Code + unit tests | Integration (founder run) | Next founder action |
 |---|---|---|---|---|---|

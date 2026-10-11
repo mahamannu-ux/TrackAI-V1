@@ -43,7 +43,7 @@
 | Subtask | Owner Task | What it does | Depends on |
 |---|---|---|---|
 | **T10.9** Questions & answers (customer/admin) | Task10 | All questions in this file as an interactive, graphical Q&A surface: one query per question, drill-down from aggregate to PR, commit, file and line, honest `Unavailable` states, Task5 no-surveillance defaults for per-developer views. | Task2 data; the gaps for the *new capture* questions; Task11 paging/error conventions |
-| **A16.13** Auditor Q&A | Task16 | The auditor-flagged questions answered from signed statements: each answer shows the statements behind it, their timestamps and anchors, a verify action and an export to an evidence pack. Read-only. | Task15 A15.9 (Evidence API, pack), A16.6 (audit read API), T10.9's queries where shared |
+| **A16.13** Auditor Q&A | Task16 | The auditor-flagged questions answered from signed statements: each answer shows the statements behind it, their timestamps and anchors, a verify action and an export to an evidence pack. Read-only. | Task15 A15.9 (Evidence API, pack), A16.6 (audit read API), A16.8 (auditor console); T10.9's queries are optional reuse, not a prerequisite |
 
 Both modules read this file as their question catalogue; a new question is added here first, with its auditor flag, data check and owner.
 
@@ -57,7 +57,7 @@ Both modules read this file as their question catalogue; a new question is added
 | **Predicate** | What we *claim* about the subject: all the rich fields | AI 432 / human 19 / unknown 0 lines; tools; models; sessions; policy; findings; availability per field | Attesta, versioned (`…/ai-provenance/v1`, v1.1, …) |
 | **`attesta_subjects` (outbox)** | Task2's "something happened, please attest it" row, written in the same transaction as the event | `{tenant, repository, kind: commit_observed, sha, event_at, source ids}` | interface A15.0 freezes; Codex implements (A15.7) |
 
-**The outbox stays a thin pointer; the predicate grows.** Task2 writes only the kind of event and the IDs. Attesta's builder then reads Task2's tables to fill the predicate. So adding a field later (reviewers, merged-by, repo snapshot) changes **the builder and the predicate version, never Task2's trigger**. That is the flexibility asked for: the interface Codex builds against can freeze now, while the predicate is discovered question by question.
+**The outbox stays a thin pointer; the predicate grows.** Task2 writes only the kind of event and the IDs. Attesta's builder then reads Task2's tables to fill the predicate. So adding a field that is available at an existing observation (merged-by on `pr_merged`, for example) changes **the builder and the predicate version, not Task2's trigger**. A genuinely new observation (a review, a repo snapshot) needs a new outbox kind; kinds are additive, so the existing ones and their rows never change. That is the flexibility asked for: the interface Codex builds against can freeze now, while the predicate is discovered question by question.
 
 **Predicate rules that keep it flexible:**
 1. Every field carries availability (`recorded` / `partial` / `unavailable`); a field Task2 cannot fill yet is present and `unavailable`, never missing or zero.
