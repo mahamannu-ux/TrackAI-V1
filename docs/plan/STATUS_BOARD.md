@@ -18,7 +18,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task7, Task8, Task10–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
 | Task9 Managed developer fleet | Codex + Muse | Task9a merged in PR #16; Task9e merged in PR #18; GitAI Task9b PR #3 and Task9c PR #4 merged; Task9a2 schema-v2 correction ready for review | 🟡 Task9a2 implemented; Task15 verification remains unavailable | 🟡 IT-T9-01 reverified for v1/v2 on 2026-10-11; founder run and IT-T9-02–07/IT-M9-01 pending | Review and merge Task9a2, then start Task9c2; Task9d resumes after both corrections |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
-| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task15a and Task15b; then the Task15 lead chat |
+| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | `task/Task15a-attesta-primitives` (unpushed) | 🟡 Task15a unit-tested in sandbox (102 new tests, 267 total); unmerged | n/a: none needed | Review Task15a, then Task15b signer |
 | Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
 | Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
 | Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass; independent review ready | n/a: none needed | Founder pushes and opens PR |
