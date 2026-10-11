@@ -40,7 +40,7 @@ export const REKOR_CLOCK_START = 1_790_000_000;
 /** Mutates a freshly built entry before it is returned, to simulate a lying log. */
 export type RekorTamper = (entryId: string, entry: Record<string, unknown>) => void;
 
-function jsonResponse(status: number, body: unknown, headers?: HeadersInit): Response {
+function jsonResponse(status: number, body: unknown, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...headers },

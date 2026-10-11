@@ -29,6 +29,16 @@ function bytesOf(ab: ArrayBuffer): Buffer {
   return Buffer.from(new Uint8Array(ab));
 }
 
+/** Copy of a view's bytes as a fresh ArrayBuffer (for asn1js/pkijs parsers). */
+function ab(data: Uint8Array): ArrayBuffer {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as unknown as ArrayBuffer;
+}
+
+/** Raw content bytes of an OCTET STRING / INTEGER element. */
+function viewOf(block: unknown): Uint8Array {
+  return new Uint8Array((block as { valueHexView: ArrayBuffer }).valueHexView);
+}
+
 function oidString(el: asn1js.AsnType): string {
   return (el as asn1js.ObjectIdentifier).valueBlock.toString();
 }
@@ -57,7 +67,7 @@ function buildReq(digest: Buffer, nonce?: bigint): Buffer {
     new asn1js.Sequence({
       value: [
         new asn1js.Sequence({ value: [new asn1js.ObjectIdentifier({ value: SHA256_OID }), new asn1js.Null()] }),
-        new asn1js.OctetString({ valueHex: digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength) as ArrayBuffer }),
+        new asn1js.OctetString({ valueHex: ab(digest) }),
       ],
     }),
   ];
@@ -66,7 +76,7 @@ function buildReq(digest: Buffer, nonce?: bigint): Buffer {
     if (hex.length % 2 !== 0) hex = `0${hex}`;
     let raw = Buffer.from(hex, 'hex');
     if ((raw[0] & 0x80) !== 0) raw = Buffer.concat([Buffer.from([0x00]), raw]);
-    parts.push(new asn1js.Integer({ valueHex: raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer }));
+    parts.push(new asn1js.Integer({ valueHex: ab(raw) }));
   }
   const ber = new asn1js.Sequence({ value: parts }).toBER(false);
   return Buffer.from(new Uint8Array(ber));
@@ -101,9 +111,9 @@ interface ParsedToken {
 
 /** Parse a token the way a verifier would: structure by hand, crypto by pkijs. */
 function parseToken(tokenDer: Buffer): ParsedToken {
-  const asn1 = asn1js.fromBER(tokenDer.buffer.slice(tokenDer.byteOffset, tokenDer.byteOffset + tokenDer.byteLength) as ArrayBuffer);
+  const asn1 = asn1js.fromBER(ab(tokenDer));
   if (asn1.offset === -1) throw new Error('malformed token');
-  const ci = pkijs.ContentInfo.fromBER(tokenDer.buffer.slice(tokenDer.byteOffset, tokenDer.byteOffset + tokenDer.byteLength) as ArrayBuffer);
+  const ci = pkijs.ContentInfo.fromBER(ab(tokenDer));
   assert.equal(ci.contentType, '1.2.840.113549.1.7.2');
   const signedData = new pkijs.SignedData({ schema: ci.content });
   const sdTop = seqChildren(seqChildren(seqChildren(asn1.result)[1])[0]);
@@ -111,7 +121,7 @@ function parseToken(tokenDer: Buffer): ParsedToken {
   const encap = seqChildren(sdTop[2]);
   const eContent = encap[1] as asn1js.Constructed;
   const tstOctets = seqChildren(eContent)[0] as asn1js.OctetString;
-  const tstDer = Buffer.from(new Uint8Array(tstOctets.valueBlock.valueHexView as ArrayBuffer));
+  const tstDer = Buffer.from(viewOf(tstOctets.valueBlock));
   const tst = seqChildren(parseSeq(tstDer));
   const imprint = seqChildren(tst[2]);
   const tstNonce = tst.find((el) => el instanceof asn1js.Integer && el !== tst[0] && el !== tst[3]);
@@ -119,7 +129,7 @@ function parseToken(tokenDer: Buffer): ParsedToken {
     version: intNumber(tst[0]),
     policy: oidString(tst[1]),
     imprintAlgo: oidString(seqChildren(imprint[0])[0]),
-    imprint: Buffer.from(new Uint8Array((imprint[1] as asn1js.OctetString).valueBlock.valueHexView as ArrayBuffer)),
+    imprint: Buffer.from(viewOf((imprint[1] as asn1js.OctetString).valueBlock)),
     serial: intNumber(tst[3]),
     genTime: (tst[4] as asn1js.GeneralizedTime).toDate(),
     nonce: tstNonce ? intBigint(tstNonce) : null,
@@ -140,7 +150,7 @@ function parseToken(tokenDer: Buffer): ParsedToken {
     (el, i) => i > 2 && i < sdTop.length - 1 && el instanceof asn1js.Constructed && el.idBlock.tagClass === 3,
   ) as asn1js.Constructed | undefined;
   const certDers = certsEl
-    ? seqChildren(certsEl).map((c) => Buffer.from(new Uint8Array(c.toBER(false) as ArrayBuffer)))
+    ? seqChildren(certsEl).map((c) => Buffer.from(new Uint8Array(c.toBER(false))))
     : [];
   return {
     tstDer,
@@ -149,7 +159,7 @@ function parseToken(tokenDer: Buffer): ParsedToken {
       digestAlgo: oidString(seqChildren(si[2])[0]),
       attrs,
       sigAlgo: oidString(sigAlgParts[0]),
-      signature: Buffer.from(new Uint8Array((si[5] as asn1js.OctetString).valueBlock.valueHexView as ArrayBuffer)),
+      signature: Buffer.from(viewOf((si[5] as asn1js.OctetString).valueBlock)),
     },
     certDers,
     signedData,
@@ -157,7 +167,7 @@ function parseToken(tokenDer: Buffer): ParsedToken {
 }
 
 function parseSeq(der: Buffer): asn1js.Sequence {
-  const asn1 = asn1js.fromBER(der.buffer.slice(der.byteOffset, der.byteOffset + der.byteLength) as ArrayBuffer);
+  const asn1 = asn1js.fromBER(ab(der));
   if (asn1.offset === -1 || !(asn1.result instanceof asn1js.Sequence)) throw new Error('malformed TSTInfo');
   return asn1.result;
 }
@@ -180,7 +190,7 @@ async function postTsr(tsa: FakeTsa, reqDer: Buffer, method = 'POST'): Promise<{
   return {
     status: res.status,
     contentType: res.headers.get('content-type'),
-    resp: { status, token: top.length > 1 ? parseToken(Buffer.from(new Uint8Array(top[1].toBER(false) as ArrayBuffer))) : null },
+    resp: { status, token: top.length > 1 ? parseToken(Buffer.from(new Uint8Array(top[1].toBER(false)))) : null },
   };
 }
 
@@ -192,7 +202,7 @@ async function verifies(tsa: FakeTsa, parsed: ParsedToken, message: Buffer): Pro
   try {
     return await parsed.signedData.verify({
       signer: 0,
-      data: message.buffer.slice(message.byteOffset, message.byteOffset + message.byteLength) as ArrayBuffer,
+      data: ab(message),
       checkChain: true,
       trustedCerts: [tsa.root],
     });
@@ -202,13 +212,13 @@ async function verifies(tsa: FakeTsa, parsed: ParsedToken, message: Buffer): Pro
 }
 
 function certFromDer(der: Buffer): pkijs.Certificate {
-  const asn1 = asn1js.fromBER(der.buffer.slice(der.byteOffset, der.byteOffset + der.byteLength) as ArrayBuffer);
+  const asn1 = asn1js.fromBER(ab(der));
   if (asn1.offset === -1) throw new Error('malformed certificate');
   return new pkijs.Certificate({ schema: asn1.result });
 }
 
 function certDer(cert: pkijs.Certificate): Buffer {
-  return Buffer.from(new Uint8Array(cert.toSchema(true).toBER(false) as ArrayBuffer));
+  return Buffer.from(new Uint8Array(cert.toSchema(true).toBER(false)));
 }
 
 test('granted flow verifies end to end with pkijs', async () => {
@@ -249,12 +259,12 @@ test('granted flow verifies end to end with pkijs', async () => {
   const ess = attr(parsed, ESS_V2_OID);
   assert.ok(ess, 'ESS signing-certificate-v2 present');
   const essHash = Buffer.from(
-    new Uint8Array(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock.valueHexView as ArrayBuffer),
+    viewOf(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha256').update(parsed.certDers[0]).digest());
   assert.equal(oidString(attr(parsed, CONTENT_TYPE_ATTR_OID)?.values[0] as asn1js.AsnType), TST_INFO_OID);
   assert.deepEqual(
-    Buffer.from(new Uint8Array((attr(parsed, MESSAGE_DIGEST_ATTR_OID)?.values[0] as asn1js.OctetString).valueBlock.valueHexView as ArrayBuffer)),
+    Buffer.from(viewOf((attr(parsed, MESSAGE_DIGEST_ATTR_OID)?.values[0] as asn1js.OctetString).valueBlock)),
     createHash('sha256').update(parsed.tstDer).digest(),
   );
 
@@ -326,7 +336,7 @@ test('digestOverride breaks the message-digest attribute', async () => {
   const parsed = (await postTsr(tsa, buildReq(digest, 11n))).resp.token;
   assert.ok(parsed);
   assert.deepEqual(
-    Buffer.from(new Uint8Array((attr(parsed, MESSAGE_DIGEST_ATTR_OID)?.values[0] as asn1js.OctetString).valueBlock.valueHexView as ArrayBuffer)),
+    Buffer.from(viewOf((attr(parsed, MESSAGE_DIGEST_ATTR_OID)?.values[0] as asn1js.OctetString).valueBlock)),
     Buffer.alloc(32, 0xab),
   );
   assert.equal(await verifies(tsa, parsed, message), false);
@@ -352,7 +362,7 @@ test('essV1 names the signer with SHA-1', async () => {
   assert.ok(ess, 'ESS signing-certificate (v1) present');
   assert.equal(attr(parsed, ESS_V2_OID), undefined);
   const essHash = Buffer.from(
-    new Uint8Array(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock.valueHexView as ArrayBuffer),
+    viewOf(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha1').update(parsed.certDers[0]).digest());
 });
@@ -366,7 +376,7 @@ test('essCert names another certificate', async () => {
   const parsed = (await postTsr(tsa, buildReq(digest, 19n))).resp.token;
   assert.ok(parsed);
   const essHash = Buffer.from(
-    new Uint8Array(seqChildren(seqChildren(attr(parsed, ESS_V2_OID)?.values[0] as asn1js.AsnType)[0])[0].valueBlock.valueHexView as ArrayBuffer),
+    viewOf(seqChildren(seqChildren(attr(parsed, ESS_V2_OID)?.values[0] as asn1js.AsnType)[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha256').update(otherDer).digest());
   assert.ok(!essHash.equals(createHash('sha256').update(parsed.certDers[0]).digest()));
