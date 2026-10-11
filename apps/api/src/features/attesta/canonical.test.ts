@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import {
   CanonicalizationError,
   GENESIS_PREV_HASH,
@@ -13,7 +12,7 @@ import {
   sha256Prefixed,
 } from './canonical';
 
-const VECTORS = join(dirname(fileURLToPath(import.meta.url)), 'vectors', 'jcs');
+const VECTORS = join(__dirname, 'vectors', 'jcs');
 const CASES = ['arrays', 'french', 'structures', 'unicode', 'values', 'weird'];
 
 for (const name of CASES) {

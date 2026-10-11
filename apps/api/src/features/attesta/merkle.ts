@@ -73,7 +73,7 @@ export function rootFromPath(leaf: Buffer, index: number, treeSize: number, path
   }
   let fn = index;
   let sn = treeSize - 1;
-  let r = Buffer.from(leaf);
+  let r: Buffer = Buffer.from(leaf);
   for (const p of path) {
     if (sn === 0) throw new Error('inclusion path is longer than the tree allows');
     if (fn % 2 === 1 || fn === sn) {
