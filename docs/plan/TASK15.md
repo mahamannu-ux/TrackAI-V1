@@ -47,7 +47,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ✅ merged in PR #30 (contract `docs/contracts/attesta/`, outbox migration `0016`); IT-T15c-01 founder run pending |
 | A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
-| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ⬜ prompt ready |
+| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | 🟡 built in Task15d (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 founder run passed 2026-10-12, Muse review ready to push; merge pending |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ✅ merged in PR #28 |
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ |
@@ -122,7 +122,7 @@ flowchart LR
 | Task15a-attesta-primitives | A15.1 | Muse | 0.08× | `docs/prompts/Task15/NEXT_CHAT_Task15a-attesta-primitives_PROMPT.md` |
 | Task15b-attesta-signer | A15.2 | Muse | 0.05× | `docs/prompts/Task15/NEXT_CHAT_Task15b-attesta-signer_PROMPT.md` |
 | Task15c-attesta-contract | A15.0 (+ outbox migration) | Claude | 0.08× (actual about 0.12×) | `docs/prompts/Task15/NEXT_CHAT_Task15c-attesta-contract_PROMPT.md` · handoff `docs/handoffs/Task15c-attesta-contract_HANDOFF.md` |
-| Task15d-attesta-ledger | A15.3 | Claude | 0.25× | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` |
+| Task15d-attesta-ledger | A15.3 | Claude | 0.25× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` · handoff `docs/handoffs/Task15d-attesta-ledger_HANDOFF.md` |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
 | Task15f-attesta-anchoring | A15.5 | Claude | 0.25× | after 15d, 15e |
 | Task15g-attesta-kms | A15.6 | Muse | 0.08× | after 15b + dependency OK |
@@ -147,3 +147,4 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 5. **2026-10-11 (lead, during review of 15b):** the signer contract is tenant-bound (`sign` takes `tenantId`; `signVerified(adapter, payload, { credentialId, tenantId, requestId })`).
 6. **2026-10-12:** A15.14 added: the first CI gate is a GitHub check posted by TrackAI's server (no public API needed; `docs/plan/TASK7.md`, `docs/plan/TASK11.md`). New Attesta routes follow the AP-1 conventions (AGENTS.md §10).
 7. **2026-10-12 (Task15c design checkpoint):** subject `trackai:repository/<uuid>/commit/<sha>` without the repository URL (predicate carries `url_sha256`); file paths hashed; availability wrapper on every field; `ajv@8.17.1` devDependency; `note_digest` from the source metric event; outbox without source foreign keys (tenant bound by the insert). Developer-level statements are never a subject; repository-level figures come from signed statements and a **`period_report`** statement, added to phase 1 in A15.9. Proposed gap **G6**: Task2 publishes a lifecycle calculation version.
+8. **2026-10-12 (Task15d close-out):** additive errors.md codes for the precise verify break kinds and for invalid ledger input (orchestrator, contract PR; until then `verify-chain.ts` maps to the nearest frozen code); production runs the API as a database role that does not own the ledger tables (Task4/ops, before A15.13). Guard functions use `search_path = pg_catalog, pg_temp`.

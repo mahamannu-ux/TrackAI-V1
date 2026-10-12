@@ -53,6 +53,7 @@
     "verify:task6-route-live": "tsx src/features/security-findings/task6-route-live-verify.ts",
     "verify:task9-fleet-live": "tsx src/features/fleet/task9-fleet-live-verify.ts",
     "verify:task15c-outbox-live": "tsx src/features/attesta/t15c-outbox-live-verify.ts",
+    "verify:task15d-ledger-live": "tsx src/features/attesta/t15d-ledger-live-verify.ts",
     "verify:task2-attesta-trigger-live": "tsx src/features/telemetry/task2-attesta-trigger-live-verify.ts",
     "seed:task6-acceptance": "tsx src/features/security-findings/task6-acceptance-seed.ts",
     "serve:task5-acceptance-auth": "tsx src/features/evidence/task5-acceptance-auth.ts",
