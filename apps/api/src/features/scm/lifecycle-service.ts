@@ -14,7 +14,14 @@ import {
   scmPullRequestSnapshots,
 } from '../../core/db/schema';
 import { currentRetainedAiLinesForCommit } from '../telemetry/lifecycle';
+import {
+  enqueueAttestaSubject,
+  type AttestaOutboxExecutor,
+  type EnqueueAttestaSubjectInput,
+  type EnqueueAttestaSubjectResult,
+} from '../attesta/outbox';
 import type { GitHubCommit } from './github-app';
+import type { ProviderTransaction } from './provider-delivery-store';
 
 function hash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -430,10 +437,47 @@ export function uniquePullRequestForDeploymentSource(
   return pullRequestIds.length === 1 ? pullRequestIds[0] : null;
 }
 
+type EnqueueSubject = (
+  executor: AttestaOutboxExecutor,
+  input: EnqueueAttestaSubjectInput,
+) => Promise<EnqueueAttestaSubjectResult>;
+
+export async function enqueueDeployedSubject(
+  executor: AttestaOutboxExecutor,
+  input: {
+    tenantId: string;
+    repositoryId: string;
+    provider: string;
+    providerDeliveryId: string;
+    externalId: string;
+    sha: string;
+    status: string;
+    production: boolean;
+  },
+  deployment: { id: string } | null,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
+): Promise<boolean> {
+  if (!input.production || input.status !== 'success') return false;
+  if (!deployment) throw new Error('Deployment observation was not found after insert');
+  await enqueue(executor, {
+    kind: 'deployed',
+    tenantId: input.tenantId,
+    repositoryId: input.repositoryId,
+    commitSha: input.sha,
+    provider: input.provider,
+    providerDeliveryId: input.providerDeliveryId,
+    deploymentId: deployment.id,
+    deploymentExternalId: input.externalId,
+    deploymentStatus: 'success',
+  });
+  return true;
+}
+
 export async function recordDeployment(input: {
   tenantId: string;
   repositoryId: string;
   provider: string;
+  providerDeliveryId: string;
   externalId: string;
   environment: string;
   ref: string | null;
@@ -441,14 +485,30 @@ export async function recordDeployment(input: {
   status: string;
   production: boolean;
   deployedAt: Date;
-}) {
-  const tenantDb = withTenant(db, input.tenantId);
-  await tenantDb.insertDoNothing(
+}, transaction?: ProviderTransaction): Promise<void> {
+  if (!transaction) {
+    await db.transaction(tx => recordDeployment(input, tx));
+    return;
+  }
+  const tenantDb = withTenant(transaction as unknown as typeof db, input.tenantId);
+  const { providerDeliveryId, ...deploymentInput } = input;
+  const [insertedDeployment] = await tenantDb.insertDoNothing(
     scmDeployments,
-    input,
+    deploymentInput,
     [scmDeployments.tenantId, scmDeployments.provider, scmDeployments.externalId, scmDeployments.status],
   );
   if (!input.production || input.status !== 'success') return;
+  const [deployment] = insertedDeployment
+    ? [insertedDeployment]
+    : await tenantDb.select(
+      scmDeployments,
+      and(
+        eq(scmDeployments.provider, input.provider),
+        eq(scmDeployments.externalId, input.externalId),
+        eq(scmDeployments.status, input.status),
+      ),
+    );
+  if (!deployment) throw new Error('Deployment observation was not found after insert');
   const [commit] = await tenantDb.select(
     scmCommits,
     and(eq(scmCommits.repositoryId, input.repositoryId), eq(scmCommits.sha, input.sha)),
@@ -533,4 +593,5 @@ export async function recordDeployment(input: {
       );
     }
   }
+  await enqueueDeployedSubject(transaction, { ...input, providerDeliveryId }, deployment);
 }
