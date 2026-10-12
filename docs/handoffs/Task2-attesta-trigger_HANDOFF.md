@@ -12,7 +12,7 @@ Task2 now writes one thin `attesta_subjects` pointer in the same transaction as 
 | Acceptance | Three atomic observation writers; replay-safe and fail-closed | ✅ code + unit coverage |
 | Scope | Frozen `outbox.ts` only called; no contracts, migrations, schema, web or dependencies changed | ✅ |
 | Quality | 395/395 tests, typecheck, lint, schema check, web production build | ✅ |
-| Integration | IT-T2AT-01…04 plus IT-T15c-01 merge gate | ✅ founder passed 2026-10-12; correction rerun pending |
+| Integration | IT-T2AT-01…04 plus IT-T15c-01 merge gate | 🟡 founder passed 2026-10-12; `5fb2647` correction rerun pending |
 | Review | Independent Codex review | 🟡 `5fb2647` correction re-review pending |
 
 ## Implemented interfaces
@@ -48,7 +48,7 @@ Unit tests prove each qualifying kind enqueues once, skips non-qualifying observ
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T2AT-01 | commit/outbox atomicity, failure quarantine, replay and rebuild continuation | Blocking: merge | ✅ founder passed 2026-10-12 at `e25cf2d`; correction rerun pending |
+| IT-T2AT-01 | commit/outbox atomicity, failure quarantine, replay and rebuild continuation | Blocking: merge | 🟡 founder passed prior scope 2026-10-12; `5fb2647` correction rerun pending |
 | IT-T2AT-02 | merged PR delay and redelivery | Blocking: merge | ✅ founder passed 2026-10-12 |
 | IT-T2AT-03 | deployment/lifecycle atomicity and redelivery | Blocking: merge | ✅ founder passed 2026-10-12 |
 | IT-T2AT-04 | tenant isolation | Blocking: merge | ✅ founder passed 2026-10-12 |
