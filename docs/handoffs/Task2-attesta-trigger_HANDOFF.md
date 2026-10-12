@@ -12,8 +12,8 @@ Task2 now writes one thin `attesta_subjects` pointer in the same transaction as 
 | Acceptance | Three atomic observation writers; replay-safe and fail-closed | ✅ code + unit coverage |
 | Scope | Frozen `outbox.ts` only called; no contracts, migrations, schema, web or dependencies changed | ✅ |
 | Quality | 395/395 tests, typecheck, lint, schema check, web production build | ✅ |
-| Integration | IT-T2AT-01…04 plus IT-T15c-01 merge gate | ⬜ founder run; agent host lacks pgvector/Docker |
-| Review | Independent Codex review | ✅ `ready to push` after two correction passes |
+| Integration | IT-T2AT-01…04 plus IT-T15c-01 merge gate | ✅ founder passed 2026-10-12; correction rerun pending |
+| Review | Independent Codex review | 🟡 `5fb2647` correction re-review pending |
 
 ## Implemented interfaces
 ```text
@@ -24,40 +24,38 @@ npm run verify:task2-attesta-trigger-live -w apps/api -> IT-T2AT-01…04
 ```
 
 ## Founder-approved decisions
-1. Rebuild/retry idempotency conflict rolls back and surfaces `ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT`.
-2. Metric-event normalization status remains outside the projection transaction: Attesta failures stay `pending` with only the safe code so reconciliation retries them; other normalization failures stay `failed`.
+1. Rebuild/retry idempotency conflict rolls back that event, records the safe code count and continues replaying later events; the CLI exits non-zero on any count.
+2. Metric-event normalization status remains outside the projection transaction: all deterministic Attesta errors are terminal `failed` with only the safe code. None are classified transient; recovery after a fix is an explicit reset or rebuild, so failed rows cannot starve pending reconciliation.
 3. SCM Attesta errors log only their code; no identifiers or payloads.
 
 ## Deviations from spec
 - None in product behavior. `apps/api/package.json` was pre-approved for the live-verifier script.
-- Live latency values are not yet measured: the agent's PostgreSQL 18 lacks pgvector and Docker is unavailable. The verifier interleaves five baseline-shape (no enclosing transaction/outbox write) and five current commit-normalization samples and prints both medians.
+- The founder's 2026-10-12 live run measured the five-sample baseline/current commit-normalization medians; the two numeric output values still need transcription into this handoff.
 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Run IT-T15c-01 and IT-T2AT-01…04 | Both block this branch's merge |
-| 🟡 | Reproducible before/current latency comparison awaits a pgvector-capable run | No latency claim is made yet |
+| ⬜ **FOUNDER:** | Rerun IT-T2AT-01…04 after `5fb2647` | Blocks this branch's merge; IT-T15c-01 does not need rerun |
 
 ## Test coverage
-Unit tests prove each qualifying kind enqueues once, non-merged/non-production/failed/missing-commit cases enqueue none, writer errors propagate, and Attesta failures remain retryable. IT-T2AT-01…04 use real services/PostgreSQL for rollback, reconciliation, replay/rebuild, redelivery, code+model lifecycle equality and Company A/B isolation; an injected writer failure is used only to force each rollback boundary.
+Unit tests prove each qualifying kind enqueues once, skips non-qualifying observations, and parks deterministic writer errors as terminal safe codes. IT-T2AT-01…04 use real services/PostgreSQL for rollback, failed-row starvation protection, rebuild continuation/counts, redelivery, code+model lifecycle equality and Company A/B isolation; an injected writer failure only forces each rollback boundary.
 
 ## Integration test impact
-> **FOUNDER:** blocking A15.7 merge. Prerequisites: Docker Desktop or PostgreSQL 16 with pgvector. Expected: `IT-T15c-01=passed` and IT-T2AT-01…04 each `passed`, under two minutes total.
+> **FOUNDER:** blocking A15.7 merge. Rerun only Task2 after `5fb2647`; IT-T15c-01 and the prior IT-T2AT-01…04 run passed on 2026-10-12.
 > ```bash
-> scripts/it-db.sh npm run -s verify:task15c-outbox-live -w apps/api
 > scripts/it-db.sh npm run -s verify:task2-attesta-trigger-live -w apps/api
 > ```
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T2AT-01 | commit/outbox atomicity, replay and rebuild | Blocking: merge | ⬜ founder run |
-| IT-T2AT-02 | merged PR delay and redelivery | Blocking: merge | ⬜ founder run |
-| IT-T2AT-03 | deployment/lifecycle atomicity and redelivery | Blocking: merge | ⬜ founder run |
-| IT-T2AT-04 | tenant isolation | Blocking: merge | ⬜ founder run |
+| IT-T2AT-01 | commit/outbox atomicity, failure quarantine, replay and rebuild continuation | Blocking: merge | ✅ founder passed 2026-10-12 at `e25cf2d`; correction rerun pending |
+| IT-T2AT-02 | merged PR delay and redelivery | Blocking: merge | ✅ founder passed 2026-10-12 |
+| IT-T2AT-03 | deployment/lifecycle atomicity and redelivery | Blocking: merge | ✅ founder passed 2026-10-12 |
+| IT-T2AT-04 | tenant isolation | Blocking: merge | ✅ founder passed 2026-10-12 |
 
 ## Integration notes
-- A15.8 may build against the frozen outbox contract now; merge waits on the two founder commands.
-- Commits: `f5b528b` commit, `5b8b07e` deployment, `fe21750` PR, `ded4f50` verifier, `c2775e2` retry/caller rollback, `3100984` model rollback.
+- A15.8 may build against the frozen outbox contract now; merge waits on the Task2 correction rerun.
+- Corrections: `c2775e2` caller rollback, `3100984` model rollback, `5fb2647` terminal errors/rebuild continuation.
 
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Agent turns or prompts | Wall-clock | Tokens or cost |
