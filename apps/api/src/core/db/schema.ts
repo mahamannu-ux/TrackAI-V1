@@ -1663,6 +1663,105 @@ export const attestaSubjects = pgTable('attesta_subjects', {
   `),
 }));
 
+/** Raw bytes (PostgreSQL bytea). */
+const bytea = customType<{ data: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+/**
+ * Attesta ledger (Task15d, binding design docs/contracts/attesta/tables.md).
+ * One hash chain per tenant; ported from SushiCorp EV-1 @ 0bd67a5. The
+ * database guards (migration 0017) make the chain append-only and gap-free;
+ * writes go through chainStatement (features/attesta/ledger.ts) only.
+ */
+export const chainHead = pgTable('chain_head', {
+  tenantId: uuid('tenant_id').references(() => ssoTenants.id).primaryKey(),
+  /** The seq the next record must take. */
+  nextSeq: bigint('next_seq', { mode: 'number' }).notNull(),
+  /** record_hash of the record at next_seq - 1; GENESIS_PREV_HASH for an empty chain. */
+  headHash: text('head_hash').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  nextSeqCheck: check('chain_head_next_seq_check', sql`${table.nextSeq} >= 0`),
+  headHashCheck: check('chain_head_head_hash_check', sql`${table.headHash} ~ '^sha256:[0-9a-f]{64}$'`),
+}));
+
+export const attestaRecords = pgTable('attesta_records', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  prevHash: text('prev_hash').notNull(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(),
+  recordKind: text('record_kind').$type<'statement'>().notNull(),
+  statementDigest: text('statement_digest').notNull(),
+  predicateType: text('predicate_type').notNull(),
+  statementKind: text('statement_kind').$type<'commit_observed' | 'pr_merged' | 'deployed'>(),
+  repositoryId: uuid('repository_id').notNull(),
+  subjectSha: text('subject_sha'),
+  /** The exact RFC 8785 statement bytes that were signed. */
+  statementCanonical: text('statement_canonical').notNull(),
+  /** The exact RFC 8785 bytes hashed into record_hash. Never re-serialized. */
+  canonicalRecord: text('canonical_record').notNull(),
+  recordHash: text('record_hash').notNull(),
+  outboxSubjectId: uuid('outbox_subject_id'),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_records_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantSeqUnique: unique('attesta_records_tenant_seq_key').on(table.tenantId, table.seq),
+  tenantDigestUnique: unique('attesta_records_tenant_statement_digest_key')
+    .on(table.tenantId, table.statementDigest),
+  // One outbox row yields at most one chained statement, however often it is retried.
+  tenantOutboxUnique: uniqueIndex('attesta_records_tenant_outbox_subject_key')
+    .on(table.tenantId, table.outboxSubjectId)
+    .where(sql`${table.outboxSubjectId} is not null`),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'attesta_records_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  // "Statements about the same subject" (previous) under the chain lock.
+  subjectIndex: index('attesta_records_tenant_subject_idx')
+    .on(table.tenantId, table.repositoryId, table.subjectSha, table.seq),
+  shapeCheck: check('attesta_records_shape_check', sql`
+    ${table.seq} >= 0
+    and ${table.recordKind} = 'statement'
+    and ${table.prevHash} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.recordHash} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.predicateType} = 'https://trackai.dev/attesta/ai-provenance/v1'
+    and ${table.statementKind} in ('commit_observed', 'pr_merged', 'deployed')
+    and ${table.subjectSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'
+  `),
+}));
+
+export const attestaEnvelopes = pgTable('attesta_envelopes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  recordId: uuid('record_id').notNull(),
+  payloadType: text('payload_type').notNull(),
+  /** "sha256:" + hex(SHA-256(SPKI DER)) of the signing key. */
+  keyid: text('keyid').notNull(),
+  /** Internal signer credential; never published in the envelope. */
+  credentialId: text('credential_id').notNull(),
+  signatureDer: bytea('signature_der').notNull(),
+  envelope: jsonb('envelope').notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_envelopes_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantRecordUnique: unique('attesta_envelopes_tenant_record_key').on(table.tenantId, table.recordId),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_envelopes_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  shapeCheck: check('attesta_envelopes_shape_check', sql`
+    ${table.payloadType} = 'application/vnd.in-toto+json'
+    and ${table.keyid} ~ '^sha256:[0-9a-f]{64}$'
+    and length(${table.credentialId}) between 1 and 256
+    and octet_length(${table.signatureDer}) between 8 and 128
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;

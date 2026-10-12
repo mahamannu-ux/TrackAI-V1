@@ -120,6 +120,13 @@
       "when": 1791799593407,
       "tag": "0016_attesta_subjects",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791802521497,
+      "tag": "0017_attesta_ledger",
+      "breakpoints": true
     }
   ]
 }
