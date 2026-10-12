@@ -48,7 +48,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
 | A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ⬜ |
-| A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ⬜ prompt ready |
+| A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | 🟡 done on `task/Task15e-attesta-fakes`, review pending |
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ⬜ |
