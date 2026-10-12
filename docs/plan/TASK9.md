@@ -25,16 +25,16 @@
 
 | ID | Outcome | Implemented | Automated evidence | Founder-live evidence | Owner session | Completion boundary |
 |---|---|---:|---:|---:|---|---|
-| T9.1a | Signed/notarized macOS PKGs and signed Windows x64 MSI, preserving existing release provenance | ⬜ | ⬜ | ⬜ | Task9b, Task9f, Task9g | Artifact verifies before install; no unsupported architecture claim |
+| T9.1a | Signed/notarized macOS PKGs and signed Windows x64 MSI, preserving existing release provenance | 🟡 package/release paths merged | 🟡 contract and hosted-smoke basis | ⬜ | Task9b, Task9f, Task9g | Artifact verifies before install; no unsupported architecture claim |
 | T9.1b | Native signed Linux packages | n/a deferred | n/a | n/a | Later Linux wave | Resume when Linux becomes a selected customer platform and a real host exists |
-| T9.2a | Secret-free unattended deployment to already-enrolled Jamf and Intune devices | ⬜ | ⬜ | ⬜ best-effort | Task9b, Task9f, Task9g | Package/configuration deploy without exposing `trk_v1` in arguments, logs or profiles |
+| T9.2a | Secret-free unattended deployment to already-enrolled Jamf and Intune devices | 🟡 packages and bootstrap scripts merged | 🟡 contract tests | ⬜ best-effort | Task9b, Task9f, Task9g | Package/configuration deploy without exposing `trk_v1` in arguments, logs or profiles |
 | T9.2b | Linux package/service deployment | n/a deferred | n/a | n/a | Later Linux wave | Same trigger as T9.1b |
 | T9.3 | Closed device identity/posture and assigned-user evidence, never authority | 🟡 Task9a server contract | 🟡 IT-T9-01 | ⬜ | Task9a, Task9f, Task9g | Tenant-bound metadata; stale/mismatch states; self-report grants nothing |
-| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | 🟡 Task9a/Task9c v1 merged; lifecycle correction designed | 🟡 IT-T9-01 | ⬜ | Task9a, Task9c, Task9a2, Task9c2 | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
+| T9.4 | Machine-authenticated managed configuration for Task4 policy and Task6 monitor activation | 🟡 schema v2 and client lifecycle merged; Task15 unavailable | 🟡 IT-T9-01 + client unit tests | ⬜ | Task9a, Task9c, Task9a2, Task9c2 | Versioned fetch, verifier seam, atomic activation, last-known-good, acknowledgement, server recheck |
 | T9.5 | Fleet inventory and safe health | 🟡 Task9a API contract | 🟡 unit + IT-T9-01 | ⬜ | Task9a, Task9e | Current/stale/unreported/unavailable are distinct; no raw content |
-| T9.6 | Staged software/configuration rollout and rollback | 🟡 assignment and immutable release authorization merged; Task9d execution pending | 🟡 IT-T9-01 | ⬜ best-effort two-device | Task9a2, Task9c2, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
-| T9.7 | Audited revoke/offboard workflow | 🟡 Task9a server orchestration | 🟡 IT-T9-01 | ⬜ | Task9a, Task9d, Task9e | Dry-run/impact preview; Task4 revocation blocks upload; cleanup outcome recorded |
-| T9.8 | macOS Keychain and Windows Credential Manager/DPAPI machine-credential storage | ⬜ | ⬜ | ⬜ | Task9c, Task9f, Task9g | No plaintext file/log; wrong user/machine and locked/unavailable store fail closed |
+| T9.6 | Staged software/configuration rollout and rollback | 🟡 exact-release lifecycle merged; Task15 verifier pending | 🟡 unit + IT-T9-01 | ⬜ best-effort two-device | Task9a2, Task9c2, Task9d, Task9f, Task9g | Ring/version pin, health decision, return to N-1, queue and credential preserved |
+| T9.7 | Audited revoke/offboard workflow | 🟡 server orchestration and explicit endpoint cleanup merged | 🟡 unit + IT-T9-01 | ⬜ | Task9a, Task9d, Task9e | Dry-run/impact preview; Task4 revocation blocks upload; cleanup outcome recorded |
+| T9.8 | macOS Keychain and Windows Credential Manager/DPAPI machine-credential storage | 🟡 native adapters merged | 🟡 unit tests | ⬜ | Task9c, Task9f, Task9g | No plaintext file/log; wrong user/machine and locked/unavailable store fail closed |
 | T9.9 | MDM-to-TrackAI assignment reconciliation | 🟡 Task9a evidence contract; reconciliation unavailable | 🟡 unit + IT-T9-01 | ⬜ best-effort MDM | Task9a, Task9e, Task9f, Task9g | Match/mismatch/unavailable explained; explicit admin confirmation; no auto-authority |
 | T9.10a | macOS and Windows fleet security/E2E | ⬜ | ⬜ | ⬜ best-effort | Task9f, Task9g | Install → configure → offline work → health → update → rollback → rotate → revoke → offboard |
 | T9.10b | Linux fleet security/E2E | n/a deferred | n/a | n/a | Later Linux wave | Resume with T9.1b/T9.2b/T9.8 Linux |
@@ -125,7 +125,7 @@ The founder originally approved seven Codex/Muse sessions. The Task9d design gat
 | **Task9c2-release-state-correction** | GitAI / Codex | Schema-v2 parser, exact verified bytes and reverified release-authorization seam | about 0.10x target; 0.15x ceiling | Task9a2 merged; GitAI Task9c merge `cc155d692` | `src/fleet/**`; no updater/installer/packaging/MDM edit |
 | **Task9d-fleet-update-offboard** | GitAI / Muse | T9.6 update/rollback mechanics and T9.7 local cleanup/uninstall | about 0.20x target; 0.30x ceiling | Task9a2 + Task9c2 merged; clean worktree recreated/rebased from corrected GitAI `main` | new `src/fleet/` lifecycle modules; `src/commands/upgrade.rs`; bounded install/uninstall and packaging scripts; exact daemon restart tests |
 | **Task9e-fleet-console** | TrackAI / Muse | T9.5 inventory; T9.6 rollout state; T9.7 dry-run/offboard UX; T9.9 mismatch explanation | about 0.25x | Task9a merged; Muse free after Task9b | new `apps/web/src/app/dashboard/fleet-workspace.tsx`; `apps/web/src/lib/api.ts`; minimal `dashboard/page.tsx` integration; focused web/API contract tests |
-| **Task9f-macos-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a current Intel Mac lifecycle; best-effort Jamf, second Mac and Apple Silicon gates | about 0.30x | Task9a–Task9e merged | platform tests/runbooks under GitAI `tests/` and `docs/`; only bounded fixes in Task9-owned files; no new product surface |
+| **Task9f-macos-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a current Intel Mac lifecycle; best-effort Jamf, second Mac and Apple Silicon gates | about 0.18x target; 0.30x ceiling | Task9d PR #6 plus prior Task9 sessions merged | platform tests/runbooks under GitAI `tests/` and `docs/`; only bounded fixes in Task9-owned files; no new product surface |
 | **Task9g-windows-conformance** | GitAI docs/tests / Codex | T9.1a–T9.10a Windows x64 CI floor; best-effort native Windows/Intune lifecycle | about 0.35x | Task9a–Task9e and Task9f merged; host/tenant if available | Windows tests/runbooks and CI; only bounded fixes in Task9-owned files; existing ARM64 build left build-only and untouched unless it blocks the quick CI path |
 
 The original estimates are conservative ceilings, not work budgets. Each implementation prompt should choose the smallest correct slice and set a lower operational target; after the 2026-10-09 upstream inventory expanded Task9b to reuse the final macOS/Windows login-start kit, Wave 1 targets about **0.44x T6** and still remains below its original 0.63x ceiling. Re-estimate the whole active total after Wave 1 actuals rather than padding all seven sessions now. The later Linux wave remains outside these seven sessions.
@@ -161,7 +161,7 @@ flowchart LR
   F --> G
 ```
 
-Task9a–Task9c, Task9e and both lifecycle corrections have merged: TrackAI Task9a2 in PR #21 (`d2c4a23`) and GitAI Task9c2 in PR #5 (`c4509ab8d`). Task9d is now unblocked; fast-forward or recreate its clean stopped worktree from corrected GitAI `main` before implementation. Task9f and Task9g remain lead-owned evidence sessions and run serially.
+Task9a–Task9e and both lifecycle corrections have merged. TrackAI Task9a2 landed in PR #21 (`d2c4a23`), GitAI Task9c2 in PR #5 (`c4509ab8d`) and GitAI Task9d in PR #6 (`d1838619c`). Task9f is now unblocked on the current Intel Mac; Task9g follows serially.
 
 ## 6. Integration and founder-live evidence registry
 
@@ -216,3 +216,4 @@ The task is not complete merely because 70–85% of estimated work merged. Any u
 6. **2026-10-09:** the founder accepts that worst-case remaining work may be 15–25% real-device/MDM validation after engineering is complete; it must remain pending, not be called passed.
 7. **2026-10-09:** Task15 may start shortly. Task9 proceeds with its verifier seam and current single-Mac work; the shared signed trust gate integrates later.
 8. **2026-10-11:** Task9d stopped before code. Correct schema v1 through separate TrackAI Task9a2 and GitAI Task9c2 sessions: immutable N/N-1 release identity, pinned manifest digest, exact-tag downloads, independent compatibility, verified execution authorization and Task15-unavailable fail-closed behavior. Resume Task9d only after both merge; retain Task9e PR #18.
+9. **2026-10-12:** Task9d merged in GitAI PR #6 (`d1838619c`). Start Task9f local-first on the founder's Intel Mac while Jamf Pro and an organization-controlled Apple Account/APNs certificate are procured. Jamf evidence stays conditional; Task15-unavailable update execution remains fail-closed.
