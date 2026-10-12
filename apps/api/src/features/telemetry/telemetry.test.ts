@@ -31,7 +31,7 @@ import {
 } from './lifecycle';
 import { enqueueDeployedSubject, githubCommitMetadata, inferMergeMethod, mapRebasedResultCommits, uniquePullRequestForDeploymentSource } from '../scm/lifecycle-service';
 import { enqueuePrMergedSubject } from '../scm/scm.routes';
-import { enqueueCommitObservedSubject, normalizationFailureCode } from './service';
+import { enqueueCommitObservedSubject, normalizationFailureState } from './service';
 import { AttestaOutboxError, type AttestaOutboxExecutor, type EnqueueAttestaSubjectInput } from '../attesta/outbox';
 import { repositoryIsInTenantScope } from './repository-scope';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey } from './model-lifecycle';
@@ -169,7 +169,14 @@ test('Task2 Attesta writer failures propagate as safe normalization codes', asyn
     status: 'success',
     production: true,
   }, { id: attestaIds.deploymentId }, reject), failure);
-  assert.equal(normalizationFailureCode(failure), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND');
+  assert.deepEqual(normalizationFailureState(failure), {
+    status: 'pending',
+    error: 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND',
+  });
+  assert.deepEqual(normalizationFailureState(new Error('decoder failed')), {
+    status: 'failed',
+    error: 'decoder failed',
+  });
 });
 
 test('enrollment watermarks separate current delayed backfill and rejected evidence', () => {

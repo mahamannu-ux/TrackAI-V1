@@ -175,9 +175,17 @@ function eventDate(seconds: number): Date {
   return new Date(seconds * 1000);
 }
 
-export function normalizationFailureCode(error: unknown): string {
-  if (error instanceof AttestaOutboxError) return error.code;
-  return error instanceof Error ? error.message : 'Normalization failed';
+export function normalizationFailureState(error: unknown): {
+  status: 'pending' | 'failed';
+  error: string;
+} {
+  if (error instanceof AttestaOutboxError) {
+    return { status: 'pending', error: error.code };
+  }
+  return {
+    status: 'failed',
+    error: error instanceof Error ? error.message : 'Normalization failed',
+  };
 }
 
 export async function enqueueCommitObservedSubject(
@@ -814,6 +822,7 @@ export async function normalizeCommit(
   attrs: DecodedAttributes,
   sourceEventId: string,
   database?: TelemetryDatabase,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
 ) {
   if (!attrs.repoUrl || !attrs.commitSha) return;
   if (!database) {
@@ -823,6 +832,7 @@ export async function normalizeCommit(
       attrs,
       sourceEventId,
       transaction as unknown as TelemetryDatabase,
+      enqueue,
     ));
     return;
   }
@@ -1124,7 +1134,7 @@ export async function normalizeCommit(
     tenantId,
     repositoryId: repository.id,
     metricEventId: sourceEventId,
-  }, commit);
+  }, commit, enqueue);
 }
 
 async function normalizeSessionEvent(
@@ -1416,10 +1426,11 @@ async function normalizeEvent(
   tenantId: string,
   event: GitAiMetricEvent,
   sourceEventId: string,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
 ) {
   const attrs = decodeAttributes(event.a);
   if (event.e === EVENT_KIND.committed || event.e === EVENT_KIND.rewriteCommitted) {
-    await normalizeCommit(tenantId, event, attrs, sourceEventId);
+    await normalizeCommit(tenantId, event, attrs, sourceEventId, undefined, enqueue);
     return;
   }
   if (
@@ -1441,6 +1452,7 @@ export async function reconcilePendingMetricEvents(input: {
   evaluatedAt?: Date;
   delayMs?: number;
   limit?: number;
+  enqueueSubject?: EnqueueSubject;
 }) {
   const evaluatedAt = input.evaluatedAt ?? new Date();
   const delayMs = input.delayMs ?? 5 * 60 * 1_000;
@@ -1468,7 +1480,7 @@ export async function reconcilePendingMetricEvents(input: {
     if (!input.apply) continue;
     try {
       const event = validateMetricEvent(row.rawEvent);
-      await normalizeEvent(input.tenantId, event, row.id);
+      await normalizeEvent(input.tenantId, event, row.id, input.enqueueSubject);
       const updated = await db.update(telemetryMetricEvents).set({
         normalizationStatus: 'normalized', normalizationError: null,
       }).where(and(
@@ -1478,10 +1490,11 @@ export async function reconcilePendingMetricEvents(input: {
       )).returning({ id: telemetryMetricEvents.id });
       normalized += updated.length;
     } catch (error) {
+      const failure = normalizationFailureState(error);
       const updated = await db.update(telemetryMetricEvents).set({
-        normalizationStatus: 'failed',
+        normalizationStatus: failure.status,
         normalizationError: error instanceof AttestaOutboxError
-          ? error.code
+          ? failure.error
           : 'pending_reconciliation_failed',
       }).where(and(
         eq(telemetryMetricEvents.tenantId, input.tenantId),
@@ -1504,6 +1517,7 @@ export async function ingestMetricsBatch(
   tenantId: string,
   batch: GitAiMetricsBatch,
   policyLabels: MetricIngestionLabel[] = [],
+  enqueueSubject: EnqueueSubject = enqueueAttestaSubject,
 ): Promise<UploadError[]> {
   const tenantDb = withTenant(db, tenantId);
   const payloadHash = fingerprint(batch);
@@ -1556,20 +1570,20 @@ export async function ingestMetricsBatch(
     );
     if (!storedEvent) continue;
     try {
-      await normalizeEvent(tenantId, event, storedEvent.id);
+      await normalizeEvent(tenantId, event, storedEvent.id, enqueueSubject);
       await tenantDb.update(
         telemetryMetricEvents,
         { normalizationStatus: 'normalized', normalizationError: null },
         eq(telemetryMetricEvents.id, storedEvent.id),
       );
     } catch (error) {
-      const message = normalizationFailureCode(error);
+      const failure = normalizationFailureState(error);
       await tenantDb.update(
         telemetryMetricEvents,
-        { normalizationStatus: 'failed', normalizationError: message },
+        { normalizationStatus: failure.status, normalizationError: failure.error },
         eq(telemetryMetricEvents.id, storedEvent.id),
       );
-      errors.push({ index, error: message });
+      errors.push({ index, error: failure.error });
     }
   }
   return errors;

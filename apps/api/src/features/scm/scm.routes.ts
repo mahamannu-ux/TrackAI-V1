@@ -36,6 +36,7 @@ import {
   completeProviderDelivery,
   projectProviderDelivery,
   releaseProviderDeliveryForRetry,
+  type ProviderTransaction,
 } from './provider-delivery-store';
 import {
   normalizeProviderDeliveryId,
@@ -104,6 +105,74 @@ export async function enqueuePrMergedSubject(
     notBefore: new Date(now.getTime() + (5 * 60 * 1_000)),
   });
   return true;
+}
+
+export async function upsertPullRequestObservation(
+  transaction: ProviderTransaction,
+  input: {
+    tenantId: string;
+    repositoryId: string;
+    provider: SCMPayload['provider'];
+    providerDeliveryId: string;
+    eventType: SCMPayload['eventType'];
+    pullRequest: NonNullable<SCMPayload['pullRequest']>;
+  },
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
+): Promise<string> {
+  const pullRequest = input.pullRequest;
+  const [storedPullRequest] = await transaction
+    .insert(scmPullRequests)
+    .values({
+      tenantId: input.tenantId,
+      repositoryId: input.repositoryId,
+      externalId: pullRequest.externalId,
+      number: pullRequest.number,
+      title: pullRequest.title,
+      state: pullRequest.state,
+      authorEmail: pullRequest.authorEmail,
+      authorProviderId: pullRequest.authorProviderId,
+      authorLogin: pullRequest.authorLogin,
+      headRef: pullRequest.headRef,
+      baseRef: pullRequest.baseRef,
+      headSha: pullRequest.headSha,
+      mergeCommitSha: pullRequest.mergeCommitSha,
+      mergedAt: pullRequest.mergedAt ? new Date(pullRequest.mergedAt) : null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        scmPullRequests.tenantId,
+        scmPullRequests.repositoryId,
+        scmPullRequests.externalId,
+      ],
+      set: {
+        title: pullRequest.title,
+        state: pullRequest.state,
+        authorEmail: pullRequest.authorEmail,
+        authorProviderId: pullRequest.authorProviderId,
+        authorLogin: pullRequest.authorLogin,
+        number: pullRequest.number,
+        headRef: pullRequest.headRef,
+        baseRef: pullRequest.baseRef,
+        headSha: pullRequest.headSha,
+        mergeCommitSha: pullRequest.mergeCommitSha,
+        mergedAt: pullRequest.mergedAt ? new Date(pullRequest.mergedAt) : null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ id: scmPullRequests.id });
+
+  if (!storedPullRequest) throw new Error('Pull request upsert did not return a record');
+  await enqueuePrMergedSubject(transaction, {
+    eventType: input.eventType,
+    tenantId: input.tenantId,
+    repositoryId: input.repositoryId,
+    provider: input.provider,
+    providerDeliveryId: input.providerDeliveryId,
+    pullRequestId: storedPullRequest.id,
+    mergedAt: pullRequest.mergedAt,
+    mergeCommitSha: pullRequest.mergeCommitSha,
+  }, enqueue);
+  return storedPullRequest.id;
 }
 
 interface StoredWebhookRecords {
@@ -336,58 +405,13 @@ router.post('/:provider', async (req: Request, res: Response) => {
       let contributorId: string | null = null;
 
       if (payload.pullRequest) {
-        const [pullRequest] = await transaction
-          .insert(scmPullRequests)
-          .values({
-            tenantId: tenant.id,
-            repositoryId: repository.id,
-            externalId: payload.pullRequest.externalId,
-            number: payload.pullRequest.number,
-            title: payload.pullRequest.title,
-            state: payload.pullRequest.state,
-            authorEmail: payload.pullRequest.authorEmail,
-            authorProviderId: payload.pullRequest.authorProviderId,
-            authorLogin: payload.pullRequest.authorLogin,
-            headRef: payload.pullRequest.headRef,
-            baseRef: payload.pullRequest.baseRef,
-            headSha: payload.pullRequest.headSha,
-            mergeCommitSha: payload.pullRequest.mergeCommitSha,
-            mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
-          })
-          .onConflictDoUpdate({
-            target: [
-              scmPullRequests.tenantId,
-              scmPullRequests.repositoryId,
-              scmPullRequests.externalId,
-            ],
-            set: {
-              title: payload.pullRequest.title,
-              state: payload.pullRequest.state,
-              authorEmail: payload.pullRequest.authorEmail,
-              authorProviderId: payload.pullRequest.authorProviderId,
-              authorLogin: payload.pullRequest.authorLogin,
-              number: payload.pullRequest.number,
-              headRef: payload.pullRequest.headRef,
-              baseRef: payload.pullRequest.baseRef,
-              headSha: payload.pullRequest.headSha,
-              mergeCommitSha: payload.pullRequest.mergeCommitSha,
-              mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
-              updatedAt: new Date(),
-            },
-          })
-          .returning({ id: scmPullRequests.id });
-
-        pullRequestId = pullRequest?.id ?? null;
-
-        await enqueuePrMergedSubject(transaction, {
+        pullRequestId = await upsertPullRequestObservation(transaction, {
           eventType: payload.eventType,
           tenantId: tenant.id,
           repositoryId: repository.id,
           provider: payload.provider,
           providerDeliveryId: deliveryId,
-          pullRequestId,
-          mergedAt: payload.pullRequest.mergedAt,
-          mergeCommitSha: payload.pullRequest.mergeCommitSha,
+          pullRequest: payload.pullRequest,
         });
       }
 

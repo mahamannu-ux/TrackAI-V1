@@ -485,9 +485,9 @@ export async function recordDeployment(input: {
   status: string;
   production: boolean;
   deployedAt: Date;
-}, transaction?: ProviderTransaction): Promise<void> {
+}, transaction?: ProviderTransaction, enqueue: EnqueueSubject = enqueueAttestaSubject): Promise<void> {
   if (!transaction) {
-    await db.transaction(tx => recordDeployment(input, tx));
+    await db.transaction(tx => recordDeployment(input, tx, enqueue));
     return;
   }
   const tenantDb = withTenant(transaction as unknown as typeof db, input.tenantId);
@@ -593,5 +593,5 @@ export async function recordDeployment(input: {
       );
     }
   }
-  await enqueueDeployedSubject(transaction, { ...input, providerDeliveryId }, deployment);
+  await enqueueDeployedSubject(transaction, { ...input, providerDeliveryId }, deployment, enqueue);
 }
