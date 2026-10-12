@@ -52,7 +52,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ prompt ready |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ prompt ready |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ✅ merged in PR #32; IT-T2AT-01…04 passed 2026-10-12 |
-| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | ⬜ prompt ready |
+| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | 🟡 built on `task/Task15h-attesta-builder` (worker, CLIs, IT-T15h-01…04 agent-verified); contract findings F1–F8 in `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
 | A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× | A15.5, A15.8 | ⬜ |
 | A15.10 | Offline verifier (standalone Node script, ported from `offline_verify.py`) | Muse | 0.08× | A15.9 format frozen | ⬜ |
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
@@ -127,7 +127,7 @@ flowchart LR
 | Task15f-attesta-anchoring | A15.5 (+ exact verify codes) | Claude | 0.3× | `docs/prompts/Task15/NEXT_CHAT_Task15f-attesta-anchoring_PROMPT.md` |
 | Task15g-attesta-kms | A15.6 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15g-attesta-kms_PROMPT.md` (deps approved by merging it) |
 | Task2-attesta-trigger | A15.7 | Codex | 0.15× | `docs/prompts/Task15/NEXT_CHAT_Task2-attesta-trigger_PROMPT.md` (merge gated on IT-T15c-01) |
-| Task15h-attesta-builder | A15.8 | Claude | 0.2× | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` |
+| Task15h-attesta-builder | A15.8 | Claude | 0.2× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` · handoff `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
 | Task15i-attesta-evidence | A15.9 (+ `period_report`) | Claude | 0.15× | after 15f, 15h |
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i |
