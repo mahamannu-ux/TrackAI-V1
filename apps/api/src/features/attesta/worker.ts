@@ -154,23 +154,29 @@ async function recoverExpired(db: WorkerDatabase, leaseMs: number, maxAttempts: 
   return { recovered: recovered.rows.length, recoveredFailed: failed.rows.length };
 }
 
-/** outbox.md claim statement. */
+/**
+ * outbox.md's claim, as a CTE: the frozen `WHERE id IN (SELECT … LIMIT n FOR UPDATE
+ * SKIP LOCKED)` form lets PostgreSQL re-run the subquery and claim more than n rows
+ * (IT-T15h-02 saw 6 claimed with n = 3). A MATERIALIZED CTE that locks the rows runs
+ * exactly once, so the limit holds (contract finding F6 in the handoff).
+ */
 async function claim(db: WorkerDatabase, limit: number): Promise<ClaimedRow[]> {
   const r = await db.execute(sql`/* worker:claim */
-    update attesta_subjects set status = 'claimed', claimed_at = now(), attempts = attempts + 1
-    where status = 'pending' and id in (
+    with picked as materialized (
       select id from attesta_subjects
       where status = 'pending' and not_before <= now()
       order by created_at limit ${limit}
       for update skip locked)
-    returning id::text as id, tenant_id::text as tenant_id, repository_id::text as repository_id, kind,
-      metric_event_id::text as metric_event_id, commit_id::text as commit_id, commit_sha, provider,
-      provider_delivery_id, pull_request_id::text as pull_request_id, deployment_id::text as deployment_id,
-      deployment_external_id,
-      ${sql.raw(`to_char(event_at at time zone 'UTC', ${TS_MS})`)} as event_at,
-      ${sql.raw(`to_char(claimed_at at time zone 'UTC', ${TS_US})`)} as claimed_at,
-      attempts,
-      ${sql.raw(`to_char(created_at at time zone 'UTC', ${TS_US})`)} as created_at`);
+    update attesta_subjects s set status = 'claimed', claimed_at = now(), attempts = s.attempts + 1
+    from picked where s.id = picked.id and s.status = 'pending'
+    returning s.id::text as id, s.tenant_id::text as tenant_id, s.repository_id::text as repository_id, s.kind,
+      s.metric_event_id::text as metric_event_id, s.commit_id::text as commit_id, s.commit_sha, s.provider,
+      s.provider_delivery_id, s.pull_request_id::text as pull_request_id, s.deployment_id::text as deployment_id,
+      s.deployment_external_id,
+      ${sql.raw(`to_char(s.event_at at time zone 'UTC', ${TS_MS})`)} as event_at,
+      ${sql.raw(`to_char(s.claimed_at at time zone 'UTC', ${TS_US})`)} as claimed_at,
+      s.attempts,
+      ${sql.raw(`to_char(s.created_at at time zone 'UTC', ${TS_US})`)} as created_at`);
   return r.rows.map(toClaimed).sort((a, b) =>
     (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
