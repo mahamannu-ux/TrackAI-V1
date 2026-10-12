@@ -1,0 +1,231 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "trackai:repository/00000000-0000-4000-8000-000000000001/commit/3f2a9c4e1b7d6a5f8e0c2b4d6f8a1c3e5b7d9f0a",
+      "digest": {
+        "gitCommit": "3f2a9c4e1b7d6a5f8e0c2b4d6f8a1c3e5b7d9f0a"
+      }
+    }
+  ],
+  "predicateType": "https://trackai.dev/attesta/ai-provenance/v2",
+  "predicate": {
+    "statement_kind": "commit_observed",
+    "as_of": "2026-10-12T09:15:02.481Z",
+    "builder": {
+      "name": "trackai-attesta-builder",
+      "version": "0.1.0+88301f7"
+    },
+    "signed_late": {
+      "value": false,
+      "reason": "none"
+    },
+    "previous": [],
+    "source_evidence": {
+      "metric_event": {
+        "availability": "recorded",
+        "value": {
+          "id": "00000000-0000-4000-8000-000000000010",
+          "fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "event_at": "2026-10-12T09:14:55.000Z",
+          "evidence_family": "commit_note",
+          "arrival_class": "current"
+        }
+      },
+      "provider_delivery": {
+        "availability": "unavailable",
+        "reason": "not_applicable"
+      },
+      "note_digest": {
+        "availability": "recorded",
+        "value": {
+          "algorithm": "sha256",
+          "encoding": "utf-8",
+          "value": "2222222222222222222222222222222222222222222222222222222222222222",
+          "source_event_id": "00000000-0000-4000-8000-000000000010"
+        }
+      }
+    },
+    "first_seen": {
+      "availability": "recorded",
+      "value": {
+        "at": "2026-10-12T09:14:30.112Z",
+        "source": "github_push"
+      }
+    },
+    "repository": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "provider": "github",
+      "url_sha256": {
+        "availability": "recorded",
+        "value": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    },
+    "commit": {
+      "sha": "3f2a9c4e1b7d6a5f8e0c2b4d6f8a1c3e5b7d9f0a",
+      "operation_kind": {
+        "availability": "recorded",
+        "value": "commit"
+      },
+      "reachability": {
+        "availability": "recorded",
+        "value": "reachable"
+      },
+      "authored_at": {
+        "availability": "recorded",
+        "value": "2026-10-12T09:10:00.000Z"
+      },
+      "committed_at": {
+        "availability": "recorded",
+        "value": "2026-10-12T09:14:20.000Z"
+      }
+    },
+    "lines": {
+      "availability": "recorded",
+      "value": {
+        "ai": 432,
+        "human": 19,
+        "unknown": 0,
+        "added": 451,
+        "deleted": 12
+      }
+    },
+    "files": {
+      "availability": "recorded",
+      "value": {
+        "total": 2,
+        "omitted": 0,
+        "entries": [
+          {
+            "path_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "ai_lines": 400,
+            "human_lines": 4,
+            "unknown_lines": {
+              "availability": "unavailable",
+              "reason": "not_captured_yet"
+            },
+            "attribution_ranges_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+          },
+          {
+            "path_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "ai_lines": 32,
+            "human_lines": 15,
+            "unknown_lines": {
+              "availability": "unavailable",
+              "reason": "not_captured_yet"
+            },
+            "attribution_ranges_sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+          }
+        ]
+      }
+    },
+    "sessions": {
+      "availability": "recorded",
+      "value": [
+        {
+          "session_id": "00000000-0000-4000-8000-000000000030",
+          "tool": "claude-code",
+          "ai_lines": 432
+        }
+      ]
+    },
+    "models": {
+      "availability": "recorded",
+      "value": [
+        {
+          "tool": "claude-code",
+          "model": "claude-sonnet-4-5",
+          "model_key": "claude-code::claude-sonnet-4-5",
+          "ai_lines": 432,
+          "session_id": "00000000-0000-4000-8000-000000000030"
+        }
+      ]
+    },
+    "tools": {
+      "availability": "recorded",
+      "value": [
+        "claude-code"
+      ]
+    },
+    "committer": {
+      "availability": "partial",
+      "partial_reason": "identity_matched_by_name_or_email",
+      "value": {
+        "contributor_id": "00000000-0000-4000-8000-000000000040"
+      }
+    },
+    "lifecycle": {
+      "availability": "recorded",
+      "value": {
+        "stage": "committed",
+        "ai_lines": 432,
+        "calculation_version": {
+          "availability": "unavailable",
+          "reason": "not_captured_yet"
+        }
+      }
+    },
+    "pull_request": {
+      "availability": "unavailable",
+      "reason": "not_applicable"
+    },
+    "merge_lineage": {
+      "availability": "unavailable",
+      "reason": "not_applicable"
+    },
+    "merged_by": {
+      "availability": "unavailable",
+      "reason": "not_captured_yet"
+    },
+    "reviews": {
+      "availability": "unavailable",
+      "reason": "not_captured_yet"
+    },
+    "deployment": {
+      "availability": "unavailable",
+      "reason": "not_applicable"
+    },
+    "policy": {
+      "repository_enrollment": {
+        "availability": "recorded",
+        "value": {
+          "id": "00000000-0000-4000-8000-000000000020",
+          "status": "active",
+          "effective_from": "2026-09-01T00:00:00.000Z",
+          "effective_until": null,
+          "commit_note_evidence_from": "2026-09-01T00:00:00.000Z"
+        }
+      },
+      "security_monitor": {
+        "availability": "recorded",
+        "value": {
+          "mode": "monitor",
+          "version": 3
+        }
+      },
+      "rule_pack_versions": {
+        "availability": "partial",
+        "partial_reason": "present_only_when_findings_exist",
+        "value": [
+          "2026.09.29"
+        ]
+      },
+      "org_ai_policy": {
+        "availability": "unavailable",
+        "reason": "not_captured_yet"
+      }
+    },
+    "security_findings_observed": {
+      "availability": "recorded",
+      "value": {
+        "total": 0,
+        "by_category": {},
+        "by_severity": {}
+      }
+    },
+    "repo_snapshot": {
+      "availability": "unavailable",
+      "reason": "not_captured_yet"
+    }
+  }
+}

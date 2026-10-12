@@ -1,0 +1,259 @@
+{
+  "schemaVersion": "trackai.attesta-contract-fixtures/1",
+  "note": "expectedRuleViolations lists the cross-field rule IDs (README S1-S8) a schema-valid statement breaks; null when the schema already refuses it.",
+  "cases": [
+    {
+      "file": "valid-commit-observed.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [],
+      "rationale": "A commit observed with its Git AI note; gaps stay unavailable."
+    },
+    {
+      "file": "valid-pr-merged.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [],
+      "rationale": "A squash merge: the result commit has no note, so its own line counts are unavailable; lineage links the source statement."
+    },
+    {
+      "file": "valid-deployed.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [],
+      "rationale": "A production deployment of the merge result, linking the earlier pr_merged statement."
+    },
+    {
+      "file": "invalid-raw-commit-message.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Raw content in an extra field: the commit object is closed."
+    },
+    {
+      "file": "invalid-free-text-in-token.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Free text smuggled into a bounded token field (spaces and punctuation are refused)."
+    },
+    {
+      "file": "invalid-plaintext-file-path.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "File paths appear only as path_sha256."
+    },
+    {
+      "file": "invalid-email-as-identity.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Identities are pseudonymous UUIDs, never emails."
+    },
+    {
+      "file": "invalid-email-in-token.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "An email cannot hide in a bounded identifier field."
+    },
+    {
+      "file": "invalid-float-line-count.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Line counts are integers, never floats."
+    },
+    {
+      "file": "invalid-unsafe-integer.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Integers beyond 2^53 - 1 are refused."
+    },
+    {
+      "file": "invalid-negative-count.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Counts are never negative."
+    },
+    {
+      "file": "invalid-missing-availability.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Every field carries availability."
+    },
+    {
+      "file": "invalid-missing-field.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "A field that cannot be filled is present and unavailable, never missing."
+    },
+    {
+      "file": "invalid-zero-when-unavailable.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "An unavailable field carries no value: no zero, no placeholder."
+    },
+    {
+      "file": "invalid-partial-without-reason.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Partial values say why they are partial."
+    },
+    {
+      "file": "invalid-gap-recorded-in-v1.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Reviews (G3), merged-by (G4), org policy (G2) and repo snapshot (G1) are not captured yet; v1 refuses a recorded value."
+    },
+    {
+      "file": "invalid-unknown-statement-kind.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Unknown statement kinds are refused (new kinds come with a new minor version)."
+    },
+    {
+      "file": "invalid-kind-block-mismatch.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "A commit_observed statement carries no deployment."
+    },
+    {
+      "file": "invalid-signed-late-inconsistent.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "signed_late.reason is none exactly when value is false."
+    },
+    {
+      "file": "invalid-timestamp-format.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Timestamps are RFC 3339 UTC with milliseconds and Z."
+    },
+    {
+      "file": "invalid-extra-subject.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Exactly one subject."
+    },
+    {
+      "file": "invalid-wrong-predicate-type.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "This schema validates v1 only."
+    },
+    {
+      "file": "lying-subject-sha-mismatch.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S1"
+      ],
+      "rationale": "Subject names a different commit than the predicate describes."
+    },
+    {
+      "file": "lying-subject-repository-mismatch.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S2"
+      ],
+      "rationale": "Subject repository is not the predicate repository."
+    },
+    {
+      "file": "lying-name-digest-mismatch.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S1"
+      ],
+      "rationale": "Subject name and digest disagree."
+    },
+    {
+      "file": "lying-files-count.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S3"
+      ],
+      "rationale": "files.total - entries = omitted must hold."
+    },
+    {
+      "file": "lying-tools-set.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S4"
+      ],
+      "rationale": "tools must equal the distinct tools of sessions and models."
+    },
+    {
+      "file": "lying-time-order.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S5"
+      ],
+      "rationale": "Nothing observed after as_of."
+    },
+    {
+      "file": "lying-duplicate-previous.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S6"
+      ],
+      "rationale": "previous lists each earlier statement once."
+    },
+    {
+      "file": "lying-note-source.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S7"
+      ],
+      "rationale": "The note digest comes from the same metric event as the observation."
+    },
+    {
+      "file": "lying-truncation-unflagged.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S3"
+      ],
+      "rationale": "Omitted file entries make the files field partial (entries_truncated)."
+    },
+    {
+      "file": "lying-model-key.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S8"
+      ],
+      "rationale": "model_key must follow Task2 modelKey(tool, model)."
+    },
+    {
+      "file": "lying-pr-merge-sha.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [
+        "S1"
+      ],
+      "rationale": "A pr_merged subject is the PR merge result commit."
+    }
+  ]
+}

@@ -1,0 +1,2387 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/ai-provenance/v1/predicate-ai-provenance-v1.schema.json",
+  "title": "TrackAI Attesta ai-provenance predicate v1",
+  "description": "FROZEN CONTRACT (Task15c). Predicate type https://trackai.dev/attesta/ai-provenance/v1. Closed object: every field is required and carries availability. Numbers are integers within +/-(2^53-1). No raw prompts, responses, code, diffs, commit messages, titles, branch names, file paths, emails or names. See README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "statement_kind",
+    "as_of",
+    "builder",
+    "signed_late",
+    "previous",
+    "source_evidence",
+    "first_seen",
+    "repository",
+    "commit",
+    "lines",
+    "files",
+    "sessions",
+    "models",
+    "tools",
+    "committer",
+    "lifecycle",
+    "pull_request",
+    "merge_lineage",
+    "merged_by",
+    "reviews",
+    "deployment",
+    "policy",
+    "security_findings_observed",
+    "repo_snapshot"
+  ],
+  "properties": {
+    "statement_kind": {
+      "$ref": "#/definitions/statement_kind"
+    },
+    "as_of": {
+      "$ref": "#/definitions/timestamp"
+    },
+    "builder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/token"
+        },
+        "version": {
+          "$ref": "#/definitions/token"
+        }
+      }
+    },
+    "signed_late": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "value": {
+          "type": "boolean"
+        },
+        "reason": {
+          "enum": [
+            "none",
+            "backfill",
+            "rebuild_requested",
+            "delayed_build"
+          ]
+        }
+      }
+    },
+    "previous": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "digest",
+          "statement_kind"
+        ],
+        "properties": {
+          "digest": {
+            "$ref": "#/definitions/statement_digest"
+          },
+          "statement_kind": {
+            "$ref": "#/definitions/statement_kind"
+          }
+        }
+      },
+      "maxItems": 64
+    },
+    "source_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_event",
+        "provider_delivery",
+        "note_digest"
+      ],
+      "properties": {
+        "metric_event": {
+          "description": "telemetry_metric_events row the observation came from (commit_observed).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "fingerprint",
+                "event_at",
+                "evidence_family",
+                "arrival_class"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/uuid"
+                },
+                "fingerprint": {
+                  "$ref": "#/definitions/sha256_hex"
+                },
+                "event_at": {
+                  "$ref": "#/definitions/timestamp"
+                },
+                "evidence_family": {
+                  "enum": [
+                    "generation_session",
+                    "commit_note",
+                    "operational",
+                    "legacy_unclassified"
+                  ]
+                },
+                "arrival_class": {
+                  "enum": [
+                    "current",
+                    "delayed",
+                    "backfill",
+                    "legacy_unclassified"
+                  ]
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "provider_delivery": {
+          "description": "provider_event_deliveries row (pr_merged; deployed when known).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "provider",
+                "delivery_id",
+                "event_fingerprint",
+                "received_at"
+              ],
+              "properties": {
+                "provider": {
+                  "$ref": "#/definitions/token"
+                },
+                "delivery_id": {
+                  "$ref": "#/definitions/token"
+                },
+                "event_fingerprint": {
+                  "$ref": "#/definitions/sha256_hex"
+                },
+                "received_at": {
+                  "$ref": "#/definitions/timestamp"
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "note_digest": {
+          "description": "SHA-256 over the UTF-8 bytes of the Git AI authorship note string as decoded from the source metric event (the string Task2 stores in scm_commits.authorship_note), with no normalization.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "algorithm",
+                "encoding",
+                "value",
+                "source_event_id"
+              ],
+              "properties": {
+                "algorithm": {
+                  "const": "sha256"
+                },
+                "encoding": {
+                  "const": "utf-8"
+                },
+                "value": {
+                  "$ref": "#/definitions/sha256_hex"
+                },
+                "source_event_id": {
+                  "$ref": "#/definitions/uuid"
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        }
+      }
+    },
+    "first_seen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "at",
+            "source"
+          ],
+          "properties": {
+            "at": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "source": {
+              "enum": [
+                "github_push",
+                "git_ai_note"
+              ]
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "provider",
+        "url_sha256"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "provider": {
+          "$ref": "#/definitions/token"
+        },
+        "url_sha256": {
+          "description": "SHA-256 (hex) of the UTF-8 bytes of the normalized repository URL (scm_repositories.normalized_url). The URL itself is never included.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/sha256_hex"
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        }
+      }
+    },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "operation_kind",
+        "reachability",
+        "authored_at",
+        "committed_at"
+      ],
+      "properties": {
+        "sha": {
+          "$ref": "#/definitions/git_sha"
+        },
+        "operation_kind": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,31}$"
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "reachability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "enum": [
+                "observed",
+                "reachable",
+                "pull_request",
+                "superseded",
+                "unreachable"
+              ]
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "authored_at": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "committed_at": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        }
+      }
+    },
+    "lines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "$ref": "#/definitions/line_counts"
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "omitted",
+            "entries"
+          ],
+          "properties": {
+            "total": {
+              "$ref": "#/definitions/count"
+            },
+            "omitted": {
+              "$ref": "#/definitions/count"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "path_sha256",
+                  "ai_lines",
+                  "human_lines",
+                  "unknown_lines",
+                  "attribution_ranges_sha256"
+                ],
+                "properties": {
+                  "path_sha256": {
+                    "$ref": "#/definitions/sha256_hex"
+                  },
+                  "ai_lines": {
+                    "$ref": "#/definitions/count"
+                  },
+                  "human_lines": {
+                    "$ref": "#/definitions/count"
+                  },
+                  "unknown_lines": {
+                    "description": "Task2 does not compute per-file unknown lines today: unavailable in v1.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "availability"
+                    ],
+                    "properties": {
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial",
+                          "unavailable"
+                        ]
+                      },
+                      "value": {
+                        "$ref": "#/definitions/count"
+                      },
+                      "partial_reason": {
+                        "enum": [
+                          "identity_matched_by_name_or_email",
+                          "only_some_sources_reported",
+                          "entries_truncated",
+                          "linked_by_session_string_not_key",
+                          "optional_source_field_missing",
+                          "present_only_when_findings_exist",
+                          "lineage_still_being_enriched"
+                        ]
+                      },
+                      "reason": {
+                        "enum": [
+                          "not_captured_yet",
+                          "not_applicable",
+                          "source_missing",
+                          "not_reported_by_source"
+                        ]
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "$ref": "#/definitions/availability_rules"
+                      }
+                    ]
+                  },
+                  "attribution_ranges_sha256": {
+                    "$ref": "#/definitions/sha256_hex"
+                  }
+                }
+              },
+              "maxItems": 2000
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "session_id",
+              "tool",
+              "ai_lines"
+            ],
+            "properties": {
+              "session_id": {
+                "$ref": "#/definitions/uuid"
+              },
+              "tool": {
+                "$ref": "#/definitions/token"
+              },
+              "ai_lines": {
+                "$ref": "#/definitions/count"
+              }
+            }
+          },
+          "maxItems": 500
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tool",
+              "model",
+              "model_key",
+              "ai_lines",
+              "session_id"
+            ],
+            "properties": {
+              "tool": {
+                "$ref": "#/definitions/token"
+              },
+              "model": {
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/token"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "model_key": {
+                "$ref": "#/definitions/token"
+              },
+              "ai_lines": {
+                "$ref": "#/definitions/count"
+              },
+              "session_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "maxItems": 500
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/token"
+          },
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "committer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contributor_id"
+          ],
+          "properties": {
+            "contributor_id": {
+              "$ref": "#/definitions/uuid"
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "stage",
+            "ai_lines",
+            "calculation_version"
+          ],
+          "properties": {
+            "stage": {
+              "enum": [
+                "committed",
+                "merged",
+                "production"
+              ]
+            },
+            "ai_lines": {
+              "$ref": "#/definitions/count"
+            },
+            "calculation_version": {
+              "description": "Task2 publishes no calculation version yet (gap G6): unavailable in v1; builder.version pins the code.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "availability"
+              ],
+              "properties": {
+                "availability": {
+                  "enum": [
+                    "recorded",
+                    "partial",
+                    "unavailable"
+                  ]
+                },
+                "value": {
+                  "$ref": "#/definitions/token"
+                },
+                "partial_reason": {
+                  "enum": [
+                    "identity_matched_by_name_or_email",
+                    "only_some_sources_reported",
+                    "entries_truncated",
+                    "linked_by_session_string_not_key",
+                    "optional_source_field_missing",
+                    "present_only_when_findings_exist",
+                    "lineage_still_being_enriched"
+                  ]
+                },
+                "reason": {
+                  "enum": [
+                    "not_captured_yet",
+                    "not_applicable",
+                    "source_missing",
+                    "not_reported_by_source"
+                  ]
+                }
+              },
+              "allOf": [
+                {
+                  "$ref": "#/definitions/availability_rules"
+                }
+              ]
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "pull_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "provider",
+            "number",
+            "external_id",
+            "state",
+            "head_sha",
+            "merge_commit_sha",
+            "merged_at",
+            "author_identity_id"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/uuid"
+            },
+            "provider": {
+              "$ref": "#/definitions/token"
+            },
+            "number": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "external_id": {
+              "$ref": "#/definitions/token"
+            },
+            "state": {
+              "enum": [
+                "merged"
+              ]
+            },
+            "head_sha": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/git_sha"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "merge_commit_sha": {
+              "$ref": "#/definitions/git_sha"
+            },
+            "merged_at": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "author_identity_id": {
+              "description": "scm_provider_identities.id of the PR author (pseudonymous).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "availability"
+              ],
+              "properties": {
+                "availability": {
+                  "enum": [
+                    "recorded",
+                    "partial",
+                    "unavailable"
+                  ]
+                },
+                "value": {
+                  "$ref": "#/definitions/uuid"
+                },
+                "partial_reason": {
+                  "enum": [
+                    "identity_matched_by_name_or_email",
+                    "only_some_sources_reported",
+                    "entries_truncated",
+                    "linked_by_session_string_not_key",
+                    "optional_source_field_missing",
+                    "present_only_when_findings_exist",
+                    "lineage_still_being_enriched"
+                  ]
+                },
+                "reason": {
+                  "enum": [
+                    "not_captured_yet",
+                    "not_applicable",
+                    "source_missing",
+                    "not_reported_by_source"
+                  ]
+                }
+              },
+              "allOf": [
+                {
+                  "$ref": "#/definitions/availability_rules"
+                }
+              ]
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "merge_lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_sha",
+              "result_sha",
+              "merge_method",
+              "confidence",
+              "source_statement_digest"
+            ],
+            "properties": {
+              "source_sha": {
+                "$ref": "#/definitions/git_sha"
+              },
+              "result_sha": {
+                "$ref": "#/definitions/git_sha"
+              },
+              "merge_method": {
+                "enum": [
+                  "fast_forward",
+                  "merge_commit",
+                  "rebase_merge",
+                  "squash_merge",
+                  "rewritten_merge"
+                ]
+              },
+              "confidence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "source_statement_digest": {
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/statement_digest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "maxItems": 2000
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "merged_by": {
+      "description": "Gap G4: unavailable in v1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identity_id"
+          ],
+          "properties": {
+            "identity_id": {
+              "$ref": "#/definitions/uuid"
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "reviews": {
+      "description": "Gap G3: unavailable in v1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "review_count",
+            "approval_count",
+            "reviewer_identity_ids"
+          ],
+          "properties": {
+            "review_count": {
+              "$ref": "#/definitions/count"
+            },
+            "approval_count": {
+              "$ref": "#/definitions/count"
+            },
+            "reviewer_identity_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/uuid"
+              },
+              "maxItems": 100,
+              "uniqueItems": true
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "provider",
+            "external_id",
+            "environment",
+            "status",
+            "production",
+            "deployed_at",
+            "sha"
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/uuid"
+            },
+            "provider": {
+              "$ref": "#/definitions/token"
+            },
+            "external_id": {
+              "$ref": "#/definitions/token"
+            },
+            "environment": {
+              "type": "string",
+              "pattern": "^[Pp][Rr][Oo][Dd][Uu][Cc][Tt][Ii][Oo][Nn]$"
+            },
+            "status": {
+              "const": "success"
+            },
+            "production": {
+              "const": true
+            },
+            "deployed_at": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "sha": {
+              "$ref": "#/definitions/git_sha"
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_enrollment",
+        "security_monitor",
+        "rule_pack_versions",
+        "org_ai_policy"
+      ],
+      "properties": {
+        "repository_enrollment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "status",
+                "effective_from",
+                "effective_until",
+                "commit_note_evidence_from"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/definitions/uuid"
+                },
+                "status": {
+                  "enum": [
+                    "active",
+                    "revoked"
+                  ]
+                },
+                "effective_from": {
+                  "$ref": "#/definitions/timestamp"
+                },
+                "effective_until": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/definitions/timestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "commit_note_evidence_from": {
+                  "$ref": "#/definitions/timestamp"
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "security_monitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "version"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "off",
+                    "monitor"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "rule_pack_versions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/token"
+              },
+              "maxItems": 32,
+              "uniqueItems": true
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "org_ai_policy": {
+          "description": "Organization AI-usage policy (Task6.b, gap G2): unavailable in v1.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "policy_id",
+                "version"
+              ],
+              "properties": {
+                "policy_id": {
+                  "$ref": "#/definitions/uuid"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "partial_reason": {
+              "enum": [
+                "identity_matched_by_name_or_email",
+                "only_some_sources_reported",
+                "entries_truncated",
+                "linked_by_session_string_not_key",
+                "optional_source_field_missing",
+                "present_only_when_findings_exist",
+                "lineage_still_being_enriched"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "not_captured_yet",
+                "not_applicable",
+                "source_missing",
+                "not_reported_by_source"
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        }
+      }
+    },
+    "security_findings_observed": {
+      "description": "Monitor-only Task6 findings observed in the sessions behind this subject. Observed, never blocked or prevented.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "by_category",
+            "by_severity"
+          ],
+          "properties": {
+            "total": {
+              "$ref": "#/definitions/count"
+            },
+            "by_category": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/count"
+              },
+              "maxProperties": 32
+            },
+            "by_severity": {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/count"
+              },
+              "maxProperties": 32
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "repo_snapshot": {
+      "description": "Gap G1: unavailable in v1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "snapshot_id",
+            "tree_sha",
+            "total_lines"
+          ],
+          "properties": {
+            "snapshot_id": {
+              "$ref": "#/definitions/uuid"
+            },
+            "tree_sha": {
+              "$ref": "#/definitions/git_sha"
+            },
+            "total_lines": {
+              "$ref": "#/definitions/count"
+            }
+          }
+        },
+        "partial_reason": {
+          "enum": [
+            "identity_matched_by_name_or_email",
+            "only_some_sources_reported",
+            "entries_truncated",
+            "linked_by_session_string_not_key",
+            "optional_source_field_missing",
+            "present_only_when_findings_exist",
+            "lineage_still_being_enriched"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "not_captured_yet",
+            "not_applicable",
+            "source_missing",
+            "not_reported_by_source"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "git_sha": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "statement_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "description": "RFC 3339 UTC with milliseconds and Z (Date.prototype.toISOString form)."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "token": {
+      "type": "string",
+      "pattern": "^(?!.*@[^@]*\\.)[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$",
+      "description": "Bounded identifier: no whitespace, at most 128 characters, no email-like \"@host.domain\" (\"model@20241022\" is allowed). Free text (titles, messages, code) cannot fit."
+    },
+    "statement_kind": {
+      "enum": [
+        "commit_observed",
+        "pr_merged",
+        "deployed"
+      ]
+    },
+    "availability_rules": {
+      "description": "recorded: value only. partial: value and partial_reason. unavailable: reason only, never a value (so never a zero).",
+      "oneOf": [
+        {
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "partial_reason"
+                ]
+              },
+              {
+                "required": [
+                  "reason"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "availability": {
+              "const": "partial"
+            }
+          },
+          "required": [
+            "value",
+            "partial_reason"
+          ],
+          "not": {
+            "required": [
+              "reason"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "value"
+                ]
+              },
+              {
+                "required": [
+                  "partial_reason"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "line_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ai",
+        "human",
+        "unknown",
+        "added",
+        "deleted"
+      ],
+      "properties": {
+        "ai": {
+          "$ref": "#/definitions/count"
+        },
+        "human": {
+          "$ref": "#/definitions/count"
+        },
+        "unknown": {
+          "$ref": "#/definitions/count"
+        },
+        "added": {
+          "$ref": "#/definitions/count"
+        },
+        "deleted": {
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "not_applicable": {
+      "properties": {
+        "availability": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "const": "not_applicable"
+        }
+      },
+      "required": [
+        "availability",
+        "reason"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "statement_kind": {
+            "const": "commit_observed"
+          }
+        },
+        "required": [
+          "statement_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_evidence": {
+            "properties": {
+              "metric_event": {
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "recorded",
+                      "partial"
+                    ]
+                  }
+                }
+              },
+              "provider_delivery": {
+                "$ref": "#/definitions/not_applicable"
+              }
+            }
+          },
+          "pull_request": {
+            "$ref": "#/definitions/not_applicable"
+          },
+          "merge_lineage": {
+            "$ref": "#/definitions/not_applicable"
+          },
+          "deployment": {
+            "$ref": "#/definitions/not_applicable"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "properties": {
+                  "availability": {
+                    "const": "unavailable"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "value": {
+                    "properties": {
+                      "stage": {
+                        "const": "committed"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "statement_kind": {
+            "const": "pr_merged"
+          }
+        },
+        "required": [
+          "statement_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_evidence": {
+            "properties": {
+              "metric_event": {
+                "$ref": "#/definitions/not_applicable"
+              },
+              "provider_delivery": {
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "recorded",
+                      "partial"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "pull_request": {
+            "properties": {
+              "availability": {
+                "enum": [
+                  "recorded",
+                  "partial"
+                ]
+              }
+            }
+          },
+          "deployment": {
+            "$ref": "#/definitions/not_applicable"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "properties": {
+                  "availability": {
+                    "const": "unavailable"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "value": {
+                    "properties": {
+                      "stage": {
+                        "const": "merged"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "statement_kind": {
+            "const": "deployed"
+          }
+        },
+        "required": [
+          "statement_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "source_evidence": {
+            "properties": {
+              "metric_event": {
+                "$ref": "#/definitions/not_applicable"
+              }
+            }
+          },
+          "deployment": {
+            "properties": {
+              "availability": {
+                "enum": [
+                  "recorded",
+                  "partial"
+                ]
+              }
+            }
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "properties": {
+                  "availability": {
+                    "const": "unavailable"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "value": {
+                    "properties": {
+                      "stage": {
+                        "const": "production"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "signed_late": {
+          "oneOf": [
+            {
+              "properties": {
+                "value": {
+                  "const": false
+                },
+                "reason": {
+                  "const": "none"
+                }
+              }
+            },
+            {
+              "properties": {
+                "value": {
+                  "const": true
+                },
+                "reason": {
+                  "enum": [
+                    "backfill",
+                    "rebuild_requested",
+                    "delayed_build"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "properties": {
+        "merged_by": {
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            }
+          }
+        },
+        "reviews": {
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            }
+          }
+        },
+        "repo_snapshot": {
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            }
+          }
+        },
+        "policy": {
+          "properties": {
+            "org_ai_policy": {
+              "properties": {
+                "availability": {
+                  "const": "unavailable"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
