@@ -6,7 +6,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 
 ## Task status board
 
-*Last updated 2026-10-12 (Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
+*Last updated 2026-10-12 (portfolio re-plan: Task7/11/12 deferred, Task8 re-scoped, Task17/18 added, see `docs/plan/ROADMAP_REPLAN_2026-10-12.md`; Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
 
 | Task | Owner (agent) | Branch / PR | Code + unit tests | Integration (founder run) | Next founder action |
 |---|---|---|---|---|---|
@@ -46,8 +46,8 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 3 | dryrun-web-dead-view: B14, handed out by Codex | Muse | about 0.01× | about 0.01× | #2's prompt written | written by Codex in #2 |
 | 4 | ~~Dry run, Claude~~ dropped by the founder 2026-10-08 (Claude usage) | — | — | — | — | — |
 | 5 | stage2-project-map: vision, project map, reuse map, AGENTS.md §9 gotchas (stage 2, moved before the dry runs) | Claude (orchestrator) | about 0.05× | about 0.05× (by turns) | #1 merged | (setup brief) |
-| 6 | Task15 Attesta, phase 1 (sessions in `docs/plan/TASK15.md` §5) | Claude + Muse + Codex | about 1.5× | | founder buy-in on TASK15 §1 | `docs/prompts/Task15/NEXT_CHAT_Task15-lead_PROMPT.md` |
-| 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4) | Claude + Muse + Codex | about 0.6× | | founder answers TASK16 §1 | `docs/prompts/Task16/NEXT_CHAT_Task16-lead_PROMPT.md` |
+| 6 | Task15 Attesta, phase 1 (sessions in `docs/plan/TASK15.md` §5, incl. A15.14) | Claude + Muse + Codex | about 1.55× | | founder buy-in on TASK15 §1 | `docs/prompts/Task15/NEXT_CHAT_Task15-lead_PROMPT.md` |
+| 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4; auditor invitations moved to Task8 T8.12) | Claude + Muse | about 0.5× | | founder answers TASK16 §1 | `docs/prompts/Task16/NEXT_CHAT_Task16-lead_PROMPT.md` |
 | 7 | Task9-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex | about 0.05× | about 0.05× (by turns) | complete | `docs/prompts/Task9/NEXT_CHAT_Task9-lead_PROMPT.md` |
 | 7a | Task9a-fleet-control-plane: server contract, inventory, rollout/offboard records and reconciliation | Codex | about 0.24× target; 0.38× ceiling | about 0.24× | merged in PR #16 | `docs/prompts/Task9/NEXT_CHAT_Task9a-fleet-control-plane_PROMPT.md` |
 | 7a2 | Task9a2-release-contract-correction: schema-v2 compatibility and immutable release descriptor | Codex | about 0.14× target; 0.20× ceiling | about 0.14× | merged in TrackAI PR #21 (`d2c4a23`) | `docs/prompts/Task9/NEXT_CHAT_Task9a2-release-contract-correction_PROMPT.md` |

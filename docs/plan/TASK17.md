@@ -20,4 +20,4 @@
 - **Claude reviews from the product and customer side:** which upstream changes matter to customers, which must never change metric meaning or customer claims; signs off each group before it is ported.
 - **Muse ports** self-contained changes from prompts with every decision made.
 
-**Exit.** Every inventory row has an adoption record (template in the inventory), and a Task2 Lifecycle Lab regression check passes before Task13 starts.
+**Exit.** All 302 rows of the upstream commit ledger (`GITAI_UPSTREAM_COMMITS_2026-10-09.tsv`) carry an explicit disposition (adopted, adapted, deferred to a named Task, or rejected with a reason); every change actually selected also gets the full adoption record from the inventory's template; and a Task2 Lifecycle Lab regression check passes before Task13 starts.

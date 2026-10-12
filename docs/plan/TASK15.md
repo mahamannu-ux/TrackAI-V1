@@ -61,7 +61,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.14 | GitHub check on each PR showing attestation status (posted by TrackAI's server through the installed GitHub App; policy rules later in Task6.b) | Muse after Claude's design note | 0.05× | A15.9 | ⬜ |
 | A15.P2 | Phase 2: SCANOSS enrichment, risk factors, M&A/insurer formats, GitLab/Bitbucket, private Rekor, keyless | later | — | phase 1 | n/a |
 
-**Phase 1 total:** about 1.5× T6 (Claude about 0.9×, Muse about 0.45×, Codex 0.1×, founder-live 0.05×). Claude's share at SushiCorp prices (S3 ≈ $31, T6 ≈ $125) is about $110 if run in cloud sessions; the $100 of cloud credits covers A15.0, A15.3, A15.5 and A15.8 with a small top-up, so run A15.9 and A15.12 in normal chats.
+**Phase 1 total:** about 1.55× T6 (Claude about 0.9×, Muse about 0.5× including A15.14, Codex 0.1×, founder-live 0.05×). Claude's share at SushiCorp prices (S3 ≈ $31, T6 ≈ $125) is about $110 if run in cloud sessions; the $100 of cloud credits covers A15.0, A15.3, A15.5 and A15.8 with a small top-up, so run A15.9 and A15.12 in normal chats.
 
 ## 4. Sub-task graph
 
@@ -132,6 +132,7 @@ flowchart LR
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i |
 | Task15l-trust-layer | A15.12 | Claude | 0.2× | after 15b, 15d |
+| Task15m-attesta-github-check | A15.14 | Muse (after the lead's design note) | 0.05× | after 15i |
 
 ## 6. Invariants (acceptance criteria for every session; AGENTS.md §9 items 16–21)
 
