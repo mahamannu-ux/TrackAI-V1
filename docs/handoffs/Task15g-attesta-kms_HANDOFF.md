@@ -11,9 +11,9 @@ Attesta signs with customer-held KMS keys; TrackAI never holds a private key. Th
 |---|---|---|
 | Acceptance | KmsSigner + AWS/GCP providers, error mapping, tests per spec | ✅ |
 | Scope | 4 new files + 2 pinned deps; pre-approved files only | ✅ |
-| Quality | 482 unit tests pass (35 new); typecheck, lint clean; `tsc` + `require(dist)` loads both SDKs | ✅ |
+| Quality | 484 unit tests pass (37 new); typecheck, lint clean; `tsc` + `require(dist)` loads both SDKs | ✅ |
 | Integration | None here (A15.13 is founder-live) | ✅ non-blocking |
-| Review | Self-review done; cross-agent review | 🟡 pending |
+| Review | Self-review + review round 1 fixes applied | 🟡 re-review pending |
 
 ## Implemented interfaces
 ```
@@ -36,16 +36,16 @@ Ported from SushiCorp A1b `adapters/signing/{kms,kms_aws,kms_google,protocols}.p
 Messages carry the name/code only, never ARNs, references or detail text.
 
 ## Deviations from spec
-`clock?: () => number` option (the 5-min cache test needs it); absent GCP checksums accepted when the field is absent (pin + signature checks still hold); AWS health lists one key, so it needs `kms:ListKeys`.
+`clock?: () => number` option (the 5-min cache test needs it). Review round 1 (lead decision, amends §2.1): absent GCP checksums refused like mismatches; AWS health performs no call (least-privilege policies grant only Sign + GetPublicKey).
 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** A15.13 live gate: P-256 sign/verify key in AWS (IAM `kms:Sign`, `kms:GetPublicKey`, `kms:ListKeys` for health) and GCP (`useToSign`, `viewPublicKey`), then sign + health against each | Real-cloud signing unproven until then; fakes only |
+| ⬜ **FOUNDER:** A15.13 live gate: P-256 sign/verify key in AWS (IAM `kms:Sign`, `kms:GetPublicKey`) and GCP (`useToSign`, `viewPublicKey`), then sign + health against each | Real-cloud signing unproven until then; fakes only |
 | 🟡 | Cross-agent review pending | Push after "ready to push" |
 
 ## Test coverage
-35 in-process tests, no network: happy paths via `signVerified` (both providers, incl. numeric GCP enum); pin/spec/algorithm/signature refusals; 4 GCP integrity negatives; full error-mapping tables; tenant scoping; credential-JSON refusals; no-secret stringify; cache with injected clock; health. Fakes sign raw ECDSA (test-only BigInt) with real P-256 keys; oracles: Node verify, ECDH cross-check, static OpenSSL vector, CRC32C known answer.
+37 in-process tests, no network: happy paths via `signVerified` (both providers, incl. numeric GCP enum); pin/spec/algorithm/signature refusals; 6 GCP integrity negatives (wrong + missing CRCs, name, unverified digest); full error-mapping tables; tenant scoping; credential-JSON refusals; no-secret stringify; cache with injected clock; health. Fakes sign raw ECDSA via @noble/curves `p256.sign` (prehash false, DER, as in Task15e) with real P-256 keys; oracles: Node verify, static OpenSSL vector, CRC32C known answer.
 
 ## Integration test impact
 None: pure crypto, no database or network. A15.13 founder-live covers real clouds.

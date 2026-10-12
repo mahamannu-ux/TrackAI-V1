@@ -139,7 +139,7 @@ export class GcpKmsProvider implements KmsProvider {
     }
     const pemBytes = Buffer.from(response.pem, 'utf8');
     const expected = int64Value(response.pemCrc32c);
-    if (expected !== undefined && crc32c(pemBytes) !== expected) {
+    if (expected === undefined || crc32c(pemBytes) !== expected) {
       throw new SigningRejected(
         'Google Cloud KMS public key failed its CRC32C check (request public-key)',
       );
@@ -179,7 +179,7 @@ export class GcpKmsProvider implements KmsProvider {
       throw new SigningUnavailable('Google Cloud KMS returned a malformed signature');
     }
     const expected = int64Value(response.signatureCrc32c);
-    if (expected !== undefined && crc32c(signature) !== expected) {
+    if (expected === undefined || crc32c(signature) !== expected) {
       throw new SigningRejected(
         `Google Cloud KMS signature failed its CRC32C check (request ${requestId})`,
       );

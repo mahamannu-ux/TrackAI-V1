@@ -10,13 +10,14 @@
 // SG-1). Deviations: TypeScript AWS SDK v3 commands; the key must be
 // `ECC_NIST_P256` with `SIGN_VERIFY` usage (SushiCorp trusted the configured
 // chain instead); DER SPKI is returned directly (no PEM round-trip;
-// parseability is still checked); health lists one key.
+// parseability is still checked); health performs no remote call (a
+// least-privilege policy grants only Sign and GetPublicKey, so the signer's
+// per-credential pin check is the liveness probe).
 
 import { createPublicKey } from 'node:crypto';
 import {
   GetPublicKeyCommand,
   KMSClient,
-  ListKeysCommand,
   SignCommand,
 } from '@aws-sdk/client-kms';
 import { SigningRejected, SigningUnavailable } from './signer-contract';
@@ -104,12 +105,13 @@ export class AwsKmsProvider implements KmsProvider {
     return Buffer.from(out.Signature);
   }
 
+  /**
+   * No remote call: a least-privilege key policy grants only Sign and
+   * GetPublicKey, so there is nothing cheap to call. The real liveness check
+   * is `KmsSigner.health()`, which fetches every credential's key and checks
+   * its pin.
+   */
   async health(): Promise<boolean> {
-    try {
-      await this.client.send(new ListKeysCommand({ Limit: 1 }));
-      return true;
-    } catch {
-      return false;
-    }
+    return true;
   }
 }

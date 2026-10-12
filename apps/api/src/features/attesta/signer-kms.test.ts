@@ -6,21 +6,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createECDH,
   createHash,
   createPublicKey,
   generateKeyPairSync,
-  randomBytes,
   verify,
   type KeyObject,
 } from 'node:crypto';
 import {
   GetPublicKeyCommand,
   KMSClient,
-  ListKeysCommand,
   SignCommand,
 } from '@aws-sdk/client-kms';
 import { KeyManagementServiceClient } from '@google-cloud/kms';
+import { p256 } from '@noble/curves/nist.js';
 import {
   signVerified,
   SigningRejected,
@@ -62,125 +60,25 @@ function verifyDer(publicKeySpkiDer: Buffer, payload: Buffer, signature: Buffer)
 // --- Raw P-256 ECDSA (test fakes only) ------------------------------------------
 //
 // Node's `crypto.sign` always hashes; a real KMS signs the SHA-256 digest
-// directly, so the fakes sign raw with small BigInt arithmetic. Every
-// signature they produce is checked by Node's OpenSSL-backed `verify` in the
-// tests below, and the static OpenSSL vector after this helper anchors the
-// expected shape independently of this code.
-const P256_P = (1n << 256n) - (1n << 224n) + (1n << 192n) + (1n << 96n) - 1n;
-const P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551n;
-const P256_GX = 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296n;
-const P256_GY = 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5n;
-// P-256 uses a = -3.
-const P256_A = P256_P - 3n;
-
-function mod(a: bigint, m: bigint): bigint {
-  const r = a % m;
-  return r >= 0n ? r : r + m;
-}
-
-function modInv(a: bigint, m: bigint): bigint {
-  let oldR = mod(a, m);
-  let r = m;
-  let oldS = 1n;
-  let s = 0n;
-  while (r !== 0n) {
-    const q = oldR / r;
-    [oldR, r] = [r, oldR - q * r];
-    [oldS, s] = [s, oldS - q * s];
-  }
-  if (oldR !== 1n) throw new Error('no modular inverse');
-  return mod(oldS, m);
-}
-
-type Point = { x: bigint; y: bigint } | null; // null = point at infinity
-
-function pointDouble(p: Point): Point {
-  if (p === null || p.y === 0n) return null;
-  const lambda = mod((3n * p.x * p.x + P256_A) * modInv(2n * p.y, P256_P), P256_P);
-  const x3 = mod(lambda * lambda - 2n * p.x, P256_P);
-  return { x: x3, y: mod(lambda * (p.x - x3) - p.y, P256_P) };
-}
-
-function pointAdd(p1: Point, p2: Point): Point {
-  if (p1 === null) return p2;
-  if (p2 === null) return p1;
-  if (p1.x === p2.x) {
-    if (mod(p1.y + p2.y, P256_P) === 0n) return null;
-    return pointDouble(p1);
-  }
-  const lambda = mod((p2.y - p1.y) * modInv(p2.x - p1.x, P256_P), P256_P);
-  const x3 = mod(lambda * lambda - p1.x - p2.x, P256_P);
-  return { x: x3, y: mod(lambda * (p1.x - x3) - p1.y, P256_P) };
-}
-
-function scalarMul(k: bigint): Point {
-  let result: Point = null;
-  let addend: Point = { x: P256_GX, y: P256_GY };
-  let n = k;
-  while (n > 0n) {
-    if (n & 1n) result = pointAdd(result, addend);
-    addend = pointDouble(addend);
-    n >>= 1n;
-  }
-  return result;
-}
-
-function bigIntToBytes(value: bigint, length: number): Buffer {
-  let hex = value.toString(16);
-  if (hex.length % 2) hex = `0${hex}`;
-  const raw = Buffer.from(hex, 'hex');
-  if (raw.length > length) throw new Error('integer too large');
-  if (raw.length === length) return raw;
-  return Buffer.concat([Buffer.alloc(length - raw.length), raw]);
-}
-
-function derEncodeEcdsa(r: bigint, s: bigint): Buffer {
-  const encodeInt = (v: bigint): Buffer => {
-    let b = bigIntToBytes(v, 32);
-    let i = 0;
-    while (i < b.length - 1 && b[i] === 0) i++;
-    b = b.subarray(i);
-    if ((b[0] as number) & 0x80) b = Buffer.concat([Buffer.from([0]), b]);
-    return Buffer.concat([Buffer.from([0x02, b.length]), b]);
-  };
-  const body = Buffer.concat([encodeInt(r), encodeInt(s)]);
-  return Buffer.concat([Buffer.from([0x30, body.length]), body]);
-}
-
-function base64UrlToBigInt(s: string): bigint {
-  const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
-  return BigInt(`0x${Buffer.from(b64, 'base64').toString('hex')}`);
-}
-
-function randomScalar(): bigint {
-  for (;;) {
-    const k = BigInt(`0x${randomBytes(32).toString('hex')}`);
-    if (k > 0n && k < P256_N) return k;
-  }
-}
+// directly, so the fakes sign raw with @noble/curves (the same call Task15e
+// uses). Every signature they produce is checked by Node's OpenSSL-backed
+// `verify` in the tests below, and the static OpenSSL vector after this
+// helper anchors the expected shape independently of this code.
 
 /** Raw ECDSA P-256 over a 32-byte digest, DER-encoded. Test fakes only. */
 function rawEcdsaSignP256(privateKey: KeyObject, digest: Buffer): Buffer {
   assert.equal(digest.length, 32);
   const jwk = privateKey.export({ format: 'jwk' }) as { d?: string };
   assert.ok(typeof jwk.d === 'string');
-  const d = base64UrlToBigInt(jwk.d);
-  const z = BigInt(`0x${digest.toString('hex')}`);
-  for (;;) {
-    const k = randomScalar();
-    const point = scalarMul(k);
-    assert.ok(point !== null);
-    const r = mod(point.x, P256_N);
-    if (r === 0n) continue;
-    const s = mod(modInv(k, P256_N) * mod(z + r * d, P256_N), P256_N);
-    if (s === 0n) continue;
-    return derEncodeEcdsa(r, s);
-  }
+  const privBytes = new Uint8Array(Buffer.from(jwk.d, 'base64url'));
+  return Buffer.from(
+    p256.sign(new Uint8Array(digest), privBytes, { prehash: false, format: 'der' }),
+  );
 }
 
 // Static OpenSSL vector (generated with `openssl dgst -sha256 -sign` on a
 // fresh P-256 key): anchors the exact shape a real KMS returns, independent
-// of the BigInt helper above.
+// of the fake signing helper above.
 const KNOWN_PUB_SPKI_HEX =
   '3059301306072a8648ce3d020106082a8648ce3d03010703420004576eccd89a68bd3bcf85fd902c40f5ddde1531ffdc1f2983b676fea18d82189235124f53888f3291126b0f9524dde8bda193e928485506a5488cd77be1415391';
 const KNOWN_SIG_DER_HEX =
@@ -194,18 +92,6 @@ test('static OpenSSL vector: DER ECDSA over sha256(payload) verifies', () => {
   assert.equal(verifyDer(pub, Buffer.concat([KNOWN_PAYLOAD, Buffer.from('x')]), sig), false);
 });
 
-test('test-only scalar multiplication agrees with ECDH', () => {
-  for (let i = 0; i < 5; i++) {
-    const k = randomScalar();
-    const point = scalarMul(k);
-    assert.ok(point !== null);
-    const ecdh = createECDH('prime256v1');
-    ecdh.setPrivateKey(bigIntToBytes(k, 32));
-    const pub = ecdh.getPublicKey(null, 'uncompressed');
-    assert.ok(Buffer.from(bigIntToBytes(point.x, 32)).equals(pub.subarray(1, 33)));
-    assert.ok(Buffer.from(bigIntToBytes(point.y, 32)).equals(pub.subarray(33, 65)));
-  }
-});
 
 function awsCredential(key: TestKey, overrides?: Partial<KmsCredentialInput>): KmsCredentialInput {
   return {
@@ -239,7 +125,6 @@ interface FakeAwsOptions {
   garbageSignature?: boolean;
   /** Thrown by every SDK call when set. */
   error?: unknown;
-  healthError?: unknown;
 }
 
 class FakeAwsKms {
@@ -274,10 +159,6 @@ class FakeAwsKms {
       if (this.opts.garbageSignature) return { Signature: Buffer.from('not a signature') };
       const signer = this.opts.signWith ?? this.key.privateKey;
       return { Signature: rawEcdsaSignP256(signer, digest) };
-    }
-    if (command instanceof ListKeysCommand) {
-      if (this.opts.healthError !== undefined) throw this.opts.healthError;
-      return { Keys: [] };
     }
     throw new Error(`unexpected command ${(command as object).constructor.name}`);
   }
@@ -571,6 +452,24 @@ test('GCP refuses a wrong public key CRC', async () => {
   );
 });
 
+test('GCP refuses a missing public key CRC', async () => {
+  const key = makeKey();
+  const { signer } = gcpSigner(key, { omitPemCrc: true });
+  await assert.rejects(
+    signer.sign(PAYLOAD, 'gcp-kms:test-key', { requestId: 'r', tenantId: 'tenant-a' }),
+    SigningRejected,
+  );
+});
+
+test('GCP refuses a missing signature CRC', async () => {
+  const key = makeKey();
+  const { signer } = gcpSigner(key, { omitSignatureCrc: true });
+  await assert.rejects(
+    signer.sign(PAYLOAD, 'gcp-kms:test-key', { requestId: 'r', tenantId: 'tenant-a' }),
+    SigningRejected,
+  );
+});
+
 // --- Error mapping -----------------------------------------------------------------
 
 test('AWS error mapping: retryable faults are SigningUnavailable', async () => {
@@ -779,11 +678,19 @@ test('health is false on pin mismatch or provider failure', async () => {
   const key = makeKey();
   const mismatch = awsSigner(key, { publicKeyDer: makeKey().spkiDer });
   assert.equal(await mismatch.signer.health(), false);
-  const down = awsSigner(key, { healthError: new Error('down') });
-  // Public key fetch still succeeds here, but ListKeys fails.
+  // The KMS is unreachable: the per-credential key fetch fails.
+  const down = awsSigner(key, { error: new Error('down') });
   assert.equal(await down.signer.health(), false);
   const gcpMismatch = gcpSigner(key, { publicKeyDer: makeKey().spkiDer });
   assert.equal(await gcpMismatch.signer.health(), false);
+});
+
+test('provider health performs no remote call', async () => {
+  const key = makeKey();
+  const awsFake = new FakeAwsKms(key);
+  assert.equal(await new AwsKmsProvider(awsFake.asClient()).health(), true);
+  assert.equal(awsFake.getPublicKeyCalls, 0);
+  assert.equal(awsFake.signCalls, 0);
 });
 
 // --- Credential configuration ---------------------------------------------------------------
