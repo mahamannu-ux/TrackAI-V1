@@ -52,6 +52,14 @@ import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey, split
 import { repositoryIsInTenantScope } from './repository-scope';
 import { machineRepositoryIngestionPolicy } from '../../core/security/repository-security-service';
 import {
+  AttestaOutboxError,
+  enqueueAttestaSubject,
+  type AttestaOutboxExecutor,
+  type AttestaOutboxErrorCode,
+  type EnqueueAttestaSubjectInput,
+  type EnqueueAttestaSubjectResult,
+} from '../attesta/outbox';
+import {
   evaluateManagedMachineIngestionPolicy,
   type MetricIngestionLabel,
 } from './repository-enforcement';
@@ -63,6 +71,15 @@ import type {
 } from './types';
 
 export type UploadError = { index: number; error: string };
+
+// Drizzle transactions expose the same query surface used by withTenant, but
+// its concrete transaction type is narrower than the application database.
+// Keep that cast at the transaction boundary rather than weakening withTenant.
+type TelemetryDatabase = typeof db;
+type EnqueueSubject = (
+  executor: AttestaOutboxExecutor,
+  input: EnqueueAttestaSubjectInput,
+) => Promise<EnqueueAttestaSubjectResult>;
 
 export interface BatchIngestionPolicy {
   errors: UploadError[];
@@ -159,6 +176,37 @@ function eventDate(seconds: number): Date {
   return new Date(seconds * 1000);
 }
 
+export function normalizationFailureState(error: unknown): {
+  status: 'pending' | 'failed';
+  error: string;
+} {
+  if (error instanceof AttestaOutboxError) {
+    return { status: 'failed', error: error.code };
+  }
+  return {
+    status: 'failed',
+    error: error instanceof Error ? error.message : 'Normalization failed',
+  };
+}
+
+export async function enqueueCommitObservedSubject(
+  executor: AttestaOutboxExecutor,
+  input: { tenantId: string; repositoryId: string; metricEventId: string },
+  commit: { id: string; sha: string } | null,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
+): Promise<boolean> {
+  if (!commit) return false;
+  await enqueue(executor, {
+    kind: 'commit_observed',
+    tenantId: input.tenantId,
+    repositoryId: input.repositoryId,
+    commitSha: commit.sha,
+    metricEventId: input.metricEventId,
+    commitId: commit.id,
+  });
+  return true;
+}
+
 function parseAuthor(value: string | null): { name: string | null; email: string | null } {
   if (!value) return { name: null, email: null };
   const match = value.match(/^(.*?)\s*<([^>]+)>$/);
@@ -167,8 +215,12 @@ function parseAuthor(value: string | null): { name: string | null; email: string
     : { name: value, email: null };
 }
 
-async function ensureRepository(tenantId: string, repoUrl: string) {
-  const tenantDb = withTenant(db, tenantId);
+async function ensureRepository(
+  tenantId: string,
+  repoUrl: string,
+  database: TelemetryDatabase = db,
+) {
+  const tenantDb = withTenant(database, tenantId);
   const identity = repositoryIdentity(repoUrl);
   const existingRepositories = await tenantDb.select(scmRepositories);
   const existing = existingRepositories.find((repository) => {
@@ -211,9 +263,10 @@ async function ensureObservedCommitContributor(
   tenantId: string,
   repositoryId: string,
   author: { name: string | null; email: string | null },
+  database: TelemetryDatabase = db,
 ) {
   if (!author.name && !author.email) return;
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const contributors = await tenantDb.select(
     scmContributors,
     eq(scmContributors.repositoryId, repositoryId),
@@ -261,8 +314,9 @@ async function ensureSession(
   timestamp: Date,
   repositoryId?: string,
   status = 'active',
+  database: TelemetryDatabase = db,
 ) {
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const [existing] = await tenantDb.select(
     aiSessions,
     and(
@@ -320,8 +374,12 @@ async function ensureSession(
   return session;
 }
 
-async function associateCommitWithPullRequest(tenantId: string, commitId: string) {
-  const tenantDb = withTenant(db, tenantId);
+async function associateCommitWithPullRequest(
+  tenantId: string,
+  commitId: string,
+  database: TelemetryDatabase = db,
+) {
+  const tenantDb = withTenant(database, tenantId);
   const [commit] = await tenantDb.select(scmCommits, eq(scmCommits.id, commitId));
   if (!commit) return;
   const pullRequests = await tenantDb.select(
@@ -354,9 +412,10 @@ async function attachRecentReworkEvidence(
   committedAt: Date,
   aiAuthoredDeletedLines: number | null,
   commitDeletionPaths: Set<string>,
+  database: TelemetryDatabase = db,
 ) {
   if (aiAuthoredDeletedLines === null) return;
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const windowStart = new Date(committedAt.getTime() - (2 * 60 * 60 * 1000));
   const existingCommitRework = await tenantDb.select(
     aiCodeLifecycleEvents,
@@ -488,8 +547,9 @@ async function projectCommitReworkByOriginModel(
   commitId: string,
   predecessorSha: string | null,
   occurredAt: Date,
+  database: TelemetryDatabase = db,
 ) {
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const [reworkRows, successorRows] = await Promise.all([
     tenantDb.select(aiCodeLifecycleEvents, and(
       eq(aiCodeLifecycleEvents.commitId, commitId),
@@ -547,8 +607,9 @@ async function attachGenerationEvidenceToCommit(
   commitId: string,
   sessionId: string,
   committedAt: Date,
+  database: TelemetryDatabase = db,
 ) {
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const candidates = await tenantDb.select(
     aiCodeLifecycleEvents,
     and(
@@ -593,9 +654,10 @@ async function inferResetRecommitLineage(
   branch: string | null,
   patchId: string | null,
   committedAt: Date,
+  database: TelemetryDatabase = db,
 ) {
   if (!branch || !patchId) return;
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const candidates = await tenantDb.select(
     scmCommits,
     and(
@@ -655,9 +717,10 @@ async function recordParentAndInferAbandonedTips(
   branch: string | null,
   baseCommitSha: string | null,
   committedAt: Date,
+  database: TelemetryDatabase = db,
 ) {
   if (!branch || !baseCommitSha || baseCommitSha === sha) return;
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const [baseCommit] = await tenantDb.select(
     scmCommits,
     and(eq(scmCommits.repositoryId, repositoryId), eq(scmCommits.sha, baseCommitSha)),
@@ -714,9 +777,10 @@ async function loadPredecessorAttributionHistory(
   tenantId: string,
   repositoryId: string,
   baseCommitSha: string | null,
+  database: TelemetryDatabase = db,
 ) {
   if (!baseCommitSha) return [];
-  const tenantDb = withTenant(db, tenantId);
+  const tenantDb = withTenant(database, tenantId);
   const history: Array<{ path: string; attributionRanges: unknown }> = [];
   const visited = new Set<string>();
   let currentSha: string | null = baseCommitSha;
@@ -753,15 +817,28 @@ async function loadPredecessorAttributionHistory(
   return history;
 }
 
-async function normalizeCommit(
+export async function normalizeCommit(
   tenantId: string,
   event: GitAiMetricEvent,
   attrs: DecodedAttributes,
   sourceEventId: string,
+  database?: TelemetryDatabase,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
 ) {
   if (!attrs.repoUrl || !attrs.commitSha) return;
-  const tenantDb = withTenant(db, tenantId);
-  const repository = await ensureRepository(tenantId, attrs.repoUrl);
+  if (!database) {
+    await db.transaction(transaction => normalizeCommit(
+      tenantId,
+      event,
+      attrs,
+      sourceEventId,
+      transaction as unknown as TelemetryDatabase,
+      enqueue,
+    ));
+    return;
+  }
+  const tenantDb = withTenant(database, tenantId);
+  const repository = await ensureRepository(tenantId, attrs.repoUrl, database);
   const values = event.e === EVENT_KIND.rewriteCommitted
     ? decodeRewriteValues(event.v)
     : { ...decodeCommitValues(event.v), operationKind: 'commit', originalCommitShas: [] };
@@ -819,7 +896,7 @@ async function normalizeCommit(
   );
   if (!commit) throw new Error('Commit upsert failed');
 
-  await ensureObservedCommitContributor(tenantId, repository.id, author);
+  await ensureObservedCommitContributor(tenantId, repository.id, author, database);
 
   await recordParentAndInferAbandonedTips(
     tenantId,
@@ -829,6 +906,7 @@ async function normalizeCommit(
     attrs.branch,
     attrs.baseCommitSha,
     committedAt,
+    database,
   );
 
   if (values.operationKind === 'commit') {
@@ -840,6 +918,7 @@ async function normalizeCommit(
       attrs.branch,
       values.patchId,
       committedAt,
+      database,
     );
   }
 
@@ -937,6 +1016,7 @@ async function normalizeCommit(
       committedAt,
       repository.id,
       'shipped',
+      database,
     );
     externalSessionContributions.push({
       sessionId: session.id,
@@ -967,6 +1047,7 @@ async function normalizeCommit(
       commit.id,
       sessionId,
       committedAt,
+      database,
     );
   }
 
@@ -1035,6 +1116,7 @@ async function normalizeCommit(
     tenantId,
     repository.id,
     attrs.baseCommitSha,
+    database,
   );
   await attachRecentReworkEvidence(
     tenantId,
@@ -1043,11 +1125,17 @@ async function normalizeCommit(
     committedAt,
     decodeAiAuthoredDeletionLines(values.hunks, predecessorFiles),
     decodeDeletionFilePaths(values.hunks),
+    database,
   );
   await projectCommitReworkByOriginModel(
-    tenantId, repository.id, commit.id, attrs.baseCommitSha, committedAt,
+    tenantId, repository.id, commit.id, attrs.baseCommitSha, committedAt, database,
   );
-  await associateCommitWithPullRequest(tenantId, commit.id);
+  await associateCommitWithPullRequest(tenantId, commit.id, database);
+  await enqueueCommitObservedSubject(database, {
+    tenantId,
+    repositoryId: repository.id,
+    metricEventId: sourceEventId,
+  }, commit, enqueue);
 }
 
 async function normalizeSessionEvent(
@@ -1287,6 +1375,7 @@ export async function rebuildCommitLifecycle(
   tenantId: string,
   repositoryUrl: string,
   apply: boolean,
+  enqueueSubject: EnqueueSubject = enqueueAttestaSubject,
 ) {
   const tenantDb = withTenant(db, tenantId);
   const targetRepository = normalizeRepositoryUrl(repositoryUrl);
@@ -1325,24 +1414,38 @@ export async function rebuildCommitLifecycle(
   }
   let commitEvents = 0;
   let rewriteEvents = 0;
+  const attestaErrors: Partial<Record<AttestaOutboxErrorCode, number>> = {};
   for (const { row, event } of rows) {
     commitEvents += 1;
     if (event.e === EVENT_KIND.rewriteCommitted) rewriteEvents += 1;
     if (apply) {
-      await normalizeCommit(tenantId, event, decodeAttributes(event.a), row.id);
+      try {
+        await normalizeCommit(
+          tenantId,
+          event,
+          decodeAttributes(event.a),
+          row.id,
+          undefined,
+          enqueueSubject,
+        );
+      } catch (error) {
+        if (!(error instanceof AttestaOutboxError)) throw error;
+        attestaErrors[error.code] = (attestaErrors[error.code] ?? 0) + 1;
+      }
     }
   }
-  return { targetRepository, commitEvents, rewriteEvents };
+  return { targetRepository, commitEvents, rewriteEvents, attestaErrors };
 }
 
 async function normalizeEvent(
   tenantId: string,
   event: GitAiMetricEvent,
   sourceEventId: string,
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
 ) {
   const attrs = decodeAttributes(event.a);
   if (event.e === EVENT_KIND.committed || event.e === EVENT_KIND.rewriteCommitted) {
-    await normalizeCommit(tenantId, event, attrs, sourceEventId);
+    await normalizeCommit(tenantId, event, attrs, sourceEventId, undefined, enqueue);
     return;
   }
   if (
@@ -1364,6 +1467,7 @@ export async function reconcilePendingMetricEvents(input: {
   evaluatedAt?: Date;
   delayMs?: number;
   limit?: number;
+  enqueueSubject?: EnqueueSubject;
 }) {
   const evaluatedAt = input.evaluatedAt ?? new Date();
   const delayMs = input.delayMs ?? 5 * 60 * 1_000;
@@ -1391,7 +1495,7 @@ export async function reconcilePendingMetricEvents(input: {
     if (!input.apply) continue;
     try {
       const event = validateMetricEvent(row.rawEvent);
-      await normalizeEvent(input.tenantId, event, row.id);
+      await normalizeEvent(input.tenantId, event, row.id, input.enqueueSubject);
       const updated = await db.update(telemetryMetricEvents).set({
         normalizationStatus: 'normalized', normalizationError: null,
       }).where(and(
@@ -1400,10 +1504,13 @@ export async function reconcilePendingMetricEvents(input: {
         eq(telemetryMetricEvents.normalizationStatus, 'pending'),
       )).returning({ id: telemetryMetricEvents.id });
       normalized += updated.length;
-    } catch {
+    } catch (error) {
+      const failure = normalizationFailureState(error);
       const updated = await db.update(telemetryMetricEvents).set({
-        normalizationStatus: 'failed',
-        normalizationError: 'pending_reconciliation_failed',
+        normalizationStatus: failure.status,
+        normalizationError: error instanceof AttestaOutboxError
+          ? failure.error
+          : 'pending_reconciliation_failed',
       }).where(and(
         eq(telemetryMetricEvents.tenantId, input.tenantId),
         eq(telemetryMetricEvents.id, row.id),
@@ -1425,6 +1532,7 @@ export async function ingestMetricsBatch(
   tenantId: string,
   batch: GitAiMetricsBatch,
   policyLabels: MetricIngestionLabel[] = [],
+  enqueueSubject: EnqueueSubject = enqueueAttestaSubject,
 ): Promise<UploadError[]> {
   const tenantDb = withTenant(db, tenantId);
   const payloadHash = fingerprint(batch);
@@ -1477,20 +1585,20 @@ export async function ingestMetricsBatch(
     );
     if (!storedEvent) continue;
     try {
-      await normalizeEvent(tenantId, event, storedEvent.id);
+      await normalizeEvent(tenantId, event, storedEvent.id, enqueueSubject);
       await tenantDb.update(
         telemetryMetricEvents,
         { normalizationStatus: 'normalized', normalizationError: null },
         eq(telemetryMetricEvents.id, storedEvent.id),
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Normalization failed';
+      const failure = normalizationFailureState(error);
       await tenantDb.update(
         telemetryMetricEvents,
-        { normalizationStatus: 'failed', normalizationError: message },
+        { normalizationStatus: failure.status, normalizationError: failure.error },
         eq(telemetryMetricEvents.id, storedEvent.id),
       );
-      errors.push({ index, error: message });
+      errors.push({ index, error: failure.error });
     }
   }
   return errors;

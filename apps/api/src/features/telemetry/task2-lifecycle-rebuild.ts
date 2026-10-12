@@ -25,9 +25,10 @@ async function main() {
     ...result,
     ...(confirmed ? {} : { next: 'rerun with --confirm=REBUILD_LIFECYCLE after review' }),
   }, null, 2));
+  if (confirmed && Object.keys(result.attestaErrors).length > 0) process.exitCode = 1;
 }
 
-main().then(() => process.exit(0)).catch((error) => {
+void main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+  process.exitCode = 1;
 });
