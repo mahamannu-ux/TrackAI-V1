@@ -149,6 +149,33 @@ test('resubmission is a 409 with Location, omitted under omitLocation', async ()
   assert.equal(third.headers.get('Location'), null);
 });
 
+test('a POST body sent as bytes submits like a string', async () => {
+  const fake = new FakeRekor();
+  const key = makeKey();
+  const digest = createHash('sha256').update('bytes-body').digest();
+  const proposed = proposal(digest, signDigest(digest, key.privBytes), key.pem);
+  const res = await fake.fetch(`${BASE}/api/v1/log/entries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: Buffer.from(JSON.stringify(proposed), 'utf8'),
+  });
+  assert.equal(res.status, 201);
+  const body = (await res.json()) as Record<string, unknown>;
+  const entryId = Object.keys(body)[0];
+  assert.equal(entryId.slice(16), leafHash(Buffer.from(canonicalize(proposed), 'utf8')).toString('hex'));
+});
+
+test('a well-signed but uncanonicalizable entry is a 400, not a throw', async () => {
+  const fake = new FakeRekor();
+  const key = makeKey();
+  const digest = createHash('sha256').update('uncanonical').digest();
+  const proposed = { ...proposal(digest, signDigest(digest, key.privBytes), key.pem), extra: 2 ** 60 };
+  const { status, body } = await submitProposal(fake, proposed);
+  assert.equal(status, 400);
+  assert.match((body['message'] as string) ?? '', /^validation: /);
+  assert.equal(fake.bodies.length, 0);
+});
+
 test('a high-S signature is accepted', async () => {
   const fake = new FakeRekor();
   const key = makeKey();

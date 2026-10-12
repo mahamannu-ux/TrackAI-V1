@@ -505,7 +505,10 @@ export class FakeTsa {
         ? bytesOf(createHash('sha1').update(essDer).digest())
         : sha256(essDer);
       const essAttr = this.essV1 ? ATTR_SIGNING_CERT : ATTR_SIGNING_CERT_V2;
-      attrs.push(seqElement(oidElement(essAttr), new asn1js.Set({ value: [seqElement(seqElement(octetElement(essHash)))] })));
+      // SigningCertificate(V2) ::= SEQUENCE { certs SEQUENCE OF
+      // ESSCertID(v2) }; each ESSCertID(v2) is itself a SEQUENCE holding the
+      // cert hash (the v2 hash algorithm stays absent: SHA-256 is the default).
+      attrs.push(seqElement(oidElement(essAttr), new asn1js.Set({ value: [seqElement(seqElement(seqElement(octetElement(essHash))))] })));
     }
     // The signature covers the DER `SET OF` (tag 0x31), not the [0] form.
     const setDer = Buffer.from(bytesOf(seqElement(...attrs).toBER(false)));

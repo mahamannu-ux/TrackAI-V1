@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as asn1js from 'asn1js';
 import * as pkijs from 'pkijs';
 import {
@@ -259,7 +263,7 @@ test('granted flow verifies end to end with pkijs', async () => {
   const ess = attr(parsed, ESS_V2_OID);
   assert.ok(ess, 'ESS signing-certificate-v2 present');
   const essHash = Buffer.from(
-    viewOf(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock),
+    viewOf(seqChildren(seqChildren(seqChildren(ess.values[0])[0])[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha256').update(parsed.certDers[0]).digest());
   assert.equal(oidString(attr(parsed, CONTENT_TYPE_ATTR_OID)?.values[0] as asn1js.AsnType), TST_INFO_OID);
@@ -362,7 +366,7 @@ test('essV1 names the signer with SHA-1', async () => {
   assert.ok(ess, 'ESS signing-certificate (v1) present');
   assert.equal(attr(parsed, ESS_V2_OID), undefined);
   const essHash = Buffer.from(
-    viewOf(seqChildren(seqChildren(ess.values[0])[0])[0].valueBlock),
+    viewOf(seqChildren(seqChildren(seqChildren(ess.values[0])[0])[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha1').update(parsed.certDers[0]).digest());
 });
@@ -376,7 +380,7 @@ test('essCert names another certificate', async () => {
   const parsed = (await postTsr(tsa, buildReq(digest, 19n))).resp.token;
   assert.ok(parsed);
   const essHash = Buffer.from(
-    viewOf(seqChildren(seqChildren(attr(parsed, ESS_V2_OID)?.values[0] as asn1js.AsnType)[0])[0].valueBlock),
+    viewOf(seqChildren(seqChildren(seqChildren(attr(parsed, ESS_V2_OID)?.values[0] as asn1js.AsnType)[0])[0])[0].valueBlock),
   );
   assert.deepEqual(essHash, createHash('sha256').update(otherDer).digest());
   assert.ok(!essHash.equals(createHash('sha256').update(parsed.certDers[0]).digest()));
@@ -482,8 +486,7 @@ test('anchorsPem is the root certificate', async () => {
   assert.deepEqual(Buffer.from(root.toSchema(true).toBER(false) as ArrayBuffer), Buffer.from(tsa.root.toSchema(true).toBER(false) as ArrayBuffer));
 });
 
-test('makeCa and makeTsaCert carry the source defaults', async () => {
-  const { cert: root } = await makeCa();
+test('makeCa and makeTsaCert carry the source defaults', async () => {  const { cert: root } = await makeCa();
   const parsedRoot = certFromDer(certDer(root));
   const rootBc = parsedRoot.extensions?.find((e) => e.extnID === '2.5.29.19');
   assert.equal(rootBc?.critical, true);
@@ -497,4 +500,43 @@ test('makeCa and makeTsaCert carry the source defaults', async () => {
   const parsedLeaf = certFromDer(certDer(incomplete));
   assert.equal(parsedLeaf.extensions?.some((e) => e.extnID === '2.5.29.37'), false);
   assert.deepEqual(new pkijs.BasicConstraints({ schema: (parsedLeaf.extensions?.find((e) => e.extnID === '2.5.29.19')?.extnValue.valueBlock.value as asn1js.AsnType[])[0] }).cA, true);
+});
+
+/** Independent check: real OpenSSL verifies our tokens (skips without `openssl ts`). */
+function opensslTsAvailable(): boolean {
+  try {
+    execFileSync('openssl', ['ts', '-help'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test('openssl verifies granted tokens with ESS v1 and v2', { skip: !opensslTsAvailable() }, async () => {
+  for (const essV1 of [false, true]) {
+    const tsa = await FakeTsa.create();
+    tsa.essV1 = essV1;
+    const message = Buffer.from(`openssl interop ess-${essV1 ? 'v1' : 'v2'}`);
+    const digest = createHash('sha256').update(message).digest();
+    const res = await tsa.fetch(TSA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/timestamp-query' },
+      body: buildReq(digest, 77n),
+    });
+    assert.equal(res.status, 200);
+    const dir = mkdtempSync(join(tmpdir(), 'attesta-tsa-'));
+    try {
+      writeFileSync(join(dir, 'msg.bin'), message);
+      writeFileSync(join(dir, 'resp.tsr'), Buffer.from(await res.arrayBuffer()));
+      writeFileSync(join(dir, 'root.pem'), tsa.anchorsPem);
+      const out = execFileSync(
+        'openssl',
+        ['ts', '-verify', '-data', join(dir, 'msg.bin'), '-in', join(dir, 'resp.tsr'), '-CAfile', join(dir, 'root.pem')],
+        { encoding: 'utf8' },
+      );
+      assert.match(out, /Verification: OK/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
 });

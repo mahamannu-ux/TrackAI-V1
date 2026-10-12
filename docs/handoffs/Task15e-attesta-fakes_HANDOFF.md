@@ -2,8 +2,8 @@
 
 ## At a glance
 In-process fake Rekor (v1 `hashedrekord`) and fake RFC 3161 TSA with real
-cryptography, as test specifications for A15.5. 31 new tests; `npm run check`
-green (323 unit tests pass). Tree has 3 commits; do not push (review first).
+cryptography, as test specifications for A15.5. 34 new tests; `npm run check`
+green (326 unit tests pass). Tree has 5 commits; do not push (re-review first).
 
 ## Implemented interfaces
 - `attesta/testing/fetch-like.ts`: `FetchLike` the A15.5 adapters inject.
@@ -31,12 +31,14 @@ are async (WebCrypto); keys are WebCrypto pairs, certs pkijs Certificates.
 None functional. Fakes only; no adapters, DB, routes, or network.
 
 ## Test coverage
-`fake-rekor.test.ts` (10): 201 + inclusion/checkpoint/SET verify, 409 ±
-Location, high-S accepted, 400s, GET/treeSize/publicKey, down/failStatus,
+`fake-rekor.test.ts` (12): 201 + inclusion/checkpoint/SET verify, 409 ±
+Location, high-S accepted, 400s, bytes body accepted, uncanonicalizable
+entry is 400 (not a throw), GET/treeSize/publicKey, down/failStatus,
 forged keys fail, tamper precision, independent MTH, vector shape + ID rule.
-`fake-tsa.test.ts` (21): pkijs end-to-end verify (imprint, nonce, EKU,
+`fake-tsa.test.ts` (22): pkijs end-to-end verify (imprint, nonce, EKU,
 chain) + one test per knob, each proving the defect in the bytes (crypto
-knobs also fail pkijs verification).
+knobs also fail pkijs verification); OpenSSL `ts -verify` passes for ESS v1
+and v2; root/leaf defaults covered.
 
 ## Integration test impact
 None: no integration tests (in-process only, no network/DB).

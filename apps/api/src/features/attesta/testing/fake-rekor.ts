@@ -12,7 +12,10 @@
 // string forms; (4) `KeyObject` pairs from `node:crypto` instead of
 // `cryptography` key objects; entry bodies reuse Attesta's `canonicalize`,
 // `leafHash`, `merkleRoot` and `inclusionPath` instead of reimplementing
-// them; (5) `Error` instead of `AssertionError` on malformed proposals.
+// them; (5) `Error` instead of `AssertionError` on malformed proposals;
+// (6) body canonicalization sits inside validation and becomes 400: Python
+// integers are unbounded so its `dumps` cannot fail, but JCS refuses unsafe
+// integers and a log answers those with 400, not a crash.
 
 import {
   createHash,
@@ -122,8 +125,8 @@ export class FakeRekor {
     const path = url.pathname;
     if (method === 'POST' && path === '/api/v1/log/entries') {
       let raw: string;
-      if (typeof init?.body === 'string') {
-        raw = init.body;
+      if (init?.body !== undefined && init.body !== null) {
+        raw = await new Response(init.body).text();
       } else if (input instanceof Request) {
         raw = await input.text();
       } else {
@@ -154,6 +157,7 @@ export class FakeRekor {
 
   private post(proposed: unknown): Response {
     this.posts += 1;
+    let body: Buffer;
     try {
       if (!isRecord(proposed)) throw new Error('entry must be an object');
       const spec = proposed['spec'];
@@ -181,10 +185,12 @@ export class FakeRekor {
         format: 'der',
       });
       if (!ok) throw new Error('signature does not verify');
+      // Inside the validation: JCS refuses some JSON-parseable values (unsafe
+      // integers, for example), and a log answers those with 400, not a crash.
+      body = Buffer.from(canonicalize(proposed), 'utf8');
     } catch (err) {
       return jsonResponse(400, { code: 400, message: `validation: ${err instanceof Error ? err.message : err}` });
     }
-    const body = Buffer.from(canonicalize(proposed), 'utf8');
     const uuid = leafHash(body).toString('hex');
     const entryId = `${REKOR_TREE_ID_HEX}${uuid}`;
     if (this.bodies.some((b) => b.equals(body))) {
