@@ -215,7 +215,7 @@
                   "$ref": "#/definitions/provider"
                 },
                 "delivery_id": {
-                  "$ref": "#/definitions/provider_ref"
+                  "$ref": "#/definitions/delivery_ref"
                 },
                 "event_fingerprint": {
                   "$ref": "#/definitions/sha256_hex"
@@ -1219,7 +1219,7 @@
               "maximum": 9007199254740991
             },
             "external_id": {
-              "$ref": "#/definitions/provider_ref"
+              "$ref": "#/definitions/external_ref"
             },
             "state": {
               "enum": [
@@ -1560,7 +1560,7 @@
               "$ref": "#/definitions/provider"
             },
             "external_id": {
-              "$ref": "#/definitions/provider_ref"
+              "$ref": "#/definitions/external_ref"
             },
             "environment": {
               "type": "string",
@@ -1776,7 +1776,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
+                "pattern": "^([0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]{1,32})?|sha256:[0-9a-f]{64})$"
               },
               "maxItems": 32,
               "uniqueItems": true
@@ -2055,10 +2055,15 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]{0,31}$"
     },
-    "provider_ref": {
+    "delivery_ref": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
-      "description": "A provider-assigned identifier (delivery GUID, numeric PR or deployment ID)."
+      "pattern": "^([0-9A-Fa-f-]{8,64}|sha256:[0-9a-f]{64})$",
+      "description": "A provider delivery GUID (hex and dashes), or the hash fallback."
+    },
+    "external_ref": {
+      "type": "string",
+      "pattern": "^([0-9]{1,20}|sha256:[0-9a-f]{64})$",
+      "description": "A numeric provider ID (PR, deployment), or the hash fallback."
     },
     "availability_rules": {
       "description": "recorded: value only. partial: value and partial_reason. unavailable: reason only, never a value (so never a zero).",

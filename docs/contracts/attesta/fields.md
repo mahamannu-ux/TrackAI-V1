@@ -2,7 +2,11 @@
 
 Where every `ai-provenance/v1` field comes from in Task2, its availability in v1, and the question in `docs/plan/ATTESTA_QUESTIONS.md` it serves. Approved at the design checkpoint on 2026-10-12. Paths are under `apps/api/src/`; `s` = `core/db/schema.ts`, `svc` = `features/telemetry/service.ts`, `lc` = `features/scm/lifecycle-service.ts`. Line numbers are at `main` `88301f7`.
 
-**The builder fills each field only from the source named here** (README, "Tokens are the residual risk"). A source value that does not fit the field's pattern is replaced by `sha256:<64 hex>` of its UTF-8 bytes, with the field `partial` / `values_hashed_unrepresentable`.
+**The builder fills each field only from the source named here** (README, "Tokens are the residual risk"). Then, in this order:
+
+1. **Normalize as Task2 does** (`modelKey`, `features/telemetry/model-lifecycle.ts:5`): trim `tool` and `model`; an empty tool becomes `unknown`; an empty model or the literal `"unknown"` becomes `null`.
+2. **Hash what does not fit:** a value that does not fit its pattern (a model name with a space, say) becomes `sha256:<64 hex>` of its UTF-8 bytes, and the field is `partial` / `values_hashed_unrepresentable`. Delivery IDs, external IDs and rule-pack versions use the same fallback.
+3. **Derive, never copy, the dependent values:** `model_key = tool + "::" + (model ?? "unknown")` from the final `tool` and `model`, and `tools` from the final session and model tools. The stored `ai_commit_model_attributions.model_key` is never copied, because it was built from the raw name (S8).
 
 | Field | Source (file:line) | v1 availability | Q |
 |---|---|---|---|
@@ -20,7 +24,7 @@ Where every `ai-provenance/v1` field comes from in Task2, its availability in v1
 | `lines` | `scm_commits` `diff_added_lines`, `diff_deleted_lines`, `observed_ai_lines` (s:969), `observed_human_lines`, `observed_unknown_lines`; computed at svc:770–774 | recorded | Q1, Q3, Q13 |
 | `files` | `parseAuthorshipNote` (`features/telemetry/authorship-note.ts:29`) of the source event's note: the same function and values Task2 writes to `scm_commit_files` (s:985–994, svc:900–918); `attribution_ranges_sha256` = SHA-256 of `canonicalize(ranges)`; `path_sha256` of the path | AI/human recorded; per-file `unknown_lines` **unavailable** (written as 0, svc:908) | Q1, Q2 |
 | `sessions` | `ai_commit_sessions` (s:1061–1066) joined to `ai_sessions` id and `tool` (s:1008) | recorded (`ai_sessions.id` is the pseudonymous ID) | Q2, Q14 |
-| `models` | `ai_commit_model_attributions` `tool` (s:1081), `model`, `model_key` (s:1083), `observed_ai_lines` (s:1084), `session_id` | recorded; a null model stays null ("Unknown model") | Q3, Q4 |
+| `models` | `ai_commit_model_attributions` `tool` (s:1081), `model`, `observed_ai_lines` (s:1084), `session_id`; `model_key` derived (rule 3 above), never copied from s:1083 | recorded; a null model stays null ("Unknown model") | Q3, Q4 |
 | `tools` | distinct tools of `sessions` and `models` (S4) | recorded | Q4 |
 | `committer` | `scm_contributors.id` (s:1546–1556), matched on normalized email, else name, as svc:221–226 | `partial` / `identity_matched_by_name_or_email`; `source_missing` when the commit has no author | Q6 |
 | `lifecycle` | `ai_code_lifecycle_events` `stage` (s:1454), `line_count` for this commit: `committed` (svc:851), `merged` (lc:311), `production` (lc:494) | value recorded; `calculation_version` **unavailable** (gap G6) | Q3, Q9, Q10 |

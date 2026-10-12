@@ -24,6 +24,27 @@
       "rationale": "A production deployment of the merge result, linking the earlier pr_merged statement."
     },
     {
+      "file": "valid-hashed-model.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": true,
+      "expectedRuleViolations": [],
+      "rationale": "A model name that does not fit a token (a space, say) is hashed; model_key is recomputed from the hashed value."
+    },
+    {
+      "file": "invalid-secret-in-delivery-id.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Delivery IDs are GUID-shaped, so a token cannot hide there."
+    },
+    {
+      "file": "invalid-free-text-rule-pack.json",
+      "schema": "../statement-v1.schema.json",
+      "expectedSchemaValid": false,
+      "expectedRuleViolations": null,
+      "rationale": "Rule-pack versions are semver-shaped (or the hash fallback)."
+    },
+    {
       "file": "invalid-raw-commit-message.json",
       "schema": "../statement-v1.schema.json",
       "expectedSchemaValid": false,
