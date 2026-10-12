@@ -35,8 +35,8 @@ CREATE TABLE "attesta_subjects" (
       and "attesta_subjects"."deployment_id" is null and "attesta_subjects"."deployment_external_id" is null
       and "attesta_subjects"."deployment_status" is null)
     or ("attesta_subjects"."kind" = 'deployed'
-      and "attesta_subjects"."provider" is not null and "attesta_subjects"."deployment_id" is not null
-      and "attesta_subjects"."deployment_external_id" is not null and "attesta_subjects"."deployment_status" = 'success'
+      and "attesta_subjects"."provider" is not null and "attesta_subjects"."provider_delivery_id" is not null
+      and "attesta_subjects"."deployment_id" is not null and "attesta_subjects"."deployment_external_id" is not null and "attesta_subjects"."deployment_status" = 'success'
       and "attesta_subjects"."metric_event_id" is null and "attesta_subjects"."commit_id" is null
       and "attesta_subjects"."pull_request_id" is null)
   ),

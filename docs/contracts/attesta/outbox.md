@@ -16,7 +16,7 @@ Table: migration `apps/api/drizzle/0016_attesta_subjects.sql`, Drizzle `attestaS
 | `commit_id` | uuid | commit_observed (required) | `scm_commits.id` the note normalized into |
 | `commit_sha` | text NN | all | the subject commit: observed sha · PR merge result sha · deployed sha (40 or 64 lowercase hex) |
 | `provider` | text | pr_merged, deployed (required) | `github` today |
-| `provider_delivery_id` | text | pr_merged (required), deployed (optional) | `provider_event_deliveries.delivery_id` |
+| `provider_delivery_id` | text | pr_merged, deployed (required) | `provider_event_deliveries.delivery_id` of the delivery that produced the projection |
 | `pull_request_id` | uuid | pr_merged (required) | `scm_pull_requests.id` |
 | `deployment_id` | uuid | deployed (required) | `scm_deployments.id` |
 | `deployment_external_id` | text | deployed (required) | `scm_deployments.external_id` |
@@ -53,14 +53,22 @@ type EnqueueAttestaSubjectInput =
   | { kind: 'pr_merged'; tenantId; repositoryId; commitSha /* merge_commit_sha */; notBefore?;
       provider; providerDeliveryId; pullRequestId }
   | { kind: 'deployed'; tenantId; repositoryId; commitSha /* deployed sha */; notBefore?;
-      provider; providerDeliveryId?: string | null; deploymentId; deploymentExternalId;
+      provider; providerDeliveryId; deploymentId; deploymentExternalId;
       deploymentStatus: 'success' }
 ```
 
 - `tx` is the caller's open Drizzle transaction (anything with `execute(sql)`); the helper never opens or commits one.
 - Input is validated once into a plain snapshot (lowercase UUIDs, hex sha, bounded IDs, `notBefore` a real time in years 1970–9999, no fields of another kind, no extra fields) → `ATTESTA_OUTBOX_INVALID_INPUT`.
-- **`event_at` is never passed by the caller:** the insert copies it from the source row (`telemetry_metric_events.event_timestamp`, `scm_pull_requests.merged_at`, `scm_deployments.deployed_at`).
-- **Tenant binding:** a single `INSERT … SELECT … FROM <source rows> ON CONFLICT <kind key> DO NOTHING`. The sources must exist **in the same tenant** and agree with the pointer: the metric event with a commit or rewrite-commit `event_kind` (1 or 7), and the commit with this id, repository and sha (`commit_observed`); the delivery with `event_type = 'pr_closed'` and this repository (or none recorded), and the PR with this id and repository whose `merge_commit_sha` is `commitSha` and `merged_at` is set (`pr_merged`); the deployment with this id, repository, provider, external ID, `status = 'success'`, `production = true` and `sha = commitSha`, and, when given, a `deployment_status` delivery of this repository (`deployed`). Otherwise → `ATTESTA_OUTBOX_SOURCE_NOT_FOUND` (the same answer for a missing row and another tenant's row, so nothing leaks).
+- **`event_at` is never passed by the caller:** the insert copies it from the source row (`telemetry_metric_events.event_timestamp`, `scm_pull_requests.merged_at`, `scm_deployments.deployed_at`) at full PostgreSQL precision.
+- **Source binding.** Before inserting, one tenant-bound query reads the source rows by primary key, and the helper checks that the **immutable event or delivery produced exactly the projection the pointer names** (field names in the raw payloads are the ones Task2's decoder and parser read):
+
+  | Kind | The immutable source must show | and the projection must show |
+  |---|---|---|
+  | `commit_observed` | metric event `event_kind` 1 or 7 (commit, rewrite-commit); its attribute `a.3` (commit sha) = `commitSha`; its attribute `a.1` (repository URL), normalized by Task2's `normalizeRepositoryUrl`, = the repository's `normalized_url` | commit row with this id has `sha = commitSha` and this `repository_id` |
+  | `pr_merged` | delivery `event_type = 'pr_closed'`, raw `action = 'closed'`, raw `pull_request.merged_at` set, raw `pull_request.id` = the PR's `external_id`, raw `pull_request.merge_commit_sha` = `commitSha`, raw `repository.id` = the repository's `external_id`, delivery `repository_id` this repository or null | PR row with this id has this `repository_id`, `merge_commit_sha = commitSha` and `merged_at` set |
+  | `deployed` | delivery `event_type = 'deployment_status'`, raw `deployment_status.state = 'success'`, raw `deployment.id` = `deploymentExternalId`, raw `deployment.sha` = `commitSha`, raw `repository.id` = the repository's `external_id`, delivery `repository_id` this repository or null | deployment row with this id has this repository, provider and external ID, `status = 'success'`, `production = true`, `sha = commitSha` |
+
+  Anything else, including a missing row, another tenant's row, or two same-tenant rows that do not belong together, → `ATTESTA_OUTBOX_SOURCE_NOT_FOUND`, with the same message in every case so nothing leaks. Then a single `INSERT … ON CONFLICT <kind key> DO NOTHING`.
 - **Replay:** the existing row's ID comes back with `inserted: false`. If the stored pointer differs from the input in any caller-supplied identity column, the call throws `ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT` and writes nothing. One exception: a `deployed` row's `provider_delivery_id` is not compared, because GitHub can send a second `success` status for the same deployment; that is the same observation, and the first delivery is kept. The error names the differing columns, never their values.
 - Concurrency: two transactions writing the same observation serialize on the unique index; one inserts, the other returns the same ID after the first commits.
 
@@ -70,9 +78,9 @@ type EnqueueAttestaSubjectInput =
 
 | Kind | Write it in | Notes |
 |---|---|---|
-| `commit_observed` | the transaction that completes Git AI commit-note normalization (`normalizeCommit`, `features/telemetry/service.ts:756–1004`), which A15.7 makes transaction-aware | `metricEventId` = the row being normalized; `commitId`/`commitSha` = the upserted commit. A lifecycle rebuild re-normalizes the same event IDs, so it hits the key and adds nothing |
+| `commit_observed` | the transaction that completes Git AI commit-note normalization (`normalizeCommit`, `features/telemetry/service.ts:756–1051`), which A15.7 makes transaction-aware | `metricEventId` = the row being normalized; `commitId`/`commitSha` = the upserted commit. A lifecycle rebuild re-normalizes the same event IDs, so it hits the key and adds nothing |
 | `pr_merged` | the `projectProviderDelivery` callback (`features/scm/scm.routes.ts:222–395`), after the PR upsert (`:295–336`), when the delivery is `pr_closed` with `merged_at` and `merge_commit_sha` | `notBefore` = now + 5 minutes recommended, so lineage and API enrichment (`:416–470`) usually land first; the builder still tolerates lineage being `unavailable`. Never hold the webhook transaction open for GitHub API calls |
-| `deployed` | one transaction around the deployment insert (`recordDeployment`, `features/scm/lifecycle-service.ts:433–446`) and the enqueue, only when `production` and `status = 'success'` | `deploymentId` = the stored row's ID (read it back after `insertDoNothing`) |
+| `deployed` | **one transaction around the complete deployment observation**: the deployment insert, every production lifecycle write that follows it (`recordDeployment`, `features/scm/lifecycle-service.ts:433–536`, including the `ai_code_lifecycle_events` and `ai_model_lifecycle_events` upserts) and the enqueue, which commit or roll back together; enqueue only when `production` and `status = 'success'` | `deploymentId` = the stored row's ID (read it back after `insertDoNothing`); `providerDeliveryId` = the `deployment_status` delivery being processed |
 
 ## Rules
 

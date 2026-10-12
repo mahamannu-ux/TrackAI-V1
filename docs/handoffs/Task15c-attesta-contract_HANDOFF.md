@@ -1,7 +1,7 @@
 # Task15c-attesta-contract Handoff — Attesta statement, predicate and outbox contract (A15.0)
 
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
-Branch `task/Task15c-attesta-contract` (base: `main` at `88301f7`).
+Branch `task/Task15c-attesta-contract` (base: `main` at `e54b87b`, rebased after the Codex review).
 
 Freezes the interfaces Attesta builds against: the in-toto statement and `ai-provenance/v1` predicate, the `attesta_subjects` outbox Task2 writes (migration `0016` plus a typed writer), and the designs of the ledger tables, routes, error codes, the SBOM mapping and the new `period_report` statement. It does not build the builder, ledger, signer worker, anchoring or routes.
 
@@ -10,9 +10,9 @@ Freezes the interfaces Attesta builds against: the in-toto statement and `ai-pro
 |---|---|---|
 | Acceptance | §2.1 deliverables 1–11 under `docs/contracts/attesta/` (+ `fields.md`, `period-report.md`) | ✅ |
 | Scope | design checkpoint approved 2026-10-12; `period_report` added at the founder's request | ✅ |
-| Quality | `npm test` 356 pass (64 new), typecheck, lint, `npm run check`, `drizzle-kit check` clean | ✅ |
+| Quality | `npm test` 392 pass (66 from this session), typecheck, lint, `npm run check`, `drizzle-kit check` clean | ✅ |
 | Integration | IT-T15c-01 via `scripts/it-db.sh` | 🟡 agent-verified; founder run pending, blocking A15.7 merge |
-| Review | review subagent: 4 must-fix, 8 should-fix, then 1 new must-fix on re-check; all fixed (two token cases accepted as residual risk, below) | ✅ · cross-agent (Codex) pending |
+| Review | review subagent: 4 must-fix, 8 should-fix, then 1 new must-fix on re-check; all fixed (two token cases accepted as residual risk, below) | ✅ · Codex review (fix first): source binding, deployment boundary, rebase; all fixed, re-review pending |
 
 ## Implemented interfaces
 ```
@@ -24,7 +24,7 @@ apps/api/src/features/attesta/outbox.ts:
   normalizeAttestaSubjectInput(input), AttestaOutboxError(code), ATTESTA_SUBJECT_KINDS
   input: commit_observed {tenantId, repositoryId, commitSha, metricEventId, commitId, notBefore?}
        | pr_merged {…, commitSha=merge sha, provider, providerDeliveryId, pullRequestId, notBefore?}
-       | deployed {…, commitSha, provider, providerDeliveryId?, deploymentId, deploymentExternalId,
+       | deployed {…, commitSha, provider, providerDeliveryId, deploymentId, deploymentExternalId,
                    deploymentStatus:'success', notBefore?}      (event_at is copied from the source row)
 apps/api/src/features/attesta/contract-rules.ts: checkStatementRules(statement) → S1–S12 violations
 apps/api/src/core/db/schema.ts: attestaSubjects; migration apps/api/drizzle/0016_attesta_subjects.sql
@@ -46,7 +46,7 @@ SushiCorp @ `0bd67a5` (catalog EV-1, EV-2, RP-1): closed record schema (`decisio
 ## Deviations from spec
 - Shared files, all pre-approved: `schema.ts` (table only), migration `0016` (generated, with RLS and an identity-guard trigger appended as in 0013/0014), `apps/api/package.json` (script + ajv), `package-lock.json` (generated with npm 11 so the diff is additions only).
 - Added `contract-rules.ts` and `contract-fixtures.test.ts` in Task15's own folder (the cross-field rules have one implementation the builder and verifier reuse).
-- `pr_merged` key includes `provider`; a deployed row's delivery ID is not compared on replay (a second success delivery is the same observation).
+- The outbox helper imports Task2's pure `normalizeRepositoryUrl` (read-only), so the commit binding uses `normalizeCommit`'s URL rule. `pr_merged` key includes `provider`; a deployed row's delivery ID is not compared on replay (a second success delivery is the same observation).
 
 ## Known limitations
 | Status | Limitation | Impact |
@@ -66,7 +66,7 @@ Unit: every fixture against the schemas, S1–S12 and the manifest (4 valid, 28 
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15c-01 | replay, changed replay, unrelated delivery, redelivery, source `event_at`, rollback, concurrent writers, A/B isolation, immutable identity, shape check, RLS | Blocking: A15.7 merge, changes to 0016/`outbox.ts` | 🟡 agent-verified 2026-10-12 · ⬜ founder run |
+| IT-T15c-01 | replay, same-tenant event/commit, delivery/PR and delivery/deployment mismatches, stale stored pointer, redelivery, source `event_at`, rollback, concurrent writers, A/B isolation, immutable identity, shape check, RLS | Blocking: A15.7 merge, changes to 0016/`outbox.ts` | 🟡 agent-verified 2026-10-12 · ⬜ founder run |
 
 ## Integration notes
 - A15.7 can start now (only its merge waits on IT-T15c-01): call `enqueueAttestaSubject(tx, …)` inside the observing transaction (`outbox.md` "Which transaction writes each kind"), `notBefore = now + 5 min` for `pr_merged`.

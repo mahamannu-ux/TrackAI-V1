@@ -1642,8 +1642,8 @@ export const attestaSubjects = pgTable('attesta_subjects', {
       and ${table.deploymentId} is null and ${table.deploymentExternalId} is null
       and ${table.deploymentStatus} is null)
     or (${table.kind} = 'deployed'
-      and ${table.provider} is not null and ${table.deploymentId} is not null
-      and ${table.deploymentExternalId} is not null and ${table.deploymentStatus} = 'success'
+      and ${table.provider} is not null and ${table.providerDeliveryId} is not null
+      and ${table.deploymentId} is not null and ${table.deploymentExternalId} is not null and ${table.deploymentStatus} = 'success'
       and ${table.metricEventId} is null and ${table.commitId} is null
       and ${table.pullRequestId} is null)
   `),

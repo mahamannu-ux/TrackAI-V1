@@ -3,7 +3,9 @@
  *
  *   scripts/it-db.sh npm run verify:task15c-outbox-live -w apps/api
  *
- * Proves: idempotency on replay (same row back), a changed replay refused,
+ * Proves: idempotency on replay (same row back), same-tenant rows that do not
+ * belong together refused (event/commit, delivery/PR, delivery/deployment),
+ * a disagreeing stored pointer refused,
  * rollback leaves no row, two concurrent writers produce one row, Company A/B
  * isolation (B cannot use or read A's sources or rows), identity columns are
  * immutable, the per-kind shape check holds, and RLS is enabled with no
@@ -42,47 +44,76 @@ const hexSha = () => randomUUID().replace(/-/g, '').padEnd(40, '0').slice(0, 40)
 interface Seeded {
   tenantId: string;
   repositoryId: string;
+  repositoryUrl: string;
+  repositoryExternalId: string;
+  otherRepositoryUrl: string;
   metricEventId: string;
+  sessionEventId: string;
+  otherRepoEventId: string;
+  staleEventId: string;
   commitId: string;
   commitSha: string;
   commitId2: string;
   commitSha2: string;
   pullRequestId: string;
+  pullRequestId2: string;
   mergeSha: string;
   deliveryId: string;
+  unrelatedDeliveryId: string;
   deploymentId: string;
   deploymentExternalId: string;
+  deploymentId2: string;
   deployDeliveryId: string;
   deployDeliveryId2: string;
-  unrelatedDeliveryId: string;
+  failedDeliveryId: string;
 }
 
+let counter = 100_000;
+const numericId = () => String(counter++);
+
 async function seedTenant(label: string): Promise<Seeded> {
+  const slug = `it-${label}-${randomUUID().slice(0, 8)}`;
   const s: Seeded = {
-    tenantId: randomUUID(), repositoryId: randomUUID(), metricEventId: randomUUID(),
-    commitId: randomUUID(), commitSha: hexSha(), commitId2: randomUUID(), commitSha2: hexSha(), pullRequestId: randomUUID(), mergeSha: hexSha(),
-    deliveryId: randomUUID(), deploymentId: randomUUID(), deploymentExternalId: String(Date.now()) + label,
-    deployDeliveryId: randomUUID(), deployDeliveryId2: randomUUID(), unrelatedDeliveryId: randomUUID(),
+    tenantId: randomUUID(), repositoryId: randomUUID(),
+    repositoryUrl: `https://github.com/${slug}/payments-service`, repositoryExternalId: numericId(),
+    otherRepositoryUrl: `https://github.com/${slug}/other-service`,
+    metricEventId: randomUUID(), sessionEventId: randomUUID(), otherRepoEventId: randomUUID(), staleEventId: randomUUID(),
+    commitId: randomUUID(), commitSha: hexSha(), commitId2: randomUUID(), commitSha2: hexSha(),
+    pullRequestId: randomUUID(), pullRequestId2: randomUUID(), mergeSha: hexSha(),
+    deliveryId: randomUUID(), unrelatedDeliveryId: randomUUID(),
+    deploymentId: randomUUID(), deploymentExternalId: numericId(), deploymentId2: randomUUID(),
+    deployDeliveryId: randomUUID(), deployDeliveryId2: randomUUID(), failedDeliveryId: randomUUID(),
   };
+  const prExternal = numericId();
+  const prExternal2 = numericId();
+  const deploymentExternal2 = numericId();
   const batchId = randomUUID();
   await pool.query(
     `insert into sso_tenants (id, company_name, domain, supabase_provider_id) values ($1, $2, $3, $4)`,
-    [s.tenantId, `IT ${label}`, `it-t15c-${label}-${s.tenantId}.example`, `it-${label}`],
+    [s.tenantId, `IT ${label}`, `${slug}.example`, `it-${label}`],
   );
   await pool.query(
     `insert into scm_repositories (id, tenant_id, provider, external_id, name, url, normalized_url)
-     values ($1, $2, 'github', $3, 'payments-service', $4, $4)`,
-    [s.repositoryId, s.tenantId, `ext-${s.repositoryId}`, `https://github.com/it-${label}/payments-service`],
+     values ($1, $2, 'github', $3, 'payments-service', $4, $5)`,
+    [s.repositoryId, s.tenantId, s.repositoryExternalId, s.repositoryUrl, `github.com/${slug}/payments-service`],
   );
   await pool.query(
     `insert into telemetry_ingest_batches (id, tenant_id, api_version, payload_hash, event_count, payload)
-     values ($1, $2, 1, $3, 1, '{}'::jsonb)`,
+     values ($1, $2, 1, $3, 4, '{}'::jsonb)`,
     [batchId, s.tenantId, randomUUID()],
   );
+  // Synthetic Git AI events: only the attributes the binding reads (a.1 repo URL, a.3 sha).
+  const event = (kind: number, url: string, sha: string) => JSON.stringify({ e: kind, t: 1791790000, v: {}, a: { 1: url, 3: sha } });
   await pool.query(
     `insert into telemetry_metric_events (id, tenant_id, batch_id, event_index, event_fingerprint, event_kind, event_timestamp, raw_event)
-     values ($1, $2, $3, 0, $4, 1, now(), '{}'::jsonb)`,
-    [s.metricEventId, s.tenantId, batchId, randomUUID()],
+     values ($1, $2, $3, 0, $4, 1, now() - interval '1 minute', $5::jsonb),
+            ($6, $2, $3, 1, $7, 2, now(), $8::jsonb),
+            ($9, $2, $3, 2, $10, 1, now(), $11::jsonb),
+            ($12, $2, $3, 3, $13, 7, now(), $14::jsonb)`,
+    [s.metricEventId, s.tenantId, batchId, randomUUID(), event(1, s.repositoryUrl, s.commitSha),
+      s.sessionEventId, randomUUID(), event(2, s.repositoryUrl, s.commitSha),
+      s.otherRepoEventId, randomUUID(), event(1, s.otherRepositoryUrl, s.commitSha),
+      s.staleEventId, randomUUID(), event(7, `git@github.com:${slug}/payments-service.git`, s.commitSha)],
   );
   await pool.query(
     `insert into scm_commits (id, tenant_id, repository_id, sha, subject) values ($1, $2, $3, $4, 'synthetic'), ($5, $2, $3, $6, 'synthetic')`,
@@ -90,22 +121,35 @@ async function seedTenant(label: string): Promise<Seeded> {
   );
   await pool.query(
     `insert into scm_pull_requests (id, tenant_id, repository_id, external_id, title, state, merge_commit_sha, merged_at)
-     values ($1, $2, $3, $4, 'synthetic', 'merged', $5, now())`,
-    [s.pullRequestId, s.tenantId, s.repositoryId, `pr-${s.pullRequestId}`, s.mergeSha],
+     values ($1, $2, $3, $4, 'synthetic', 'merged', $5, now() - interval '2 minutes'),
+            ($6, $2, $3, $7, 'synthetic', 'merged', $5, now())`,
+    [s.pullRequestId, s.tenantId, s.repositoryId, prExternal, s.mergeSha, s.pullRequestId2, prExternal2],
   );
+  const repo = { id: Number(s.repositoryExternalId) };
+  const merged = JSON.stringify({ action: 'closed', repository: repo,
+    pull_request: { id: Number(prExternal), merge_commit_sha: s.mergeSha, merged_at: '2026-10-12T11:02:30Z' } });
+  const opened = JSON.stringify({ action: 'opened', repository: repo,
+    pull_request: { id: Number(prExternal), merge_commit_sha: s.mergeSha, merged_at: null } });
+  const status = (state: string) => JSON.stringify({ repository: repo,
+    deployment: { id: Number(s.deploymentExternalId), sha: s.mergeSha }, deployment_status: { state } });
   await pool.query(
     `insert into provider_event_deliveries (tenant_id, repository_id, provider, delivery_id, event_type, event_fingerprint, raw_event)
-     values ($1, $2, 'github', $3, 'pr_closed', $4, '{}'::jsonb),
-            ($1, $2, 'github', $5, 'deployment_status', $6, '{}'::jsonb),
-            ($1, $2, 'github', $7, 'deployment_status', $8, '{}'::jsonb),
-            ($1, $2, 'github', $9, 'pr_opened', $10, '{}'::jsonb)`,
-    [s.tenantId, s.repositoryId, s.deliveryId, randomUUID(), s.deployDeliveryId, randomUUID(),
-      s.deployDeliveryId2, randomUUID(), s.unrelatedDeliveryId, randomUUID()],
+     values ($1, $2, 'github', $3, 'pr_closed', $4, $5::jsonb),
+            ($1, $2, 'github', $6, 'pr_opened', $7, $8::jsonb),
+            ($1, $2, 'github', $9, 'deployment_status', $10, $11::jsonb),
+            ($1, null, 'github', $12, 'deployment_status', $13, $11::jsonb),
+            ($1, $2, 'github', $14, 'deployment_status', $15, $16::jsonb)`,
+    [s.tenantId, s.repositoryId, s.deliveryId, randomUUID(), merged,
+      s.unrelatedDeliveryId, randomUUID(), opened,
+      s.deployDeliveryId, randomUUID(), status('success'),
+      s.deployDeliveryId2, randomUUID(),
+      s.failedDeliveryId, randomUUID(), status('failure')],
   );
   await pool.query(
     `insert into scm_deployments (id, tenant_id, repository_id, provider, external_id, environment, sha, status, production, deployed_at)
-     values ($1, $2, $3, 'github', $4, 'production', $5, 'success', true, now())`,
-    [s.deploymentId, s.tenantId, s.repositoryId, s.deploymentExternalId, s.mergeSha],
+     values ($1, $2, $3, 'github', $4, 'production', $5, 'success', true, now() - interval '3 minutes'),
+            ($6, $2, $3, 'github', $7, 'production', $5, 'success', true, now())`,
+    [s.deploymentId, s.tenantId, s.repositoryId, s.deploymentExternalId, s.mergeSha, s.deploymentId2, deploymentExternal2],
   );
   return s;
 }
@@ -120,6 +164,8 @@ const inputs = (s: Seeded): EnqueueAttestaSubjectInput[] => [
     provider: 'github', providerDeliveryId: s.deployDeliveryId, deploymentId: s.deploymentId,
     deploymentExternalId: s.deploymentExternalId, deploymentStatus: 'success' },
 ];
+
+const enqueue = (input: EnqueueAttestaSubjectInput) => db.transaction((tx) => enqueueAttestaSubject(tx, input));
 
 async function countRows(tenantId: string): Promise<number> {
   const result = await pool.query('select count(*)::int as n from attesta_subjects where tenant_id = $1', [tenantId]);
@@ -159,19 +205,42 @@ async function main(): Promise<void> {
     check(!redelivered.inserted && await countRows(a.tenantId) === 3, 'second success delivery is the same observation');
     console.log('replay_idempotent=passed');
 
-    // 2. A replay that changes the pointer is refused.
-    const changed = { ...inputs(a)[0], commitId: a.commitId2, commitSha: a.commitSha2 } as EnqueueAttestaSubjectInput;
-    await expectCode(db.transaction((tx) => enqueueAttestaSubject(tx, changed)), 'ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT', 'changed replay');
-    const unrelated = { ...inputs(a)[1], providerDeliveryId: a.unrelatedDeliveryId } as EnqueueAttestaSubjectInput;
-    await expectCode(db.transaction((tx) => enqueueAttestaSubject(tx, unrelated)), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND', 'merge keyed on an unrelated delivery');
+    // 2. Same-tenant rows that do not belong together are refused.
+    const [aCommit, aMerge, aDeploy] = inputs(a);
+    const mismatches: Array<[EnqueueAttestaSubjectInput, string]> = [
+      [{ ...aCommit, metricEventId: a.metricEventId, commitId: a.commitId2, commitSha: a.commitSha2 } as EnqueueAttestaSubjectInput, 'event for commit X paired with commit Y'],
+      [{ ...aCommit, metricEventId: a.sessionEventId } as EnqueueAttestaSubjectInput, 'session event paired with a commit'],
+      [{ ...aCommit, metricEventId: a.otherRepoEventId } as EnqueueAttestaSubjectInput, 'event from another repository'],
+      [{ ...aMerge, pullRequestId: a.pullRequestId2 } as EnqueueAttestaSubjectInput, 'merge delivery paired with another PR'],
+      [{ ...aMerge, providerDeliveryId: a.unrelatedDeliveryId } as EnqueueAttestaSubjectInput, 'opened delivery keyed as a merge'],
+      [{ ...aDeploy, deploymentId: a.deploymentId2 } as EnqueueAttestaSubjectInput, 'status delivery paired with another deployment'],
+      [{ ...aDeploy, providerDeliveryId: a.failedDeliveryId } as EnqueueAttestaSubjectInput, 'failure status keyed as a success'],
+    ];
+    for (const [input, label] of mismatches) {
+      await expectCode(enqueue(input), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND', label);
+    }
+    check(await countRows(a.tenantId) === 3, 'mismatches added no row');
+    // A rewrite-commit event from the scp-style URL binds.
+    const rewrite = await enqueue({ ...aCommit, metricEventId: a.staleEventId } as EnqueueAttestaSubjectInput);
+    check(rewrite.inserted, 'rewrite-commit event binds');
+    console.log('same_tenant_mismatch=blocked');
+
+    // A stored pointer that disagrees with a bound replay is refused, never merged.
+    await pool.query(`delete from attesta_subjects where id = $1`, [rewrite.id]);
+    await pool.query(
+      `insert into attesta_subjects (tenant_id, repository_id, kind, metric_event_id, commit_id, commit_sha, event_at)
+       values ($1, $2, 'commit_observed', $3, $4, $5, now())`,
+      [a.tenantId, a.repositoryId, a.staleEventId, a.commitId2, a.commitSha2],
+    );
+    await expectCode(enqueue({ ...aCommit, metricEventId: a.staleEventId } as EnqueueAttestaSubjectInput), 'ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT', 'stale stored pointer');
     console.log('changed_replay=blocked');
 
-    // 3. Company B cannot use A's sources, nor read A's rows by replaying A's key.
+    // 3. Company B cannot use A's sources, nor reach A's rows by replaying A's key.
     for (const input of inputs(a)) {
       const crossed = { ...input, tenantId: b.tenantId, repositoryId: b.repositoryId } as EnqueueAttestaSubjectInput;
-      await expectCode(db.transaction((tx) => enqueueAttestaSubject(tx, crossed)), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND', `cross-tenant ${input.kind}`);
+      await expectCode(enqueue(crossed), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND', `cross-tenant ${input.kind}`);
       const repositoryOnly = { ...input, repositoryId: b.repositoryId } as EnqueueAttestaSubjectInput;
-      await expectCode(db.transaction((tx) => enqueueAttestaSubject(tx, repositoryOnly)), 'ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT', `foreign repository ${input.kind}`);
+      await expectCode(enqueue(repositoryOnly), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND', `foreign repository ${input.kind}`);
     }
     check(await countRows(b.tenantId) === 0, 'tenant B has no rows after cross-tenant attempts');
     await expectDatabaseError(
@@ -211,8 +280,8 @@ async function main(): Promise<void> {
 
     // 7. Shape check: a failed deployment is never an outbox row.
     await expectDatabaseError(
-      `insert into attesta_subjects (tenant_id, repository_id, kind, commit_sha, provider, deployment_id, deployment_external_id, deployment_status, event_at)
-       values ($1, $2, 'deployed', $3, 'github', $4, 'x', 'failure', now())`,
+      `insert into attesta_subjects (tenant_id, repository_id, kind, commit_sha, provider, provider_delivery_id, deployment_id, deployment_external_id, deployment_status, event_at)
+       values ($1, $2, 'deployed', $3, 'github', 'd', $4, 'x', 'failure', now())`,
       [b.tenantId, b.repositoryId, b.mergeSha, b.deploymentId],
       'failed deployment row',
     );

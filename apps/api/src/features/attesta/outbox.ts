@@ -5,16 +5,19 @@
  * records the observation, so the pointer row commits or rolls back with it.
  * Nothing here signs, builds or waits: the Attesta worker does that later.
  *
- * Tenant binding: the insert succeeds only if every source row exists in the
- * same tenant and agrees with the pointer (repository, sha, merge, deployment
- * status). The table has no foreign keys to those rows (outbox.md, "Why no
- * source foreign keys").
+ * Source binding: the insert succeeds only if every source row exists in the
+ * same tenant and the immutable event or delivery provably produced the named
+ * projection (outbox.md, "Source binding"). The table has no foreign keys to
+ * those rows (outbox.md, "Why no source foreign keys").
  *
  * Idempotency: one database key per kind; a replay returns the existing row,
  * and a replay whose pointer differs from the stored one is refused, never
  * silently merged.
  */
 import { sql, type SQL } from 'drizzle-orm';
+// Read-only use of Task2's canonical URL rule, so the binding matches how
+// normalizeCommit chose the repository (no copy that could drift).
+import { normalizeRepositoryUrl } from '../telemetry/repository-url';
 
 export type AttestaSubjectKind = 'commit_observed' | 'pr_merged' | 'deployed';
 
@@ -48,8 +51,8 @@ export interface PrMergedInput extends CommonInput {
 export interface DeployedInput extends CommonInput {
   kind: 'deployed';
   provider: string;
-  /** The deployment_status delivery, when known. */
-  providerDeliveryId?: string | null;
+  /** provider_event_deliveries.delivery_id of the successful deployment_status delivery. */
+  providerDeliveryId: string;
   /** scm_deployments.id of the production success row. commitSha is its sha. */
   deploymentId: string;
   deploymentExternalId: string;
@@ -178,10 +181,7 @@ export function normalizeAttestaSubjectInput(input: unknown): NormalizedSubject 
     base.pullRequestId = readUuid(record, 'pullRequestId');
   } else {
     base.provider = readPattern(record, 'provider', PROVIDER, 'a lowercase provider name');
-    const delivery = record.providerDeliveryId;
-    base.providerDeliveryId = delivery === undefined || delivery === null
-      ? null
-      : readPattern(record, 'providerDeliveryId', BOUNDED_ID, '1-128 characters without control characters');
+    base.providerDeliveryId = readPattern(record, 'providerDeliveryId', BOUNDED_ID, '1-128 characters without control characters');
     base.deploymentId = readUuid(record, 'deploymentId');
     base.deploymentExternalId = readPattern(record, 'deploymentExternalId', BOUNDED_ID, '1-128 characters without control characters');
     if (record.deploymentStatus !== 'success') throw invalid('deploymentStatus must be success (only production successes are attested)');
@@ -191,49 +191,109 @@ export function normalizeAttestaSubjectInput(input: unknown): NormalizedSubject 
 }
 
 /**
- * The source rows, which must exist in the same tenant and agree with the
- * pointer. Returns the row's event time, so event_at always comes from the
- * source (metric event time, merged_at, deployed_at), never from the caller.
+ * The facts that prove the source rows exist in this tenant and that the
+ * immutable event or delivery produced the named projection. One row, joined
+ * on primary keys and tenant; no row means "not found".
  */
-function sourceSelect(s: NormalizedSubject): { from: SQL; eventAt: SQL } {
+function bindingQuery(s: NormalizedSubject): SQL {
   if (s.kind === 'commit_observed') {
-    return {
-      eventAt: sql`e.event_timestamp`,
-      from: sql`telemetry_metric_events e
-        join scm_commits c on c.tenant_id = e.tenant_id
-        where e.tenant_id = ${s.tenantId}::uuid and e.id = ${s.metricEventId}::uuid
-          and e.event_kind in (${COMMIT_EVENT_KINDS[0]}, ${COMMIT_EVENT_KINDS[1]})
-          and c.id = ${s.commitId}::uuid and c.repository_id = ${s.repositoryId}::uuid
-          and c.sha = ${s.commitSha}`,
-    };
+    return sql`select e.event_kind, e.event_timestamp as event_at, e.event_timestamp::text as event_at_text,
+        e.raw_event->'a'->>'1' as raw_repo_url, e.raw_event->'a'->>'3' as raw_sha,
+        c.repository_id as commit_repository_id, c.sha as commit_sha,
+        r.normalized_url as repository_normalized_url
+      from telemetry_metric_events e, scm_commits c, scm_repositories r
+      where e.tenant_id = ${s.tenantId}::uuid and e.id = ${s.metricEventId}::uuid
+        and c.tenant_id = ${s.tenantId}::uuid and c.id = ${s.commitId}::uuid
+        and r.tenant_id = ${s.tenantId}::uuid and r.id = ${s.repositoryId}::uuid`;
   }
   if (s.kind === 'pr_merged') {
-    return {
-      eventAt: sql`pr.merged_at`,
-      from: sql`provider_event_deliveries d
-        join scm_pull_requests pr on pr.tenant_id = d.tenant_id
-        where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
-          and d.delivery_id = ${s.providerDeliveryId} and d.event_type = 'pr_closed'
-          and (d.repository_id is null or d.repository_id = ${s.repositoryId}::uuid)
-          and pr.id = ${s.pullRequestId}::uuid and pr.repository_id = ${s.repositoryId}::uuid
-          and pr.merge_commit_sha = ${s.commitSha} and pr.merged_at is not null`,
-    };
+    return sql`select d.event_type, d.repository_id as delivery_repository_id,
+        d.raw_event->>'action' as raw_action,
+        d.raw_event->'pull_request'->>'id' as raw_pr_id,
+        d.raw_event->'pull_request'->>'merge_commit_sha' as raw_merge_sha,
+        d.raw_event->'pull_request'->>'merged_at' as raw_merged_at,
+        d.raw_event->'repository'->>'id' as raw_repo_id,
+        pr.external_id as pr_external_id, pr.repository_id as pr_repository_id,
+        pr.merge_commit_sha as pr_merge_sha, pr.merged_at as event_at, pr.merged_at::text as event_at_text,
+        r.external_id as repository_external_id
+      from provider_event_deliveries d, scm_pull_requests pr, scm_repositories r
+      where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
+        and d.delivery_id = ${s.providerDeliveryId}
+        and pr.tenant_id = ${s.tenantId}::uuid and pr.id = ${s.pullRequestId}::uuid
+        and r.tenant_id = ${s.tenantId}::uuid and r.id = ${s.repositoryId}::uuid`;
   }
-  const delivery = s.providerDeliveryId === null
-    ? sql`true`
-    : sql`exists (select 1 from provider_event_deliveries d
-        where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
-          and d.delivery_id = ${s.providerDeliveryId} and d.event_type = 'deployment_status'
-          and (d.repository_id is null or d.repository_id = ${s.repositoryId}::uuid))`;
-  return {
-    eventAt: sql`dep.deployed_at`,
-    from: sql`scm_deployments dep
-      where dep.tenant_id = ${s.tenantId}::uuid and dep.id = ${s.deploymentId}::uuid
-        and dep.repository_id = ${s.repositoryId}::uuid and dep.provider = ${s.provider}
-        and dep.external_id = ${s.deploymentExternalId} and dep.status = 'success'
-        and dep.production = true and dep.sha = ${s.commitSha}
-        and ${delivery}`,
-  };
+  return sql`select d.event_type, d.repository_id as delivery_repository_id,
+      d.raw_event->'deployment'->>'id' as raw_deployment_id,
+      d.raw_event->'deployment'->>'sha' as raw_sha,
+      d.raw_event->'deployment_status'->>'state' as raw_state,
+      d.raw_event->'repository'->>'id' as raw_repo_id,
+      dep.repository_id as deployment_repository_id, dep.provider as deployment_provider,
+      dep.external_id as deployment_external_id, dep.status as deployment_status,
+      dep.production as deployment_production, dep.sha as deployment_sha,
+      dep.deployed_at as event_at, dep.deployed_at::text as event_at_text,
+      r.external_id as repository_external_id
+    from provider_event_deliveries d, scm_deployments dep, scm_repositories r
+    where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
+      and d.delivery_id = ${s.providerDeliveryId}
+      and dep.tenant_id = ${s.tenantId}::uuid and dep.id = ${s.deploymentId}::uuid
+      and r.tenant_id = ${s.tenantId}::uuid and r.id = ${s.repositoryId}::uuid`;
+}
+
+/** Provider JSON values are compared as Task2's parser reads them: trimmed text. */
+const rawText = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
+};
+
+function sameRepositoryUrl(rawUrl: unknown, normalized: unknown): boolean {
+  const raw = rawText(rawUrl);
+  if (raw === null || typeof normalized !== 'string') return false;
+  try {
+    return normalizeRepositoryUrl(raw) === normalized;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the facts prove that the event or delivery produced exactly the
+ * projection the pointer names. Exported for unit tests.
+ */
+export function sourceBindsToPointer(s: NormalizedSubject, f: Record<string, unknown>): boolean {
+  if (s.kind === 'commit_observed') {
+    return (COMMIT_EVENT_KINDS as readonly number[]).includes(Number(f.event_kind))
+      && rawText(f.raw_sha) === s.commitSha
+      && f.commit_sha === s.commitSha
+      && f.commit_repository_id === s.repositoryId
+      && sameRepositoryUrl(f.raw_repo_url, f.repository_normalized_url);
+  }
+  const deliveryRepositoryOk = f.delivery_repository_id === null
+    || f.delivery_repository_id === undefined
+    || f.delivery_repository_id === s.repositoryId;
+  const repositoryOk = rawText(f.raw_repo_id) !== null && rawText(f.raw_repo_id) === f.repository_external_id;
+  if (s.kind === 'pr_merged') {
+    return f.event_type === 'pr_closed'
+      && rawText(f.raw_action) === 'closed'
+      && rawText(f.raw_merged_at) !== null
+      && rawText(f.raw_pr_id) !== null && rawText(f.raw_pr_id) === f.pr_external_id
+      && rawText(f.raw_merge_sha) === s.commitSha
+      && f.pr_merge_sha === s.commitSha
+      && f.pr_repository_id === s.repositoryId
+      && f.event_at !== null && f.event_at !== undefined
+      && deliveryRepositoryOk && repositoryOk;
+  }
+  return f.event_type === 'deployment_status'
+    && rawText(f.raw_state) === 'success'
+    && rawText(f.raw_deployment_id) !== null && rawText(f.raw_deployment_id) === s.deploymentExternalId
+    && rawText(f.raw_sha) === s.commitSha
+    && f.deployment_repository_id === s.repositoryId
+    && f.deployment_provider === s.provider
+    && f.deployment_external_id === s.deploymentExternalId
+    && f.deployment_status === 'success'
+    && f.deployment_production === true
+    && f.deployment_sha === s.commitSha
+    && deliveryRepositoryOk && repositoryOk;
 }
 
 function conflictTarget(kind: AttestaSubjectKind): SQL {
@@ -289,19 +349,29 @@ export async function enqueueAttestaSubject(
 ): Promise<EnqueueAttestaSubjectResult> {
   const s = normalizeAttestaSubjectInput(input);
   const notBefore = s.notBefore === null ? sql`now()` : sql`${s.notBefore.toISOString()}::timestamptz`;
-  const source = sourceSelect(s);
+  const notFound = () => new AttestaOutboxError(
+    'ATTESTA_OUTBOX_SOURCE_NOT_FOUND',
+    `no matching source rows for ${s.kind} in this tenant`,
+  );
 
+  // 1. Prove the sources (the same answer for missing, foreign and mismatched rows).
+  const facts = (await tx.execute(bindingQuery(s))).rows[0];
+  if (!facts || !sourceBindsToPointer(s, facts)) throw notFound();
+  // Copied as PostgreSQL text and cast back, so microseconds survive (a JS Date keeps milliseconds).
+  const eventAtText = facts.event_at_text;
+  if (typeof eventAtText !== 'string' || eventAtText.length === 0) throw notFound();
+
+  // 2. Insert, or find the replayed row.
   const inserted = await tx.execute(sql`
     insert into attesta_subjects (
       tenant_id, repository_id, kind, metric_event_id, commit_id, commit_sha, provider,
       provider_delivery_id, pull_request_id, deployment_id, deployment_external_id,
       deployment_status, event_at, not_before
     )
-    select ${s.tenantId}::uuid, ${s.repositoryId}::uuid, ${s.kind}, ${s.metricEventId}::uuid,
+    values (${s.tenantId}::uuid, ${s.repositoryId}::uuid, ${s.kind}, ${s.metricEventId}::uuid,
       ${s.commitId}::uuid, ${s.commitSha}, ${s.provider}, ${s.providerDeliveryId},
       ${s.pullRequestId}::uuid, ${s.deploymentId}::uuid, ${s.deploymentExternalId},
-      ${s.deploymentStatus}, ${source.eventAt}, ${notBefore}
-    from ${source.from}
+      ${s.deploymentStatus}, ${eventAtText}::timestamptz, ${notBefore})
     on conflict ${conflictTarget(s.kind)} do nothing
     returning id
   `);
@@ -316,12 +386,8 @@ export async function enqueueAttestaSubject(
     where tenant_id = ${s.tenantId}::uuid and kind = ${s.kind} and ${keyMatch(s)}
   `);
   const row = existing.rows[0];
-  if (!row) {
-    throw new AttestaOutboxError(
-      'ATTESTA_OUTBOX_SOURCE_NOT_FOUND',
-      `no matching source row for ${s.kind} in this tenant`,
-    );
-  }
+  // Unreachable unless the row was deleted between the two statements.
+  if (!row) throw notFound();
   const differing = differingFields(row, s);
   if (differing.length > 0) {
     throw new AttestaOutboxError(

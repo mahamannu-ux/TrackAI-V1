@@ -16,7 +16,7 @@ Where every `ai-provenance/v1` field comes from in Task2, its availability in v1
 | `signed_late` | `as_of` against `event_at`; `telemetry_metric_events.arrival_class` (s:862) = `backfill` → `backfill` | recorded | Q8 |
 | `previous` | earlier `attesta_records` about the same (tenant, repository, sha) | recorded (may be `[]`) | Q14 |
 | `source_evidence.metric_event` | `telemetry_metric_events` id, `event_fingerprint` (s:856), `event_timestamp` (s:858), `evidence_family` (s:861), `arrival_class` (s:862) | recorded (`commit_observed`), else `not_applicable` | Q8, Q13 |
-| `source_evidence.provider_delivery` | `provider_event_deliveries` provider, `delivery_id` (s:903), `event_fingerprint` (s:905), `received_at` | recorded (`pr_merged`; `deployed` when the outbox row names it) | Q8 |
+| `source_evidence.provider_delivery` | `provider_event_deliveries` provider, `delivery_id` (s:903), `event_fingerprint` (s:905), `received_at` | recorded (`pr_merged`, `deployed`) | Q8 |
 | `source_evidence.note_digest` | the authorship note decoded from the source metric event's `raw_event` (the value Task2 writes to `scm_commits.authorship_note`, s:972, at svc:798) | recorded; `not_reported_by_source` if Git AI sent no note | Q2, Q7 |
 | `first_seen` | `scm_commits.first_seen_at` (s:963); `source` = `github_push` when `scm_commits.source_event_id` (s:973) is null (the push path sets `first_seen_at`, lc:60, and never sets `source_event_id`; the note upsert never overwrites it, svc:799 against svc:805–818), else `git_ai_note` | recorded | Q8 |
 | `repository` | `scm_repositories` id, provider; `url_sha256` from `normalized_url` (s:82) | recorded; `url_sha256` `source_missing` if `normalized_url` is null | Q1, Q3 |
