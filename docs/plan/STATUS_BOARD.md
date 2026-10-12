@@ -6,7 +6,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 
 ## Task status board
 
-*Last updated 2026-10-12 (Task15d Attesta ledger; Task2 Attesta trigger implementation; Task15c Attesta contract and outbox; portfolio re-plan: Task7/11/12 deferred, Task8 re-scoped, Task17/18 added, see `docs/plan/ROADMAP_REPLAN_2026-10-12.md`; Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
+*Last updated 2026-10-13 (Task15f Attesta anchoring adapters; Task15d Attesta ledger; Task2 Attesta trigger implementation; Task15c Attesta contract and outbox; portfolio re-plan: Task7/11/12 deferred, Task8 re-scoped, Task17/18 added, see `docs/plan/ROADMAP_REPLAN_2026-10-12.md`; Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
 
 | Task | Owner (agent) | Branch / PR | Code + unit tests | Integration (founder run) | Next founder action |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task18 Real-world validation | Codex + Muse | — | ⬜ | ⬜ | After Task8 and T14.1 (`docs/plan/TASK18.md`) |
 | Task9 Managed developer fleet | Codex + Muse | Task9a PR #16, Task9e PR #18 and Task9a2 PR #21 merged; GitAI Task9b PR #3, Task9c PR #4 and Task9c2 PR #5 merged | 🟡 lifecycle correction merged; Task15 verification remains unavailable | 🟡 IT-T9-01 reverified for v1/v2 on 2026-10-11; founder run and IT-T9-02–07/IT-M9-01 pending | Start Task9d from corrected GitAI `main` at `c4509ab8d` |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
-| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse + Codex | `task/Task15h-attesta-builder` / PR #36 (A15.8 builder worker, reviewed ready to push) | 🟡 Task15a/b/c/d/e/g and the Task2 trigger (A15.7) merged (PRs #22–#33, #35); Task15h built, contract findings F1–F8 in its handoff | ✅ founder passed IT-T15c-01, IT-T2AT-01…04 and IT-T15d-01…04 on 2026-10-12; 🟡 IT-T15h-01…04 agent-verified | Founder run of IT-T15h-01…04, then merge PR #36; Task15f-attesta-anchoring (Claude) in parallel. Task15l trust layer after 15h |
+| Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse + Codex | `task/Task15f-attesta-anchoring` (A15.5 part 1, Codex fix round 1 done, re-review pending) | 🟡 Task15a/b/c/d/e/g/h and the Task2 trigger (A15.7) merged (PRs #22–#33, #35, #36); Task15h contract findings F1–F8 in its handoff; Task15f anchoring adapters built | ✅ founder passed IT-T15c-01, IT-T2AT-01…04 and IT-T15d-01…04 on 2026-10-12; 🟡 IT-T15h-01…04 agent-verified | Codex re-review of Task15f, then merge; Task15f2 (migration, worker, verify report) next; Task15l trust layer |
 | Task16 Audit and auditor experience | Claude + Muse | — | ⬜ | ⬜ | Start Muse on Task16a |
 | Kit adoption | Claude | `docs/adopt-agent-kit` / PR #8 (merged 2026-10-08) | ✅ docs, scripts, npm gates | 🟡 `npm run check` and `verify:task5-schema` via `scripts/it-db.sh` re-run by Codex's review; graph and Task6 route verifies agent sandbox only | — |
 | Dry run: API hygiene (B12, B13) | Codex | `task/dryrun-api-hygiene` | 🟡 152 unit tests and `npm run check` pass; independent review ready | n/a: none needed | Founder pushes and opens PR |
@@ -99,6 +99,7 @@ Integration tests prove what only real infrastructure can. They are founder-owne
 | IT-T9-05 | Task9g | Native Windows x64 MSI, Credential Manager/DPAPI, restart, update/rollback and revoke | Planned in `docs/plan/TASK9.md` §6 | Blocking only for native Windows claim | ⬜ pending host |
 | IT-T9-06 | Task9g | Intune post-login deployment, reconciliation, rollback and retire/offboard | Planned in `docs/plan/TASK9.md` §6 | Blocking only for Intune-managed claim | ⬜ pending host and tenant |
 | IT-T9-07 | Task9f | Two-device macOS rollout ring and reconciliation; optional Apple Silicon evidence | Planned in `docs/plan/TASK9.md` §6 | Blocking only for two-device/Apple-Silicon claim | ⬜ best-effort host |
+| IT-T15f-01…04 | Task15f2 | Anchoring pass with both fakes, lying log → `failed` + retry, anchor-table guards as the API role, Company A/B batches (scope in the Task15f prompt §3) | Task15f2 (not yet written) | Blocking: A15.5 part 2 merge | ⬜ moved to Task15f2 |
 | IT-M9-01 | Task9, Task15 | Signed machine-bound configuration rejects tamper/replay/revocation and preserves last-known-good | Planned in `docs/plan/TASK9.md` §6 | Production blocker shared with D6.1, not Task9 engineering | ⬜ waits for Task15 |
 
 Gating means "must pass on the founder's machine before the named merge or milestone". It does not stop other agents developing against the unit-tested code in parallel.
