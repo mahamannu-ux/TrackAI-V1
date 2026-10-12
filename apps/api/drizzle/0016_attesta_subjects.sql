@@ -51,7 +51,7 @@ CREATE TABLE "attesta_subjects" (
     and "attesta_subjects"."attempts" >= 0
     and ("attesta_subjects"."status" <> 'claimed' or "attesta_subjects"."claimed_at" is not null)
     and ("attesta_subjects"."status" not in ('done', 'failed') or "attesta_subjects"."processed_at" is not null)
-    and ("attesta_subjects"."status" <> 'pending' or "attesta_subjects"."processed_at" is null)
+    and ("attesta_subjects"."status" <> 'pending' or ("attesta_subjects"."processed_at" is null and "attesta_subjects"."claimed_at" is null))
     and ("attesta_subjects"."last_error_code" is null or "attesta_subjects"."last_error_code" ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
   )
 );

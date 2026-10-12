@@ -21,7 +21,7 @@ Table: migration `apps/api/drizzle/0016_attesta_subjects.sql`, Drizzle `attestaS
 | `deployment_id` | uuid | deployed (required) | `scm_deployments.id` |
 | `deployment_external_id` | text | deployed (required) | `scm_deployments.external_id` |
 | `deployment_status` | text | deployed (required) | always `success` (only production successes are attested) |
-| `event_at` | timestamptz NN | all | metric event time · `merged_at` · `deployed_at` |
+| `event_at` | timestamptz NN | all | copied from the source row by the insert: `event_timestamp` · `merged_at` · `deployed_at` |
 | `not_before` | timestamptz NN | all | earliest build time (default `now()`) |
 | `created_at` | timestamptz NN | all | default `now()` |
 | `status` | text NN | worker | `pending` (default) · `claimed` · `done` · `failed` |
@@ -48,19 +48,20 @@ enqueueAttestaSubject(tx: AttestaOutboxExecutor, input: EnqueueAttestaSubjectInp
   : Promise<{ id: string; inserted: boolean }>
 
 type EnqueueAttestaSubjectInput =
-  | { kind: 'commit_observed'; tenantId; repositoryId; commitSha; eventAt: Date; notBefore?: Date;
+  | { kind: 'commit_observed'; tenantId; repositoryId; commitSha; notBefore?: Date;
       metricEventId; commitId }
-  | { kind: 'pr_merged'; tenantId; repositoryId; commitSha /* merge_commit_sha */; eventAt /* merged_at */;
-      notBefore?; provider; providerDeliveryId; pullRequestId }
-  | { kind: 'deployed'; tenantId; repositoryId; commitSha /* deployed sha */; eventAt /* deployed_at */;
-      notBefore?; provider; providerDeliveryId?: string | null; deploymentId; deploymentExternalId;
+  | { kind: 'pr_merged'; tenantId; repositoryId; commitSha /* merge_commit_sha */; notBefore?;
+      provider; providerDeliveryId; pullRequestId }
+  | { kind: 'deployed'; tenantId; repositoryId; commitSha /* deployed sha */; notBefore?;
+      provider; providerDeliveryId?: string | null; deploymentId; deploymentExternalId;
       deploymentStatus: 'success' }
 ```
 
 - `tx` is the caller's open Drizzle transaction (anything with `execute(sql)`); the helper never opens or commits one.
-- Input is validated once into a plain snapshot (lowercase UUIDs, hex sha, bounded IDs, no fields of another kind, no extra fields) → `ATTESTA_OUTBOX_INVALID_INPUT`.
-- **Tenant binding:** a single `INSERT … SELECT … WHERE <sources exist> ON CONFLICT <kind key> DO NOTHING`. The sources must exist **in the same tenant** and agree with the pointer: the metric event, and the commit with this id, repository and sha (`commit_observed`); the delivery, and the PR with this id and repository whose `merge_commit_sha` is `commitSha` and `merged_at` is set (`pr_merged`); the deployment with this id, repository, provider, external ID, `status = 'success'`, `production = true` and `sha = commitSha`, and the delivery when given (`deployed`). Otherwise → `ATTESTA_OUTBOX_SOURCE_NOT_FOUND`.
-- **Replay:** the existing row's ID comes back with `inserted: false`. If the stored pointer differs from the input in any identity column (including `event_at`), the call throws `ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT` and writes nothing.
+- Input is validated once into a plain snapshot (lowercase UUIDs, hex sha, bounded IDs, `notBefore` a real time in years 1970–9999, no fields of another kind, no extra fields) → `ATTESTA_OUTBOX_INVALID_INPUT`.
+- **`event_at` is never passed by the caller:** the insert copies it from the source row (`telemetry_metric_events.event_timestamp`, `scm_pull_requests.merged_at`, `scm_deployments.deployed_at`).
+- **Tenant binding:** a single `INSERT … SELECT … FROM <source rows> ON CONFLICT <kind key> DO NOTHING`. The sources must exist **in the same tenant** and agree with the pointer: the metric event with a commit or rewrite-commit `event_kind` (1 or 7), and the commit with this id, repository and sha (`commit_observed`); the delivery with `event_type = 'pr_closed'` and this repository (or none recorded), and the PR with this id and repository whose `merge_commit_sha` is `commitSha` and `merged_at` is set (`pr_merged`); the deployment with this id, repository, provider, external ID, `status = 'success'`, `production = true` and `sha = commitSha`, and, when given, a `deployment_status` delivery of this repository (`deployed`). Otherwise → `ATTESTA_OUTBOX_SOURCE_NOT_FOUND` (the same answer for a missing row and another tenant's row, so nothing leaks).
+- **Replay:** the existing row's ID comes back with `inserted: false`. If the stored pointer differs from the input in any caller-supplied identity column, the call throws `ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT` and writes nothing. One exception: a `deployed` row's `provider_delivery_id` is not compared, because GitHub can send a second `success` status for the same deployment; that is the same observation, and the first delivery is kept. The error names the differing columns, never their values.
 - Concurrency: two transactions writing the same observation serialize on the unique index; one inserts, the other returns the same ID after the first commits.
 
 **Why no source foreign keys.** `telemetry_metric_events`, `scm_commits`, `scm_pull_requests` and `scm_deployments` have no `(tenant_id, id)` key (adding one is a Task2 change), and Task2's reset (`task2-reset.ts`) and future retention delete those rows; a foreign key would block them. The tenant is bound by the insert itself, proven by IT-T15c-01. Once a statement is signed, the ledger keeps its own copy of the evidence; the outbox row is only a work item.
@@ -69,7 +70,7 @@ type EnqueueAttestaSubjectInput =
 
 | Kind | Write it in | Notes |
 |---|---|---|
-| `commit_observed` | the transaction that completes Git AI commit-note normalization (`normalizeCommit`, `features/telemetry/service.ts:756–1004`), which A15.7 makes transaction-aware | `metricEventId` = the row being normalized; `commitId`/`commitSha` = the upserted commit; `eventAt` = the metric event time. A lifecycle rebuild re-normalizes the same event IDs, so it hits the key and adds nothing |
+| `commit_observed` | the transaction that completes Git AI commit-note normalization (`normalizeCommit`, `features/telemetry/service.ts:756–1004`), which A15.7 makes transaction-aware | `metricEventId` = the row being normalized; `commitId`/`commitSha` = the upserted commit. A lifecycle rebuild re-normalizes the same event IDs, so it hits the key and adds nothing |
 | `pr_merged` | the `projectProviderDelivery` callback (`features/scm/scm.routes.ts:222–395`), after the PR upsert (`:295–336`), when the delivery is `pr_closed` with `merged_at` and `merge_commit_sha` | `notBefore` = now + 5 minutes recommended, so lineage and API enrichment (`:416–470`) usually land first; the builder still tolerates lineage being `unavailable`. Never hold the webhook transaction open for GitHub API calls |
 | `deployed` | one transaction around the deployment insert (`recordDeployment`, `features/scm/lifecycle-service.ts:433–446`) and the enqueue, only when `production` and `status = 'success'` | `deploymentId` = the stored row's ID (read it back after `insertDoNothing`) |
 
@@ -82,5 +83,6 @@ type EnqueueAttestaSubjectInput =
 ## Worker protocol (built in A15.8; binding)
 
 - Claim: `UPDATE … SET status = 'claimed', claimed_at = now(), attempts = attempts + 1 WHERE id IN (SELECT id FROM attesta_subjects WHERE status = 'pending' AND not_before <= now() ORDER BY created_at LIMIT n FOR UPDATE SKIP LOCKED) RETURNING …`.
-- Success: `status = 'done'`, `processed_at = now()`. Retryable failure (`SigningUnavailable`, builder source not ready): back to `pending`, `not_before` pushed out with backoff, `last_error_code` set. Terminal failure or `attempts` above the limit: `failed`, `processed_at = now()`, `last_error_code` set.
+- Success: `status = 'done'`, `processed_at = now()`, set **inside the ledger transaction** and only while the row is still claimed by this attempt (`envelope.md` step 7). Retryable failure (`SigningUnavailable`, builder source not ready): back to `pending` with `claimed_at = null`, `not_before` pushed out with backoff, `last_error_code` set (the table refuses a `pending` row with a `claimed_at`). Terminal failure or `attempts` above the limit: `failed`, `processed_at = now()`, `last_error_code` set.
+- A `failed` row (for example `ATTESTA_SIGNER_NO_CREDENTIAL` before a credential exists) is put back in the queue only by an explicit, audited administrator action (A15.8): `status = 'pending'`, `processed_at = null`, `claimed_at = null`, `attempts` kept.
 - A claim older than the lease (10 minutes) is returned to `pending` by the worker (crash recovery). The worker runs as a system job across tenants, and every read it makes is tenant-bound to the row's `tenant_id`.

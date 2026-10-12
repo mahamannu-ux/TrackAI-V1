@@ -24,8 +24,6 @@ interface CommonInput {
   tenantId: string;
   repositoryId: string;
   commitSha: string;
-  /** When the observed event happened (metric event time, merged_at, deployed_at). */
-  eventAt: Date;
   /** Earliest time the worker may build the statement (default: now). */
   notBefore?: Date;
 }
@@ -83,15 +81,18 @@ export interface AttestaOutboxExecutor {
   execute(query: SQL): Promise<{ rows: Array<Record<string, unknown>> }>;
 }
 
+/** telemetry_metric_events.event_kind of Git AI commit and rewrite-commit events (decoder.ts EVENT_KIND). */
+const COMMIT_EVENT_KINDS = [1, 7] as const;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const GIT_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const PROVIDER = /^[a-z][a-z0-9_-]{0,31}$/;
 const BOUNDED_ID = /^[^\u0000-\u001f\u007f]{1,128}$/;
 
 const KEYS: Record<AttestaSubjectKind, readonly string[]> = {
-  commit_observed: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'eventAt', 'notBefore', 'metricEventId', 'commitId'],
-  pr_merged: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'eventAt', 'notBefore', 'provider', 'providerDeliveryId', 'pullRequestId'],
-  deployed: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'eventAt', 'notBefore', 'provider', 'providerDeliveryId', 'deploymentId', 'deploymentExternalId', 'deploymentStatus'],
+  commit_observed: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'notBefore', 'metricEventId', 'commitId'],
+  pr_merged: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'notBefore', 'provider', 'providerDeliveryId', 'pullRequestId'],
+  deployed: ['kind', 'tenantId', 'repositoryId', 'commitSha', 'notBefore', 'provider', 'providerDeliveryId', 'deploymentId', 'deploymentExternalId', 'deploymentStatus'],
 };
 
 /** The validated pointer: plain values copied once from the input (no getters re-read later). */
@@ -100,7 +101,6 @@ export interface NormalizedSubject {
   tenantId: string;
   repositoryId: string;
   commitSha: string;
-  eventAt: Date;
   notBefore: Date | null;
   metricEventId: string | null;
   commitId: string | null;
@@ -120,12 +120,13 @@ function readUuid(record: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function readDate(record: Record<string, unknown>, key: string, optional: boolean): Date | null {
+function readDate(record: Record<string, unknown>, key: string): Date | null {
   const value = record[key];
-  if (value === undefined && optional) return null;
+  if (value === undefined) return null;
   if (!(value instanceof Date)) throw invalid(`${key} must be a Date`);
   const time = value.getTime();
-  if (!Number.isFinite(time)) throw invalid(`${key} is not a valid time`);
+  // Years 1970-9999 only: toISOString() of later years is not a timestamptz literal.
+  if (!Number.isFinite(time) || time < 0 || time > 253402300799999) throw invalid(`${key} is not a valid time`);
   return new Date(time);
 }
 
@@ -157,8 +158,7 @@ export function normalizeAttestaSubjectInput(input: unknown): NormalizedSubject 
     tenantId: readUuid(record, 'tenantId'),
     repositoryId: readUuid(record, 'repositoryId'),
     commitSha: readPattern(record, 'commitSha', GIT_SHA, 'a 40 or 64 character lowercase hex git sha'),
-    eventAt: readDate(record, 'eventAt', false)!,
-    notBefore: readDate(record, 'notBefore', true),
+    notBefore: readDate(record, 'notBefore'),
     metricEventId: null,
     commitId: null,
     provider: null,
@@ -190,35 +190,50 @@ export function normalizeAttestaSubjectInput(input: unknown): NormalizedSubject 
   return base;
 }
 
-/** Source rows that must exist in the same tenant and agree with the pointer. */
-function sourceExists(s: NormalizedSubject): SQL {
+/**
+ * The source rows, which must exist in the same tenant and agree with the
+ * pointer. Returns the row's event time, so event_at always comes from the
+ * source (metric event time, merged_at, deployed_at), never from the caller.
+ */
+function sourceSelect(s: NormalizedSubject): { from: SQL; eventAt: SQL } {
   if (s.kind === 'commit_observed') {
-    return sql`exists (select 1 from telemetry_metric_events
-        where tenant_id = ${s.tenantId}::uuid and id = ${s.metricEventId}::uuid)
-      and exists (select 1 from scm_commits
-        where tenant_id = ${s.tenantId}::uuid and id = ${s.commitId}::uuid
-          and repository_id = ${s.repositoryId}::uuid and sha = ${s.commitSha})`;
+    return {
+      eventAt: sql`e.event_timestamp`,
+      from: sql`telemetry_metric_events e
+        join scm_commits c on c.tenant_id = e.tenant_id
+        where e.tenant_id = ${s.tenantId}::uuid and e.id = ${s.metricEventId}::uuid
+          and e.event_kind in (${COMMIT_EVENT_KINDS[0]}, ${COMMIT_EVENT_KINDS[1]})
+          and c.id = ${s.commitId}::uuid and c.repository_id = ${s.repositoryId}::uuid
+          and c.sha = ${s.commitSha}`,
+    };
   }
   if (s.kind === 'pr_merged') {
-    return sql`exists (select 1 from provider_event_deliveries
-        where tenant_id = ${s.tenantId}::uuid and provider = ${s.provider}
-          and delivery_id = ${s.providerDeliveryId})
-      and exists (select 1 from scm_pull_requests
-        where tenant_id = ${s.tenantId}::uuid and id = ${s.pullRequestId}::uuid
-          and repository_id = ${s.repositoryId}::uuid
-          and merge_commit_sha = ${s.commitSha} and merged_at is not null)`;
+    return {
+      eventAt: sql`pr.merged_at`,
+      from: sql`provider_event_deliveries d
+        join scm_pull_requests pr on pr.tenant_id = d.tenant_id
+        where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
+          and d.delivery_id = ${s.providerDeliveryId} and d.event_type = 'pr_closed'
+          and (d.repository_id is null or d.repository_id = ${s.repositoryId}::uuid)
+          and pr.id = ${s.pullRequestId}::uuid and pr.repository_id = ${s.repositoryId}::uuid
+          and pr.merge_commit_sha = ${s.commitSha} and pr.merged_at is not null`,
+    };
   }
   const delivery = s.providerDeliveryId === null
     ? sql`true`
-    : sql`exists (select 1 from provider_event_deliveries
-        where tenant_id = ${s.tenantId}::uuid and provider = ${s.provider}
-          and delivery_id = ${s.providerDeliveryId})`;
-  return sql`exists (select 1 from scm_deployments
-        where tenant_id = ${s.tenantId}::uuid and id = ${s.deploymentId}::uuid
-          and repository_id = ${s.repositoryId}::uuid and provider = ${s.provider}
-          and external_id = ${s.deploymentExternalId} and status = 'success'
-          and production = true and sha = ${s.commitSha})
-      and ${delivery}`;
+    : sql`exists (select 1 from provider_event_deliveries d
+        where d.tenant_id = ${s.tenantId}::uuid and d.provider = ${s.provider}
+          and d.delivery_id = ${s.providerDeliveryId} and d.event_type = 'deployment_status'
+          and (d.repository_id is null or d.repository_id = ${s.repositoryId}::uuid))`;
+  return {
+    eventAt: sql`dep.deployed_at`,
+    from: sql`scm_deployments dep
+      where dep.tenant_id = ${s.tenantId}::uuid and dep.id = ${s.deploymentId}::uuid
+        and dep.repository_id = ${s.repositoryId}::uuid and dep.provider = ${s.provider}
+        and dep.external_id = ${s.deploymentExternalId} and dep.status = 'success'
+        and dep.production = true and dep.sha = ${s.commitSha}
+        and ${delivery}`,
+  };
 }
 
 function conflictTarget(kind: AttestaSubjectKind): SQL {
@@ -240,12 +255,12 @@ function keyMatch(s: NormalizedSubject): SQL {
 
 const asText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value));
 
-function sameEventTime(stored: unknown, expected: Date): boolean {
-  const time = stored instanceof Date ? stored.getTime() : new Date(String(stored)).getTime();
-  return time === expected.getTime();
-}
-
-/** Fields that must be identical when a replay finds the existing row. */
+/**
+ * Fields that must be identical when a replay finds the existing row: every
+ * caller-supplied identity field, except a deployed row's delivery ID (a
+ * second success delivery for the same deployment is the same observation;
+ * the first delivery is kept). event_at comes from the source, not the caller.
+ */
 function differingFields(row: Record<string, unknown>, s: NormalizedSubject): string[] {
   const expected: Record<string, string | null> = {
     repository_id: s.repositoryId,
@@ -253,17 +268,15 @@ function differingFields(row: Record<string, unknown>, s: NormalizedSubject): st
     metric_event_id: s.metricEventId,
     commit_id: s.commitId,
     provider: s.provider,
-    provider_delivery_id: s.providerDeliveryId,
+    provider_delivery_id: s.kind === 'deployed' ? asText(row.provider_delivery_id) : s.providerDeliveryId,
     pull_request_id: s.pullRequestId,
     deployment_id: s.deploymentId,
     deployment_external_id: s.deploymentExternalId,
     deployment_status: s.deploymentStatus,
   };
-  const differing = Object.entries(expected)
+  return Object.entries(expected)
     .filter(([column, value]) => asText(row[column]) !== value)
     .map(([column]) => column);
-  if (!sameEventTime(row.event_at, s.eventAt)) differing.push('event_at');
-  return differing;
 }
 
 /**
@@ -276,6 +289,7 @@ export async function enqueueAttestaSubject(
 ): Promise<EnqueueAttestaSubjectResult> {
   const s = normalizeAttestaSubjectInput(input);
   const notBefore = s.notBefore === null ? sql`now()` : sql`${s.notBefore.toISOString()}::timestamptz`;
+  const source = sourceSelect(s);
 
   const inserted = await tx.execute(sql`
     insert into attesta_subjects (
@@ -286,8 +300,8 @@ export async function enqueueAttestaSubject(
     select ${s.tenantId}::uuid, ${s.repositoryId}::uuid, ${s.kind}, ${s.metricEventId}::uuid,
       ${s.commitId}::uuid, ${s.commitSha}, ${s.provider}, ${s.providerDeliveryId},
       ${s.pullRequestId}::uuid, ${s.deploymentId}::uuid, ${s.deploymentExternalId},
-      ${s.deploymentStatus}, ${s.eventAt.toISOString()}::timestamptz, ${notBefore}
-    where ${sourceExists(s)}
+      ${s.deploymentStatus}, ${source.eventAt}, ${notBefore}
+    from ${source.from}
     on conflict ${conflictTarget(s.kind)} do nothing
     returning id
   `);
@@ -297,7 +311,7 @@ export async function enqueueAttestaSubject(
   const existing = await tx.execute(sql`
     select id, repository_id, commit_sha, metric_event_id, commit_id, provider,
       provider_delivery_id, pull_request_id, deployment_id, deployment_external_id,
-      deployment_status, event_at
+      deployment_status
     from attesta_subjects
     where tenant_id = ${s.tenantId}::uuid and kind = ${s.kind} and ${keyMatch(s)}
   `);

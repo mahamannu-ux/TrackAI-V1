@@ -20,7 +20,7 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_BUILDER_SOURCE_MISSING` | a source row is gone (reset, retention) | terminal |
 | `ATTESTA_BUILDER_NOT_CANONICAL` | `canonicalize()` refused the statement (unsafe number, NaN, sparse array) | terminal (builder bug) |
 | `ATTESTA_BUILDER_SCHEMA_INVALID` | the snapshot fails the schema | terminal (builder bug) |
-| `ATTESTA_BUILDER_RULE_VIOLATION` | the snapshot breaks S1–S8 | terminal (builder bug or inconsistent sources) |
+| `ATTESTA_BUILDER_RULE_VIOLATION` | the snapshot breaks S1–S12 | terminal (builder bug or inconsistent sources) |
 | `ATTESTA_BUILDER_TOO_LARGE` | does not fit the signer's payload limit even with no file entries | terminal |
 
 ## Signer (Task15b contract mapping)
@@ -37,6 +37,8 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 |---|---|---|
 | `ATTESTA_LEDGER_DUPLICATE_STATEMENT` | the statement digest is already chained (the row is marked `done`, not an error to the customer) | n/a |
 | `ATTESTA_LEDGER_HEAD_CONFLICT` | a guard refused the insert (head moved) | retry |
+| `ATTESTA_LEDGER_PREVIOUS_STALE` | a statement about the same subject was chained after the build read `previous` | retry (rebuild) |
+| `ATTESTA_LEDGER_CLAIM_LOST` | the outbox row is no longer claimed by this attempt (lease expired, another worker took it) | stop; the current claimant continues |
 | `ATTESTA_LEDGER_GUARD_VIOLATION` | any other chain guard (hash mismatch, mutation attempt) | terminal; alert |
 
 ## Anchoring (A15.5)
@@ -61,7 +63,7 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_VERIFY_SIGNATURE_INVALID` | DSSE signature does not verify with the key named by `keyid` |
 | `ATTESTA_VERIFY_KEY_UNKNOWN` | no published key matches `keyid` |
 | `ATTESTA_VERIFY_SCHEMA_INVALID` | statement fails its predicate version's schema |
-| `ATTESTA_VERIFY_RULE_VIOLATION` | statement breaks S1–S8 |
+| `ATTESTA_VERIFY_RULE_VIOLATION` | statement breaks S1–S12 |
 | `ATTESTA_VERIFY_MERKLE_PROOF_INVALID` | inclusion path does not reach the batch root |
 | `ATTESTA_VERIFY_ANCHOR_MISSING` | a record older than the anchoring window has no anchor |
 | `ATTESTA_VERIFY_ANCHOR_INVALID` | Rekor entry or TSA token does not verify offline |

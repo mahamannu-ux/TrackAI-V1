@@ -1,5 +1,5 @@
 {
-  "id": "a405bcf3-d11b-42fa-8de5-df7cfe67e47f",
+  "id": "6e437ab4-0f00-4393-9e29-cb67bb774fbe",
   "prevId": "64232b7f-1822-48a4-8c67-c6b1e9bef6e9",
   "version": "7",
   "dialect": "postgresql",
@@ -1574,7 +1574,7 @@
         },
         "attesta_subjects_status_check": {
           "name": "attesta_subjects_status_check",
-          "value": "\n    \"attesta_subjects\".\"status\" in ('pending', 'claimed', 'done', 'failed')\n    and \"attesta_subjects\".\"attempts\" >= 0\n    and (\"attesta_subjects\".\"status\" <> 'claimed' or \"attesta_subjects\".\"claimed_at\" is not null)\n    and (\"attesta_subjects\".\"status\" not in ('done', 'failed') or \"attesta_subjects\".\"processed_at\" is not null)\n    and (\"attesta_subjects\".\"status\" <> 'pending' or \"attesta_subjects\".\"processed_at\" is null)\n    and (\"attesta_subjects\".\"last_error_code\" is null or \"attesta_subjects\".\"last_error_code\" ~ '^ATTESTA_[A-Z0-9_]{1,64}$')\n  "
+          "value": "\n    \"attesta_subjects\".\"status\" in ('pending', 'claimed', 'done', 'failed')\n    and \"attesta_subjects\".\"attempts\" >= 0\n    and (\"attesta_subjects\".\"status\" <> 'claimed' or \"attesta_subjects\".\"claimed_at\" is not null)\n    and (\"attesta_subjects\".\"status\" not in ('done', 'failed') or \"attesta_subjects\".\"processed_at\" is not null)\n    and (\"attesta_subjects\".\"status\" <> 'pending' or (\"attesta_subjects\".\"processed_at\" is null and \"attesta_subjects\".\"claimed_at\" is null))\n    and (\"attesta_subjects\".\"last_error_code\" is null or \"attesta_subjects\".\"last_error_code\" ~ '^ATTESTA_[A-Z0-9_]{1,64}$')\n  "
         }
       },
       "isRLSEnabled": false

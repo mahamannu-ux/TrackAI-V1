@@ -47,10 +47,12 @@
       ],
       "properties": {
         "name": {
-          "$ref": "#/definitions/token"
+          "const": "trackai-attesta-builder"
         },
         "version": {
-          "$ref": "#/definitions/token"
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{7,40}$",
+          "description": "semver + TrackAI git commit"
         }
       }
     },
@@ -165,7 +167,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -209,10 +212,10 @@
               ],
               "properties": {
                 "provider": {
-                  "$ref": "#/definitions/token"
+                  "$ref": "#/definitions/provider"
                 },
                 "delivery_id": {
-                  "$ref": "#/definitions/token"
+                  "$ref": "#/definitions/provider_ref"
                 },
                 "event_fingerprint": {
                   "$ref": "#/definitions/sha256_hex"
@@ -230,7 +233,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -295,7 +299,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -356,7 +361,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -387,7 +393,7 @@
           "$ref": "#/definitions/uuid"
         },
         "provider": {
-          "$ref": "#/definitions/token"
+          "$ref": "#/definitions/provider"
         },
         "url_sha256": {
           "description": "SHA-256 (hex) of the UTF-8 bytes of the normalized repository URL (scm_repositories.normalized_url). The URL itself is never included.",
@@ -415,7 +421,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -465,7 +472,7 @@
             },
             "value": {
               "type": "string",
-              "pattern": "^[a-z][a-z0-9_]{0,31}$"
+              "pattern": "^[a-z][a-z_]{0,31}$"
             },
             "partial_reason": {
               "enum": [
@@ -475,7 +482,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -524,7 +532,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -567,7 +576,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -610,7 +620,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -655,7 +666,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -750,7 +762,8 @@
                           "linked_by_session_string_not_key",
                           "optional_source_field_missing",
                           "present_only_when_findings_exist",
-                          "lineage_still_being_enriched"
+                          "lineage_still_being_enriched",
+                          "values_hashed_unrepresentable"
                         ]
                       },
                       "reason": {
@@ -785,7 +798,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -849,7 +863,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -935,7 +950,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -983,7 +999,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1035,7 +1052,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1112,7 +1130,8 @@
                     "linked_by_session_string_not_key",
                     "optional_source_field_missing",
                     "present_only_when_findings_exist",
-                    "lineage_still_being_enriched"
+                    "lineage_still_being_enriched",
+                    "values_hashed_unrepresentable"
                   ]
                 },
                 "reason": {
@@ -1140,7 +1159,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1191,7 +1211,7 @@
               "$ref": "#/definitions/uuid"
             },
             "provider": {
-              "$ref": "#/definitions/token"
+              "$ref": "#/definitions/provider"
             },
             "number": {
               "type": "integer",
@@ -1199,7 +1219,7 @@
               "maximum": 9007199254740991
             },
             "external_id": {
-              "$ref": "#/definitions/token"
+              "$ref": "#/definitions/provider_ref"
             },
             "state": {
               "enum": [
@@ -1248,7 +1268,8 @@
                     "linked_by_session_string_not_key",
                     "optional_source_field_missing",
                     "present_only_when_findings_exist",
-                    "lineage_still_being_enriched"
+                    "lineage_still_being_enriched",
+                    "values_hashed_unrepresentable"
                   ]
                 },
                 "reason": {
@@ -1276,7 +1297,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1363,7 +1385,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1416,7 +1439,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1482,7 +1506,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1532,10 +1557,10 @@
               "$ref": "#/definitions/uuid"
             },
             "provider": {
-              "$ref": "#/definitions/token"
+              "$ref": "#/definitions/provider"
             },
             "external_id": {
-              "$ref": "#/definitions/token"
+              "$ref": "#/definitions/provider_ref"
             },
             "environment": {
               "type": "string",
@@ -1563,7 +1588,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1651,7 +1677,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -1712,7 +1739,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -1747,7 +1775,8 @@
             "value": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/token"
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
               },
               "maxItems": 32,
               "uniqueItems": true
@@ -1760,7 +1789,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -1819,7 +1849,8 @@
                 "linked_by_session_string_not_key",
                 "optional_source_field_missing",
                 "present_only_when_findings_exist",
-                "lineage_still_being_enriched"
+                "lineage_still_being_enriched",
+                "values_hashed_unrepresentable"
               ]
             },
             "reason": {
@@ -1869,22 +1900,25 @@
             "by_category": {
               "type": "object",
               "propertyNames": {
-                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                "enum": [
+                  "execution"
+                ]
               },
               "additionalProperties": {
                 "$ref": "#/definitions/count"
-              },
-              "maxProperties": 32
+              }
             },
             "by_severity": {
               "type": "object",
               "propertyNames": {
-                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                "enum": [
+                  "high",
+                  "critical"
+                ]
               },
               "additionalProperties": {
                 "$ref": "#/definitions/count"
-              },
-              "maxProperties": 32
+              }
             }
           }
         },
@@ -1896,7 +1930,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1957,7 +1992,8 @@
             "linked_by_session_string_not_key",
             "optional_source_field_missing",
             "present_only_when_findings_exist",
-            "lineage_still_being_enriched"
+            "lineage_still_being_enriched",
+            "values_hashed_unrepresentable"
           ]
         },
         "reason": {
@@ -1995,7 +2031,7 @@
     },
     "timestamp": {
       "type": "string",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "pattern": "^(19|20|21)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
       "description": "RFC 3339 UTC with milliseconds and Z (Date.prototype.toISOString form)."
     },
     "count": {
@@ -2014,6 +2050,15 @@
         "pr_merged",
         "deployed"
       ]
+    },
+    "provider": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+    },
+    "provider_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+      "description": "A provider-assigned identifier (delivery GUID, numeric PR or deployment ID)."
     },
     "availability_rules": {
       "description": "recorded: value only. partial: value and partial_reason. unavailable: reason only, never a value (so never a zero).",
@@ -2150,11 +2195,51 @@
                       "recorded",
                       "partial"
                     ]
+                  },
+                  "value": {
+                    "properties": {
+                      "evidence_family": {
+                        "enum": [
+                          "commit_note",
+                          "legacy_unclassified"
+                        ]
+                      }
+                    }
                   }
                 }
               },
               "provider_delivery": {
                 "$ref": "#/definitions/not_applicable"
+              },
+              "note_digest": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "reason": {
+                        "const": "not_reported_by_source"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "previous": {
+            "items": {
+              "properties": {
+                "statement_kind": {
+                  "const": "commit_observed"
+                }
               }
             }
           },
@@ -2218,6 +2303,18 @@
                       "partial"
                     ]
                   }
+                }
+              }
+            }
+          },
+          "previous": {
+            "items": {
+              "properties": {
+                "statement_kind": {
+                  "enum": [
+                    "commit_observed",
+                    "pr_merged"
+                  ]
                 }
               }
             }

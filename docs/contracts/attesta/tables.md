@@ -23,11 +23,13 @@ Guard trigger (`SECURITY DEFINER`, fixed `search_path`): a new head starts at se
 | `recorded_at` | stamped inside the chain lock, `toISOString()` form, never earlier than the previous record's |
 | `record_kind` | `statement` (v1); `period_report` statements are `statement` records too (their predicate type differs) |
 | `statement_digest` | `sha256:<hex>` of `statement_canonical`; **unique per tenant** (the dedup key, `envelope.md`) |
-| `predicate_type`, `statement_kind`, `repository_id`, `subject_sha` | typed copies for queries; a guard checks they agree with `statement_canonical` |
+| `predicate_type`, `statement_kind`, `repository_id`, `subject_sha` | typed copies for queries; a guard checks they agree with `statement_canonical`. `statement_kind` and `subject_sha` are null for a `period_report` (its subject is a report digest) |
 | `statement_canonical` | the exact RFC 8785 statement bytes that were signed (text, UTF-8) |
 | `canonical_record` | the exact RFC 8785 bytes of the ledger record `{seq, prev_hash, recorded_at, tenant_id, record_kind, statement_digest, predicate_type, statement_kind, repository_id, subject_sha, outbox_subject_id}` |
 | `record_hash` | `computeRecordHash(canonical_record, prev_hash)` = `"sha256:" + hex(SHA-256(canonical_record ‖ prev_hash))` (EV-1 rule) |
-| `outbox_subject_id` | `attesta_subjects.id` it came from (null for `period_report`) |
+| `outbox_subject_id` | `attesta_subjects.id` it came from (null for `period_report`); **unique per tenant where not null**, so one outbox row yields at most one chained statement however often it is retried |
+
+The ledger transaction also marks the outbox row `done` against its claim and re-checks `previous` under the chain lock (`envelope.md` step 7).
 
 Guards: insert only at `chain_head.next_seq` with `prev_hash = head_hash`; `record_hash` must match the stored bytes; `statement_digest` must match `statement_canonical`; a deferred constraint trigger refuses COMMIT if the head was not advanced past the record; UPDATE, DELETE and TRUNCATE raise. Verification reads the stored bytes and never re-serializes.
 

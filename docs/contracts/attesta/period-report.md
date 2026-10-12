@@ -21,7 +21,7 @@ Its subject is a report document, not a commit, and its fields are aggregates. P
 | Field | Meaning |
 |---|---|
 | `scope` | `repository_id`, `from`, `to`, `basis` (`recorded_at`: statements chained in the period) |
-| `chain_range` | `from_seq`, `to_seq` and the `record_hash` at `to_seq`: the tenant chain segment the report read. Because `seq` is gap-free and anchored, a verifier can prove no statement in the segment was left out |
+| `chain_range` | `from_seq`, `to_seq` and the `record_hash` at `to_seq`: the tenant chain segment the report read. Because `seq` is gap-free and anchored, a verifier can prove no statement in the segment was left out. **Trade-off:** that proof needs every `canonical_record` in the segment, across all of the tenant's repositories, so a pack scoped to one repository still shows the other records' metadata (repository UUIDs, subject shas, kinds, digests), never their statements. A15.9 decides whether to add a per-repository proof (for example a per-repository Merkle commitment in each record) before packs are shared with repository-scoped outsiders |
 | `inputs` | `statement_count` and `statements_root`: the RFC 6962 Merkle root (`merkle.ts`) over the included statement digests in `seq` order |
 | `figures` | each figure is `{availability, value, statements_root}`, integers only. v1 figures: commits observed; AI / human / unknown lines changed; merged AI lines by tool and model; PRs merged; production deployments; lines with `unknown` attribution |
 | `ratios` | **basis points** (integer 0–10000), never floats: AI share of changed lines; AI share of merged lines |

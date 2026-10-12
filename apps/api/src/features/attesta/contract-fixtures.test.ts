@@ -1,6 +1,6 @@
 /**
  * Checks every Attesta contract fixture against the frozen schemas, the
- * cross-field rules (S1-S8) and the expected results in fixtures/manifest.json.
+ * cross-field rules (S1-S12) and the expected results in fixtures/manifest.json.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

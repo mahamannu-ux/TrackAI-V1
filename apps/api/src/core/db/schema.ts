@@ -1658,7 +1658,7 @@ export const attestaSubjects = pgTable('attesta_subjects', {
     and ${table.attempts} >= 0
     and (${table.status} <> 'claimed' or ${table.claimedAt} is not null)
     and (${table.status} not in ('done', 'failed') or ${table.processedAt} is not null)
-    and (${table.status} <> 'pending' or ${table.processedAt} is null)
+    and (${table.status} <> 'pending' or (${table.processedAt} is null and ${table.claimedAt} is null))
     and (${table.lastErrorCode} is null or ${table.lastErrorCode} ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
   `),
 }));
