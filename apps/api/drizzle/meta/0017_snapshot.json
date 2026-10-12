@@ -1,5 +1,5 @@
 {
-  "id": "d9ef8d30-3bbe-48e1-b776-7fe250ce4353",
+  "id": "2e953535-dfcc-4113-97b8-116f2aee8c49",
   "prevId": "9eda4945-8bc7-4742-ace0-667b81da960b",
   "version": "7",
   "dialect": "postgresql",
@@ -1556,7 +1556,7 @@
       "checkConstraints": {
         "attesta_records_shape_check": {
           "name": "attesta_records_shape_check",
-          "value": "\n    \"attesta_records\".\"seq\" >= 0\n    and \"attesta_records\".\"record_kind\" = 'statement'\n    and \"attesta_records\".\"prev_hash\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"record_hash\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"statement_digest\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"predicate_type\" = 'https://trackai.dev/attesta/ai-provenance/v1'\n    and \"attesta_records\".\"statement_kind\" in ('commit_observed', 'pr_merged', 'deployed')\n    and \"attesta_records\".\"subject_sha\" ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'\n  "
+          "value": "\n    \"attesta_records\".\"seq\" >= 0\n    and \"attesta_records\".\"record_kind\" = 'statement'\n    and \"attesta_records\".\"prev_hash\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"record_hash\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"statement_digest\" ~ '^sha256:[0-9a-f]{64}$'\n    and \"attesta_records\".\"predicate_type\" = 'https://trackai.dev/attesta/ai-provenance/v1'\n    and \"attesta_records\".\"statement_kind\" is not null\n    and \"attesta_records\".\"statement_kind\" in ('commit_observed', 'pr_merged', 'deployed')\n    and \"attesta_records\".\"subject_sha\" is not null\n    and \"attesta_records\".\"subject_sha\" ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'\n  "
         }
       },
       "isRLSEnabled": false

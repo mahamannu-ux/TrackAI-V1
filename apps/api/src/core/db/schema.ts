@@ -1730,7 +1730,9 @@ export const attestaRecords = pgTable('attesta_records', {
     and ${table.recordHash} ~ '^sha256:[0-9a-f]{64}$'
     and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
     and ${table.predicateType} = 'https://trackai.dev/attesta/ai-provenance/v1'
+    and ${table.statementKind} is not null
     and ${table.statementKind} in ('commit_observed', 'pr_merged', 'deployed')
+    and ${table.subjectSha} is not null
     and ${table.subjectSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'
   `),
 }));

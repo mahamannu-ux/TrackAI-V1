@@ -472,6 +472,10 @@ export async function chainStatement(
   const s = validateChainInput(input);
   const c = s.columns;
 
+  // 0. The commit-time guard must run after the envelope and head are written,
+  //    even if the caller set its constraints IMMEDIATE.
+  await run(tx, sql`/* ledger:commit_guard_defer */ set constraints attesta_records_commit_guard deferred`);
+
   // 1. The tenant's chain lock. Creating the head is race-safe: a concurrent
   //    creator waits on the primary key, then DO NOTHING.
   await run(tx, sql`/* ledger:head_insert */
@@ -596,7 +600,8 @@ export async function chainStatement(
     where tenant_id = ${s.tenantId}`);
   await markDone();
   // Run the commit-time guard now, so its refusal surfaces here as a ledger error
-  // rather than at the caller's COMMIT; then defer it again for the next statement.
+  // rather than at the caller's COMMIT; then defer it again for the next statement
+  // (the trigger's own default; the caller's other constraints are untouched).
   await run(tx, sql`/* ledger:commit_guard */ set constraints attesta_records_commit_guard immediate`);
   await run(tx, sql`/* ledger:commit_guard_defer */ set constraints attesta_records_commit_guard deferred`);
 

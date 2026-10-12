@@ -46,7 +46,8 @@ export type ChainBreakKind =
   | 'envelope_missing'
   | 'envelope_payload_mismatch'
   | 'signature_invalid'
-  | 'key_unknown';
+  | 'key_unknown'
+  | 'signatures_not_checked';
 
 export type AttestaVerifyCode =
   | 'ATTESTA_VERIFY_SEQ_GAP'
@@ -65,7 +66,10 @@ export type AttestaVerifyCode =
  * tail whose hash differs from the head is a PREV_HASH_MISMATCH (the head is the
  * next record's prev_hash); ordering and beyond-head faults are SEQ_GAP faults; an
  * envelope that does not carry the record's statement is SIGNATURE_INVALID (the
- * record is not signed); a missing envelope is NOT_CHECKABLE (material absent).
+ * record is not signed); a missing envelope is NOT_CHECKABLE (material absent), and
+ * so is a report run without published keys: an unchecked signature is never a pass
+ * (AGENTS.md §9 item 19), so `ok` is false and `chain_intact` says whether the chain
+ * itself held.
  */
 export const BREAK_DETAIL_CODES: Readonly<Record<ChainBreakKind, AttestaVerifyCode>> = {
   hash_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
@@ -85,6 +89,7 @@ export const BREAK_DETAIL_CODES: Readonly<Record<ChainBreakKind, AttestaVerifyCo
   envelope_payload_mismatch: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
   signature_invalid: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
   key_unknown: 'ATTESTA_VERIFY_KEY_UNKNOWN',
+  signatures_not_checked: 'ATTESTA_VERIFY_NOT_CHECKABLE',
 };
 
 export interface ChainBreak {
@@ -104,7 +109,10 @@ export interface ChainReport {
   range: { from_seq: number; to_seq: number };
   /** Rows in range that were checked. */
   checked: number;
+  /** true only when nothing broke and every signature was checked against a published key. */
   ok: boolean;
+  /** true when the only finding (if any) is that signatures were not checked. */
+  chain_intact: boolean;
   breaks: ChainBreak[];
   /** true when more breaks were found than `maxBreaks` lets the report list. */
   breaks_truncated: boolean;
@@ -173,9 +181,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 class Collector {
   breaks: ChainBreak[] = [];
   total = 0;
+  chainBreaks = 0;
   constructor(private readonly max: number) {}
   add(seq: number, kind: ChainBreakKind): void {
     this.total++;
+    if (kind !== 'signatures_not_checked') this.chainBreaks++;
     if (this.breaks.length < this.max) this.breaks.push({ seq, kind, detail_code: BREAK_DETAIL_CODES[kind] });
   }
 }
@@ -293,7 +303,6 @@ export async function verifyChainRows(
   if (link === null) warnings.push('first_link_not_checked');
   else if (!HASH_RE.test(link)) throw new RangeError('malformed expectedPrevHash');
   if (!head) warnings.push('head_not_supplied');
-  if (!opts.keys) warnings.push('signatures_not_checked');
 
   let expectedNext = fromSeq;
   let lastSeq: number | null = null;
@@ -340,6 +349,7 @@ export async function verifyChainRows(
     lastSeq = row.seq;
   }
   if (outside > 0) warnings.push('rows_outside_range_ignored');
+  if (!opts.keys && checked > 0) out.add(fromSeq, 'signatures_not_checked');
 
   if (head && lastWritten !== null) {
     const upper = Math.min(toSeq, lastWritten);
@@ -355,6 +365,7 @@ export async function verifyChainRows(
     range: { from_seq: fromSeq, to_seq: toSeq },
     checked,
     ok: out.total === 0,
+    chain_intact: out.chainBreaks === 0,
     breaks: out.breaks,
     breaks_truncated: out.total > out.breaks.length,
     head,
@@ -363,9 +374,17 @@ export async function verifyChainRows(
   };
 }
 
-/** Anything with `execute(sql)`: `db` or an open transaction. */
+/**
+ * Anything with `execute(sql)`: `db` or an open transaction. When `transaction` is
+ * present (the Drizzle database), every read runs in one REPEATABLE READ, READ ONLY
+ * transaction, so the head and all pages are one snapshot.
+ */
 export interface ChainReadExecutor {
   execute(query: SQL): Promise<{ rows: Array<Record<string, unknown>> }>;
+  transaction?<T>(
+    fn: (tx: ChainReadExecutor) => Promise<T>,
+    config?: { isolationLevel?: 'repeatable read'; accessMode?: 'read only' },
+  ): Promise<T>;
 }
 
 export interface VerifyChainOptions {
@@ -444,6 +463,19 @@ export async function verifyChain(
   }
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 5000) throw new RangeError('pageSize must be 1-5000');
+  if (typeof db.transaction === 'function') {
+    return db.transaction((tx) => verifySnapshot(tx, tenantId, options, pageSize),
+      { isolationLevel: 'repeatable read', accessMode: 'read only' });
+  }
+  return verifySnapshot(db, tenantId, options, pageSize);
+}
+
+async function verifySnapshot(
+  db: ChainReadExecutor,
+  tenantId: string,
+  options: VerifyChainOptions,
+  pageSize: number,
+): Promise<ChainReport> {
 
   const headRows = (await db.execute(sql`
     select next_seq::text as next_seq, head_hash,
@@ -464,7 +496,7 @@ export async function verifyChain(
     assertRange(fromSeq, fromSeq);
     return {
       report_version: CHAIN_REPORT_VERSION, tenant_id: tenantId, range: { from_seq: fromSeq, to_seq: toSeq },
-      checked: 0, ok: true, breaks: [], breaks_truncated: false, head,
+      checked: 0, ok: true, chain_intact: true, breaks: [], breaks_truncated: false, head,
       signatures: options.keys ? 'checked' : 'not_checked', warnings: head ? [] : ['head_not_supplied'],
     };
   }
@@ -481,10 +513,18 @@ export async function verifyChain(
   const report = await verifyChainRows(pages(db, tenantId, fromSeq, toSeq, pageSize), {
     tenantId, fromSeq, toSeq, expectedPrevHash, head, keys: options.keys, maxBreaks: options.maxBreaks,
   });
+  const prepend = (seq: number, kind: ChainBreakKind) => {
+    report.breaks.unshift({ seq, kind, detail_code: BREAK_DETAIL_CODES[kind] });
+    report.ok = false;
+    report.chain_intact = false;
+  };
+  if (fromSeq > 0 && expectedPrevHash === null && (lastKnown >= fromSeq - 1)) {
+    // The predecessor of a ranged check is gone although the chain reached past it.
+    prepend(fromSeq - 1, 'seq_gap');
+  }
   if (!head && maxSeq >= 0) {
     // Records without a head: the head row was removed behind the guards.
-    report.breaks.unshift({ seq: 0, kind: 'head_mismatch', detail_code: BREAK_DETAIL_CODES.head_mismatch });
-    report.ok = false;
+    prepend(0, 'head_mismatch');
   }
   return report;
 }

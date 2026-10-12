@@ -222,7 +222,7 @@ describe('chainStatement (scripted executor)', () => {
   it('chains the genesis record in the documented order', async () => {
     const tx = fresh();
     const result = await chainStatement(tx, chainInput(TENANT, STATEMENT, KEY, { outboxClaim: CLAIM }), clock);
-    assert.deepEqual(tx.tags(), ['head_insert', 'head_lock', 'claim_lock', 'dedup', 'outbox_chained', 'previous',
+    assert.deepEqual(tx.tags(), ['commit_guard_defer', 'head_insert', 'head_lock', 'claim_lock', 'dedup', 'outbox_chained', 'previous',
       'record_insert', 'envelope_insert', 'head_advance', 'claim_done', 'commit_guard', 'commit_guard_defer']);
     const insert = tx.calls.find((c) => c.tag === 'record_insert')!;
     const canonical = insert.params.find((p) => typeof p === 'string' && p.startsWith('{"outbox_subject_id"')) as string;

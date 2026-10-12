@@ -43,7 +43,9 @@ CREATE TABLE "attesta_records" (
     and "attesta_records"."record_hash" ~ '^sha256:[0-9a-f]{64}$'
     and "attesta_records"."statement_digest" ~ '^sha256:[0-9a-f]{64}$'
     and "attesta_records"."predicate_type" = 'https://trackai.dev/attesta/ai-provenance/v1'
+    and "attesta_records"."statement_kind" is not null
     and "attesta_records"."statement_kind" in ('commit_observed', 'pr_merged', 'deployed')
+    and "attesta_records"."subject_sha" is not null
     and "attesta_records"."subject_sha" ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'
   )
 );
@@ -74,13 +76,16 @@ ALTER TABLE "attesta_envelopes" ENABLE ROW LEVEL SECURITY;
 -- SushiCorp EV-1 @ 0bd67a5 (db/migrations/versions/0001_initial_schema.py).
 -- Every function is SECURITY DEFINER with a fixed search_path (AGENTS.md §9 item
 -- 21): under RLS a trigger runs as the calling role and would see no chain_head
--- row; as definer it reads as the migration role. Tables are schema-qualified.
+-- row; as definer it reads as the migration role. The path is pg_catalog, pg_temp
+-- (not public): a role with CREATE on public could otherwise shadow a polymorphic
+-- built-in such as to_jsonb(anyelement) with an exact-type function and run code
+-- as the definer. Tables are schema-qualified (public.*).
 -- SQLSTATE ATH01 = the head moved (retryable, ATTESTA_LEDGER_HEAD_CONFLICT);
 -- ATG01 = any other guard (terminal, ATTESTA_LEDGER_GUARD_VIOLATION).
 -- Hashes use the built-in pg_catalog.sha256() (PostgreSQL 11+), not pgcrypto,
 -- whose functions live outside pg_catalog on hosted PostgreSQL (Supabase).
 CREATE OR REPLACE FUNCTION attesta_ledger_reject_mutation()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   RAISE EXCEPTION 'attesta ledger: % on % is not allowed (append-only)', TG_OP, TG_TABLE_NAME
     USING ERRCODE = 'ATG01';
@@ -114,7 +119,7 @@ CREATE TRIGGER chain_head_no_truncate
 -- A chain starts at seq 0 with the genesis hash and advances by exactly one,
 -- only to the record_hash of the record stored at the old next_seq.
 CREATE OR REPLACE FUNCTION chain_head_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.next_seq <> 0 OR NEW.head_hash <> 'sha256:' || repeat('0', 64) THEN
@@ -147,15 +152,14 @@ CREATE TRIGGER chain_head_guard
 --> statement-breakpoint
 -- Chain contiguity and hash integrity on every record insert. chainStatement
 -- already holds the chain_head row lock; re-locking here is a no-op for it and
--- serializes any writer that bypassed it. The typed copies are compared with
--- the stored bytes parsed as jsonb; nothing is re-serialized.
+-- serializes any writer that bypassed it.
 CREATE OR REPLACE FUNCTION attesta_records_chain_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   head_next bigint;
   head_hash text;
   prev_recorded timestamptz;
-  canon jsonb;
+  expected text;
   stmt jsonb;
 BEGIN
   SELECT h.next_seq, h.head_hash INTO head_next, head_hash
@@ -167,6 +171,32 @@ BEGIN
     RAISE EXCEPTION 'attesta_records: seq % / prev_hash is not the chain head (next seq %)', NEW.seq, head_next
       USING ERRCODE = 'ATH01';
   END IF;
+  -- Millisecond precision only, so the column and the stored text are the same instant.
+  IF date_trunc('milliseconds', NEW.recorded_at) <> NEW.recorded_at THEN
+    RAISE EXCEPTION 'attesta_records: recorded_at must have millisecond precision (seq %)', NEW.seq
+      USING ERRCODE = 'ATG01';
+  END IF;
+  -- canonical_record must be exactly the RFC 8785 bytes of the typed columns. Every
+  -- value is a constrained token (UUID, hash, hex sha, enum, fixed URL, integer,
+  -- ISO timestamp) that needs no JSON escaping, and the keys are listed in RFC 8785
+  -- order, so the bytes can be rebuilt here and compared byte for byte (no jsonb
+  -- parse: it would accept whitespace and duplicate keys).
+  expected := '{"outbox_subject_id":'
+    || CASE WHEN NEW.outbox_subject_id IS NULL THEN 'null' ELSE '"' || NEW.outbox_subject_id::text || '"' END
+    || ',"predicate_type":"' || NEW.predicate_type
+    || '","prev_hash":"' || NEW.prev_hash
+    || '","record_kind":"' || NEW.record_kind
+    || '","recorded_at":"' || to_char(NEW.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    || '","repository_id":"' || NEW.repository_id::text
+    || '","seq":' || NEW.seq::text
+    || ',"statement_digest":"' || NEW.statement_digest
+    || '","statement_kind":"' || NEW.statement_kind
+    || '","subject_sha":"' || NEW.subject_sha
+    || '","tenant_id":"' || NEW.tenant_id::text || '"}';
+  IF expected IS NULL OR NEW.canonical_record IS DISTINCT FROM expected THEN
+    RAISE EXCEPTION 'attesta_records: canonical_record is not the canonical form of the typed columns at seq %', NEW.seq
+      USING ERRCODE = 'ATG01';
+  END IF;
   IF NEW.record_hash <> 'sha256:' || encode(
        sha256(convert_to(NEW.canonical_record, 'UTF8') || convert_to(NEW.prev_hash, 'UTF8')), 'hex') THEN
     RAISE EXCEPTION 'attesta_records: record_hash <> sha256(canonical_record || prev_hash) at seq %', NEW.seq
@@ -177,36 +207,13 @@ BEGIN
       USING ERRCODE = 'ATG01';
   END IF;
   BEGIN
-    canon := NEW.canonical_record::jsonb;
     stmt := NEW.statement_canonical::jsonb;
   EXCEPTION WHEN others THEN
-    RAISE EXCEPTION 'attesta_records: stored bytes are not JSON at seq %', NEW.seq USING ERRCODE = 'ATG01';
+    RAISE EXCEPTION 'attesta_records: statement_canonical is not JSON at seq %', NEW.seq USING ERRCODE = 'ATG01';
   END;
-  IF jsonb_typeof(canon) <> 'object'
-     OR (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(canon) AS k) IS DISTINCT FROM ARRAY[
-       'outbox_subject_id', 'predicate_type', 'prev_hash', 'record_kind', 'recorded_at', 'repository_id',
-       'seq', 'statement_digest', 'statement_kind', 'subject_sha', 'tenant_id']::text[] THEN
-    RAISE EXCEPTION 'attesta_records: canonical_record has the wrong fields at seq %', NEW.seq USING ERRCODE = 'ATG01';
-  END IF;
-  -- Millisecond precision only, so the column and the stored text are the same instant.
-  IF date_trunc('milliseconds', NEW.recorded_at) <> NEW.recorded_at
-     OR canon->'seq' IS DISTINCT FROM to_jsonb(NEW.seq)
-     OR canon->'prev_hash' IS DISTINCT FROM to_jsonb(NEW.prev_hash)
-     OR canon->'recorded_at' IS DISTINCT FROM
-        to_jsonb(to_char(NEW.recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-     OR canon->'tenant_id' IS DISTINCT FROM to_jsonb(NEW.tenant_id::text)
-     OR canon->'record_kind' IS DISTINCT FROM to_jsonb(NEW.record_kind)
-     OR canon->'statement_digest' IS DISTINCT FROM to_jsonb(NEW.statement_digest)
-     OR canon->'predicate_type' IS DISTINCT FROM to_jsonb(NEW.predicate_type)
-     OR canon->'statement_kind' IS DISTINCT FROM coalesce(to_jsonb(NEW.statement_kind), 'null'::jsonb)
-     OR canon->'repository_id' IS DISTINCT FROM to_jsonb(NEW.repository_id::text)
-     OR canon->'subject_sha' IS DISTINCT FROM coalesce(to_jsonb(NEW.subject_sha), 'null'::jsonb)
-     OR canon->'outbox_subject_id' IS DISTINCT FROM coalesce(to_jsonb(NEW.outbox_subject_id::text), 'null'::jsonb) THEN
-    RAISE EXCEPTION 'attesta_records: typed columns disagree with canonical_record at seq %', NEW.seq
-      USING ERRCODE = 'ATG01';
-  END IF;
-  -- The typed copies must also be what the signed statement says (ai-provenance v1:
-  -- one git-commit subject named after its repository).
+  -- The typed copies must be what the signed statement says (ai-provenance v1: one
+  -- git-commit subject named after its repository). Columns are NOT NULL here (shape
+  -- check), so a missing statement field compares as distinct.
   IF jsonb_typeof(stmt) <> 'object'
      OR jsonb_typeof(stmt->'subject') IS DISTINCT FROM 'array'
      OR jsonb_array_length(stmt->'subject') <> 1
@@ -218,6 +225,13 @@ BEGIN
         to_jsonb('trackai:repository/' || NEW.repository_id::text || '/commit/' || NEW.subject_sha) THEN
     RAISE EXCEPTION 'attesta_records: typed columns disagree with statement_canonical at seq %', NEW.seq
       USING ERRCODE = 'ATG01';
+  END IF;
+  -- The outbox row it came from belongs to this tenant (no foreign key: outbox rows
+  -- are work items that retention may delete later, outbox.md).
+  IF NEW.outbox_subject_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.attesta_subjects o WHERE o.tenant_id = NEW.tenant_id AND o.id = NEW.outbox_subject_id
+  ) THEN
+    RAISE EXCEPTION 'attesta_records: outbox subject is not in this tenant (seq %)', NEW.seq USING ERRCODE = 'ATG01';
   END IF;
   IF NEW.seq > 0 THEN
     SELECT r.recorded_at INTO prev_recorded FROM public.attesta_records r
@@ -236,7 +250,7 @@ CREATE TRIGGER attesta_records_chain_guard
 --> statement-breakpoint
 -- At COMMIT: the head was advanced past the record, and the record has its envelope.
 CREATE OR REPLACE FUNCTION attesta_records_commit_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.chain_head h WHERE h.tenant_id = NEW.tenant_id AND h.next_seq > NEW.seq
@@ -262,7 +276,7 @@ CREATE CONSTRAINT TRIGGER attesta_records_commit_guard
 -- The envelope signs exactly the record's statement bytes, with the stored keyid
 -- and signature, in the one shape auditors receive.
 CREATE OR REPLACE FUNCTION attesta_envelopes_guard()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   stmt text;
   sig jsonb;

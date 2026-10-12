@@ -18,6 +18,7 @@
  * Prints only safe summary lines.
  */
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PoolClient } from 'pg';
 import { db, pool } from '../../core/db';
@@ -124,6 +125,8 @@ interface RawRecordOptions {
   columnRecordedAt?: string;
   columnOutboxSubjectId?: string | null;
   columnSubjectSha?: string;
+  /** outbox_subject_id in the bytes and the column alike. */
+  outboxSubjectId?: string;
   envelope?: boolean;
   envelopePayloadOverride?: string;
   advance?: boolean;
@@ -143,7 +146,7 @@ async function rawAppend(client: PoolClient, t: Tenant, o: RawRecordOptions = {}
   const goodCanonical = buildCanonicalRecord({
     seq, prev_hash: prevHash, recorded_at: recordedAt, tenant_id: t.tenantId, record_kind: 'statement',
     statement_digest: digest, predicate_type: AI_PROVENANCE_PREDICATE_TYPE, statement_kind: 'commit_observed',
-    repository_id: t.repositoryId, subject_sha: o.columnSubjectSha ?? subjectSha, outbox_subject_id: null,
+    repository_id: t.repositoryId, subject_sha: o.columnSubjectSha ?? subjectSha, outbox_subject_id: o.outboxSubjectId ?? null,
   });
   const canonical = o.canonicalRecord ? o.canonicalRecord(goodCanonical) : goodCanonical;
   const goodHash = computeRecordHash(canonical, prevHash);
@@ -154,7 +157,7 @@ async function rawAppend(client: PoolClient, t: Tenant, o: RawRecordOptions = {}
      values ($1, $2, $3, $4::timestamptz, 'statement', $5, $6, 'commit_observed', $7, $8, $9, $10, $11, $12)
      returning id::text as id`,
     [t.tenantId, seq, prevHash, o.columnRecordedAt ?? recordedAt, digest, AI_PROVENANCE_PREDICATE_TYPE, t.repositoryId,
-      o.columnSubjectSha ?? subjectSha, statement, canonical, recordHash, o.columnOutboxSubjectId ?? null],
+      o.columnSubjectSha ?? subjectSha, statement, canonical, recordHash, o.columnOutboxSubjectId ?? o.outboxSubjectId ?? null],
   );
   const recordId = inserted.rows[0].id as string;
   if (o.envelope !== false) {
@@ -191,7 +194,7 @@ async function refused(client: PoolClient, label: string, code: string | RegExp,
   check(ok, `${label}: expected ${String(code)}, got ${String(error.code)}`);
 }
 
-async function guardAttacks(client: PoolClient, t: Tenant, other: Tenant, roleLabel: string): Promise<number> {
+async function guardAttacks(client: PoolClient, t: Tenant, other: Tenant, otherSubjectId: string, roleLabel: string): Promise<number> {
   let n = 0;
   const attack = async (label: string, code: string | RegExp, fn: () => Promise<unknown>) => {
     await refused(client, `${roleLabel} ${label}`, code, fn);
@@ -221,6 +224,14 @@ async function guardAttacks(client: PoolClient, t: Tenant, other: Tenant, roleLa
   await attack('insert with a wrong record_hash', 'ATG01', () => rawAppend(client, t, { recordHash: () => sha256Prefixed('forged') }));
   await attack('insert with a wrong statement_digest', 'ATG01', () => rawAppend(client, t, { statementDigest: () => sha256Prefixed('forged') }));
   await attack('canonical record with an extra field', 'ATG01', () => rawAppend(client, t, { canonicalRecord: (c) => c.replace('{', '{"anchor":1,') }));
+  await attack('canonical record with whitespace', 'ATG01', () => rawAppend(client, t, { canonicalRecord: (c) => c.replace('{"outbox', '{ "outbox') }));
+  await attack('canonical record with a duplicate key', 'ATG01', () => rawAppend(client, t, { canonicalRecord: (c) => c.replace('{', '{"seq":999999,') }));
+  await attack('outbox subject of another tenant', 'ATG01', () => rawAppend(client, t, { outboxSubjectId: otherSubjectId }));
+  await attack('typed copies left null', /^(23514|ATG01)$/, () => q(
+    `insert into attesta_records (tenant_id, seq, prev_hash, recorded_at, record_kind, statement_digest, predicate_type,
+       statement_kind, repository_id, subject_sha, statement_canonical, canonical_record, record_hash)
+     select $1, h.next_seq, h.head_hash, now(), 'statement', $2, $3, null, $4, null, '{}', '{}', $2
+     from chain_head h where h.tenant_id = $1`, [T, sha256Prefixed('x'), AI_PROVENANCE_PREDICATE_TYPE, t.repositoryId]));
   await attack('typed column disagrees with the record', 'ATG01', () => rawAppend(client, t, { columnOutboxSubjectId: randomUUID() }));
   await attack('typed copy disagrees with the statement', 'ATG01', () => rawAppend(client, t, { columnSubjectSha: shaOf('elsewhere') }));
   await attack('recorded_at goes backwards', 'ATG01', () => rawAppend(client, t, { recordedAt: '2001-01-01T00:00:00.000Z' }));
@@ -267,7 +278,7 @@ async function it01(a: Tenant, b: Tenant): Promise<void> {
   const me = (await pool.query('select current_user as u')).rows[0].u;
   check(fns.rows.length === 5, 'all five guard functions exist');
   for (const f of fns.rows) {
-    check(f.prosecdef === true && f.config === 'search_path=pg_catalog, public' && f.owner === me, `${f.proname} definer settings`);
+    check(f.prosecdef === true && f.config === 'search_path=pg_catalog, pg_temp' && f.owner === me, `${f.proname} definer settings`);
   }
   const rls = await pool.query(
     `select c.relname, c.relrowsecurity as on, (select count(*)::int from pg_policies p where p.tablename = c.relname) as policies
@@ -280,14 +291,15 @@ async function it01(a: Tenant, b: Tenant): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('begin');
-    const asApi = await guardAttacks(client, a, b, 'api-role');
+    const bSubject = (await claimedSubject(b, shaOf('b-subject'))).subjectId;
+    const asApi = await guardAttacks(client, a, b, bSubject, 'api-role');
     await client.query('rollback');
     console.log(`guards_api_role=${asApi}_refused`);
 
     // As an RLS-bound role that sees only tenant A (a test policy, rolled back).
     await client.query('begin');
     await client.query(`create role ${APP_ROLE} nologin nosuperuser nobypassrls`);
-    await client.query(`grant usage on schema public to ${APP_ROLE}`);
+    await client.query(`grant usage, create on schema public to ${APP_ROLE}`);
     await client.query(`grant select, insert, update, delete, truncate on chain_head, attesta_records, attesta_envelopes, attesta_subjects to ${APP_ROLE}`);
     for (const table of ['chain_head', 'attesta_records', 'attesta_envelopes', 'attesta_subjects']) {
       await client.query(`create policy it_t15d_tenant on ${table} for all to ${APP_ROLE}
@@ -303,15 +315,23 @@ async function it01(a: Tenant, b: Tenant): Promise<void> {
     })();
     await client.query(`select set_config('it_t15d.tenant', $1, true)`, [a.tenantId]);
     await client.query(`set local role ${APP_ROLE}`);
+    // search_path hijack: shadow the polymorphic built-ins the guards call with
+    // exact-type functions in public. With search_path = pg_catalog, pg_temp the
+    // definer guards never resolve them, so the append below must not raise.
+    for (const type of ['bigint', 'text']) {
+      await client.query(`create function public.to_jsonb(${type}) returns jsonb language plpgsql as $f$
+        begin raise exception 'search_path hijack ran as %', current_user; end $f$`);
+    }
     const visibleB = Number((await client.query(`select count(*)::int as n from attesta_records where tenant_id = $1`, [b.tenantId])).rows[0].n);
     check(visibleB === 0, 'the RLS role sees no tenant B record');
     // A legitimate append still works: the definer guards read the head under RLS.
     const ok = await chainStatement(drizzle(client), chainInput(a.tenantId, statementFor(a, shaOf('rls-ok')), KEY, { outboxClaim: claim }));
     check(ok.seq === 3 && !ok.duplicate, 'chainStatement as the RLS-bound role');
-    const asRls = await guardAttacks(client, a, b, 'rls-role');
+    const asRls = await guardAttacks(client, a, b, bSubject, 'rls-role');
     await client.query('rollback');
     console.log(`guards_rls_role=${asRls}_refused`);
     console.log('rls_role_append=passed');
+    console.log('search_path_hijack=not_resolved');
   } finally {
     await client.query('rollback').catch(() => undefined);
     client.release();
@@ -388,6 +408,15 @@ async function it02(): Promise<void> {
   check(!r1.duplicate && r2.duplicate && r1.recordId === r2.recordId, 'duplicate returns the existing record');
   check(await count(`select count(*)::int as n from attesta_subjects where id = $1 and status = 'done'`, [c2.subjectId]) === 1, 'duplicate still marks the row done');
   console.log('duplicate_statement=deduplicated');
+
+  // A caller that set its constraints IMMEDIATE, and one chaining two statements in one transaction.
+  const imm = await claimedSubject(t, shaOf('immediate'));
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`set constraints all immediate`);
+    await chainStatement(tx, chainInput(t.tenantId, statementFor(t, shaOf('immediate')), KEY, { outboxClaim: imm }));
+    await chainStatement(tx, chainInput(t.tenantId, statementFor(t, shaOf('immediate-2')), KEY));
+  });
+  console.log('caller_immediate_and_multi_statement=passed');
 
   // A rolled-back transaction leaves no gap: the next append takes the same seq.
   const nextBefore = Number((await pool.query(`select next_seq::text as n from chain_head where tenant_id = $1`, [t.tenantId])).rows[0].n);

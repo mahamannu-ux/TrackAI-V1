@@ -30,7 +30,9 @@ const small = buildChain(40, { tenantId: TENANT, repositoryId: REPO });
 const verifyAll = (rows: LedgerRow[], head: ChainHeadState | null, extra: Partial<Parameters<typeof verifyChainRows>[1]> = {}) =>
   verifyChainRows(rows, { tenantId: TENANT, fromSeq: 0, toSeq: (head?.next_seq ?? rows.length) - 1, head, ...extra });
 
-const pairs = (r: ChainReport) => r.breaks.map((b) => [b.seq, b.kind] as [number, ChainBreakKind]);
+/** Breaks other than "signatures not checked" (the structural tests run without keys). */
+const pairs = (r: ChainReport) => r.breaks.filter((b) => b.kind !== 'signatures_not_checked')
+  .map((b) => [b.seq, b.kind] as [number, ChainBreakKind]);
 const kinds = (r: ChainReport) => new Set(r.breaks.map((b) => b.kind));
 
 function withRow(rows: LedgerRow[], i: number, patch: Partial<LedgerRow>): LedgerRow[] {
@@ -80,10 +82,12 @@ describe('intact chains', () => {
     const started = performance.now();
     const report = await verifyAll(big.rows, big.head);
     const elapsed = performance.now() - started;
-    assert.equal(report.ok, true, JSON.stringify(report.breaks.slice(0, 3)));
+    assert.equal(report.chain_intact, true, JSON.stringify(report.breaks.slice(0, 3)));
     assert.equal(report.checked, N);
-    assert.deepEqual(report.breaks, []);
-    assert.deepEqual(report.warnings, ['signatures_not_checked']);
+    // Without published keys the report is never ok: an unchecked signature is not a pass.
+    assert.equal(report.ok, false);
+    assert.deepEqual(report.breaks, [{ seq: 0, kind: 'signatures_not_checked', detail_code: 'ATTESTA_VERIFY_NOT_CHECKABLE' }]);
+    assert.deepEqual(report.warnings, []);
     assert.deepEqual(report.head, big.head);
     assert.ok(elapsed < 15_000, `verifying ${N} records took ${elapsed.toFixed(0)} ms`);
     assert.doesNotThrow(() => JSON.stringify(report));
@@ -94,6 +98,7 @@ describe('intact chains', () => {
     const signed = buildChain(30, { tenantId: TENANT, repositoryId: REPO, key });
     const report = await verifyAll(signed.rows, signed.head, { keys: { [key.keyid]: key.publicKey } });
     assert.equal(report.ok, true, JSON.stringify(report.breaks));
+    assert.equal(report.chain_intact, true);
     assert.equal(report.signatures, 'checked');
   });
 
@@ -127,7 +132,7 @@ describe('one tamper per break kind', () => {
     const report = await verifyAll(swapped, head);
     assert.ok(kinds(report).has('seq_mismatch'));
     assert.ok(kinds(report).has('link_mismatch'));
-    assert.ok(report.breaks.every((b) => b.seq >= 5 && b.seq <= 7));
+    assert.ok(pairs(report).every(([s]) => s >= 5 && s <= 7));
   });
 
   it('field_mismatch: a typed column changed (the hashed bytes still say otherwise)', async () => {
@@ -248,7 +253,7 @@ describe('10 000-record tamper matrix', () => {
       assert.ok(pairs(report).some(([s, k]) => s === i && k === 'seq_mismatch'), `seq ${i}`);
       assert.ok(pairs(report).some(([s, k]) => s === i + 1 && k === 'seq_mismatch'), `seq ${i + 1}`);
     }
-    assert.ok(report.breaks.every((b) => SAMPLED.some((i) => b.seq >= i && b.seq <= i + 2)));
+    assert.ok(pairs(report).every(([s]) => SAMPLED.some((i) => s >= i && s <= i + 2)));
   });
 
   it('reorder rows as supplied: out_of_order at each pair', async () => {
@@ -256,7 +261,7 @@ describe('10 000-record tamper matrix', () => {
     for (const i of SAMPLED) [rows[i], rows[i + 1]] = [rows[i + 1], rows[i]];
     const report = await verifyAll(rows, big.head);
     for (const i of SAMPLED) assert.ok(pairs(report).some(([s, k]) => s === i && k === 'out_of_order'), `seq ${i}`);
-    assert.ok(report.breaks.every((b) => SAMPLED.includes(b.seq)));
+    assert.ok(pairs(report).every(([s]) => SAMPLED.includes(s)));
   });
 
   for (const i of [1, N / 2, N - 1]) {
@@ -267,7 +272,7 @@ describe('10 000-record tamper matrix', () => {
 
   it('truncation is invisible without the head, and the report says so', async () => {
     const blind = await verifyChainRows(big.rows.slice(0, N - 1), { tenantId: TENANT, fromSeq: 0, toSeq: N - 1 });
-    assert.equal(blind.ok, true);
+    assert.equal(blind.chain_intact, true);
     assert.ok(blind.warnings.includes('head_not_supplied'));
   });
 });
@@ -276,7 +281,7 @@ describe('ranges and limits', () => {
   it('a mid-range check needs the previous hash to check its first link', async () => {
     const part = small.rows.slice(10, 20);
     const blind = await verifyChainRows(part, { tenantId: TENANT, fromSeq: 10, toSeq: 19 });
-    assert.equal(blind.ok, true);
+    assert.equal(blind.chain_intact, true);
     assert.ok(blind.warnings.includes('first_link_not_checked'));
     const wrong = await verifyChainRows(part, { tenantId: TENANT, fromSeq: 10, toSeq: 19, expectedPrevHash: small.rows[8].recordHash });
     assert.deepEqual(pairs(wrong), [[10, 'link_mismatch']]);
@@ -305,7 +310,7 @@ describe('ranges and limits', () => {
     const report = await verifyChainRows(small.rows, { tenantId: TENANT, fromSeq: 0, toSeq: 9, head: small.head });
     assert.equal(report.checked, 10);
     assert.ok(report.warnings.includes('rows_outside_range_ignored'));
-    assert.equal(report.ok, true);
+    assert.equal(report.chain_intact, true);
   });
 });
 
@@ -344,7 +349,7 @@ describe('verifyChain (database reader, scripted)', () => {
   it('pages through the chain with every query bound to the tenant', async () => {
     const db = new FakeDb(small.rows, small.head);
     const report = await verifyChain(db, TENANT, { pageSize: 7 });
-    assert.equal(report.ok, true, JSON.stringify(report.breaks));
+    assert.equal(report.chain_intact, true, JSON.stringify(report.breaks));
     assert.equal(report.checked, 40);
     assert.equal(db.queries.filter((q) => q.sql.includes('left join attesta_envelopes')).length, 6);
     assert.ok(db.queries.every((q) => q.params[0] === TENANT));
@@ -353,14 +358,36 @@ describe('verifyChain (database reader, scripted)', () => {
   it('checks a sub-range from its stored predecessor', async () => {
     const db = new FakeDb(small.rows, small.head);
     const report = await verifyChain(db, TENANT, { fromSeq: 20, toSeq: 29 });
-    assert.equal(report.ok, true);
+    assert.equal(report.chain_intact, true);
     assert.equal(report.checked, 10);
     assert.ok(!report.warnings.includes('first_link_not_checked'));
+  });
+
+  it('a ranged check whose stored predecessor is gone reports the gap', async () => {
+    const db = new FakeDb(small.rows.filter((r) => r.seq !== 19), small.head);
+    const report = await verifyChain(db, TENANT, { fromSeq: 20, toSeq: 29 });
+    assert.equal(report.chain_intact, false);
+    assert.deepEqual(pairs(report), [[19, 'seq_gap']]);
+  });
+
+  it('runs every read in one read-only snapshot when the executor can open one', async () => {
+    const inner = new FakeDb(small.rows, small.head);
+    const configs: unknown[] = [];
+    const db = Object.assign(inner, {
+      transaction: async <T>(fn: (tx: FakeDb) => Promise<T>, config?: unknown) => {
+        configs.push(config);
+        return fn(inner);
+      },
+    });
+    const report = await verifyChain(db, TENANT);
+    assert.equal(report.chain_intact, true);
+    assert.deepEqual(configs, [{ isolationLevel: 'repeatable read', accessMode: 'read only' }]);
   });
 
   it('an empty chain is clean; records without a head are a break', async () => {
     const empty = await verifyChain(new FakeDb([], null), TENANT);
     assert.equal(empty.ok, true);
+    assert.equal(empty.chain_intact, true);
     assert.equal(empty.checked, 0);
     const headless = await verifyChain(new FakeDb(small.rows, null), TENANT);
     assert.equal(headless.ok, false);
