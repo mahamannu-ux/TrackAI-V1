@@ -6,7 +6,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 
 ## Task status board
 
-*Last updated 2026-10-12 (Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
+*Last updated 2026-10-12 (portfolio re-plan: Task7/11/12 deferred, Task8 re-scoped, Task17/18 added, see `docs/plan/ROADMAP_REPLAN_2026-10-12.md`; Task15 question catalogue and Q&A subtasks; earlier: 2026-10-09 Task9a fleet control plane; rows for Task2–Task6 restated from `ROUGH_ROADMAP.md` and the Task trackers, not re-verified). Each agent updates its own row at close-out.*
 
 | Task | Owner (agent) | Branch / PR | Code + unit tests | Integration (founder run) | Next founder action |
 |---|---|---|---|---|---|
@@ -15,7 +15,14 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task5 Evidence Explorer | Codex | `feature/task5-evidence-explorer` / PR #4 | ✅ merged | 🟡 engineering gates pass in CI; product-owner sign-off E5-12 pending | Sign off E5-12 when ready (`TASK5.md`) |
 | Task6.a Security (monitor-only) | Codex | `feature/task6-security` / PRs #5–#7; GitAI PR #2 | ✅ merged | 🟡 D6.1 signed activation and D6.2 platform coverage open | — (Task13/Task14 own D6.2) |
 | Task6.b Policy | — | — | ⬜ deferred | n/a | — |
-| Task7, Task8, Task10–Task12, Task14 | — | — | ⬜ | ⬜ | Primer when each starts |
+| Task7 SCM and CI/CD (deferred to pilot) | — | — | ⬜ | ⬜ | Pulled in if a pilot needs GitLab/Azure DevOps (`docs/plan/TASK7.md`) |
+| Task8 Pilot readiness: identity and onboarding | — | — | ⬜ | ⬜ | After Task10 (`docs/plan/TASK8.md`) |
+| Task10 UX/UI | — | — | ⬜ | ⬜ | After Task13 and Task16, with Task5/Task6.a clean-up |
+| Task11 API/SDK | — | — | n/a deferred until a customer asks | n/a | Triggers in `docs/plan/TASK11.md` |
+| Task12 Trust center and buyer content | — | — | ⬜ | ⬜ | After Task14 (`docs/plan/TASK12.md`) |
+| Task14 Production readiness | — | — | ⬜ | ⬜ | T14.1 pilot hosting before Task18; rest after the pilot milestone |
+| Task17 GitAI upstream sync | Codex + Claude + Muse | — | ⬜ | ⬜ | After Task9 (`docs/plan/TASK17.md`) |
+| Task18 Real-world validation | Codex + Muse | — | ⬜ | ⬜ | After Task8 and T14.1 (`docs/plan/TASK18.md`) |
 | Task9 Managed developer fleet | Codex + Muse | Task9a PR #16, Task9e PR #18 and Task9a2 PR #21 merged; GitAI Task9b PR #3, Task9c PR #4 and Task9c2 PR #5 merged | 🟡 lifecycle correction merged; Task15 verification remains unavailable | 🟡 IT-T9-01 reverified for v1/v2 on 2026-10-11; founder run and IT-T9-02–07/IT-M9-01 pending | Start Task9d from corrected GitAI `main` at `c4509ab8d` |
 | Task13 Agent and surface coverage | Codex | — | 🟡 matrix only (`AGENT_COVERAGE.md`) | ⬜ | — |
 | Task15 Attesta (signed provenance; owns the shared trust layer) | Claude + Muse | — | 🟡 Task15a (PR #22), Task15b (PR #23) and the question catalogue (PR #25) merged | n/a: none needed | Run Task15c-attesta-contract (Claude) and Task15e-attesta-fakes (Muse) in parallel; prompts ready |
@@ -39,8 +46,8 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 3 | dryrun-web-dead-view: B14, handed out by Codex | Muse | about 0.01× | about 0.01× | #2's prompt written | written by Codex in #2 |
 | 4 | ~~Dry run, Claude~~ dropped by the founder 2026-10-08 (Claude usage) | — | — | — | — | — |
 | 5 | stage2-project-map: vision, project map, reuse map, AGENTS.md §9 gotchas (stage 2, moved before the dry runs) | Claude (orchestrator) | about 0.05× | about 0.05× (by turns) | #1 merged | (setup brief) |
-| 6 | Task15 Attesta, phase 1 (sessions in `docs/plan/TASK15.md` §5) | Claude + Muse + Codex | about 1.5× | | founder buy-in on TASK15 §1 | `docs/prompts/Task15/NEXT_CHAT_Task15-lead_PROMPT.md` |
-| 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4) | Claude + Muse + Codex | about 0.6× | | founder answers TASK16 §1 | `docs/prompts/Task16/NEXT_CHAT_Task16-lead_PROMPT.md` |
+| 6 | Task15 Attesta, phase 1 (sessions in `docs/plan/TASK15.md` §5, incl. A15.14) | Claude + Muse + Codex | about 1.55× | | founder buy-in on TASK15 §1 | `docs/prompts/Task15/NEXT_CHAT_Task15-lead_PROMPT.md` |
+| 6b | Task16 Audit (sessions in `docs/plan/TASK16.md` §4; auditor invitations moved to Task8 T8.12) | Claude + Muse | about 0.5× | | founder answers TASK16 §1 | `docs/prompts/Task16/NEXT_CHAT_Task16-lead_PROMPT.md` |
 | 7 | Task9-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex | about 0.05× | about 0.05× (by turns) | complete | `docs/prompts/Task9/NEXT_CHAT_Task9-lead_PROMPT.md` |
 | 7a | Task9a-fleet-control-plane: server contract, inventory, rollout/offboard records and reconciliation | Codex | about 0.24× target; 0.38× ceiling | about 0.24× | merged in PR #16 | `docs/prompts/Task9/NEXT_CHAT_Task9a-fleet-control-plane_PROMPT.md` |
 | 7a2 | Task9a2-release-contract-correction: schema-v2 compatibility and immutable release descriptor | Codex | about 0.14× target; 0.20× ceiling | about 0.14× | merged in TrackAI PR #21 (`d2c4a23`) | `docs/prompts/Task9/NEXT_CHAT_Task9a2-release-contract-correction_PROMPT.md` |
@@ -51,6 +58,8 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.20× target; 0.25× ceiling | about 0.17× | merged in TrackAI PR #18 (`b43d007`); only a narrow v2 form/type assessment may follow | `docs/prompts/Task9/NEXT_CHAT_Task9e-fleet-console_PROMPT.md` |
 | 7f | Task9f-macos-conformance: current Intel Mac lifecycle plus best-effort Jamf/second-Mac gates | Codex | about 0.30× | | Task9a2, Task9c2 and resumed Task9d merged | written after implementation sessions |
 | 7g | Task9g-windows-conformance: Windows x64 CI floor plus best-effort native/Intune gates | Codex | about 0.35× | | corrected implementation sessions and Task9f merged; host/tenant if available | written after macOS conformance |
+| 7h | Task17-lead: GitAI upstream sync (Codex leads; Claude product review; Muse ports) | Codex + Claude + Muse | (primer decides) | | Task9 done | to write from `docs/agents/TASK_LEAD_PROCEDURE.md` |
+| 7i | Task2-lab-regression: Lifecycle Lab regression check after Task9 and Task17 | Codex | about 0.1× | | Task17 done | to write |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
 
 **Actuals:** adopt-agent-kit ran slightly over (0.07× against 0.06×): three cross-review fix rounds on draft project slots that did not match the code.

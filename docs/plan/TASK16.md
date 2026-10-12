@@ -2,7 +2,7 @@
 
 *Tracker and plan. Written 2026-10-08 by TrackAI-Orchestrator from the founder's notes (`docs/founder/VISION.md` part 3), `docs/plan/PROJECT_MAP.md`, `docs/plan/REUSE_MAP.md` (AU-1, ID-2, RP-1) and `docs/plan/TASK15.md`. Symbols per AGENTS.md §11. Scope is still forming (founder: "not much clarity"); section 1 lists what needs his yes.*
 
-**In one paragraph.** Today TrackAI writes one append-only table, `security_audit_events` (actor, action, target, details, time), from Task4 administration (machines and credentials, grants, backfill, GitHub App, retention, export), Task5 (consent, raw reveal, corrections, purges) and Task6.a (finding reads). It is shown inside Administration, is not tamper-evident, cannot be searched or exported on its own, and new sources (Attesta signing and anchoring, D6.1 activation leases, Task6.b policy bundles, Task14 signed artifacts) have no events yet. Task16 gives audit one home: a catalog of every event, one way to emit them, a tamper-evident log through Attesta, an auditor's own console area, search and signed export, and auditor lifecycle (invitations, expiry).
+**In one paragraph.** Today TrackAI writes one append-only table, `security_audit_events` (actor, action, target, details, time), from Task4 administration (machines and credentials, grants, backfill, GitHub App, retention, export), Task5 (consent, raw reveal, corrections, purges) and Task6.a (finding reads). It is shown inside Administration, is not tamper-evident, cannot be searched or exported on its own, and new sources (Attesta signing and anchoring, D6.1 activation leases, Task6.b policy bundles, Task14 signed artifacts) have no events yet. Task16 gives audit one home: a catalog of every event, one way to emit them, a tamper-evident log through Attesta, an auditor's own console area, search and signed export, ; auditor lifecycle (invitations, expiry) is Task8 T8.12, built on Task16's audit contract (A16.3).
 
 **Customer story.** Dana is the internal auditor at Acme. She signs in with an auditor invitation that expires after the audit. She opens **Audit** (not Administration), filters "credential revocations and raw-evidence reveals in Q3", sees who did what, when, to which machine or repository, and why. She exports the result as a signed evidence pack and verifies it offline, including that no event was deleted. She can change nothing.
 
@@ -12,7 +12,7 @@
 | D1 | Is Task16 a separate Task from Attesta? | Yes (founder, 2026-10-08); it consumes Attesta's ledger and evidence-pack format rather than building its own. |
 | D2 | Tamper evidence | Chain every audit event into Attesta's per-tenant ledger (A16.4) instead of a second chain. |
 | D3 | Audit API for customers' tools (SIEM export, webhooks) | Read API now in TrackAI; SIEM/webhook delivery moves to Task11 (API/SDK). |
-| D4 | Auditor invitations | Port SushiCorp ID-2's expiring, revocable invitations (back-port candidate), membership-based, never by email domain. |
+| D4 | Auditor invitations | Owned by Task8 T8.12 since 2026-10-12 (ID-2 port: expiring, revocable, membership-based, never by email domain); Task16 supplies the audit contract (A16.3) and the invitation audit events. |
 | D5 | Retention of audit events | Never purged by tenant retention; exportable before tenant deletion. Confirm with counsel per market. |
 
 ## 2. Subtasks
@@ -29,13 +29,13 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 | A16.6 | Audit read API: filter by actor, action, resource, time; keyset paging; `no-store`; auditor-reachable | Muse | 0.06× | A16.3 | ⬜ |
 | A16.7 | Signed audit export (evidence pack, Attesta RP-1 pattern) | Claude | 0.05× | A16.6, Task15 A15.9 | ⬜ |
 | A16.8 | Auditor console area separate from Administration: search, detail, export, verify card; no write controls (UI-1 rules) | Claude design, Muse build | 0.1× | A16.6 | ⬜ |
-| A16.9 | Auditor invitations and expiry; membership-based tenant selection (ID-2 back-port) | Codex (Task4 owner) | 0.1× | A16.3 | ⬜ |
+| A16.9 | ~~Auditor invitations and expiry; membership-based tenant selection~~ moved to Task8 as T8.12 (founder 2026-10-12) | Task8 | — | A16.3 | n/a here |
 | A16.10 | Database read-only role for auditor reads (AU-1 layer 4) | Claude | 0.05× | A16.6 | ⬜ |
 | A16.11 | Emitters for new sources: Attesta (key create/rotate/revoke, sign, anchor ok/failed, verify run, pack export), D6.1 lease issue, Task6.b bundle publish/activation, T14.7 artifact signing | owning Tasks | — | A16.3 | n/a here |
 | A16.12 | Founder-live auditor walkthrough (Company A/B, admin vs auditor vs developer) | founder-live | 0.02× | A16.8 | ⬜ |
 | A16.13 | Auditor Q&A: the auditor-flagged questions in `docs/plan/ATTESTA_QUESTIONS.md` answered from signed Attesta statements, each with the statements behind it, timestamps, anchors, a verify action and pack export; read-only. May reuse Task10 T10.9's queries (optional, not a prerequisite) | Claude design, Muse build | sized when the question list is complete | A16.6, A16.8, Task15 A15.9 | ⬜ |
 
-**Total:** about 0.6× T6 before A16.13 (Claude about 0.25×, Muse about 0.25×, Codex 0.1×).
+**Total:** about 0.5× T6 before A16.13 (Claude about 0.25×, Muse about 0.25×); auditor invitations (formerly Codex, 0.1×) moved to Task8 T8.12.
 
 ## 3. Sub-task graph
 
@@ -55,9 +55,6 @@ flowchart LR
     B8a[A16.8 console design]
     B10[A16.10 DB role]
   end
-  subgraph Codex
-    B9[A16.9 invitations]
-  end
   subgraph Founder-live
     B12[A16.12 walkthrough]
   end
@@ -68,7 +65,6 @@ flowchart LR
   B3 --> B4
   B3 --> B5
   B3 --> B6
-  B3 --> B9
   B6 --> B7
   B6 --> B8a --> B8b
   B6 --> B10
@@ -89,10 +85,10 @@ flowchart LR
 | Task16d-audit-api | A16.6 | Muse | 0.06× | after 16b |
 | Task16e-audit-tamper | A16.4, A16.7 | Claude | 0.15× | after 16d and Task15d/15i |
 | Task16f-audit-console | A16.8 | Claude design note, Muse build | 0.1× | after 16d |
-| Task4-auditor-invitations | A16.9 | Codex | 0.1× | after 16b |
 | Task16g-audit-db-role | A16.10 | Claude | 0.05× | after 16d |
 | Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i |
 
 ## 5. Founder decisions
 1. **2026-10-08:** D1–D5 approved as recommended.
 2. **2026-10-12:** add A16.13 Auditor Q&A, driven by the question catalogue `docs/plan/ATTESTA_QUESTIONS.md` (founder, in the Task15 lead chat).
+3. **2026-10-12:** A16.9 (auditor invitations) moves to Task8 (T8.12); SIEM delivery stays with Task11, now deferred until a customer asks (`docs/plan/TASK11.md`); Task16 applies the AP-1 API conventions to its routes and must not assume a human session (B17).

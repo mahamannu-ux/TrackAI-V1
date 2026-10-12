@@ -1,14 +1,14 @@
 # TrackAI Rough Product Roadmap
 
 **Portfolio index — intentionally non-committal on delivery dates**
-Last updated: **2026-09-26**
+Last updated: **2026-10-12** (portfolio re-plan with the founder: Task7/Task11/Task12 deferred to the pilot milestone, Task8 re-scoped, Task17 and Task18 added, new execution graph)
 
 This document records major product programs, their dependencies and their
 recommended Codex-task ownership. Individual task trackers remain authoritative
 for implementation detail. Status represents discovery/implementation maturity,
 not a promised release date.
 
-> **Working style (2026-10-07):** agents follow [`AGENTS.md`](AGENTS.md) (agent-kit 0.1.0). Session-level status, the remaining plan with estimates and actuals, and the integration test registry live in [`docs/plan/STATUS_BOARD.md`](docs/plan/STATUS_BOARD.md); each Task starts with a plain-language primer in [`docs/plan/primers/`](docs/plan/primers/). **Task15 — Attesta** (signed provenance, ported from SushiCorp) is planned; its row is added when its primer is approved.
+> **Working style (2026-10-07):** agents follow [`AGENTS.md`](AGENTS.md) (agent-kit 0.1.0). Session-level status, the remaining plan with estimates and actuals, and the integration test registry live in [`docs/plan/STATUS_BOARD.md`](docs/plan/STATUS_BOARD.md); each Task starts with a plain-language primer in [`docs/plan/primers/`](docs/plan/primers/) or a plan in `docs/plan/TASK<N>.md`. The 2026-10-12 re-plan is recorded in [`docs/plan/ROADMAP_REPLAN_2026-10-12.md`](docs/plan/ROADMAP_REPLAN_2026-10-12.md).
 
 ## Status legend
 
@@ -28,16 +28,18 @@ not a promised release date.
 | **[Task5](TASK5.md)** | Evidence Explorer and Intention Intelligence | 🟡 ◐ | Let authorized customers traverse intention → prompt/session/tool activity → code/commit/PR/production and reverse that path for diagnosis and learning. | Evidence taxonomy; privacy; graph; raw evidence; visual explorer; pain analytics; semantic intention review. | Engineering and controlled verification complete and approved for `main`; T5.9a intention research and product-owner UX acceptance continue in parallel. External work-item linkage remains deferred. | **Merge foundation; continue explicit follow-ups** | Hands-on product feedback remains; certification and provider expansion continue in their owning tasks. | [`TASK5.md`](TASK5.md) is the authoritative implementation/status tracker; this roadmap retains only the portfolio summary. |
 | **Task6 Security** | Coding-Agent Security | 🟡 ◐ | Detect reviewed coding-agent threats locally and deliver privacy-safe, tenant-isolated monitor findings without claiming unsupported prevention. | Normalized security events; Numbat rule discovery; embedded pinned evaluator; safe findings; access/audit UI; agent/OS conformance. | Task4 delivery/authorization, Task5 privacy floor and Task13 route capabilities. Canonical tracker: [`TASK6_SECURITY.md`](TASK6_SECURITY.md). | **Begin now; monitor-only first** | High: rule review, false-positive evaluation and real agent/host experiments. | Active Task6 track. |
 | **Task6 Policy** | Organization Policy Engine | 🔴 ☐ | Later express, simulate, distribute and enforce customer-defined capture, upload, redaction, retention, access, export and authorization policy. | Cedar-like model; inheritance; exceptions; approvals; simulation; signed endpoint bundles; data lifecycle controls. | Customer requirements plus stable Task4/5/6-Security contracts. Canonical tracker: [`TASK6_POLICY.md`](TASK6_POLICY.md); compatibility index: [`TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md`](TASK6_POLICY_SECURITY_BUNDLE_ARCHITECTURE.md). | **Deferred until customer-driven** | Very high: vocabulary, defaults, signing trust, failure modes and compliance review. | Deferred Task6 track. |
-| **Task7** | GitLab and Bitbucket Integration | 🔴 ☐ | Provide provider-neutral lifecycle behavior and metric parity across GitHub, GitLab and Bitbucket. | SCM adapter contract; provider Apps/OAuth; webhook mapping; PR/MR semantics; deployment mapping; conformance fixtures. | Task4 generalized delivery/idempotency; stable Task2 lifecycle contracts. | **After Task4 transport contracts** | High: provider accounts, installations, webhook configuration and live merges/deployments. | Separate Task7 provider-integration task. |
-| **Task8** | Customer Onboarding and Time-to-Value | 🔴 ☐ | Move a customer safely from tenant and IdP configuration to verified first metrics, with understandable identity, role, machine-assignment and recovery flows. | Okta/Entra/Google setup; claims and group-to-role mapping; admin bootstrap; JIT/optional SCIM; SCM installation; audited machine-custodian assignment; self-service client enrollment; first-data verification. | Task4 admin/policy; Task7 adapters where applicable; Task9 optional managed deployment. | **After Task4 admin foundations** | Very high: customer IdP configuration, role mapping, customer-admin/regular-user acceptance and usability trials. | Separate Task8 task. |
+| **[Task7](docs/plan/TASK7.md)** | SCM and CI/CD Integrations | 🔴 ☐ | Bring the PR, merge and production stages, and CI/CD signals, to providers beyond GitHub; provider order GitLab → Azure DevOps → Bitbucket, chosen by the pilot pipeline. | Provider adapters (GitLab first); MR/PR, stacked-diff and merge-train semantics; deployment signals from CD tools (Argo CD, Jenkins, GitLab environments); CI results for quality outcomes. | Task2 lifecycle contracts; Task4 delivery/idempotency. | **Deferred to the pilot milestone** (pulled in if a pilot uses GitLab or Azure DevOps) | High: provider accounts, installations, live merges/deployments. | Codex; scope in `docs/plan/TASK7.md`. |
+| **[Task8](docs/plan/TASK8.md)** | Pilot Readiness: Identity and Onboarding | 🔴 ☐ | Move a pilot customer from contract to verified first metrics without TrackAI staff: company login, roles, enrollment, first-data diagnostics, a sample tenant and acceptance runbooks. | Okta/Entra/Google OIDC with issuer/audience checks; group-to-role mapping and break-glass; JIT users (SCIM deferred); SCM installation; custodian assignment; self-service enrollment; role acceptance; first-data diagnostics and verification lab (ex-T12.2); sample tenant (ex-T12.3); acceptance runbooks (ex-T12.4); auditor invitations (ex-Task16 A16.9). | Task4 admin/identity; Task9 enrollment; Task16 audit contract. | **After Task10; before Task18** | Very high: IdP configuration, role trials. | Codex or Claude; plan in `docs/plan/TASK8.md`. |
 | **Task9** | MDM and Managed Developer Fleet | 🔴 ☐ | Let enterprise administrators deploy, configure, inventory, update and revoke TrackAI/Git AI across managed macOS, Windows and Linux devices. | Signed packages/profiles; unattended install; device identity/posture and assigned-user evidence; managed configuration; fleet inventory; update/rollback; offboarding; OS secret-store integration. | Task4 developer keys, machine identity, repository grants and offline queue; Task14 secret-store adapter contract. | **After Task4 machine enrollment** | Very high: managed-device access, MDM vendor profiles, user/device reconciliation and restart/offboarding tests. | Separate Task9 task. |
 | **Task10** | UX/UI and Design-System Overhaul | 🔴 ☐ | Deliver a coherent, accessible customer/operator experience capable of explaining both lifecycle outcomes and complex evidence. | Information architecture; design system; responsive/accessibility; customer/operator modes; visualizations; progressive disclosure. | Research may start early; connected Evidence Explorer depends on Task5 and policy/admin UX depends on Tasks4/6. | **Research early; implementation after core workflows stabilize** | Very high: design critique, customer workflow testing and accessibility review. | Separate Task10 product-design/implementation task. |
-| **Task11** | Public API, SDK and Integration Platform | 🔴 ☐ | Expose stable, versioned TrackAI capabilities to customer automation without leaking internal database models. | OpenAPI contracts; TypeScript/Python SDKs; CLI; callbacks; pagination; versioning; quotas; examples; compatibility policy. | Stable contracts from Tasks4–7; evidence APIs from Task5 if included. | **After core public contracts stabilize** | Medium/high: representative customer integrations and compatibility review. | Separate Task11 platform task. |
-| **Task12** | Customer Trust, Technical Enablement and Verification | 🔴 ☐ | Help security, engineering and business stakeholders understand, test and trust product correctness and controls. | Trust center; guided verification lab; sample data; acceptance runbooks; technical docs; buyer-facing evidence; customer testing flows. | Draws verified capabilities from Tasks4–11 and the Ongoing Lab. | **Build incrementally; consolidate after product workflows mature** | Very high: customer language, security review and guided acceptance sessions. | Separate Task12 enablement task. |
-| **Task13** | Agent and Surface Coverage | 🟡 ◐ | Capture and validate every supported path by which an AI agent can change code, without confusing model provider, agent family, host surface or capture channel. | Route taxonomy; IDE/CLI/desktop/cloud adapters; host provenance; evidence fidelity; cross-platform conformance; customer verification. | Task2 lifecycle contracts; Task4 host-neutral delivery/enrollment; Task5 raw-evidence policy; Task9 managed deployment. | **Matrix now; adapters and validation in route-priority waves** | Very high: each claimed route and operating system requires a real host experiment. | Separate Task13 implementation task; the Lifecycle Lab remains independent acceptance authority. Canonical tracker: [`AGENT_COVERAGE.md`](AGENT_COVERAGE.md). |
+| **[Task11](docs/plan/TASK11.md)** | Public API, SDK and Integration Platform | ⚪ — | Expose stable, versioned TrackAI capabilities to customer automation. | API tokens for customer automation (first piece); read APIs for audit, findings and attestations; SIEM/webhook delivery; OpenAPI/SDKs later. | Triggers in `docs/plan/TASK11.md`. | **Deferred until a customer asks** (after Task14 at the earliest) | Medium/high. | Not scheduled. Conventions (AP-1) are applied by every Task's new routes meanwhile. |
+| **[Task12](docs/plan/TASK12.md)** | Trust Center and Buyer Content | 🔴 ☐ | Marketing and trust content for security, legal and procurement buyers, built on verified evidence (Attesta packs, audit exports). | Trust center; technical/admin documentation; architecture and security evidence; buyer narratives. (Verification lab, sample tenant and acceptance runbooks moved to Task8.) | Task14; Task15/16 evidence; pilot learnings. | **After Task14, with Task11; customer-driven** | Very high: customer language, security review. | Claude-led content; scope in `docs/plan/TASK12.md`. |
+| **Task13** | Agent and Surface Coverage | 🟡 ◐ | Includes AI agents that run in CI and the cloud (capture inside CI runners, AC-BG routes). Capture and validate every supported path by which an AI agent can change code, without confusing model provider, agent family, host surface or capture channel. | Route taxonomy; IDE/CLI/desktop/cloud adapters; host provenance; evidence fidelity; cross-platform conformance; customer verification. | Task2 lifecycle contracts; Task4 host-neutral delivery/enrollment; Task5 raw-evidence policy; Task9 managed deployment. | **Matrix now; adapters and validation in route-priority waves** | Very high: each claimed route and operating system requires a real host experiment. | Separate Task13 implementation task; the Lifecycle Lab remains independent acceptance authority. Canonical tracker: [`AGENT_COVERAGE.md`](AGENT_COVERAGE.md). |
 | **Task15** | Attesta: Signed Provenance and Shared Trust Layer | 🔴 ☐ | Make TrackAI's evidence tamper-evident and independently verifiable: hash-chained records, signing with tenant-controlled keys, anchoring to an RFC 3161 timestamp authority and Sigstore Rekor, offline verification; own the signer, key hierarchy, rotation and revocation reused by Task6 D6.1, Task6 Policy bundles, Task9 and Task14 T14.7. | Ported from SushiCorp (EV-1, EV-2, SG-1, TR-1, RP-1; `docs/plan/REUSE_MAP.md`). Plan and sub-task graph: [`docs/plan/TASK15.md`](docs/plan/TASK15.md); brief: [`docs/founder/ATTESTA_BRIEF.md`](docs/founder/ATTESTA_BRIEF.md). | Task4 audit and exports; Task2 attribution records. | **Next, Claude-led** | High: key custody, external TSA/Rekor, auditor verification. | Claude (TrackAI-Orchestrator), primer pending the founder's brief. |
 | **Task16** | Audit and Auditor Experience | 🔴 ☐ | One home for audit: every security-relevant event (Task4 admin, Task6 findings, D6.1 activation, policy bundles, signed artifacts) recorded, searchable, exportable and verifiable by a read-only auditor, separate from Administration. | Auditor surface, audit event catalog, exports and reports; API parts may move to Task11. Plan: [`docs/plan/TASK16.md`](docs/plan/TASK16.md). | Task4 audit log; Task15 for tamper evidence. | **With or after Task15** | High: auditor workflows, report content. | Claude-led; scope to be defined. |
-| **Task14** | Production Readiness and Deployment Certification | 🔴 ☐ | Turn verified product capabilities into an operable GCP SaaS service and portable customer-VPC/self-hosted releases with repeatable security, recovery and rollout evidence. | Deployment architecture; secret/KMS and endpoint keyring adapters; TLS/service identity; PostgreSQL/DR; HA/capacity; supply chain; staging/canary/rollback; SLO/incident operations; deployment conformance. | Consumes Task4's completed security/operations contracts plus Task8 onboarding, Task9 packaging and Task13 platform evidence; it does not re-own those programs. | **Build adapters early; certify after the supported release scope is frozen** | Very high: cloud accounts, recovery drills, platform hosts, customer-network and self-hosted acceptance. | Separate Task14 task. Canonical tracker: [`TASK14.md`](TASK14.md); plain-language companion: [`prod-checklist-for-dummies.md`](prod-checklist-for-dummies.md). |
+| **[Task17](docs/plan/TASK17.md)** | GitAI Upstream Sync and Fork Hygiene | 🔴 ☐ | One-time catch-up with public Git AI (upstream stopped at 1.7.6 on 2026-09-09: 302 upstream-only and 71 fork-only commits), plus the fork to-dos no other Task owns. | Daemon reliability fixes; attribution/notes regression review; metrics fixes; agent/editor changes before Task13; GITAI_FUTURE_TODO G5, G6. MDM login-start kit stays in Task9. | Task9 (MDM kit port); Task2 semantics. | **After Task9; before Task13** | Medium: native runs per OS. | Codex leads; Claude product review; Muse ports. Plan in `docs/plan/TASK17.md`. |
+| **[Task18](docs/plan/TASK18.md)** | Real-World Validation (Simulated Organization) | 🔴 ☐ | Prove the core product end to end on a realistic organization before a pilot: 10 repositories, 3 users and machines (macOS, Windows), large real code changes. | Lifecycle correctness at scale (Task2); evidence exploration (Task5); security monitoring (Task6.a); productivity metrics and the 20-question list; Attesta and audit evidence; Playwright automation; runs on the pilot hosting slice of Task14 (T14.1). | Task8 onboarding; Task14 T14.1; Tasks 2/5/6.a/15/16. | **After Task8; before the rest of Task14** | Very high: rented hardware, sustained real usage. | Codex leads with founder-live runs; plan in `docs/plan/TASK18.md`. |
+| **Task14** | Production Readiness and Deployment Certification | 🔴 ☐ | T14.1 (pilot hosting) is pulled forward before Task18; the rest follows the pilot milestone. Turn verified product capabilities into an operable GCP SaaS service and portable customer-VPC/self-hosted releases with repeatable security, recovery and rollout evidence. | Deployment architecture; secret/KMS and endpoint keyring adapters; TLS/service identity; PostgreSQL/DR; HA/capacity; supply chain; staging/canary/rollback; SLO/incident operations; deployment conformance. | Consumes Task4's completed security/operations contracts plus Task8 onboarding, Task9 packaging and Task13 platform evidence; it does not re-own those programs. | **Build adapters early; certify after the supported release scope is frozen** | Very high: cloud accounts, recovery drills, platform hosts, customer-network and self-hosted acceptance. | Separate Task14 task. Canonical tracker: [`TASK14.md`](TASK14.md); plain-language companion: [`prod-checklist-for-dummies.md`](prod-checklist-for-dummies.md). |
 
 ## Permanent Lifecycle Correctness Lab
 
@@ -95,12 +97,12 @@ Authoritative status, execution waves and evidence gates are maintained in
 |---|---|
 | **Task6 Security — active** | **S6.1** event/capability contract; **S6.2** Numbat inventory/provenance; **S6.3** embedded pinned evaluator; **S6.4** privacy-safe finding delivery; **S6.5** storage/access/audit/UI; **S6.6** agent/OS conformance; **S6.7** optional later blocking pilot. |
 | **Task6 Policy — deferred** | **P6.1** vocabulary/inheritance; **P6.2** repository/branch/agent/model rules; **P6.3** approvals/exceptions; **P6.4** simulation; **P6.5** enforcement adapters; **P6.6** policy evidence/audit; **P6.7** compliance reporting; **P6.8** signed bundle provisioning; **P6.9** capture/upload/redaction/retention/access/export families. |
-| **Task7 — SCM Expansion** | **T7.1** provider-neutral contract; **T7.2** GitLab App/OAuth; **T7.3** Bitbucket App/OAuth; **T7.4** webhook/event parity; **T7.5** MR/PR and merge semantics; **T7.6** pipeline/deployment mapping; **T7.7** cross-provider conformance suite. |
-| **Task8 — Onboarding** | **T8.1** tenant and Okta/Entra/Google IdP wizard; **T8.2** issuer/audience/callback/claims verification; **T8.3** group-to-role, initial-admin and break-glass lifecycle; **T8.4** JIT access and optional SCIM lifecycle; **T8.5** SCM/repository onboarding; **T8.6** audited machine-user/custodian assignment; **T8.7** self-service client enrollment; **T8.8** admin/auditor/regular-user acceptance; **T8.9** first-data diagnostics, recovery and time-to-value analytics. |
+| **Task7 — SCM and CI/CD (deferred)** | **T7.1** provider-neutral contract; **T7.2** GitLab App/OAuth; **T7.3** Azure DevOps; **T7.4** Bitbucket; **T7.5** webhook/event parity; **T7.6** MR/PR, merge-train and stacked-diff semantics; **T7.7** deployment signals from CD tools; **T7.8** CI results for quality outcomes; **T7.9** cross-provider conformance suite. |
+| **Task8 — Pilot readiness** | **T8.1** Okta/Entra/Google login setup; **T8.2** issuer/audience/callback/claims verification; **T8.3** group-to-role, initial admin and break-glass; **T8.4** JIT users (SCIM deferred); **T8.5** SCM/repository onboarding; **T8.6** audited machine custodian; **T8.7** self-service enrollment; **T8.8** role acceptance; **T8.9** first-data diagnostics and verification lab (ex-T12.2); **T8.10** sample tenant (ex-T12.3); **T8.11** acceptance runbooks (ex-T12.4); **T8.12** auditor invitations and expiry (ex-A16.9). |
 | **Task9 — MDM/Fleet** | **T9.1** signed macOS/Windows/Linux packages; **T9.2** unattended deployment; **T9.3** device identity/posture and assigned-user evidence; **T9.4** managed configuration and policy provisioning; **T9.5** inventory/health; **T9.6** staged update and rollback; **T9.7** revocation/offboarding; **T9.8** OS secret-store adapter integration; **T9.9** MDM-to-TrackAI assignment reconciliation; **T9.10** fleet security/E2E. |
 | **Task10 — UX/UI** | **T10.1** information architecture; **T10.2** design system; **T10.3** responsive/accessibility baseline; **T10.4** customer/operator modes; **T10.5** lifecycle visualizations; **T10.6** Evidence Explorer UX; **T10.7** scalable repository/fleet policy administration; **T10.8** usability and performance verification; **T10.9** questions & answers: the customer/admin questions in [`docs/plan/ATTESTA_QUESTIONS.md`](docs/plan/ATTESTA_QUESTIONS.md) as interactive, graphical live queries with drill-down to PR, commit, file and line (auditor-provable answers are Task16 A16.13). |
-| **Task11 — API/SDK** | **T11.1** public resource model; **T11.2** OpenAPI/versioning; **T11.3** TypeScript SDK; **T11.4** Python SDK; **T11.5** CLI; **T11.6** callbacks/webhooks; **T11.7** pagination/quotas/errors; **T11.8** examples and compatibility suite. |
-| **Task12 — Trust/Enablement** | **T12.1** security/trust center; **T12.2** guided verification lab; **T12.3** synthetic/sample environments; **T12.4** acceptance runbooks; **T12.5** technical/admin documentation; **T12.6** architecture/security evidence; **T12.7** customer and buyer-facing narratives. |
+| **Task11 — API/SDK (deferred)** | **T11.0** API tokens for customer automation (first piece when triggered); **T11.1** public resource model; **T11.2** OpenAPI/versioning; **T11.3** TypeScript SDK; **T11.4** Python SDK; **T11.5** CLI; **T11.6** callbacks/webhooks and SIEM delivery; **T11.7** pagination/quotas/errors (applied early as AP-1 conventions); **T11.8** examples and compatibility suite. |
+| **Task12 — Trust center and buyer content** | **T12.1** security/trust center; **T12.5** technical/admin documentation; **T12.6** architecture/security evidence; **T12.7** customer and buyer-facing narratives. (T12.2–T12.4 moved to Task8 as T8.9–T8.11.) |
 | **Task13 — Agent/Surface Coverage** | **T13.1** taxonomy and route catalog; **T13.2** normalized host/evidence contract; **T13.3** IDE/chat/completion; **T13.4** CLI/TUI; **T13.5** desktop apps; **T13.6** remote/cloud/background; **T13.7** gateways/Agent V1; **T13.8** macOS/Linux/Windows/WSL; **T13.9** conformance harness; **T13.10** coverage health and customer runbooks. |
 | **Task14 — Production Readiness** | **T14.1** GCP SaaS and portable deployment reference; **T14.2** server secret/KMS adapters; **T14.3** endpoint secret-store contract; **T14.4** TLS/service identity/networking; **T14.5** PostgreSQL/pooling/migrations/DR; **T14.6** HA/load/rate/capacity; **T14.7** supply-chain and artifact signing; **T14.8** staging/canary/rollback; **T14.9** SLO/incident operations; **T14.10** SaaS/VPC/self-hosted certification. |
 
@@ -162,63 +164,47 @@ Task6 Security or deferred Task6 Policy contract.
 
 ## Dependency and execution model
 
+Re-planned with the founder on 2026-10-12 (`docs/plan/ROADMAP_REPLAN_2026-10-12.md`). Two agent lanes run in parallel; the pilot milestone marks where customer acquisition starts and which deferred Tasks a pilot can pull in. Task11 is not on the graph (deferred until a customer asks).
+
 ```mermaid
 flowchart LR
-    T2["Task2 + Lifecycle Lab"] --> T5["Task5 Evidence Intelligence"]
-    T2 --> T4["Task4 Hardening"]
-    T2 --> T13["Task13 Agent/Surface Coverage"]
-    T4 --> T13
-    T5 --> T13
-    T4 --> T6S["Task6 Security"]
-    T5 --> T6S
-    T13 --> T6S
-    T4 --> T6P["Task6 Policy (deferred)"]
-    T5 --> T6P
-    T6S --> T6P
-    T4 --> T8["Task8 Onboarding"]
-    T4 --> T9["Task9 MDM"]
-    T9 --> T13
-    T4 --> T7["Task7 SCM Expansion"]
-    T5 --> T10["Task10 UX Overhaul"]
-    T6S --> T10
-    T6P --> T10
-    T7 --> T8
-    T4 --> T11["Task11 API/SDK"]
-    T5 --> T11
-    T6S --> T11
-    T6P --> T11
-    T8 --> T12["Task12 Customer Trust"]
-    T9 --> T12
-    T10 --> T12
-    T11 --> T12
-    T13 --> T12
-    T4 --> T14["Task14 Production Readiness"]
-    T8 --> T14
-    T9 --> T14
-    T13 --> T14
-    T12 --> T14
+    subgraph Done["Done (merged)"]
+        T1["Task1"] --> T2["Task2 + Lifecycle Lab"]
+        T2 --> T4["Task4"]
+        T4 --> T5["Task5"]
+        T5 --> T6S["Task6.a Security"]
+    end
+    subgraph LaneA["Codex + Muse lane"]
+        T9["Task9 MDM/Fleet"] --> T17["Task17 GitAI upstream sync"]
+        T17 --> LAB["Task2 regression check (Lab session)"]
+        LAB --> T13["Task13 Agent/Surface Coverage"]
+    end
+    subgraph LaneB["Claude + Muse lane"]
+        T15["Task15 Attesta"] --> T16["Task16 Audit"]
+    end
+    T6S --> T9
+    T6S --> T15
+    T13 --> T10["Task10 UX/UI (with Task5/Task6.a clean-up)"]
+    T16 --> T10
+    T10 --> T8["Task8 Pilot readiness"]
+    T8 --> T141["Task14 T14.1 pilot hosting"]
+    T141 --> T18["Task18 Real-world validation"]
+    T18 --> PILOT{{"Pilot milestone: customer acquisition starts"}}
+    PILOT --> T14["Task14 rest: production certification"]
+    T14 --> T12["Task12 Trust center and buyer content"]
+    PILOT -. "if the pilot needs it" .-> T7["Task7 SCM and CI/CD"]
+    PILOT -. "if the pilot needs it" .-> T6P["Task6.b Policy"]
+    PILOT -. "if the pilot needs it" .-> P2["Attesta phase 2, SCIM, Task11 API"]
 ```
 
-### Recommended portfolio sequence
+### Recommended portfolio sequence (2026-10-12)
 
-1. Finish the current Task2 deterministic regression, E13–E15 discovery and
-   metric contracts; continue the Lifecycle Lab indefinitely.
-2. Begin Task4 after the documented E13 checkpoint.
-3. Task5 is complete on its dedicated branch; consume its verified evidence
-   contracts in Tasks6/10/12/13/14 without redefining GitAI identities.
-4. Begin Task6 Security with `off`/`monitor` and embedded release-pinned rules.
-   Keep Task6 Policy deferred until customer requirements justify its control
-   plane. Tasks7/8/9 proceed against their own stable Task4 gates.
-5. Stabilize public resource contracts before Task11 SDK generation.
-6. Build Task12 incrementally from verified evidence, then consolidate the
-   complete customer trust and verification experience.
-7. Maintain Task13's route matrix immediately; implement adapters and run
-   conformance waves as Task4 delivery, Task5 evidence and Task9 deployment
-   contracts become available. A vendor claim never substitutes for live
-   TrackAI acceptance.
-8. Build Task14's deployment adapters before the final feature freeze, then run
-   SaaS, customer-VPC and self-hosted certification against the exact supported
-   product and platform matrix.
+1. **In parallel now:** Codex + Muse run Task9 (Windows remainder may stay 🟡 until hardware is available) → Task17 → a Task2 Lifecycle Lab regression check → Task13. Claude + Muse run Task15 → Task16.
+2. **Then:** Task10, in parallel with clean-up and enhancement of Task5 and Task6.a (to be scoped with the founder), then finish Task10.
+3. **Then:** Task8 (pilot readiness), the pilot-hosting slice of Task14 (T14.1), and Task18 (real-world validation on that hosting).
+4. **Pilot milestone:** customer acquisition begins. Deferred work a pilot can pull forward: Task7 (GitLab or Azure DevOps customer), Task11 (SIEM integration or API request), Task6.b (policy enforcement), Attesta phase 2, SCIM.
+5. **After the pilot starts:** the rest of Task14 (production certification), then Task12 and, when triggered, Task11.
+6. The Lifecycle Lab keeps running; any Task that changes telemetry, SCM handling or the GitAI client asks for a Lab regression check.
 
 ## Multi-task coordination
 
