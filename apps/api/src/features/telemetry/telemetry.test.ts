@@ -29,7 +29,10 @@ import {
   operationSupersedesPredecessor,
   shouldAbandonSiblingTip,
 } from './lifecycle';
-import { githubCommitMetadata, inferMergeMethod, mapRebasedResultCommits, uniquePullRequestForDeploymentSource } from '../scm/lifecycle-service';
+import { enqueueDeployedSubject, githubCommitMetadata, inferMergeMethod, mapRebasedResultCommits, uniquePullRequestForDeploymentSource } from '../scm/lifecycle-service';
+import { enqueuePrMergedSubject } from '../scm/scm.routes';
+import { enqueueCommitObservedSubject, normalizationFailureCode } from './service';
+import { AttestaOutboxError, type AttestaOutboxExecutor, type EnqueueAttestaSubjectInput } from '../attesta/outbox';
 import { repositoryIsInTenantScope } from './repository-scope';
 import { allocateReworkByOriginModel, modelAttributionsFromNote, modelKey } from './model-lifecycle';
 import { evidenceFlowEnabled, normalizeOpenCodeEvidence } from './opencode-evidence';
@@ -50,6 +53,124 @@ import {
   providerProjectionIdentity,
 } from '../scm/provider-event';
 import { evaluateEvidenceWatermark } from './watermark-policy';
+
+const fakeOutboxExecutor = {} as AttestaOutboxExecutor;
+const attestaIds = {
+  tenantId: '11111111-1111-4111-8111-111111111111',
+  repositoryId: '22222222-2222-4222-8222-222222222222',
+  metricEventId: '33333333-3333-4333-8333-333333333333',
+  commitId: '44444444-4444-4444-8444-444444444444',
+  pullRequestId: '55555555-5555-4555-8555-555555555555',
+  deploymentId: '66666666-6666-4666-8666-666666666666',
+};
+const attestaSha = 'a'.repeat(40);
+
+test('Task2 Attesta gates enqueue each qualifying observation exactly once', async () => {
+  const enqueued: EnqueueAttestaSubjectInput[] = [];
+  const enqueue = async (_executor: AttestaOutboxExecutor, input: EnqueueAttestaSubjectInput) => {
+    enqueued.push(input);
+    return { id: '77777777-7777-4777-8777-777777777777', inserted: true };
+  };
+
+  assert.equal(await enqueueCommitObservedSubject(fakeOutboxExecutor, {
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    metricEventId: attestaIds.metricEventId,
+  }, { id: attestaIds.commitId, sha: attestaSha }, enqueue), true);
+
+  const now = new Date('2026-10-12T10:00:00.000Z');
+  assert.equal(await enqueuePrMergedSubject(fakeOutboxExecutor, {
+    eventType: 'pr_closed',
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    provider: 'github',
+    providerDeliveryId: 'delivery-pr-1',
+    pullRequestId: attestaIds.pullRequestId,
+    mergedAt: '2026-10-12T09:59:00.000Z',
+    mergeCommitSha: attestaSha,
+    now,
+  }, enqueue), true);
+
+  assert.equal(await enqueueDeployedSubject(fakeOutboxExecutor, {
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    provider: 'github',
+    providerDeliveryId: 'delivery-deploy-1',
+    externalId: 'deployment-1',
+    sha: attestaSha,
+    status: 'success',
+    production: true,
+  }, { id: attestaIds.deploymentId }, enqueue), true);
+
+  assert.deepEqual(enqueued.map((input) => input.kind), [
+    'commit_observed', 'pr_merged', 'deployed',
+  ]);
+  assert.equal(enqueued[1].notBefore?.toISOString(), '2026-10-12T10:05:00.000Z');
+});
+
+test('Task2 Attesta gates skip incomplete or non-qualifying observations', async () => {
+  let calls = 0;
+  const enqueue = async () => {
+    calls += 1;
+    return { id: '77777777-7777-4777-8777-777777777777', inserted: true };
+  };
+  assert.equal(await enqueueCommitObservedSubject(fakeOutboxExecutor, {
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    metricEventId: attestaIds.metricEventId,
+  }, null, enqueue), false);
+  assert.equal(await enqueuePrMergedSubject(fakeOutboxExecutor, {
+    eventType: 'pr_closed', tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId, provider: 'github',
+    providerDeliveryId: 'delivery-pr-2', pullRequestId: attestaIds.pullRequestId,
+    mergedAt: null, mergeCommitSha: null,
+  }, enqueue), false);
+  for (const deployment of [
+    { production: false, status: 'success' },
+    { production: true, status: 'failure' },
+  ]) {
+    assert.equal(await enqueueDeployedSubject(fakeOutboxExecutor, {
+      tenantId: attestaIds.tenantId,
+      repositoryId: attestaIds.repositoryId,
+      provider: 'github',
+      providerDeliveryId: 'delivery-deploy-2',
+      externalId: 'deployment-2',
+      sha: attestaSha,
+      ...deployment,
+    }, { id: attestaIds.deploymentId }, enqueue), false);
+  }
+  assert.equal(calls, 0);
+});
+
+test('Task2 Attesta writer failures propagate as safe normalization codes', async () => {
+  const failure = new AttestaOutboxError(
+    'ATTESTA_OUTBOX_SOURCE_NOT_FOUND',
+    'no matching source rows for commit_observed in this tenant',
+  );
+  const reject = async () => { throw failure; };
+  await assert.rejects(enqueueCommitObservedSubject(fakeOutboxExecutor, {
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    metricEventId: attestaIds.metricEventId,
+  }, { id: attestaIds.commitId, sha: attestaSha }, reject), failure);
+  await assert.rejects(enqueuePrMergedSubject(fakeOutboxExecutor, {
+    eventType: 'pr_closed', tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId, provider: 'github',
+    providerDeliveryId: 'delivery-pr-error', pullRequestId: attestaIds.pullRequestId,
+    mergedAt: '2026-10-12T09:59:00.000Z', mergeCommitSha: attestaSha,
+  }, reject), failure);
+  await assert.rejects(enqueueDeployedSubject(fakeOutboxExecutor, {
+    tenantId: attestaIds.tenantId,
+    repositoryId: attestaIds.repositoryId,
+    provider: 'github',
+    providerDeliveryId: 'delivery-deploy-error',
+    externalId: 'deployment-error',
+    sha: attestaSha,
+    status: 'success',
+    production: true,
+  }, { id: attestaIds.deploymentId }, reject), failure);
+  assert.equal(normalizationFailureCode(failure), 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND');
+});
 
 test('enrollment watermarks separate current delayed backfill and rejected evidence', () => {
   const watermarks = {
