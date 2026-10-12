@@ -65,6 +65,7 @@ product pass.
 | **T2.27** | Codex desktop host attribution and lifecycle compatibility | 🟡 ◐ | 🔴 ☐ | E23 | Bridge to **AC-DESK-01**, compared against **AC-CLI-02** and **AC-IDE-04**. Codex hook/rollout foundations exist, but desktop/CLI/IDE host identity is not yet proven separately. Task13 owns the normalized host evidence and route status. |
 | **T2.28** | Claude Desktop host attribution and lifecycle compatibility | 🔴 ☐ | 🔴 ☐ | E24 | Bridge to **AC-DESK-03**, explicitly distinct from Claude Code desktop mode **AC-DESK-02** and CLI **AC-CLI-01**. No proven Claude Desktop/Cowork adapter exists; absent provenance remains `Unknown`. |
 | **T2.29** | Native Windows, WSL and Linux compatibility matrix | 🟡 ◐ | 🔴 ☐ | E25 | Bridge to Task13 **T13.8** and the platform column of every applicable route. Code foundations exist, but only macOS has live TrackAI evidence. Task13 owns route/platform status; Task9 later owns managed fleet deployment. |
+| **T2.30** | Emit Attesta outbox pointers atomically with commit, merged-PR and production-deployment observations | 🟢 ✅ | 🟡 ◐ | IT-T2AT-01…04 | Implemented on `task/Task2-attesta-trigger`; 395 unit tests pass. Disposable PostgreSQL verification and the founder's IT-T15c-01 merge gate remain pending. See `docs/handoffs/Task2-attesta-trigger_HANDOFF.md`. |
 
 ## Controlled test register
 
