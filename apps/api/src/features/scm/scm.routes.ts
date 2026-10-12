@@ -14,6 +14,13 @@ import { parseGitHubWebhook, type SCMPayload } from './parser';
 import { normalizeRepositoryUrl } from '../telemetry/repository-url';
 import { reconcileRepositoryPullRequests } from '../telemetry/service';
 import {
+  AttestaOutboxError,
+  enqueueAttestaSubject,
+  type AttestaOutboxExecutor,
+  type EnqueueAttestaSubjectInput,
+  type EnqueueAttestaSubjectResult,
+} from '../attesta/outbox';
+import {
   getRepositoryCommit,
   getRepositoryCommitFirstParentChain,
   listPullRequestCommits,
@@ -29,6 +36,7 @@ import {
   completeProviderDelivery,
   projectProviderDelivery,
   releaseProviderDeliveryForRetry,
+  type ProviderTransaction,
 } from './provider-delivery-store';
 import {
   normalizeProviderDeliveryId,
@@ -61,6 +69,110 @@ function parseProviderOccurredAt(value: string | null | undefined): Date | null 
   if (!value) return null;
   const occurredAt = new Date(value);
   return Number.isFinite(occurredAt.getTime()) ? occurredAt : null;
+}
+
+type EnqueueSubject = (
+  executor: AttestaOutboxExecutor,
+  input: EnqueueAttestaSubjectInput,
+) => Promise<EnqueueAttestaSubjectResult>;
+
+export async function enqueuePrMergedSubject(
+  executor: AttestaOutboxExecutor,
+  input: {
+    eventType: SCMPayload['eventType'];
+    tenantId: string;
+    repositoryId: string;
+    provider: string;
+    providerDeliveryId: string;
+    pullRequestId: string | null;
+    mergedAt: string | null;
+    mergeCommitSha: string | null;
+    now?: Date;
+  },
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
+): Promise<boolean> {
+  if (input.eventType !== 'pr_closed' || !input.mergedAt || !input.mergeCommitSha) return false;
+  if (!input.pullRequestId) throw new Error('Pull request upsert did not return a record');
+  const now = input.now ?? new Date();
+  await enqueue(executor, {
+    kind: 'pr_merged',
+    tenantId: input.tenantId,
+    repositoryId: input.repositoryId,
+    commitSha: input.mergeCommitSha,
+    provider: input.provider,
+    providerDeliveryId: input.providerDeliveryId,
+    pullRequestId: input.pullRequestId,
+    notBefore: new Date(now.getTime() + (5 * 60 * 1_000)),
+  });
+  return true;
+}
+
+export async function upsertPullRequestObservation(
+  transaction: ProviderTransaction,
+  input: {
+    tenantId: string;
+    repositoryId: string;
+    provider: SCMPayload['provider'];
+    providerDeliveryId: string;
+    eventType: SCMPayload['eventType'];
+    pullRequest: NonNullable<SCMPayload['pullRequest']>;
+  },
+  enqueue: EnqueueSubject = enqueueAttestaSubject,
+): Promise<string> {
+  const pullRequest = input.pullRequest;
+  const [storedPullRequest] = await transaction
+    .insert(scmPullRequests)
+    .values({
+      tenantId: input.tenantId,
+      repositoryId: input.repositoryId,
+      externalId: pullRequest.externalId,
+      number: pullRequest.number,
+      title: pullRequest.title,
+      state: pullRequest.state,
+      authorEmail: pullRequest.authorEmail,
+      authorProviderId: pullRequest.authorProviderId,
+      authorLogin: pullRequest.authorLogin,
+      headRef: pullRequest.headRef,
+      baseRef: pullRequest.baseRef,
+      headSha: pullRequest.headSha,
+      mergeCommitSha: pullRequest.mergeCommitSha,
+      mergedAt: pullRequest.mergedAt ? new Date(pullRequest.mergedAt) : null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        scmPullRequests.tenantId,
+        scmPullRequests.repositoryId,
+        scmPullRequests.externalId,
+      ],
+      set: {
+        title: pullRequest.title,
+        state: pullRequest.state,
+        authorEmail: pullRequest.authorEmail,
+        authorProviderId: pullRequest.authorProviderId,
+        authorLogin: pullRequest.authorLogin,
+        number: pullRequest.number,
+        headRef: pullRequest.headRef,
+        baseRef: pullRequest.baseRef,
+        headSha: pullRequest.headSha,
+        mergeCommitSha: pullRequest.mergeCommitSha,
+        mergedAt: pullRequest.mergedAt ? new Date(pullRequest.mergedAt) : null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning({ id: scmPullRequests.id });
+
+  if (!storedPullRequest) throw new Error('Pull request upsert did not return a record');
+  await enqueuePrMergedSubject(transaction, {
+    eventType: input.eventType,
+    tenantId: input.tenantId,
+    repositoryId: input.repositoryId,
+    provider: input.provider,
+    providerDeliveryId: input.providerDeliveryId,
+    pullRequestId: storedPullRequest.id,
+    mergedAt: pullRequest.mergedAt,
+    mergeCommitSha: pullRequest.mergeCommitSha,
+  }, enqueue);
+  return storedPullRequest.id;
 }
 
 interface StoredWebhookRecords {
@@ -293,48 +405,14 @@ router.post('/:provider', async (req: Request, res: Response) => {
       let contributorId: string | null = null;
 
       if (payload.pullRequest) {
-        const [pullRequest] = await transaction
-          .insert(scmPullRequests)
-          .values({
-            tenantId: tenant.id,
-            repositoryId: repository.id,
-            externalId: payload.pullRequest.externalId,
-            number: payload.pullRequest.number,
-            title: payload.pullRequest.title,
-            state: payload.pullRequest.state,
-            authorEmail: payload.pullRequest.authorEmail,
-            authorProviderId: payload.pullRequest.authorProviderId,
-            authorLogin: payload.pullRequest.authorLogin,
-            headRef: payload.pullRequest.headRef,
-            baseRef: payload.pullRequest.baseRef,
-            headSha: payload.pullRequest.headSha,
-            mergeCommitSha: payload.pullRequest.mergeCommitSha,
-            mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
-          })
-          .onConflictDoUpdate({
-            target: [
-              scmPullRequests.tenantId,
-              scmPullRequests.repositoryId,
-              scmPullRequests.externalId,
-            ],
-            set: {
-              title: payload.pullRequest.title,
-              state: payload.pullRequest.state,
-              authorEmail: payload.pullRequest.authorEmail,
-              authorProviderId: payload.pullRequest.authorProviderId,
-              authorLogin: payload.pullRequest.authorLogin,
-              number: payload.pullRequest.number,
-              headRef: payload.pullRequest.headRef,
-              baseRef: payload.pullRequest.baseRef,
-              headSha: payload.pullRequest.headSha,
-              mergeCommitSha: payload.pullRequest.mergeCommitSha,
-              mergedAt: payload.pullRequest.mergedAt ? new Date(payload.pullRequest.mergedAt) : null,
-              updatedAt: new Date(),
-            },
-          })
-          .returning({ id: scmPullRequests.id });
-
-        pullRequestId = pullRequest?.id ?? null;
+        pullRequestId = await upsertPullRequestObservation(transaction, {
+          eventType: payload.eventType,
+          tenantId: tenant.id,
+          repositoryId: repository.id,
+          provider: payload.provider,
+          providerDeliveryId: deliveryId,
+          pullRequest: payload.pullRequest,
+        });
       }
 
       if (payload.pullRequest) {
@@ -475,6 +553,7 @@ router.post('/:provider', async (req: Request, res: Response) => {
         tenantId: tenant.id,
         repositoryId: storedRecords.repositoryId,
         provider: payload.provider,
+        providerDeliveryId: deliveryId,
         ...payload.deployment,
         deployedAt: new Date(payload.deployment.deployedAt),
       });
@@ -552,17 +631,27 @@ router.post('/:provider', async (req: Request, res: Response) => {
             : 'enrichment_failed',
         });
       } catch {
-        console.error('Failed to release SCM webhook processing lease', {
-          provider, deliveryId, stage: release.stage,
-        });
+        if (error instanceof AttestaOutboxError) {
+          console.error('Failed to release SCM webhook processing lease', {
+            errorCode: error.code,
+          });
+        } else {
+          console.error('Failed to release SCM webhook processing lease', {
+            provider, deliveryId, stage: release.stage,
+          });
+        }
       }
     }
-    console.error('Failed to process SCM webhook', {
-      provider,
-      deliveryId,
-      stage: release?.stage ?? 'unclaimed',
-      errorType: error instanceof Error ? error.name : 'unknown',
-    });
+    if (error instanceof AttestaOutboxError) {
+      console.error('Failed to process SCM webhook', { errorCode: error.code });
+    } else {
+      console.error('Failed to process SCM webhook', {
+        provider,
+        deliveryId,
+        stage: release?.stage ?? 'unclaimed',
+        errorType: error instanceof Error ? error.name : 'unknown',
+      });
+    }
     res.set('Retry-After', '5');
     res.status(503).json({ error: 'Temporary failure processing SCM webhook' });
   }
