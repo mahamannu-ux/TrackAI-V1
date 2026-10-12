@@ -13,7 +13,7 @@ Task2 now writes one thin `attesta_subjects` pointer in the same transaction as 
 | Scope | Frozen `outbox.ts` only called; no contracts, migrations, schema, web or dependencies changed | ✅ |
 | Quality | 395/395 tests, typecheck, lint, schema check, web production build | ✅ |
 | Integration | IT-T2AT-01…04 plus IT-T15c-01 merge gate | 🟡 founder passed 2026-10-12; `5fb2647` correction rerun pending |
-| Review | Independent Codex review | 🟡 `5fb2647` correction re-review pending |
+| Review | Independent Codex review | ✅ `ready to push` through `b9db1dc` |
 
 ## Implemented interfaces
 ```text
