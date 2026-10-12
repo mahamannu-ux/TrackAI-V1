@@ -10,8 +10,8 @@ One hash chain per tenant (`chain_head`, `attesta_records`, `attesta_envelopes`,
 |---|---|---|
 | Scope | §2.1 deliverables 1–5: migration, guards, `ledger.ts`, `verify-chain.ts`, unit + live tests | ✅ |
 | Quality | `npm test` 444 pass (52 new), typecheck, lint, `npm run check`, `drizzle-kit check` clean | ✅ |
-| Integration | IT-T15d-01…04 via `scripts/it-db.sh`, also at the founder size (50×20 writers, 10 000 records: chain 42 s, verify 2.3 s, heap +15 MB) | 🟡 agent-verified; founder run pending |
-| Review | review subagent: 2 must-fix (definer `search_path` hijack; report `ok` without keys), 5 should-fix; all fixed, IT cases added | ✅ · cross-agent review pending |
+| Integration | IT-T15d-01…04 via `scripts/it-db.sh`, also at the founder size (50×20 writers, 10 000 records: chain 42 s, verify 2.3 s, heap +15 MB) | ✅ founder run passed 2026-10-12 |
+| Review | review subagent: 2 must-fix (definer `search_path` hijack; report `ok` without keys), 5 should-fix; all fixed, IT cases added | ✅ · Muse cross-agent review (Codex unavailable) 2026-10-12: ready to push |
 
 ## Implemented interfaces
 ```
@@ -25,6 +25,10 @@ verify-chain.ts  verifyChain(db, tenantId, { fromSeq?, toSeq?, keys?, pageSize?,
   verifyChainRows(rows, opts) (pure, streaming) · BREAK_DETAIL_CODES (kind → errors.md code)
 npm run verify:task15d-ledger-live -w apps/api
 ```
+
+## Founder-approved decisions (2026-10-12, after the session)
+1. Add additive errors.md codes for the precise break kinds and for invalid ledger input (orchestrator, contract PR; non-blocking).
+2. Production runs the API as a database role that does not own the ledger tables (Task4/ops item, before A15.13), so the guards cannot be switched off by the API.
 
 ## Ported from
 SushiCorp EV-1 @ `0bd67a5`: `records.py`, `verify.py`, `0001_initial_schema.py` guards, IT-D1-03, the verify tests. Kept: record-hash rule, genesis, `seq` from `chain_head … FOR UPDATE`, stored bytes, guard set, break kinds, tamper matrix. Deviations (reasons in the file headers): statement record with typed copies derived from the statement; raw SQL in the caller's transaction; outbox `done` and `previous` re-check inside the lock; `recorded_at` clamped forwards; signature verified before storing (input adds `publicKeySpkiDer`); built-in `sha256()` instead of pgcrypto (pgcrypto sits outside `pg_catalog` on Supabase); guard `search_path = pg_catalog, pg_temp` (the prompt said `, public`: public lets a role shadow `to_jsonb(anyelement)` and run code as the definer); the guard rebuilds `canonical_record` byte for byte from the columns; verify streams (no reorder, counts only, `maxBreaks`), adds statement/envelope/signature kinds, codes instead of free-text detail; the 10 000-record matrix applies each tamper at all sampled positions in one verify.
@@ -47,22 +51,22 @@ SushiCorp EV-1 @ `0bd67a5`: `records.py`, `verify.py`, `0001_initial_schema.py` 
 |---|---|---|
 | 🟡 | A role that **owns** the tables (or a superuser) can drop or disable the triggers | Detected only by `verifyChain` with keys and, later, anchoring (A15.5); prod should run the API as a non-owner role |
 | 🟡 | The database never verifies signatures (a consistent forged envelope commits if inserted by raw SQL) | `chainStatement` verifies before insert; `verifyChain` with published keys reports `signature_invalid` |
-| 🟡 | errors.md has no exact code for seq/field/tenant/order/head/envelope kinds; mapped to the nearest frozen code, `kind` stays precise | **FOUNDER:** decide on additive codes (question in the final reply); non-blocking |
+| 🟡 | errors.md has no exact code for seq/field/tenant/order/head/envelope kinds or ledger input; mapped to the nearest frozen code, `kind` stays precise | Founder approved additive codes 2026-10-12; the orchestrator adds them in a contract PR, then `BREAK_DETAIL_CODES` switches |
 | 🟡 | `period_report` records refused (CHECK + guard are ai-provenance only) | A15.9 extends both in a new migration |
 | 🟡 | `npm test` grows by about 6 s (the 10 000-record matrix) | — |
 
 ## Integration test impact
-> **FOUNDER:** blocking for A15.5 and A15.8 merges. Prerequisites: Docker or local PostgreSQL 16 + pgvector. Expected: `IT-T15d=passed`, about 1 minute at the size below.
+> ~~**FOUNDER:** blocking for A15.5 and A15.8 merges.~~ Passed 2026-10-12. Prerequisites: Docker or local PostgreSQL 16 + pgvector. Expected: `IT-T15d=passed`, about 1 minute at the size below.
 > ```bash
 > IT_T15D_WRITERS=50 IT_T15D_APPENDS=20 IT_T15D_VOLUME=10000 scripts/it-db.sh npm run verify:task15d-ledger-live -w apps/api
 > ```
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15d-01 | Guards as API role and RLS role; definer settings; RLS on, no policies; SQL = TS = known-answer hash; hijack not resolved | Blocking: A15.5/A15.8 merge | 🟡 agent-verified · ⬜ founder run |
-| IT-T15d-02 | Gap-free under parallel writers with rollbacks (IT-D1-03); claim lost; previous stale; duplicate; caller IMMEDIATE; rollback no gap | Blocking: A15.8 merge | 🟡 (50×20) · ⬜ |
-| IT-T15d-03 | Company A/B: separate clean chains, no cross-tenant claim or repository | Blocking: A15.9 merge | 🟡 · ⬜ |
-| IT-T15d-04 | 10 000-record chain verifies clean; one row changed behind the guards found; time and heap printed | Non-blocking | 🟡 (10 000 records) · ⬜ |
+| IT-T15d-01 | Guards as API role and RLS role; definer settings; RLS on, no policies; SQL = TS = known-answer hash; hijack not resolved | Blocking: A15.5/A15.8 merge | ✅ founder run 2026-10-12 |
+| IT-T15d-02 | Gap-free under parallel writers with rollbacks (IT-D1-03); claim lost; previous stale; duplicate; caller IMMEDIATE; rollback no gap | Blocking: A15.8 merge | ✅ founder run 2026-10-12 (50×20) |
+| IT-T15d-03 | Company A/B: separate clean chains, no cross-tenant claim or repository | Blocking: A15.9 merge | ✅ founder run 2026-10-12 |
+| IT-T15d-04 | 10 000-record chain verifies clean; one row changed behind the guards found; time and heap printed | Non-blocking | ✅ founder run 2026-10-12 (10 000 records) |
 
 ## Integration notes
 - Call order (A15.8): build and sign **outside** any transaction, then `db.transaction(tx => chainStatement(tx, …))`. Map `retryable` codes to `pending` with backoff; `CLAIM_LOST` means stop; `GUARD_VIOLATION` is terminal and should alert.
