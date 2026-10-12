@@ -21,16 +21,25 @@
 // one `rekor+tsa` row, so the outcome is per type rather than one merged
 // AnchorResult and no `rekor+tsa` type exists; (2) additive keys in the TSA
 // proof: `gen_time`, `serial_number`, `policy` and `revocation` (status and
-// reason, so `unknown` is stated, never implied clean); (3) `proof_b64` is null
-// for TSA rows (the token is the `tsa_token_b64` column); (4) the offline
-// check returns errors.md verify codes instead of raising.
+// reason, so `unknown` is stated, never implied clean); (3) `proof_b64` and
+// `rekor_entry` are null for TSA rows (the token is the `tsa_token_b64`
+// column); (4) the offline check returns errors.md verify codes instead of
+// raising, accepts current and retired anchoring keys, and reports TSA
+// revocation as `unknown` (the stored value is unsigned, so it is never
+// re-asserted as clean).
 
 import type { KeyObject } from 'node:crypto';
 import type * as pkijs from 'pkijs';
 import { canonicalize } from './canonical';
 import { proofFromJson, verifyInclusion, type InclusionProofJson } from './merkle';
 import { AnchorError, AnchorInputError, type AnchorErrorCode } from './anchor-contract';
-import { RekorVerificationError, verifyRekorEntry, type RekorAnchor, type RekorAnchorResult } from './anchor-rekor';
+import {
+  RekorVerificationError,
+  verifyRekorEntry,
+  type RekorAnchor,
+  type RekorAnchorResult,
+  type VerifiedRekorEntry,
+} from './anchor-rekor';
 import {
   TimestampVerificationError,
   tsaTokenRef,
@@ -106,6 +115,8 @@ export interface TsaProofJson {
     ref: string;
     log_index: null;
     proof_b64: null;
+    /** Present for the contract's fixed shape; the token is the `tsa_token_b64` column. */
+    rekor_entry: null;
     gen_time: string;
     serial_number: string;
     policy: string;
@@ -141,6 +152,7 @@ export function anchorProofJson(merkle: InclusionProofJson, result: RekorAnchorR
       ref: result.ref,
       log_index: null,
       proof_b64: null,
+      rekor_entry: null,
       gen_time: result.anchoredAt,
       serial_number: result.serialNumber,
       policy: result.policy,
@@ -163,13 +175,23 @@ export interface StoredAnchorRow {
 
 export interface StoredAnchorKeys {
   rekorLogKey?: KeyObject;
-  /** SPKI DER of the platform anchoring key. */
-  anchorKeySpkiDer?: Buffer;
+  /** SPKI DER of the platform anchoring keys, current and retired (rotation keeps old anchors checkable). */
+  anchorKeysSpkiDer?: Buffer[];
   tsaAnchors?: pkijs.Certificate[];
 }
 
 export type StoredAnchorCheck =
-  | { status: 'valid'; revocation?: RevocationResult }
+  | {
+      status: 'valid';
+      /**
+       * TSA only. Always `unknown` offline: the stored proof holds no signed
+       * revocation evidence, so a stored "clean" cannot be re-checked and is
+       * never reported as clean (AGENTS.md §9 #19).
+       */
+      revocation?: RevocationResult;
+      /** TSA only: what the row says was found at anchor time. Unverified; shown for context. */
+      recordedRevocation?: RevocationResult;
+    }
   | { status: 'invalid'; code: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID' | 'ATTESTA_VERIFY_ANCHOR_INVALID' }
   | { status: 'not_checkable'; code: 'ATTESTA_VERIFY_NOT_CHECKABLE' };
 
@@ -202,14 +224,17 @@ export function verifyStoredAnchor(row: StoredAnchorRow, keys: StoredAnchorKeys)
     const entry = anchor.rekor_entry;
     if (!isRecord(entry) || typeof anchor.ref !== 'string') return NOT_CHECKABLE;
     if (row.rekorEntryUuid != null && row.rekorEntryUuid.toLowerCase() !== anchor.ref.toLowerCase()) return INVALID_ANCHOR;
-    if (!keys.rekorLogKey || !keys.anchorKeySpkiDer) return NOT_CHECKABLE;
-    let verified;
-    try {
-      verified = verifyRekorEntry(anchor.ref, entry, { logKey: keys.rekorLogKey, artifact: root, anchorKeySpkiDer: keys.anchorKeySpkiDer });
-    } catch (err) {
-      if (err instanceof RekorVerificationError) return INVALID_ANCHOR;
-      throw err;
+    if (!keys.rekorLogKey || !keys.anchorKeysSpkiDer || keys.anchorKeysSpkiDer.length === 0) return NOT_CHECKABLE;
+    let verified: VerifiedRekorEntry | null = null;
+    for (const anchorKeySpkiDer of keys.anchorKeysSpkiDer) {
+      try {
+        verified = verifyRekorEntry(anchor.ref, entry, { logKey: keys.rekorLogKey, artifact: root, anchorKeySpkiDer });
+        break;
+      } catch (err) {
+        if (!(err instanceof RekorVerificationError)) throw err;
+      }
     }
+    if (verified === null) return INVALID_ANCHOR;
     const inclusion = (entry.verification as Record<string, unknown>).inclusionProof;
     if (anchor.log_index !== verified.logIndex) return INVALID_ANCHOR;
     if (anchor.proof_b64 !== Buffer.from(canonicalize(inclusion), 'utf8').toString('base64')) return INVALID_ANCHOR;
@@ -220,22 +245,23 @@ export function verifyStoredAnchor(row: StoredAnchorRow, keys: StoredAnchorKeys)
     if (typeof row.tsaTokenB64 !== 'string' || row.tsaTokenB64.length === 0) return NOT_CHECKABLE;
     if (!B64.test(row.tsaTokenB64)) return INVALID_ANCHOR;
     const token = Buffer.from(row.tsaTokenB64, 'base64');
-    if (anchor.ref !== tsaTokenRef(token)) return INVALID_ANCHOR;
+    if (anchor.ref !== tsaTokenRef(token) || anchor.log_index !== null || anchor.proof_b64 !== null) return INVALID_ANCHOR;
     if (!keys.tsaAnchors || keys.tsaAnchors.length === 0) return NOT_CHECKABLE;
     try {
       const info = verifyTimestampToken(token, root, keys.tsaAnchors);
-      if (anchor.gen_time !== info.genTime.toISOString() || anchor.serial_number !== info.serialNumber) return INVALID_ANCHOR;
+      if (anchor.gen_time !== info.genTime.toISOString() || anchor.serial_number !== info.serialNumber ||
+          anchor.policy !== info.policy) return INVALID_ANCHOR;
     } catch (err) {
       if (err instanceof TimestampVerificationError) return INVALID_ANCHOR;
       throw err;
     }
     const rev = anchor.revocation;
-    const revocation: RevocationResult = isRecord(rev) && (rev.status === 'revoked' || rev.status === 'clean' || rev.status === 'unknown')
+    const recordedRevocation: RevocationResult = isRecord(rev) && (rev.status === 'revoked' || rev.status === 'clean' || rev.status === 'unknown')
       && typeof rev.reason === 'string'
       ? { status: rev.status, reason: rev.reason }
       : { status: 'unknown', reason: 'not_recorded' };
-    if (revocation.status === 'revoked') return INVALID_ANCHOR;
-    return { status: 'valid', revocation };
+    if (recordedRevocation.status === 'revoked') return INVALID_ANCHOR;
+    return { status: 'valid', revocation: { status: 'unknown', reason: 'not_rechecked_offline' }, recordedRevocation };
   }
   return INVALID_ANCHOR;
 }

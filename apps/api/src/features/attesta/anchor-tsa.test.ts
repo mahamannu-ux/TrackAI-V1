@@ -428,3 +428,196 @@ test('an intermediate CA whose key usage omits keyCertSign cannot issue', async 
     else assert.throws(() => verifyTimestampToken(token, root, [fake.root]), /does not chain/);
   }
 });
+
+// -- review round: every remaining check proven necessary -------------------------
+
+interface HandCertOpts {
+  issuerKey: CryptoKey;
+  issuer: pkijs.Certificate;
+  subjectKey: { publicKey: CryptoKey };
+  cn: string;
+  ca?: boolean;
+  pathLen?: number;
+  eku?: string[];
+  /** Key usage first byte (bits 0..7: digitalSignature 0x80, nonRepudiation 0x40, keyCertSign 0x04). */
+  ku?: number;
+  extraCritical?: string;
+}
+
+/** A certificate the fake's helpers cannot make (key usage, pathLen, unknown critical extension). */
+async function handCert(o: HandCertOpts): Promise<pkijs.Certificate> {
+  const exts = [
+    new pkijs.Extension({ extnID: '2.5.29.19', critical: true,
+      extnValue: new pkijs.BasicConstraints(o.pathLen === undefined ? { cA: o.ca ?? false } : { cA: true, pathLenConstraint: o.pathLen }).toSchema().toBER(false) }),
+  ];
+  if (o.ku !== undefined) {
+    exts.push(new pkijs.Extension({ extnID: '2.5.29.15', critical: true,
+      extnValue: new asn1js.BitString({ valueHex: new Uint8Array([o.ku]).buffer, unusedBits: 1 }).toBER(false) }));
+  }
+  if (o.eku) {
+    exts.push(new pkijs.Extension({ extnID: '2.5.29.37', critical: true, extnValue: new pkijs.ExtKeyUsage({ keyPurposes: o.eku }).toSchema().toBER(false) }));
+  }
+  if (o.extraCritical) {
+    exts.push(new pkijs.Extension({ extnID: o.extraCritical, critical: true, extnValue: new asn1js.Null().toBER(false) }));
+  }
+  const cert = new pkijs.Certificate({
+    version: 2,
+    serialNumber: new asn1js.Integer({ value: Math.floor(Math.random() * 1e9) + 1 }),
+    issuer: o.issuer.subject,
+    subject: new pkijs.RelativeDistinguishedNames({
+      typesAndValues: [new pkijs.AttributeTypeAndValue({ type: '2.5.4.3', value: new asn1js.Utf8String({ value: o.cn }) })],
+    }),
+    notBefore: new pkijs.Time({ type: 0, value: new Date(Date.now() - 86400_000) }),
+    notAfter: new pkijs.Time({ type: 0, value: new Date(Date.now() + 86400_000) }),
+    extensions: exts,
+  });
+  await cert.subjectPublicKeyInfo.importKey(o.subjectKey.publicKey);
+  await cert.sign(o.issuerKey, 'SHA-256');
+  return cert;
+}
+
+type CryptoKey = import('node:crypto').webcrypto.CryptoKey;
+
+async function tokenFor(fake: FakeTsa, root: Buffer): Promise<Buffer> {
+  return fake.token(sha256(root), 'sha256', 21n);
+}
+
+test('a root with the same name but another key is not a trust anchor', async () => {
+  const fake = await FakeTsa.create();
+  const impostor = await makeCa('Fake TSA Root');
+  const token = await tokenFor(fake, ROOT);
+  assert.throws(() => verifyTimestampToken(token, ROOT, [impostor.cert]), /does not chain/);
+});
+
+test('an intermediate expired at genTime breaks the chain', async () => {
+  const fake = await FakeTsa.create();
+  const now = Date.now();
+  const inter = await makeTsaCert(fake.rootKey.privateKey, fake.root, {
+    ca: true, eku: [], cn: 'Old Intermediate', notBefore: new Date(now - 20 * 86400_000), notAfter: new Date(now - 86400_000),
+  });
+  const leaf = await makeTsaCert(inter.key.privateKey, inter.cert);
+  Object.assign(fake, { key: leaf.key, cert: leaf.cert, chain: [inter.cert] });
+  const t = await tokenFor(fake, ROOT);
+  assert.throws(() => verifyTimestampToken(t, ROOT, [fake.root]), /does not chain/);
+});
+
+test('a CA certificate is never a TSA signer, even with the time-stamping EKU', async () => {
+  const fake = await FakeTsa.create();
+  const leaf = await makeTsaCert(fake.rootKey.privateKey, fake.root, { ca: true });
+  Object.assign(fake, { key: leaf.key, cert: leaf.cert });
+  const t = await tokenFor(fake, ROOT);
+  assert.throws(() => verifyTimestampToken(t, ROOT, [fake.root]), /is a CA/);
+});
+
+test('signer key usage must allow signing; unknown critical extensions are refused', async () => {
+  for (const [opts, match] of [
+    [{ ku: 0x04 }, /key usage does not allow signing/],
+    [{ ku: 0x80 }, null],
+    [{ ku: 0x40 }, null],
+    [{ extraCritical: '1.2.3.4.5' }, /unsupported critical extension/],
+  ] as Array<[Partial<HandCertOpts>, RegExp | null]>) {
+    const fake = await FakeTsa.create();
+    const key = await generateTsaKeyPair('EC');
+    const cert = await handCert({ issuerKey: fake.rootKey.privateKey, issuer: fake.root, subjectKey: key, cn: 'Hand TSA', eku: [TIME_STAMPING], ...opts });
+    Object.assign(fake, { key, cert });
+    const token = await tokenFor(fake, ROOT);
+    if (match) assert.throws(() => verifyTimestampToken(token, ROOT, [fake.root]), match);
+    else assert.ok(verifyTimestampToken(token, ROOT, [fake.root]));
+  }
+});
+
+test('pathLenConstraint and chain depth are enforced', async () => {
+  const fake = await FakeTsa.create();
+  const k1 = await generateTsaKeyPair('EC');
+  const k2 = await generateTsaKeyPair('EC');
+  for (const [pathLen, ok] of [[0, false], [1, true]] as const) {
+    const top = await handCert({ issuerKey: fake.rootKey.privateKey, issuer: fake.root, subjectKey: k1, cn: 'Top CA', pathLen });
+    const mid = await handCert({ issuerKey: k1.privateKey, issuer: top, subjectKey: k2, cn: 'Mid CA', ca: true });
+    const leaf = await makeTsaCert(k2.privateKey, mid);
+    Object.assign(fake, { key: leaf.key, cert: leaf.cert, chain: [mid, top] });
+    const token = await tokenFor(fake, ROOT);
+    if (ok) assert.ok(verifyTimestampToken(token, ROOT, [fake.root]));
+    else assert.throws(() => verifyTimestampToken(token, ROOT, [fake.root]), /does not chain/);
+  }
+  // Ten intermediates: longer than the 8-link bound.
+  let issuer = { key: fake.rootKey, cert: fake.root };
+  const chain: pkijs.Certificate[] = [];
+  for (let i = 0; i < 10; i++) {
+    issuer = await makeTsaCert(issuer.key.privateKey, issuer.cert, { ca: true, eku: [], cn: `Level ${i}` });
+    chain.unshift(issuer.cert);
+  }
+  const leaf = await makeTsaCert(issuer.key.privateKey, issuer.cert);
+  Object.assign(fake, { key: leaf.key, cert: leaf.cert, chain });
+  const t = await tokenFor(fake, ROOT);
+  assert.throws(() => verifyTimestampToken(t, ROOT, [fake.root]), /does not chain/);
+});
+
+test('RSA keys under 2048 bits are refused', async () => {
+  const { webcrypto } = await import('node:crypto');
+  const small = (await webcrypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 1024, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    true, ['sign', 'verify'])) as unknown as Awaited<ReturnType<typeof generateTsaKeyPair>>;
+  const fake = await FakeTsa.create();
+  const leaf = await makeTsaCert(fake.rootKey.privateKey, fake.root, { key: small });
+  Object.assign(fake, { key: leaf.key, cert: leaf.cert });
+  const t = await tokenFor(fake, ROOT);
+  assert.throws(() => verifyTimestampToken(t, ROOT, [fake.root]), /RSA key too small/);
+});
+
+/** Rewrite a token's ASN.1 (the fakes have no knob for these shapes). */
+function edit(token: Buffer, f: (signedData: asn1js.AsnType[], signerInfo: asn1js.AsnType[]) => void): Buffer {
+  const ci = asn1js.fromBER(new Uint8Array(token).buffer).result as asn1js.Sequence;
+  const sd = ((ci.valueBlock.value[1] as asn1js.Constructed).valueBlock.value[0] as asn1js.Sequence).valueBlock.value;
+  const infos = (sd[sd.length - 1] as asn1js.Set).valueBlock.value;
+  f(sd, (infos[0] as asn1js.Sequence).valueBlock.value);
+  return Buffer.from(ci.toBER(false));
+}
+
+test('token shape attacks: two signers, weak digest, repeated attribute, BER lengths', async () => {
+  const fake = await FakeTsa.create();
+  const anchors = [fake.root];
+  const token = await tokenFor(fake, ROOT);
+  assert.ok(verifyTimestampToken(edit(token, () => {}), ROOT, anchors), 're-encoding alone keeps it valid');
+  const twoSigners = edit(token, (sd) => {
+    const infos = (sd[sd.length - 1] as asn1js.Set).valueBlock.value;
+    infos.push(infos[0]);
+  });
+  assert.throws(() => verifyTimestampToken(twoSigners, ROOT, anchors), /expected one signer/);
+  const sha1Digest = edit(token, (_sd, si) => {
+    (si[2] as asn1js.Sequence).valueBlock.value[0] = new asn1js.ObjectIdentifier({ value: '1.3.14.3.2.26' });
+  });
+  assert.throws(() => verifyTimestampToken(sha1Digest, ROOT, anchors), /unsupported digest/);
+  const repeated = edit(token, (_sd, si) => {
+    const attrs = (si[3] as asn1js.Constructed).valueBlock.value;
+    attrs.push(attrs[0]);
+  });
+  assert.throws(() => verifyTimestampToken(repeated, ROOT, anchors), /repeated/);
+  const mismatchedAlg = edit(token, (_sd, si) => {
+    (si[2] as asn1js.Sequence).valueBlock.value[0] = new asn1js.ObjectIdentifier({ value: '2.16.840.1.101.3.4.2.2' }); // sha384 vs ecdsa-with-SHA256
+  });
+  assert.throws(() => verifyTimestampToken(mismatchedAlg, ROOT, anchors), /message digest|disagree/);
+  // Indefinite outer length, and a long-form length with a leading zero byte.
+  const headerLen = token[1] & 0x80 ? 2 + (token[1] & 0x7f) : 2;
+  const content = token.subarray(headerLen);
+  const indefinite = Buffer.concat([Buffer.from([0x30, 0x80]), content, Buffer.from([0, 0])]);
+  assert.throws(() => verifyTimestampToken(indefinite, ROOT, anchors), /not DER|malformed/);
+  const lenBytes = Buffer.alloc(4);
+  lenBytes.writeUInt32BE(content.length);
+  const nonMinimal = Buffer.concat([Buffer.from([0x30, 0x84]), lenBytes, content]);
+  assert.throws(() => verifyTimestampToken(nonMinimal, ROOT, anchors), /not DER/);
+});
+
+test('an oversized TSA response is refused without buffering it', async () => {
+  const tsa = await FakeTsa.create();
+  let pulled = 0;
+  const huge = async () => new Response(new ReadableStream({
+    pull(c) {
+      pulled++;
+      c.enqueue(new Uint8Array(64 * 1024));
+      if (pulled > 10_000) c.close();
+    },
+  }), { status: 200, headers: { 'content-type': 'application/timestamp-reply' } });
+  const a = new TsaAnchor({ url: TSA_URL, trustAnchorsPem: tsa.anchorsPem, fetch: huge });
+  await assert.rejects(a.anchor(ROOT, 'b'), (e: unknown) => e instanceof AnchorError && e.code === 'ATTESTA_ANCHOR_TSA_TOKEN_INVALID' && /too large/.test(e.message));
+  assert.ok(pulled < 20, `pulled ${pulled}`);
+});

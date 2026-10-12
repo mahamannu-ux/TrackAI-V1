@@ -22,14 +22,20 @@
 // "duplicate but cannot fetch it" → LOG_UNAVAILABLE; an answer that does not
 // verify (including malformed JSON) → LOG_PROOF_INVALID; the log refusing our
 // submission (400/422) → LOG_UNAVAILABLE with `retryable: false` (errors.md has
-// no "rejected" code; flagged in the handoff); (2) production refuses to start
-// without a pinned log key (ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED) in the adapter
-// itself, not only in a registry; trust on first use only outside production;
+// no "rejected" code; flagged in the handoff); (2) no pinned log key →
+// ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED at construction, in the adapter itself;
+// trust on first use needs an explicit dev-only option and is refused in
+// production;
 // (3) signing goes through `AnchorSigner` (the frozen SigningAdapter), not a
 // key file, so signatures are not deterministic: see anchor-contract.ts;
 // (4) added check 1b (tree-ID prefix vs checkpoint origin); (5) the batch cache
 // is bounded (A2b limitation #11); (6) results carry the whole entry object
-// (stored as `inclusion_proof.anchor.rekor_entry`) instead of JSON bytes.
+// (stored as `inclusion_proof.anchor.rekor_entry`) instead of JSON bytes;
+// (7) bounded response reads (1 MiB) and redirects refused; (8) a new entry's
+// integratedTime must fall in the request window (± clock skew), as Sigstore
+// clients check; (9) `artifact` and `anchorKeySpkiDer` are checked together.
+// Not covered (Rekor v1 has no consistency proofs or witnesses): a log
+// operator holding the pinned key could show us a view it never published.
 
 import { createHash, createPublicKey, verify, type KeyObject } from 'node:crypto';
 import { canonicalize } from './canonical';
@@ -41,6 +47,7 @@ import {
   assertAnchorInput,
   fetchWithTimeout,
   isProduction,
+  readCapped,
   type AnchorSigner,
   type FetchLike,
 } from './anchor-contract';
@@ -50,6 +57,8 @@ export const REKOR_LOG_INFO_PATH = '/api/v1/log';
 export const REKOR_PUBLIC_KEY_PATH = '/api/v1/log/publicKey';
 export const DEFAULT_REKOR_TIMEOUT_MS = 10_000;
 export const DEFAULT_ANCHOR_CACHE_SIZE = 1024;
+export const MAX_REKOR_RESPONSE_BYTES = 1024 * 1024;
+export const DEFAULT_REKOR_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** An entry, proof or signature failed verification. The message is a reason, never a raw value. */
 export class RekorVerificationError extends Error {
@@ -203,8 +212,16 @@ export interface VerifyRekorEntryOptions {
   anchorKeySpkiDer?: Buffer;
 }
 
-/** Verify everything listed at the top of this file; throws RekorVerificationError on any failure. */
+/**
+ * Verify everything listed at the top of this file; throws RekorVerificationError
+ * on any failure. With neither `artifact` nor `anchorKeySpkiDer` only the
+ * log-level checks run (a third party's entry, such as the sigstage vector).
+ */
 export function verifyRekorEntry(entryId: string, entry: unknown, opts: VerifyRekorEntryOptions): VerifiedRekorEntry {
+  // "Our anchor" means our key AND a signature over this root: never one without the other.
+  if ((opts.artifact === undefined) !== (opts.anchorKeySpkiDer === undefined)) {
+    throw new RekorVerificationError('artifact and anchoring key must be checked together');
+  }
   if (!isRecord(entry)) throw new RekorVerificationError('malformed log entry');
   const verification = entry.verification;
   const proof = isRecord(verification) ? verification.inclusionProof : undefined;
@@ -240,7 +257,7 @@ export function verifyRekorEntry(entryId: string, entry: unknown, opts: VerifyRe
     throw new RekorVerificationError('signed checkpoint does not commit to the proof root and size');
   }
   const origin = /^.+ - ([0-9]{1,20})$/.exec(checkpoint.origin);
-  if (id.length === 80 && origin && BigInt(origin[1]).toString(16).padStart(16, '0') !== id.slice(0, 16)) {
+  if (id.length === 80 && (!origin || BigInt(origin[1]).toString(16).padStart(16, '0') !== id.slice(0, 16))) {
     throw new RekorVerificationError('entry tree ID does not match the checkpoint origin');
   }
   if (entry.logID !== logIdOf(opts.logKey)) throw new RekorVerificationError("entry logID is not the pinned log's key ID");
@@ -317,7 +334,16 @@ export interface RekorAnchorOptions {
   timeoutMs?: number;
   /** Defaults to NODE_ENV === 'production'. */
   production?: boolean;
+  /**
+   * Development only: with no pinned key, fetch the log's key once and trust
+   * it. Off by default, so a deployment that forgets NODE_ENV still refuses to
+   * run unpinned; refused in production even when set.
+   */
+  allowTrustOnFirstUse?: boolean;
   cacheSize?: number;
+  /** Allowed difference between the log's clock and ours (integratedTime check). */
+  maxClockSkewMs?: number;
+  now?: () => Date;
 }
 
 /**
@@ -331,6 +357,8 @@ export class RekorAnchor {
   private readonly timeoutMs: number;
   private pinned: KeyObject | null;
   private readonly batches: BoundedCache<string, { root: Buffer; result: RekorAnchorResult }>;
+  private readonly skewMs: number;
+  private readonly now: () => Date;
   /** `pinned` when configured, `first_use` once a dev log's key was fetched and trusted. */
   logKeySource: 'pinned' | 'first_use' | null;
 
@@ -340,6 +368,9 @@ export class RekorAnchor {
     if (opts.logPublicKeyPem === undefined || opts.logPublicKeyPem.trim() === '') {
       if (production) {
         throw new AnchorError('ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED', 'production requires a pinned Rekor log key');
+      }
+      if (opts.allowTrustOnFirstUse !== true) {
+        throw new AnchorError('ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED', 'no pinned Rekor log key (trust on first use not enabled)');
       }
       this.pinned = null;
       this.logKeySource = null;
@@ -356,6 +387,9 @@ export class RekorAnchor {
     this.fetchImpl = opts.fetch ?? ((input, init) => fetch(input, init));
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_REKOR_TIMEOUT_MS;
     this.batches = new BoundedCache(opts.cacheSize ?? DEFAULT_ANCHOR_CACHE_SIZE);
+    this.skewMs = opts.maxClockSkewMs ?? DEFAULT_REKOR_CLOCK_SKEW_MS;
+    if (!Number.isSafeInteger(this.skewMs) || this.skewMs < 0) throw new RangeError('maxClockSkewMs must be a non-negative integer');
+    this.now = opts.now ?? (() => new Date());
   }
 
   /** Log `root` for `batchId` and return the verified entry. Idempotent on `batchId` in-process. */
@@ -367,7 +401,9 @@ export class RekorAnchor {
       return seen.result;
     }
     const [signature, spki] = [await this.signer.sign(root), await this.signer.publicKeySpkiDer()];
-    const { entryId, entry } = await this.submit(proposedEntry(root, signature, spki));
+    const started = this.now().getTime();
+    const { entryId, entry, created } = await this.submit(proposedEntry(root, signature, spki));
+    const ended = this.now().getTime();
     const logKey = await this.logKey();
     let verified: VerifiedRekorEntry;
     try {
@@ -375,6 +411,11 @@ export class RekorAnchor {
     } catch (err) {
       if (!(err instanceof RekorVerificationError)) throw err;
       throw new AnchorError('ATTESTA_ANCHOR_LOG_PROOF_INVALID', `log returned an entry that does not verify: ${err.message}`);
+    }
+    // A new entry is integrated while we wait; an existing one (409) earlier. Never in the future.
+    const integratedMs = verified.integratedTime * 1000;
+    if (integratedMs > ended + this.skewMs || (created && integratedMs < started - this.skewMs)) {
+      throw new AnchorError('ATTESTA_ANCHOR_LOG_PROOF_INVALID', 'log integratedTime is outside the request window');
     }
     const result: RekorAnchorResult = {
       type: 'rekor',
@@ -426,7 +467,7 @@ export class RekorAnchor {
     const res = await fetchWithTimeout(this.fetchImpl, `${this.url}${REKOR_PUBLIC_KEY_PATH}`, {}, this.timeoutMs,
       'ATTESTA_ANCHOR_LOG_UNAVAILABLE', 'rekor');
     if (res.status !== 200) throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', `cannot fetch the rekor public key: HTTP ${res.status}`);
-    const pem = await this.readText(res);
+    const pem = (await this.read(res)).toString('utf8');
     let key: KeyObject;
     try {
       key = loadLogPublicKey(pem);
@@ -439,16 +480,13 @@ export class RekorAnchor {
     return key;
   }
 
-  private async readText(res: Response): Promise<string> {
-    try {
-      return await res.text();
-    } catch (err) {
-      throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', 'rekor connection dropped', { cause: err });
-    }
+  private read(res: Response): Promise<Buffer> {
+    return readCapped(res, MAX_REKOR_RESPONSE_BYTES,
+      { unavailable: 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', tooLarge: 'ATTESTA_ANCHOR_LOG_PROOF_INVALID' }, 'rekor');
   }
 
   private async readJson(res: Response): Promise<unknown> {
-    const text = await this.readText(res);
+    const text = (await this.read(res)).toString('utf8');
     try {
       return JSON.parse(text);
     } catch {
@@ -456,20 +494,20 @@ export class RekorAnchor {
     }
   }
 
-  private async submit(body: Record<string, unknown>): Promise<{ entryId: string; entry: Record<string, unknown> }> {
+  private async submit(body: Record<string, unknown>): Promise<{ entryId: string; entry: Record<string, unknown>; created: boolean }> {
     const res = await fetchWithTimeout(this.fetchImpl, `${this.url}${REKOR_ENTRIES_PATH}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(body),
     }, this.timeoutMs, 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', 'rekor');
-    if (res.status === 201) return singleEntry(await this.readJson(res));
+    if (res.status === 201) return { ...singleEntry(await this.readJson(res)), created: true };
     if (res.status === 409) {
       const existing = existingEntryId(res.headers.get('location'), await this.readJson(res));
       const entry = await this.getEntry(existing);
       if (entry === null) {
         throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', 'rekor reported a duplicate but cannot return it');
       }
-      return { entryId: existing, entry };
+      return { entryId: existing, entry, created: false };
     }
     if (res.status === 400 || res.status === 422) {
       throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', `rekor rejected the entry: HTTP ${res.status}`, { retryable: false });
@@ -481,7 +519,10 @@ export class RekorAnchor {
     if (typeof entryId !== 'string' || !ENTRY_ID.test(entryId.toLowerCase())) return null;
     const res = await fetchWithTimeout(this.fetchImpl, `${this.url}${REKOR_ENTRIES_PATH}/${entryId.toLowerCase()}`, {},
       this.timeoutMs, 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', 'rekor');
-    if (res.status === 404) return null;
+    if (res.status === 404) {
+      await res.body?.cancel().catch(() => undefined);
+      return null;
+    }
     if (res.status !== 200) throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', `rekor returned HTTP ${res.status}`);
     const { entryId: returned, entry } = singleEntry(await this.readJson(res));
     if (!returned.toLowerCase().endsWith(entryId.toLowerCase().slice(-64))) {

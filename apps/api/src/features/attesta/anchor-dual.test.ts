@@ -24,6 +24,7 @@ const pem = (k: KeyObject): string => (k.type === 'public' ? k : createPublicKey
 
 async function setup(revocation?: TsaRevocationChecker) {
   const rekor = new FakeRekor();
+  rekor.clock = Math.floor(Date.now() / 1000); // the fake's clock starts in the past; integratedTime is bounded
   const tsa = await FakeTsa.create();
   const s = signer();
   const dual = new DualAnchor(
@@ -32,7 +33,7 @@ async function setup(revocation?: TsaRevocationChecker) {
   );
   const keys: StoredAnchorKeys = {
     rekorLogKey: createPublicKey(rekor.logKey),
-    anchorKeySpkiDer: await s.publicKeySpkiDer(),
+    anchorKeysSpkiDer: [await s.publicKeySpkiDer()],
     tsaAnchors: loadTrustAnchors(tsa.anchorsPem),
   };
   return { rekor, tsa, dual, keys };
@@ -120,9 +121,13 @@ test('every record of a batch verifies offline for both anchor types; unknown re
   for (const row of rows) {
     const check = verifyStoredAnchor(row, keys);
     assert.equal(check.status, 'valid', `${row.anchorType} ${row.recordHash}`);
-    if (row.anchorType === 'tsa') assert.deepEqual((check as { revocation: unknown }).revocation, { status: 'unknown', reason: 'no_source_configured' });
+    if (row.anchorType === 'tsa') {
+      assert.deepEqual((check as { revocation: unknown }).revocation, { status: 'unknown', reason: 'not_rechecked_offline' });
+      assert.deepEqual((check as { recordedRevocation: unknown }).recordedRevocation, { status: 'unknown', reason: 'no_source_configured' });
+      assert.equal((row.proof.anchor as { rekor_entry: unknown }).rekor_entry, null);
+    }
     assert.equal(row.proof.version, 1);
-    assert.deepEqual(Object.keys(row.proof.anchor).slice(0, 4), ['type', 'ref', 'log_index', 'proof_b64']);
+    assert.deepEqual(Object.keys(row.proof.anchor).slice(0, 5), ['type', 'ref', 'log_index', 'proof_b64', 'rekor_entry']);
   }
   const rekorRow = rows.find((r) => r.anchorType === 'rekor')!;
   assert.ok('rekor_entry' in rekorRow.proof.anchor);
@@ -158,6 +163,10 @@ test('tampering with a stored row is caught offline with the right code', async 
     ['tsa token not base64', { ...tsaRow, tsaTokenB64: '!!' }, A],
     ['tsa gen_time', mutateProof(tsaRow, (p) => { p.anchor.gen_time = '2020-01-01T00:00:00.000Z'; }), A],
     ['tsa revoked recorded', mutateProof(tsaRow, (p) => { p.anchor.revocation = { status: 'revoked', reason: 'x' }; }), A],
+    ['tsa policy', mutateProof(tsaRow, (p) => { p.anchor.policy = '1.2.3'; }), A],
+    ['tsa log_index set', mutateProof(tsaRow, (p) => { p.anchor.log_index = 0; }), A],
+    ['tsa proof_b64 set', mutateProof(tsaRow, (p) => { p.anchor.proof_b64 = 'AA=='; }), A],
+    ['tsa token with whitespace', { ...tsaRow, tsaTokenB64: ` ${tsaRow.tsaTokenB64}` }, A],
     ['unknown type', mutateProof({ ...rekorRow, anchorType: 'other' as 'rekor' }, (p) => { p.anchor.type = 'other'; }), A],
   ];
   for (const [name, row, code] of cases) {
@@ -168,9 +177,19 @@ test('tampering with a stored row is caught offline with the right code', async 
   const foreignTsa = second.rows.find((r) => r.anchorType === 'tsa')!;
   assert.deepEqual(verifyStoredAnchor({ ...tsaRow, tsaTokenB64: foreignTsa.tsaTokenB64, proof: mutateProof(tsaRow, (p) => { p.anchor.ref = foreignTsa.proof.anchor.ref; }).proof }, keys),
     { status: 'invalid', code: A });
-  // A forged revocation status reads as unknown, never as clean.
+  // A stored "clean" (or junk) is never re-asserted as clean offline: it is unsigned.
+  const forgedClean = mutateProof(tsaRow, (p) => { p.anchor.revocation = { status: 'clean', reason: 'ocsp_good' }; });
+  assert.deepEqual(verifyStoredAnchor(forgedClean, keys), {
+    status: 'valid',
+    revocation: { status: 'unknown', reason: 'not_rechecked_offline' },
+    recordedRevocation: { status: 'clean', reason: 'ocsp_good' },
+  });
   const junk = mutateProof(tsaRow, (p) => { p.anchor.revocation = { status: 'CLEAN' }; });
-  assert.deepEqual(verifyStoredAnchor(junk, keys), { status: 'valid', revocation: { status: 'unknown', reason: 'not_recorded' } });
+  assert.deepEqual(verifyStoredAnchor(junk, keys), {
+    status: 'valid',
+    revocation: { status: 'unknown', reason: 'not_rechecked_offline' },
+    recordedRevocation: { status: 'unknown', reason: 'not_recorded' },
+  });
 });
 
 test('wrong keys are invalid; missing keys or material are not checkable, never valid', async () => {
@@ -181,7 +200,11 @@ test('wrong keys are invalid; missing keys or material are not checkable, never 
   const NC = { status: 'not_checkable', code: 'ATTESTA_VERIFY_NOT_CHECKABLE' };
   const A = { status: 'invalid', code: 'ATTESTA_VERIFY_ANCHOR_INVALID' };
   assert.deepEqual(verifyStoredAnchor(rekorRow, { ...keys, rekorLogKey: otherKey }), A);
-  assert.deepEqual(verifyStoredAnchor(rekorRow, { ...keys, anchorKeySpkiDer: Buffer.from(otherKey.export({ type: 'spki', format: 'der' })) }), A);
+  const retired = Buffer.from(otherKey.export({ type: 'spki', format: 'der' }));
+  assert.deepEqual(verifyStoredAnchor(rekorRow, { ...keys, anchorKeysSpkiDer: [retired] }), A);
+  // Rotation: old anchors stay checkable while the retired key is published alongside the new one.
+  assert.equal(verifyStoredAnchor(rekorRow, { ...keys, anchorKeysSpkiDer: [retired, ...keys.anchorKeysSpkiDer!] }).status, 'valid');
+  assert.deepEqual(verifyStoredAnchor(rekorRow, { ...keys, anchorKeysSpkiDer: [] }), NC);
   assert.deepEqual(verifyStoredAnchor(tsaRow, { ...keys, tsaAnchors: [(await makeCa('Other')).cert] }), A);
   assert.deepEqual(verifyStoredAnchor(rekorRow, {}), NC);
   assert.deepEqual(verifyStoredAnchor(tsaRow, {}), NC);
@@ -192,5 +215,9 @@ test('wrong keys are invalid; missing keys or material are not checkable, never 
 test('a clean revocation answer is carried into the proof', async () => {
   const { rows, keys } = await anchoredBatch(1, { check: async () => ({ status: 'clean', reason: 'ocsp_good' }) });
   const tsaRow = rows.find((r) => r.anchorType === 'tsa')!;
-  assert.deepEqual(verifyStoredAnchor(tsaRow, keys), { status: 'valid', revocation: { status: 'clean', reason: 'ocsp_good' } });
+  assert.deepEqual(verifyStoredAnchor(tsaRow, keys), {
+    status: 'valid',
+    revocation: { status: 'unknown', reason: 'not_rechecked_offline' },
+    recordedRevocation: { status: 'clean', reason: 'ocsp_good' },
+  });
 });

@@ -147,8 +147,46 @@ export async function fetchWithTimeout(
   what: string,
 ): Promise<Response> {
   try {
-    return await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    return await fetchImpl(url, { redirect: 'error', ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     throw new AnchorError(code, `${what} unreachable`, { cause: err });
   }
+}
+
+/**
+ * Read at most `max` bytes of a response body, aborting the stream beyond it,
+ * so a hostile endpoint cannot make us buffer an unbounded body. A dropped
+ * connection is `unavailable`; an oversized body is `tooLarge`.
+ */
+export async function readCapped(
+  res: Response,
+  max: number,
+  codes: { unavailable: AnchorErrorCode; tooLarge: AnchorErrorCode },
+  what: string,
+): Promise<Buffer> {
+  const declared = Number(res.headers.get('content-length') ?? NaN);
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel().catch(() => undefined);
+    throw new AnchorError(codes.tooLarge, `${what} response too large`);
+  }
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => undefined);
+        throw new AnchorError(codes.tooLarge, `${what} response too large`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } catch (err) {
+    if (err instanceof AnchorError) throw err;
+    throw new AnchorError(codes.unavailable, `${what} connection dropped`, { cause: err });
+  }
+  return Buffer.concat(chunks, total);
 }

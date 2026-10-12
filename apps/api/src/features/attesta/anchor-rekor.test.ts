@@ -67,13 +67,16 @@ function pem(key: KeyObject): string {
   return (key.type === 'public' ? key : createPublicKey(key)).export({ type: 'spki', format: 'pem' }).toString();
 }
 
-function adapter(rekor: FakeRekor, signer: AnchorSigner, opts: { pinned?: boolean; production?: boolean } = {}): RekorAnchor {
+function adapter(rekor: FakeRekor, signer: AnchorSigner, opts: { pinned?: boolean; production?: boolean; tofu?: boolean } = {}): RekorAnchor {
+  // The fake's clock starts in 2026-09; move it to now, since a new entry's integratedTime is bounded.
+  if (rekor.clock < Math.floor(Date.now() / 1000) - 60) rekor.clock = Math.floor(Date.now() / 1000);
   return new RekorAnchor({
     url: URL_,
     signer,
     fetch: rekor.fetch,
     logPublicKeyPem: opts.pinned === false ? undefined : pem(rekor.logKey),
     production: opts.production ?? false,
+    allowTrustOnFirstUse: opts.tofu ?? opts.pinned === false,
   });
 }
 
@@ -151,9 +154,11 @@ test('real entry ID must match the body; bare UUID accepted', () => {
 
 test("real entry is not our anchor (someone else's artifact or key)", () => {
   const logKey = loadLogPublicKey(VECTOR.log_public_key_pem);
-  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A }), /commit/);
   const ours = Buffer.from(createPublicKey(otherKey()).export({ type: 'spki', format: 'der' }));
-  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, anchorKeySpkiDer: ours }), /anchoring key|unreadable/);
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A, anchorKeySpkiDer: ours }), /commit/);
+  // "Our anchor" is the key AND the root together: one alone is refused.
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, anchorKeySpkiDer: ours }), /together/);
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A }), /together/);
 });
 
 test('malformed entries fail as verification errors, never crash or pass', () => {
@@ -284,10 +289,13 @@ test('a 201 payload that is not one entry is a proof failure', async () => {
   }
 });
 
-test('production refuses to run without a pinned log key; trust on first use only outside it', async () => {
+test('production refuses to run without a pinned log key; trust on first use only outside it, and only when asked', async () => {
   const rekor = new FakeRekor();
   assert.throws(() => adapter(rekor, devSigner(), { pinned: false, production: true }), (err: unknown) =>
     err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED' && !err.retryable);
+  // A deployment that forgot NODE_ENV still refuses to run unpinned.
+  assert.throws(() => adapter(rekor, devSigner(), { pinned: false, production: false, tofu: false }), (err: unknown) =>
+    err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED');
   assert.throws(() => new RekorAnchor({ url: URL_, signer: devSigner(), logPublicKeyPem: 'garbage', production: false }),
     (err: unknown) => err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED');
   assert.ok(adapter(rekor, devSigner(), { production: true }));
@@ -310,7 +318,7 @@ test('first-use key fetch failures are unavailable, never a pass', async () => {
   rekor.failStatus = 503;
   await rejectsCode(adapter(rekor, devSigner(), { pinned: false }).logKey(), 'ATTESTA_ANCHOR_LOG_UNAVAILABLE');
   const garbage = async () => new Response('not a key', { status: 200 });
-  const a = new RekorAnchor({ url: URL_, signer: devSigner(), fetch: garbage, production: false });
+  const a = new RekorAnchor({ url: URL_, signer: devSigner(), fetch: garbage, production: false, allowTrustOnFirstUse: true });
   await rejectsCode(a.logKey(), 'ATTESTA_ANCHOR_LOG_UNAVAILABLE');
 });
 
@@ -444,6 +452,7 @@ test('the adapter batch cache is bounded', async () => {
   assert.equal(cache.get('a'), 1);
   assert.throws(() => new BoundedCache(0), RangeError);
   const rekor = new FakeRekor();
+  rekor.clock = Math.floor(Date.now() / 1000);
   const a = new RekorAnchor({ url: URL_, signer: devSigner(), fetch: rekor.fetch, logPublicKeyPem: pem(rekor.logKey), production: false, cacheSize: 1 });
   await a.anchor(ROOT_A, 'a');
   await a.anchor(ROOT_B, 'b');
@@ -456,14 +465,14 @@ test('the adapter batch cache is bounded', async () => {
 // Hand-built single-entry log: each check proven necessary on its own
 // ---------------------------------------------------------------------------
 
-function selfLog(body: Record<string, unknown>, logPriv: KeyObject, opts: { logId?: string; checkpointRoot?: Buffer } = {}) {
+function selfLog(body: Record<string, unknown>, logPriv: KeyObject, opts: { logId?: string; checkpointRoot?: Buffer; checkpointSize?: number; origin?: string } = {}) {
   const bodyBytes = Buffer.from(JSON.stringify(body), 'utf8');
   const uuid = leafHash(bodyBytes).toString('hex');
   const root = leafHash(bodyBytes);
   const logPub = createPublicKey(logPriv);
   const logId = opts.logId ?? createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest('hex');
   const base = { body: bodyBytes.toString('base64'), integratedTime: 1_790_000_001, logID: logId, logIndex: 0 };
-  const note = `self.log - 1\n1\n${(opts.checkpointRoot ?? root).toString('base64')}\nTimestamp: 1\n`;
+  const note = `${opts.origin ?? 'self.log - 1'}\n${opts.checkpointSize ?? 1}\n${(opts.checkpointRoot ?? root).toString('base64')}\nTimestamp: 1\n`;
   const hint = createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest().subarray(0, 4);
   const cpSig = sign('sha256', Buffer.from(note), logPriv);
   const entry = {
@@ -495,6 +504,22 @@ test('hand-built log: a valid entry verifies, and each binding is necessary', as
   const otherHead = selfLog(good, logPriv, { checkpointRoot: Buffer.alloc(32, 9) });
   assert.throws(() => verifyRekorEntry(otherHead.entryId, otherHead.entry, { logKey: otherHead.logKey }), /checkpoint does not commit/);
 
+  // A validly signed checkpoint for the same root but another size.
+  const otherSize = selfLog(good, logPriv, { checkpointSize: 2 });
+  assert.throws(() => verifyRekorEntry(otherSize.entryId, otherSize.entry, { logKey: otherSize.logKey }), /checkpoint does not commit/);
+
+  // An 80-hex ID needs an origin that names the tree: fail closed otherwise.
+  const noTree = selfLog(good, logPriv, { origin: 'self.log' });
+  assert.throws(() => verifyRekorEntry(noTree.entryId, noTree.entry, { logKey: noTree.logKey }), /tree ID/);
+  assert.ok(verifyRekorEntry(noTree.entryId.slice(16), noTree.entry, { logKey: noTree.logKey }));
+
+  // A P-384 key in the body, even if it is the key we were told: only P-256 anchors.
+  const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
+  const p384Spki = Buffer.from(p384.publicKey.export({ type: 'spki', format: 'der' }));
+  const p384Body = proposedEntry(ROOT_A, sign('sha256', ROOT_A, { key: p384.privateKey, dsaEncoding: 'der' }), p384Spki);
+  const big = selfLog(p384Body, logPriv);
+  assert.throws(() => verifyRekorEntry(big.entryId, big.entry, { logKey: big.logKey, artifact: ROOT_A, anchorKeySpkiDer: p384Spki }), /does not verify/);
+
   // Our key and the right digest, but a signature over something else.
   const forged = proposedEntry(ROOT_A, await signer.sign(ROOT_B), spki);
   const f = selfLog(forged, logPriv);
@@ -507,4 +532,38 @@ test('hand-built log: a valid entry verifies, and each binding is necessary', as
   sha1.spec.data.hash.algorithm = 'sha1';
   const s = selfLog(sha1, logPriv);
   assert.throws(() => verifyRekorEntry(s.entryId, s.entry, { logKey: s.logKey }), /sha256/);
+});
+
+test('integratedTime must fall in the request window for a new entry, never in the future', async () => {
+  const rekor = new FakeRekor();
+  const a = adapter(rekor, devSigner());
+  rekor.clock = Math.floor(Date.now() / 1000) - 3600; // log claims it integrated an hour ago
+  await rejectsCode(a.anchor(ROOT_A, 'a'), 'ATTESTA_ANCHOR_LOG_PROOF_INVALID');
+  rekor.clock = Math.floor(Date.now() / 1000) + 3600; // or an hour from now
+  await rejectsCode(a.anchor(ROOT_B, 'b'), 'ATTESTA_ANCHOR_LOG_PROOF_INVALID');
+  // A 409 may point at an older entry (the deterministic signer resubmits after a restart).
+  const r2 = new FakeRekor();
+  r2.clock = Math.floor(Date.now() / 1000);
+  const s = deterministicSigner();
+  const first = await adapter(r2, s).anchor(ROOT_A, 'a');
+  const later = new RekorAnchor({ url: URL_, signer: s, fetch: r2.fetch, logPublicKeyPem: pem(r2.logKey), production: false,
+    now: () => new Date(Date.now() + 86400_000) });
+  assert.equal((await later.anchor(ROOT_A, 'a')).entryId, first.entryId);
+});
+
+test('oversized log responses are refused without buffering them', async () => {
+  let pulled = 0;
+  const huge = async () => new Response(new ReadableStream({
+    pull(controller) {
+      pulled++;
+      controller.enqueue(new Uint8Array(64 * 1024));
+      if (pulled > 10_000) controller.close();
+    },
+  }), { status: 201 });
+  const a = new RekorAnchor({ url: URL_, signer: devSigner(), fetch: huge, logPublicKeyPem: pem(otherKey()), production: false });
+  await rejectsCode(a.anchor(ROOT_A, 'b'), 'ATTESTA_ANCHOR_LOG_PROOF_INVALID');
+  assert.ok(pulled < 40, `pulled ${pulled} chunks`);
+  const declared = async () => new Response('x', { status: 201, headers: { 'content-length': String(64 * 1024 * 1024) } });
+  const b = new RekorAnchor({ url: URL_, signer: devSigner(), fetch: declared, logPublicKeyPem: pem(otherKey()), production: false });
+  await rejectsCode(b.anchor(ROOT_A, 'b'), 'ATTESTA_ANCHOR_LOG_PROOF_INVALID');
 });

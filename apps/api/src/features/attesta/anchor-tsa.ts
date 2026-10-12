@@ -4,7 +4,10 @@
 // `anchor(root, batchId)` asks the TSA to time-stamp sha256(root) with a fresh
 // 63-bit nonce and `certReq`, then verifies the reply before accepting it.
 // `verifyTimestampToken(token, root, anchors, opts)` accepts a token only if:
-//  1. it is CMS SignedData (DER, no trailing bytes) encapsulating a TSTInfo v1;
+//  1. it is CMS SignedData encapsulating a TSTInfo v1, with no trailing bytes,
+//     no indefinite lengths and no long-form short lengths (BER leniency that
+//     would let one token take many byte forms is refused; the token ref is
+//     the SHA-256 of the exact stored bytes);
 //  2. the message imprint is the hash of `root` (sha256/384/512);
 //  3. the nonce, when one was sent, is echoed back;
 //  4. genTime lies in the caller's window (at anchor time: the request window
@@ -16,10 +19,14 @@
 //  6. the signature over the signed attributes verifies with the signer's key,
 //     with a signature algorithm consistent with the digest algorithm;
 //  7. the signer certificate carries a critical extended key usage of exactly
-//     id-kp-timeStamping, and is valid at genTime;
-//  8. it chains, certificate by certificate (issuer name, signature, CA flag,
-//     keyCertSign when key usage is stated, validity at genTime), to a pinned
-//     trust anchor; the search is bounded (32 certificates, 8 links, 256 checks).
+//     id-kp-timeStamping, is not a CA, allows digitalSignature or
+//     nonRepudiation when it states a key usage, and is valid at genTime;
+//  8. it chains, certificate by certificate (issuer name, signature with an
+//     outer algorithm equal to the signed one, CA flag, keyCertSign when key
+//     usage is stated, pathLenConstraint, validity at genTime), to a pinned
+//     trust anchor; the search is bounded (32 certificates, 8 links, 256 checks);
+//  9. no certificate on the path carries a critical extension we do not
+//     process (RFC 5280 §4.2), and RSA keys are at least 2048 bits.
 // Revocation of the TSA certificate has three states (TR-1): REVOKED fails the
 // token, CLEAN and UNKNOWN pass, and UNKNOWN is never reported as CLEAN. With
 // no revocation source configured every token records `unknown`
@@ -35,8 +42,11 @@
 // TSA_TOKEN_INVALID; (3) genTime bound and three-state revocation added;
 // (4) the batch cache is bounded (A2b limitation #11) and token and response
 // sizes are bounded; (5) results carry the DER token and its facts as data
-// rather than a bytes blob; (6) Ed448 dropped (Node has no SPKI import for it
-// in the paths used here; no public TSA uses it).
+// rather than a bytes blob; (6) Ed448 dropped (no public TSA uses it);
+// (7) added checks 7–9 beyond the source (signer not a CA, signer key usage,
+// pathLen, outer/inner algorithm, unknown critical extensions, RSA size).
+// Not covered: revocation of intermediate CA certificates (only the TSA
+// certificate goes to the revocation source).
 
 import { createHash, createPublicKey, constants, randomBytes, verify, type KeyObject } from 'node:crypto';
 import * as asn1js from 'asn1js';
@@ -47,6 +57,7 @@ import {
   BoundedCache,
   assertAnchorInput,
   fetchWithTimeout,
+  readCapped,
   type FetchLike,
 } from './anchor-contract';
 
@@ -98,6 +109,19 @@ const SIG_ALGS: Record<string, { kind: 'ecdsa' | 'rsa' | 'rsa-pss' | 'ed25519'; 
   [OID.ed25519]: { kind: 'ed25519', hash: null },
 };
 const STRONG_HASHES = new Set(['sha256', 'sha384', 'sha512']);
+const MIN_RSA_BITS = 2048;
+/** Extensions this verifier processes or may safely ignore; any other critical extension fails the path. */
+const KNOWN_EXTENSIONS = new Set([
+  '2.5.29.14', // subject key identifier
+  '2.5.29.15', // key usage
+  '2.5.29.17', // subject alternative name
+  '2.5.29.19', // basic constraints
+  '2.5.29.31', // CRL distribution points
+  '2.5.29.32', // certificate policies (no policy processing; informational for a TSA)
+  '2.5.29.35', // authority key identifier
+  '2.5.29.37', // extended key usage
+  '1.3.6.1.5.5.7.1.1', // authority information access
+]);
 
 /** A token (or response) failed verification. The message is a reason, never a raw value. */
 export class TimestampVerificationError extends Error {
@@ -163,12 +187,29 @@ function ab(data: Uint8Array): ArrayBuffer {
   return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
 }
 
-/** Strict DER parse: one element, no trailing bytes. */
+/** Reject the BER freedoms a DER token never uses: indefinite lengths, long-form short lengths. */
+function assertDerLengths(el: asn1js.AsnType, what: string, depth = 0): void {
+  if (depth > 64) throw new TimestampVerificationError(`malformed ${what}`);
+  const len = el.lenBlock as unknown as { isIndefiniteForm: boolean; longFormUsed: boolean; length: number; blockLength: number };
+  if (len.isIndefiniteForm) throw new TimestampVerificationError(`${what} is not DER (indefinite length)`);
+  // Long form: one count byte plus the fewest bytes that hold the length, and only for lengths >= 128.
+  const minimal = len.length < 128 ? 0 : Math.ceil(len.length.toString(16).length / 2);
+  if (len.longFormUsed && (len.length < 128 || len.blockLength !== 1 + minimal)) {
+    throw new TimestampVerificationError(`${what} is not DER (non-minimal length)`);
+  }
+  const inner = (el as { valueBlock?: { value?: unknown } }).valueBlock?.value;
+  if (el.idBlock.isConstructed && Array.isArray(inner)) {
+    for (const child of inner as asn1js.AsnType[]) assertDerLengths(child, what, depth + 1);
+  }
+}
+
+/** Strict parse: one element, no trailing bytes, DER lengths. */
 function parseDer(bytes: Uint8Array, what: string): asn1js.AsnType {
   const parsed = asn1js.fromBER(ab(bytes));
   if (parsed.offset === -1 || parsed.offset !== bytes.byteLength) {
     throw new TimestampVerificationError(`malformed ${what}`);
   }
+  assertDerLengths(parsed.result, what);
   return parsed.result;
 }
 
@@ -289,10 +330,12 @@ function verifyWith(
         if (key.asymmetricKeyType !== 'rsa' || !hash || !STRONG_HASHES.has(hash)) {
           throw new TimestampVerificationError('key does not match the signature algorithm');
         }
+        if ((key.asymmetricKeyDetails?.modulusLength ?? 0) < MIN_RSA_BITS) throw new TimestampVerificationError('RSA key too small');
         return verify(hash, message, { key, padding: constants.RSA_PKCS1_PADDING }, signature);
       }
       case 'rsa-pss': {
         if (key.asymmetricKeyType !== 'rsa' || !alg.params) throw new TimestampVerificationError('key does not match the signature algorithm');
+        if ((key.asymmetricKeyDetails?.modulusLength ?? 0) < MIN_RSA_BITS) throw new TimestampVerificationError('RSA key too small');
         const params = new pkijs.RSASSAPSSParams({ schema: alg.params });
         const hash = HASH_BY_OID[params.hashAlgorithm.algorithmId];
         const mgfHash = params.maskGenAlgorithm.algorithmId === OID.mgf1 && params.maskGenAlgorithm.algorithmParams
@@ -473,7 +516,29 @@ function checkSignedAttributes(attrs: asn1js.AsnType[], digest: string, tstBytes
   if (!hashOf(alg, signerDer).equals(expected)) throw new TimestampVerificationError('ESS signing-certificate does not name the signer');
 }
 
+function checkCriticalExtensions(cert: pkijs.Certificate): void {
+  for (const e of cert.extensions ?? []) {
+    if (e.critical && !KNOWN_EXTENSIONS.has(e.extnID)) {
+      throw new TimestampVerificationError('certificate carries an unsupported critical extension');
+    }
+  }
+}
+
+function keyUsageBits(cert: pkijs.Certificate): Buffer | null {
+  const ku = extension(cert, OID.keyUsage);
+  if (!ku) return null;
+  const bits = extValue(ku);
+  if (!(bits instanceof asn1js.BitString)) throw new TimestampVerificationError('malformed key usage');
+  return Buffer.from(bits.valueBlock.valueHexView);
+}
+
 function checkTsaCertificate(cert: pkijs.Certificate, genTime: Date): void {
+  checkCriticalExtensions(cert);
+  if (isCa(cert)) throw new TimestampVerificationError('signer certificate is a CA, not a time-stamping certificate');
+  const ku = keyUsageBits(cert);
+  if (ku && (ku.length === 0 || (ku[0] & 0xc0) === 0)) {
+    throw new TimestampVerificationError('signer certificate key usage does not allow signing');
+  }
   const eku = extension(cert, OID.eku);
   if (!eku) throw new TimestampVerificationError('signer certificate has no extended key usage');
   const purposes = new pkijs.ExtKeyUsage({ schema: extValue(eku) }).keyPurposes;
@@ -488,18 +553,28 @@ function isCa(cert: pkijs.Certificate): boolean {
   return !!bc && new pkijs.BasicConstraints({ schema: extValue(bc) }).cA === true;
 }
 
-function canIssue(cert: pkijs.Certificate, when: Date): boolean {
+/** `below` = CA certificates between this issuer and the leaf (for pathLenConstraint). */
+function canIssue(cert: pkijs.Certificate, when: Date, below: number): boolean {
   if (!isCa(cert) || !validAt(cert, when)) return false;
-  const ku = extension(cert, OID.keyUsage);
-  if (!ku) return true;
-  const bits = extValue(ku);
-  if (!(bits instanceof asn1js.BitString)) return false;
-  const bytes = Buffer.from(bits.valueBlock.valueHexView);
+  try {
+    checkCriticalExtensions(cert);
+  } catch {
+    return false;
+  }
+  const bc = new pkijs.BasicConstraints({ schema: extValue(extension(cert, OID.basicConstraints)!) });
+  const pathLen = bc.pathLenConstraint;
+  if (pathLen !== undefined) {
+    const n = typeof pathLen === 'number' ? pathLen : Number((pathLen as asn1js.Integer).valueBlock.valueDec);
+    if (!Number.isSafeInteger(n) || below > n) return false;
+  }
+  const bytes = keyUsageBits(cert);
+  if (bytes === null) return true;
   return bytes.length > 0 && (bytes[0] & 0x04) !== 0; // keyCertSign is bit 5
 }
 
 function issuedBy(child: pkijs.Certificate, issuer: pkijs.Certificate): boolean {
   if (!child.issuer.isEqual(issuer.subject)) return false;
+  if (!child.signatureAlgorithm.isEqual(child.signature)) return false; // outer algorithm must equal the signed one
   const alg = { oid: child.signatureAlgorithm.algorithmId, params: child.signatureAlgorithm.algorithmParams as asn1js.AsnType | undefined };
   if (SIG_ALGS[alg.oid]?.hash === null && alg.oid !== OID.rsaPss && alg.oid !== OID.ed25519) return false;
   try {
@@ -519,21 +594,22 @@ function checkChain(leafDer: Buffer, leaf: pkijs.Certificate, poolDers: Buffer[]
   }
   const anchorSet = new Set(anchorDers.map((d) => d.toString('hex')));
   let budget = MAX_CHAIN_CHECKS;
-  const reaches = (cert: pkijs.Certificate, path: Set<string>): boolean => {
+  // `below`: CA certificates already on the path under the issuer being tried.
+  const reaches = (cert: pkijs.Certificate, path: Set<string>, below: number): boolean => {
     if (path.size > MAX_CHAIN_DEPTH) return false;
     for (const [k, issuer] of candidates) {
       if (path.has(k) || !cert.issuer.isEqual(issuer.cert.subject)) continue;
       if (--budget < 0) throw new TimestampVerificationError('TSA certificate chain search exceeded its budget');
-      if (!issuedBy(cert, issuer.cert) || !canIssue(issuer.cert, when)) continue;
-      if (anchorSet.has(k) || reaches(issuer.cert, new Set([...path, k]))) return true;
+      if (!issuedBy(cert, issuer.cert) || !canIssue(issuer.cert, when, below)) continue;
+      if (anchorSet.has(k) || reaches(issuer.cert, new Set([...path, k]), below + 1)) return true;
     }
     return false;
   };
   for (const [k, issuer] of candidates) {
     if (!leaf.issuer.isEqual(issuer.cert.subject)) continue;
     if (--budget < 0) throw new TimestampVerificationError('TSA certificate chain search exceeded its budget');
-    if (!issuedBy(leaf, issuer.cert) || !canIssue(issuer.cert, when)) continue;
-    if (anchorSet.has(k) || reaches(issuer.cert, new Set([leafDer.toString('hex'), k]))) return issuer.der;
+    if (!issuedBy(leaf, issuer.cert) || !canIssue(issuer.cert, when, 0)) continue;
+    if (anchorSet.has(k) || reaches(issuer.cert, new Set([leafDer.toString('hex'), k]), 1)) return issuer.der;
   }
   throw new TimestampVerificationError('TSA certificate does not chain to a configured trust anchor through CA certificates valid at genTime');
 }
@@ -758,13 +834,7 @@ export class TsaAnchor {
     if (kind && kind !== TIMESTAMP_REPLY) {
       throw new AnchorError('ATTESTA_ANCHOR_TSA_UNAVAILABLE', `TSA returned ${kind}, not ${TIMESTAMP_REPLY}`);
     }
-    let body: Buffer;
-    try {
-      body = Buffer.from(await res.arrayBuffer());
-    } catch (err) {
-      throw new AnchorError('ATTESTA_ANCHOR_TSA_UNAVAILABLE', 'TSA connection dropped', { cause: err });
-    }
-    if (body.length > MAX_TSA_RESPONSE_BYTES) throw new AnchorError('ATTESTA_ANCHOR_TSA_TOKEN_INVALID', 'TSA response too large');
-    return body;
+    return readCapped(res, MAX_TSA_RESPONSE_BYTES,
+      { unavailable: 'ATTESTA_ANCHOR_TSA_UNAVAILABLE', tooLarge: 'ATTESTA_ANCHOR_TSA_TOKEN_INVALID' }, 'TSA');
   }
 }
