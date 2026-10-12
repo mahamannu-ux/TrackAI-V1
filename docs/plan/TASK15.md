@@ -47,12 +47,12 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ✅ merged in PR #30 (contract `docs/contracts/attesta/`, outbox migration `0016`); IT-T15c-01 founder run pending |
 | A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
-| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | 🟡 built in Task15d (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 founder run passed 2026-10-12, Muse review ready to push; merge pending |
+| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ✅ merged in PR #33 (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 passed 2026-10-12 |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ✅ merged in PR #28 |
-| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
-| A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ |
-| A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | 🟡 implementation/review complete and all founder live gates passed 2026-10-12; ready to push/open PR |
-| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | ⬜ |
+| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ prompt ready |
+| A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ prompt ready |
+| A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ✅ merged in PR #32; IT-T2AT-01…04 passed 2026-10-12 |
+| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | ⬜ prompt ready |
 | A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× | A15.5, A15.8 | ⬜ |
 | A15.10 | Offline verifier (standalone Node script, ported from `offline_verify.py`) | Muse | 0.08× | A15.9 format frozen | ⬜ |
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
@@ -124,10 +124,10 @@ flowchart LR
 | Task15c-attesta-contract | A15.0 (+ outbox migration) | Claude | 0.08× (actual about 0.12×) | `docs/prompts/Task15/NEXT_CHAT_Task15c-attesta-contract_PROMPT.md` · handoff `docs/handoffs/Task15c-attesta-contract_HANDOFF.md` |
 | Task15d-attesta-ledger | A15.3 | Claude | 0.25× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` · handoff `docs/handoffs/Task15d-attesta-ledger_HANDOFF.md` |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
-| Task15f-attesta-anchoring | A15.5 | Claude | 0.25× | after 15d, 15e |
-| Task15g-attesta-kms | A15.6 | Muse | 0.08× | after 15b + dependency OK |
+| Task15f-attesta-anchoring | A15.5 (+ exact verify codes) | Claude | 0.3× | `docs/prompts/Task15/NEXT_CHAT_Task15f-attesta-anchoring_PROMPT.md` |
+| Task15g-attesta-kms | A15.6 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15g-attesta-kms_PROMPT.md` (deps approved by merging it) |
 | Task2-attesta-trigger | A15.7 | Codex | 0.15× | `docs/prompts/Task15/NEXT_CHAT_Task2-attesta-trigger_PROMPT.md` (merge gated on IT-T15c-01) |
-| Task15h-attesta-builder | A15.8 | Claude | 0.1× | after 15c, 15d, Task2-attesta-trigger |
+| Task15h-attesta-builder | A15.8 | Claude | 0.2× | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` |
 | Task15i-attesta-evidence | A15.9 (+ `period_report`) | Claude | 0.15× | after 15f, 15h |
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i |

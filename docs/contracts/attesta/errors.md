@@ -40,6 +40,7 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_LEDGER_PREVIOUS_STALE` | a statement about the same subject was chained after the build read `previous` | retry (rebuild) |
 | `ATTESTA_LEDGER_CLAIM_LOST` | the outbox row is no longer claimed by this attempt (lease expired, another worker took it) | stop; the current claimant continues |
 | `ATTESTA_LEDGER_GUARD_VIOLATION` | any other chain guard (hash mismatch, mutation attempt) | terminal; alert |
+| `ATTESTA_LEDGER_INVALID_INPUT` | `chainStatement` input fails validation (non-canonical bytes, envelope over other bytes, keyid not matching the key, typed values not derived from the statement) | terminal (builder bug) |  <!-- added 2026-10-12, founder decision in Task15d -->
 
 ## Anchoring (A15.5)
 
@@ -68,6 +69,18 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_VERIFY_ANCHOR_MISSING` | a record older than the anchoring window has no anchor |
 | `ATTESTA_VERIFY_ANCHOR_INVALID` | Rekor entry or TSA token does not verify offline |
 | `ATTESTA_VERIFY_NOT_CHECKABLE` | the material needed is absent (verifier exit code 2, never 0) |
+| `ATTESTA_VERIFY_SEQ_MISMATCH` | a record's `seq` differs from the `seq` in its hashed record bytes |
+| `ATTESTA_VERIFY_FIELD_MISMATCH` | a typed column differs from its hashed record bytes |
+| `ATTESTA_VERIFY_TENANT_MISMATCH` | a record names another tenant |
+| `ATTESTA_VERIFY_OUT_OF_ORDER` | `recorded_at` goes backwards |
+| `ATTESTA_VERIFY_DUPLICATE_SEQ` | two records share one `seq` |
+| `ATTESTA_VERIFY_HEAD_MISMATCH` | `chain_head` does not point at the last record |
+| `ATTESTA_VERIFY_BEYOND_HEAD` | a record exists at or past `chain_head.next_seq` |
+| `ATTESTA_VERIFY_ENVELOPE_MISSING` | a record has no envelope |
+| `ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH` | the envelope payload is not the record's statement bytes |
+| `ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED` | no published keys were supplied, so signatures were not checked (the report is never `ok`) |
+
+*Added 2026-10-12 (founder decision in Task15d): one exact code per break kind of `verify-chain.ts`; earlier codes are unchanged. Task15f switches `BREAK_DETAIL_CODES` to these.*
 
 ## API (A15.9)
 
