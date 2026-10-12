@@ -29,7 +29,7 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 | A16.6 | Audit read API: filter by actor, action, resource, time; keyset paging; `no-store`; auditor-reachable | Muse | 0.06× | A16.3 | ⬜ |
 | A16.7 | Signed audit export (evidence pack, Attesta RP-1 pattern) | Claude | 0.05× | A16.6, Task15 A15.9 | ⬜ |
 | A16.8 | Auditor console area separate from Administration: search, detail, export, verify card; no write controls (UI-1 rules) | Claude design, Muse build | 0.1× | A16.6 | ⬜ |
-| A16.9 | Auditor invitations and expiry; membership-based tenant selection (ID-2 back-port) | Codex (Task4 owner) | 0.1× | A16.3 | ⬜ |
+| A16.9 | ~~Auditor invitations and expiry; membership-based tenant selection~~ moved to Task8 as T8.12 (founder 2026-10-12) | Task8 | — | A16.3 | n/a here |
 | A16.10 | Database read-only role for auditor reads (AU-1 layer 4) | Claude | 0.05× | A16.6 | ⬜ |
 | A16.11 | Emitters for new sources: Attesta (key create/rotate/revoke, sign, anchor ok/failed, verify run, pack export), D6.1 lease issue, Task6.b bundle publish/activation, T14.7 artifact signing | owning Tasks | — | A16.3 | n/a here |
 | A16.12 | Founder-live auditor walkthrough (Company A/B, admin vs auditor vs developer) | founder-live | 0.02× | A16.8 | ⬜ |
@@ -55,9 +55,6 @@ flowchart LR
     B8a[A16.8 console design]
     B10[A16.10 DB role]
   end
-  subgraph Codex
-    B9[A16.9 invitations]
-  end
   subgraph Founder-live
     B12[A16.12 walkthrough]
   end
@@ -68,7 +65,6 @@ flowchart LR
   B3 --> B4
   B3 --> B5
   B3 --> B6
-  B3 --> B9
   B6 --> B7
   B6 --> B8a --> B8b
   B6 --> B10
@@ -89,10 +85,10 @@ flowchart LR
 | Task16d-audit-api | A16.6 | Muse | 0.06× | after 16b |
 | Task16e-audit-tamper | A16.4, A16.7 | Claude | 0.15× | after 16d and Task15d/15i |
 | Task16f-audit-console | A16.8 | Claude design note, Muse build | 0.1× | after 16d |
-| Task4-auditor-invitations | A16.9 | Codex | 0.1× | after 16b |
 | Task16g-audit-db-role | A16.10 | Claude | 0.05× | after 16d |
 | Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i |
 
 ## 5. Founder decisions
 1. **2026-10-08:** D1–D5 approved as recommended.
 2. **2026-10-12:** add A16.13 Auditor Q&A, driven by the question catalogue `docs/plan/ATTESTA_QUESTIONS.md` (founder, in the Task15 lead chat).
+3. **2026-10-12:** A16.9 (auditor invitations) moves to Task8 (T8.12); SIEM delivery stays with Task11, now deferred until a customer asks (`docs/plan/TASK11.md`); Task16 applies the AP-1 API conventions to its routes and must not assume a human session (B17).

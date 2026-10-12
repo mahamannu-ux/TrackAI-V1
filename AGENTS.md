@@ -197,6 +197,7 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 
 - TypeScript `strict` in both apps. The API targets ES2022 and builds to CommonJS; the web app targets ES2017 with ESNext modules (Next.js). API tests use `node:test` via `tsx` and live beside the code (`*.test.ts`), registered in `apps/api/package.json`'s `test` script; the web app has no unit tests yet.
 - Database access: Drizzle. Some existing routes query directly (`features/telemetry/read.routes.ts`, `features/scm/scm.routes.ts`); **new code puts queries in the feature service** and keeps route handlers thin. Tenant-owned access goes through `withTenant()`.
+- **New routes follow API conventions** (SushiCorp catalog AP-1, so a later public API is a selection, not a rewrite; `docs/plan/TASK11.md`): RFC 7807 problem responses, cursor (keyset) paging with bounded page sizes, an `X-Request-ID` echoed in responses and logs. Existing routes are not migrated just for this.
 - Routes (`apps/api/src/index.ts`): `/health` (unauthenticated); `/api/v1/webhooks/*` (raw body, provider signature verification); `/worker/*` (machine-authenticated GitAI uploads, including `/worker/security` and `/worker/evidence`); `/api/*` (Supabase JWT plus tenant middleware); `/api/admin/*` (administrators).
 - HTTP responses with sensitive data send `Cache-Control: no-store` and safe error codes, never raw values.
 - Comments explain why. Docs in plain language, short tables, stable IDs.

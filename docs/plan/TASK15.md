@@ -58,6 +58,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
 | A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× | A15.2, A15.3 | ⬜ |
 | A15.13 | Founder-live gates: rekor.sigstage.dev + FreeTSA anchoring, KMS signing, offline verification on a clean machine | founder-live | 0.05× | A15.5, A15.6, A15.10 | ⬜ |
+| A15.14 | GitHub check on each PR showing attestation status (posted by TrackAI's server through the installed GitHub App; policy rules later in Task6.b) | Muse after Claude's design note | 0.05× | A15.9 | ⬜ |
 | A15.P2 | Phase 2: SCANOSS enrichment, risk factors, M&A/insurer formats, GitLab/Bitbucket, private Rekor, keyless | later | — | phase 1 | n/a |
 
 **Phase 1 total:** about 1.5× T6 (Claude about 0.9×, Muse about 0.45×, Codex 0.1×, founder-live 0.05×). Claude's share at SushiCorp prices (S3 ≈ $31, T6 ≈ $125) is about $110 if run in cloud sessions; the $100 of cloud credits covers A15.0, A15.3, A15.5 and A15.8 with a small top-up, so run A15.9 and A15.12 in normal chats.
@@ -73,6 +74,7 @@ flowchart LR
     A6[A15.6 KMS adapters]
     A10[A15.10 offline verifier]
     A11[A15.11 console]
+    A14[A15.14 GitHub check]
   end
   subgraph Claude
     A0[A15.0 contract]
@@ -103,6 +105,7 @@ flowchart LR
   A8 --> A9
   A9 --> A10
   A9 --> A11
+  A9 --> A14
   A2 --> A12
   A3 --> A12
   A5 --> A13
@@ -141,3 +144,4 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 3. **2026-10-08:** phase 2 (A15.P2) may be deferred until after the first customer; it starts on a customer trigger, not on the calendar.
 4. **2026-10-12:** work backwards from customer and auditor questions: `docs/plan/ATTESTA_QUESTIONS.md` (20 questions, Codex's Task2 interview, gaps G1–G5, decisions for A15.0) is an input to A15.0. Predicate versioning approved: additive minor versions, availability on every field, new facts as new statements. The Q&A surfaces are Task10 T10.9 and Task16 A16.13. PR review capture (G3) and `merged_by` (G4) land before production.
 5. **2026-10-11 (lead, during review of 15b):** the signer contract is tenant-bound (`sign` takes `tenantId`; `signVerified(adapter, payload, { credentialId, tenantId, requestId })`).
+6. **2026-10-12:** A15.14 added: the first CI gate is a GitHub check posted by TrackAI's server (no public API needed; `docs/plan/TASK7.md`, `docs/plan/TASK11.md`). New Attesta routes follow the AP-1 conventions (AGENTS.md §10).

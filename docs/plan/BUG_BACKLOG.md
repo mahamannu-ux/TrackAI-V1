@@ -20,3 +20,5 @@ Problems found outside a session's own scope. Each is fixed later by the Task th
 | B14 | 2026-10-07 orchestrator | Orphaned `'evidence'` view and `EvidenceExplorer`/"Deferred raw analytics" placeholders in `dashboard/page.tsx` (`:32,152-276,304,869`; nothing sets the view) | Task5 | S | assigned to dry run `dryrun-web-dead-view` |
 | B15 | 2026-10-07 orchestrator | `AGENT_COVERAGE.md` (Task13) last updated 2026-08-02 | Task13 | S | ⬜ |
 | B16 | 2026-10-07 orchestrator | About 45 `task4-wave*` live-verify scripts live inside `src/features` beside product code; no linter for `apps/api` | Task4 | M, S | ⬜ |
+| B17 | 2026-10-12 orchestrator | No way for customer automation to call TrackAI: `/api` accepts only signed-in users (Supabase JWT) and machine credentials work only on `/worker`; read-only, tenant-scoped API tokens are missing | Task11 (T11.0, when triggered); Task16 must not assume a human session | M | ⬜ (deferred by design) |
+| B18 | 2026-10-12 orchestrator | Bot commits (Dependabot, release bumps, formatters) are neither human nor AI agent; they need an "automation" label rather than counting as human | Task2 | S-M | ⬜ |
