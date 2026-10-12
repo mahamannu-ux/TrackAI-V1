@@ -60,6 +60,10 @@ function commitEvent(fixture: TenantFixture, commitSha = fixture.commitSha): Git
       '3': ['opencode:model-x'],
       '5': [4],
       '11': 'Synthetic Task2 Attesta commit',
+      '13': `src/task2.ts
+  s_task2::t_1 1-4
+---
+{"sessions":{"s_task2":{"agent_id":{"tool":"opencode","id":"session-task2","model":"model-x"}}}}`,
     },
     a: {
       '1': fixture.repositoryUrl,
@@ -357,6 +361,14 @@ async function verifyPullRequestObservation(fixture: TenantFixture): Promise<voi
 
 async function verifyDeploymentObservation(fixture: TenantFixture): Promise<void> {
   const repo = await repository(fixture);
+  const attribution = await pool.query<{ count: number }>(
+    `select count(*)::int as count
+     from ai_commit_model_attributions a
+     join scm_commits c on c.id = a.commit_id and c.tenant_id = a.tenant_id
+     where a.tenant_id = $1 and c.sha = $2`,
+    [fixture.tenantId, fixture.commitSha],
+  );
+  check(attribution.rows[0].count > 0, 'deployment rollback fixture has no model attribution');
   const rollbackDelivery = randomUUID();
   const rollbackExternalId = `deployment-rollback-${randomUUID()}`;
   const successDelivery = randomUUID();
@@ -380,19 +392,22 @@ async function verifyDeploymentObservation(fixture: TenantFixture): Promise<void
   const rolledBack = await pool.query<{
     deployments: number;
     lifecycle_rows: number;
+    model_lifecycle_rows: number;
     subjects: number;
   }>(
     `select
        (select count(*)::int from scm_deployments where tenant_id = $1 and external_id = $2) as deployments,
        (select count(*)::int from ai_code_lifecycle_events where tenant_id = $1 and evidence_ref like $3) as lifecycle_rows,
+       (select count(*)::int from ai_model_lifecycle_events where tenant_id = $1 and evidence_ref like $3) as model_lifecycle_rows,
        (select count(*)::int from attesta_subjects where tenant_id = $1 and provider_delivery_id = $4) as subjects`,
     [fixture.tenantId, rollbackExternalId, `deployment:${rollbackExternalId}:%`, rollbackDelivery],
   );
   check(
     rolledBack.rows[0].deployments === 0
       && rolledBack.rows[0].lifecycle_rows === 0
+      && rolledBack.rows[0].model_lifecycle_rows === 0
       && rolledBack.rows[0].subjects === 0,
-    'deployment writer failure did not roll back deployment, lifecycle, and outbox rows',
+    'deployment writer failure did not roll back deployment, code/model lifecycle, and outbox rows',
   );
 
   await insertDelivery({
