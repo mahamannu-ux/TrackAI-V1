@@ -55,6 +55,7 @@ import {
   AttestaOutboxError,
   enqueueAttestaSubject,
   type AttestaOutboxExecutor,
+  type AttestaOutboxErrorCode,
   type EnqueueAttestaSubjectInput,
   type EnqueueAttestaSubjectResult,
 } from '../attesta/outbox';
@@ -180,7 +181,7 @@ export function normalizationFailureState(error: unknown): {
   error: string;
 } {
   if (error instanceof AttestaOutboxError) {
-    return { status: 'pending', error: error.code };
+    return { status: 'failed', error: error.code };
   }
   return {
     status: 'failed',
@@ -1374,6 +1375,7 @@ export async function rebuildCommitLifecycle(
   tenantId: string,
   repositoryUrl: string,
   apply: boolean,
+  enqueueSubject: EnqueueSubject = enqueueAttestaSubject,
 ) {
   const tenantDb = withTenant(db, tenantId);
   const targetRepository = normalizeRepositoryUrl(repositoryUrl);
@@ -1412,14 +1414,27 @@ export async function rebuildCommitLifecycle(
   }
   let commitEvents = 0;
   let rewriteEvents = 0;
+  const attestaErrors: Partial<Record<AttestaOutboxErrorCode, number>> = {};
   for (const { row, event } of rows) {
     commitEvents += 1;
     if (event.e === EVENT_KIND.rewriteCommitted) rewriteEvents += 1;
     if (apply) {
-      await normalizeCommit(tenantId, event, decodeAttributes(event.a), row.id);
+      try {
+        await normalizeCommit(
+          tenantId,
+          event,
+          decodeAttributes(event.a),
+          row.id,
+          undefined,
+          enqueueSubject,
+        );
+      } catch (error) {
+        if (!(error instanceof AttestaOutboxError)) throw error;
+        attestaErrors[error.code] = (attestaErrors[error.code] ?? 0) + 1;
+      }
     }
   }
-  return { targetRepository, commitEvents, rewriteEvents };
+  return { targetRepository, commitEvents, rewriteEvents, attestaErrors };
 }
 
 async function normalizeEvent(

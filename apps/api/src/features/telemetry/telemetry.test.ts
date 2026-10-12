@@ -170,7 +170,7 @@ test('Task2 Attesta writer failures propagate as safe normalization codes', asyn
     production: true,
   }, { id: attestaIds.deploymentId }, reject), failure);
   assert.deepEqual(normalizationFailureState(failure), {
-    status: 'pending',
+    status: 'failed',
     error: 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND',
   });
   assert.deepEqual(normalizationFailureState(new Error('decoder failed')), {

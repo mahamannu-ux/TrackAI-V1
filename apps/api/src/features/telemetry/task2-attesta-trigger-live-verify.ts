@@ -6,7 +6,7 @@
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
 import { db, pool } from '../../core/db';
-import { AttestaOutboxError } from '../attesta/outbox';
+import { AttestaOutboxError, enqueueAttestaSubject } from '../attesta/outbox';
 import { recordDeployment } from '../scm/lifecycle-service';
 import { enqueuePrMergedSubject, upsertPullRequestObservation } from '../scm/scm.routes';
 import { decodeAttributes } from './decoder';
@@ -140,18 +140,24 @@ async function verifyCommitObservation(fixture: TenantFixture): Promise<void> {
   );
   check(
     failedAttempt.rows.length === 1
-      && failedAttempt.rows[0].normalization_status === 'pending'
+      && failedAttempt.rows[0].normalization_status === 'failed'
       && failedAttempt.rows[0].normalization_error === 'ATTESTA_OUTBOX_SOURCE_NOT_FOUND'
       && failedAttempt.rows[0].commits === 0
       && failedAttempt.rows[0].subjects === 0,
-    'writer failure did not roll back the projection while retaining a retryable event',
+    'writer failure did not roll back the projection and park the event as failed',
+  );
+  await pool.query(
+    `update telemetry_metric_events
+     set normalization_status = 'pending', normalization_error = null
+     where tenant_id = $1 and id = $2`,
+    [fixture.tenantId, failedAttempt.rows[0].id],
   );
   const retry = await reconcilePendingMetricEvents({
     tenantId: fixture.tenantId,
     apply: true,
     delayMs: 0,
   });
-  check(retry.normalized === 1, 'pending commit event was not normalized by reconciliation');
+  check(retry.normalized === 1, 'explicitly reset commit event was not normalized by reconciliation');
   check(await outboxCount(fixture.tenantId, 'commit_observed') === 1, 'commit note produced one outbox row');
 
   const beforeReplay = await lifecycleSnapshot(fixture.tenantId);
@@ -220,6 +226,72 @@ async function seedMetricSource(
     [eventId, fixture.tenantId, batchId, randomUUID(), event.t, JSON.stringify(event)],
   );
   return eventId;
+}
+
+async function verifyReconcilerSkipsFailedRows(): Promise<void> {
+  const fixture = await seedTenant('reconciler-progress');
+  const failedEvent = commitEvent(fixture);
+  const errors = await ingestMetricsBatch(
+    fixture.tenantId,
+    { v: 1, events: [failedEvent] },
+    [],
+    async () => {
+      throw new AttestaOutboxError('ATTESTA_OUTBOX_INVALID_INPUT', 'synthetic persistent failure');
+    },
+  );
+  check(errors[0]?.error === 'ATTESTA_OUTBOX_INVALID_INPUT', 'persistent failure was not reported');
+
+  const pendingEvent = commitEvent(fixture, sha());
+  const pendingEventId = await seedMetricSource(fixture, pendingEvent);
+  const result = await reconcilePendingMetricEvents({
+    tenantId: fixture.tenantId,
+    apply: true,
+    delayMs: 0,
+    limit: 1,
+  });
+  check(result.selected === 1 && result.normalized === 1,
+    'a failed older event prevented newer pending reconciliation');
+  const statuses = await pool.query<{ normalization_status: string }>(
+    `select normalization_status from telemetry_metric_events
+     where tenant_id = $1 and id = $2`,
+    [fixture.tenantId, pendingEventId],
+  );
+  check(statuses.rows[0]?.normalization_status === 'normalized',
+    'newer pending event was not normalized past the failed row');
+}
+
+async function verifyRebuildContinuesAfterConflict(): Promise<void> {
+  const fixture = await seedTenant('rebuild-conflict');
+  for (const commitSha of [fixture.commitSha, sha(), sha()]) {
+    const errors = await ingestMetricsBatch(
+      fixture.tenantId,
+      { v: 1, events: [commitEvent(fixture, commitSha)] },
+    );
+    check(errors.length === 0, 'rebuild fixture ingestion failed');
+  }
+  let first = true;
+  let attempted = 0;
+  const result = await rebuildCommitLifecycle(
+    fixture.tenantId,
+    fixture.repositoryUrl,
+    true,
+    async (executor, input) => {
+      attempted += 1;
+      if (first) {
+        first = false;
+        throw new AttestaOutboxError(
+          'ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT',
+          'synthetic rebuild conflict',
+        );
+      }
+      return enqueueAttestaSubject(executor, input);
+    },
+  );
+  check(attempted === 3, 'rebuild stopped before replaying every commit event');
+  check(result.attestaErrors.ATTESTA_OUTBOX_IDEMPOTENCY_CONFLICT === 1,
+    'rebuild did not report its Attesta conflict count');
+  check(await outboxCount(fixture.tenantId, 'commit_observed') === 3,
+    'rebuild conflict changed the existing observation pointers');
 }
 
 function median(samples: number[]): number {
@@ -459,6 +531,8 @@ async function main(): Promise<void> {
 
   try {
     const latency = await benchmarkCommitNormalization();
+    await verifyReconcilerSkipsFailedRows();
+    await verifyRebuildContinuesAfterConflict();
     const companyA = await seedTenant('a');
     const companyB = await seedTenant('b');
     await verifyCommitObservation(companyA);
