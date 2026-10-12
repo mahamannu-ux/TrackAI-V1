@@ -55,7 +55,7 @@ Unit tests prove each qualifying kind enqueues once, skips non-qualifying observ
 
 ## Integration notes
 - A15.8 may build against the frozen outbox contract now; merge waits on the Task2 correction rerun.
-- Corrections: `c2775e2` caller rollback, `3100984` model rollback, `5fb2647` terminal errors/rebuild continuation.
+- Close-out: `e25cf2d` original handoff; corrections `c2775e2` caller rollback, `3100984` model rollback and `5fb2647` terminal errors/rebuild continuation.
 
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Agent turns or prompts | Wall-clock | Tokens or cost |
