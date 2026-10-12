@@ -75,7 +75,7 @@ test('T15h builder: reproduces valid-commit-observed.json byte for byte', async 
 });
 
 test('T15h builder: reproduces valid-hashed-model.json byte for byte', async () => {
-  const note = sampleNote();
+  const note = sampleNote('Claude Sonnet 4.5');
   const seeds = commitSeeds(note);
   const raw = 'Claude Sonnet 4.5';
   seeds.models = [{ commit_id: IDS.commit, tool: 'claude-code', model: raw, session_id: IDS.session, observed_ai_lines: 432 }];
@@ -110,7 +110,9 @@ test('T15h builder: every query is tenant-bound and reads no URL, email or store
         .replace(/[\w.]+ is (not )?null/g, '')
         .replace(/lower\(trim\([\w.]+\)\)/g, '')
         // The only raw_event reads: the commit sha attribute and the note (fields.md, B1).
-        .replace("e.raw_event -> 'a' ->> '3'", '').replace("e.raw_event -> 'v' -> '13'", '');
+        .replace("e.raw_event -> 'a' ->> '3'", '').replace("e.raw_event -> 'v' -> '13'", '')
+        // Task2's session fallback when the note names none (tool, external or internal session ID).
+        .replace("e.raw_event -> 'a' ->> '20'", '').replace("e.raw_event -> 'a' ->> '23'", '').replace("e.raw_event -> 'a' ->> '24'", '');
       assert.doesNotMatch(outside, /\b(normalized_url|author_email|author_name|authorship_note|raw_event)\b/, call.tag);
     }
   }
@@ -259,6 +261,8 @@ test('T15h builder pr_merged: a source Git AI never saw makes attribution partia
   }
   assert.equal(p.merge_lineage.value.length, 2);
   assert.equal(p.merge_lineage.value[1].source_statement_digest, null);
+  // A source whose statement is not chained yet: lineage still being enriched.
+  assert.equal(p.merge_lineage.partial_reason, 'lineage_still_being_enriched');
 });
 
 test('T15h builder pr_merged: a Git AI-normalized result commit carries its own projections', async () => {
@@ -400,11 +404,99 @@ test('T15h builder step 4: more than 2000 files keeps 2000; too large even with 
 });
 
 test('T15h builder: a repeated path in a note keeps its last values, as Task2 upserts', async () => {
-  const note = ['a.ts', '  s_abc::t_1 1-5', 'a.ts', '  s_abc::t_1 1-2', '---', '{}'].join('\n');
+  const meta = JSON.stringify({ sessions: { s_abc: { agent_id: { tool: 'claude-code', id: 'x', model: 'm' } } } });
+  const note = ['a.ts', '  s_abc::t_1 1-5', 'a.ts', '  s_abc::t_1 1-2', '---', meta].join('\n');
   const seeds = seedsForNote(note, 1);
   (seeds.commit as any)[0].observed_ai_lines = 2;
   (seeds.commit as any)[0].diff_added_lines = 2;
   const { p } = await build(commitRow(), seeds);
   assert.equal(p.files.value.total, 1);
   assert.equal(p.files.value.entries[0].ai_lines, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes
+// ---------------------------------------------------------------------------
+
+test('T15h builder: commit_observed reports only the sessions and models its own note named', async () => {
+  const { calls } = await build(commitRow(), commitSeeds());
+  const sessions = calls.find((c) => c.tag === 'sessions')!;
+  assert.match(sessions.sql, /\(s\.tool, s\.external_session_id\) in \(\(\$\d+, \$\d+\)\)/);
+  assert.ok(sessions.params.includes('claude-code') && sessions.params.includes('ext-session-1'));
+  const models = calls.find((c) => c.tag === 'models')!;
+  assert.match(models.sql, /model_key in \(\$\d+\)/);
+  assert.ok(models.params.includes('claude-code::claude-sonnet-4-5'));
+  // Findings are linked through the sessions actually reported.
+  const findings = calls.find((c) => c.tag === 'findings')!;
+  assert.ok(findings.params.includes(IDS.session));
+  // pr_merged / deployed: the lineage commits as Task2 attributed them (no note scope).
+  const pr = await build(prRow(), prSeeds());
+  assert.doesNotMatch(pr.calls.find((c) => c.tag === 'sessions')!.sql, /external_session_id\) in/);
+});
+
+test('T15h builder: a note naming no session falls back to the event attributes, as Task2 does', async () => {
+  const note = [PATH_A, '  s_abc::t_1 1-4', '---', '{}'].join('\n');
+  const seeds = seedsForNote(note, 2);
+  Object.assign((seeds.metric_event as any)[0], { attr_tool: 'opencode', attr_session: 'attr-session-7' });
+  const { calls } = await build(commitRow(), seeds);
+  const sessions = calls.find((c) => c.tag === 'sessions')!;
+  assert.ok(sessions.params.includes('opencode') && sessions.params.includes('attr-session-7'));
+  // modelAttributionsFromNote: an unnamed session's lines go to unknown::unknown.
+  assert.ok(calls.find((c) => c.tag === 'models')!.params.includes('unknown::unknown'));
+  // No identity at all: nothing to report, and no query is made.
+  const none = seedsForNote(note, 2);
+  // Task2 stores the unnamed session's model row with no session (svc:1056–1059).
+  none.models = [{ commit_id: IDS.commit, tool: 'unknown', model: null, session_id: null, observed_ai_lines: 4 }];
+  const r = await build(commitRow(), none);
+  assert.deepEqual(r.p.models.value, [{ tool: 'unknown', model: null, model_key: 'unknown::unknown', ai_lines: 4, session_id: null }]);
+  assert.ok(!r.calls.some((c) => c.tag === 'sessions' || c.tag === 'findings'));
+  assert.deepEqual(r.p.sessions.value, []);
+});
+
+test('T15h builder F2: an earlier kind the schema forbids in previous is refused by name', async () => {
+  const seeds = commitSeeds();
+  seeds.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'deployed' }];
+  await assert.rejects(build(commitRow(), seeds), (err: unknown) => err instanceof AttestaBuilderError
+    && err.code === 'ATTESTA_BUILDER_SCHEMA_INVALID' && /F2/.test(err.message));
+  const pr = prSeeds();
+  pr.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'deployed' }];
+  await expectCode(build(prRow(), pr), 'ATTESTA_BUILDER_SCHEMA_INVALID');
+  const ok = prSeeds();
+  ok.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'pr_merged' }];
+  assert.equal((await build(prRow(), ok)).p.previous.length, 1);
+});
+
+test('T15h builder F7: a model_key too long for a token leaves that row out, flagged', async () => {
+  const seeds = commitSeeds();
+  seeds.models = [
+    { commit_id: IDS.commit, tool: 'claude-code', model: 'claude-sonnet-4-5', session_id: IDS.session, observed_ai_lines: 400 },
+    { commit_id: IDS.commit, tool: 'a tool with spaces', model: 'a model with spaces', session_id: IDS.session, observed_ai_lines: 32 },
+  ];
+  const { p } = await build(commitRow(), seeds);
+  assert.equal(p.models.availability, 'partial');
+  assert.equal(p.models.partial_reason, 'only_some_sources_reported');
+  assert.deepEqual(p.models.value.map((m: any) => m.model_key), ['claude-code::claude-sonnet-4-5']);
+  assert.deepEqual(p.tools.value, ['claude-code']);
+});
+
+test('T15h builder: an observation time ahead of the database clock waits (SOURCE_NOT_READY)', async () => {
+  const seeds = commitSeeds();
+  (seeds.commit as any)[0].first_seen_at = '2026-10-12T09:15:02.482Z';
+  await assert.rejects(build(commitRow(), seeds), (err: unknown) => err instanceof AttestaBuilderError
+    && err.code === 'ATTESTA_BUILDER_SOURCE_NOT_READY' && err.retryable && !err.wait);
+  const pr = prSeeds();
+  (pr.delivery as any)[0].received_at = '2026-10-12T11:02:40.008Z';
+  await expectCode(build(prRow(), pr), 'ATTESTA_BUILDER_SOURCE_NOT_READY');
+});
+
+test('T15h builder: the monitor mode is the one in force (Task6 activation rule)', async () => {
+  const { calls } = await build(commitRow(), commitSeeds());
+  const mon = calls.find((c) => c.tag === 'security_monitor')!;
+  assert.match(mon.sql, /revoked_at is null/);
+  assert.match(mon.sql, /valid_until is null or valid_until > now\(\)/);
+});
+
+test('T15h builder: an ordering wait is marked as a wait', async () => {
+  const s = { ...prSeeds(), wait: [{ n: 1 }] };
+  await assert.rejects(build(prRow(), s), (err: unknown) => err instanceof AttestaBuilderError && err.wait);
 });

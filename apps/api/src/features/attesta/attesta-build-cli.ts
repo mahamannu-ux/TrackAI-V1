@@ -74,6 +74,8 @@ async function main(): Promise<void> {
     leaseMs: intArg(args, 'lease-ms', 600_000),
     builderVersion: resolveBuilderVersion(),
   };
+  // A short lease lets workers take live claims from each other and waste signatures.
+  if (options.leaseMs < 60_000) throw new Error('--lease-ms must be at least 60000');
   const loop = args.get('loop') === 'true';
   const sleepMs = intArg(args, 'sleep-ms', 30_000);
   let stop = false;

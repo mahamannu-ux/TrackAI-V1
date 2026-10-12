@@ -14,7 +14,10 @@
  * (3) a claim that outlives its lease with the attempts already at the limit is
  * failed at recovery (code ATTESTA_LEDGER_CLAIM_LOST unless the row has one), so a
  * row that crashes the worker every time still ends visible (Task2 lesson);
- * (4) all times come from the database clock.
+ * (4) all times come from the database clock; (5) a row that only waits for an
+ * earlier statement about its subject is retried without spending an attempt (the
+ * row it waits for always ends done or failed); (6) the claim is a MATERIALIZED CTE
+ * and takes only the kinds this worker knows.
  *
  * Network (signing) happens outside every transaction: read (repeatable read,
  * read only) → sign → one ledger transaction (AGENTS.md §9 item 18). The pass runs
@@ -24,12 +27,16 @@
  */
 import { sql, type SQL } from 'drizzle-orm';
 import {
-  AttestaBuilderError, buildStatement, type AttestaSubjectRow, type BuilderOptions, type BuilderReadExecutor, type BuiltStatement,
+  AttestaBuilderError, buildStatement, statementValidator,
+  type AttestaSubjectRow, type BuilderOptions, type BuilderReadExecutor, type BuiltStatement,
 } from './builder';
 import { sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
-import { AttestaLedgerError, chainStatement, type ChainStatementInput, type ChainStatementResult, type LedgerExecutor } from './ledger';
-import type { AttestaSubjectKind } from './outbox';
+import {
+  AttestaLedgerError, chainStatement, mapLedgerDatabaseError,
+  type ChainStatementInput, type ChainStatementResult, type LedgerExecutor,
+} from './ledger';
+import { ATTESTA_SUBJECT_KINDS, type AttestaSubjectKind } from './outbox';
 import { SigningRejected, SigningUnavailable, signVerified } from './signer-contract';
 import type { SignerResolver } from './signer-resolver';
 
@@ -93,13 +100,15 @@ export interface BuilderPassResult {
 
 /** What to do with a row after an error (outbox.md, errors.md). */
 export type ErrorAction =
-  | { action: 'retry'; code: string }
+  | { action: 'retry'; code: string; wait?: boolean }
   | { action: 'fail'; code: string }
   | { action: 'stop'; code: string }
   | { action: 'leave_claimed'; code: 'unexpected_error' };
 
 export function classifyError(err: unknown): ErrorAction {
-  if (err instanceof AttestaBuilderError) return { action: err.retryable ? 'retry' : 'fail', code: err.code };
+  if (err instanceof AttestaBuilderError) {
+    return err.retryable ? { action: 'retry', code: err.code, wait: err.wait } : { action: 'fail', code: err.code };
+  }
   if (err instanceof SigningUnavailable) return { action: 'retry', code: 'ATTESTA_SIGNER_UNAVAILABLE' };
   if (err instanceof SigningRejected) return { action: 'fail', code: 'ATTESTA_SIGNER_REJECTED' };
   if (err instanceof AttestaLedgerError) {
@@ -160,11 +169,14 @@ async function recoverExpired(db: WorkerDatabase, leaseMs: number, maxAttempts: 
  * (IT-T15h-02 saw 6 claimed with n = 3). A MATERIALIZED CTE that locks the rows runs
  * exactly once, so the limit holds (contract finding F6 in the handoff).
  */
+// Only the kinds this worker builds: a kind added later waits for a worker that knows it.
+const KNOWN_KINDS = sql`(${sql.join(ATTESTA_SUBJECT_KINDS.map((k) => sql`${k}`), sql`, `)})`;
+
 async function claim(db: WorkerDatabase, limit: number): Promise<ClaimedRow[]> {
   const r = await db.execute(sql`/* worker:claim */
     with picked as materialized (
       select id from attesta_subjects
-      where status = 'pending' and not_before <= now()
+      where status = 'pending' and not_before <= now() and kind in ${KNOWN_KINDS}
       order by created_at limit ${limit}
       for update skip locked)
     update attesta_subjects s set status = 'claimed', claimed_at = now(), attempts = s.attempts + 1
@@ -182,19 +194,34 @@ async function claim(db: WorkerDatabase, limit: number): Promise<ClaimedRow[]> {
 }
 
 /** Release a row we still hold; false when the claim moved on (nothing changed). */
-async function release(db: WorkerDatabase, row: ClaimedRow, outcome: 'retry' | 'fail', code: string, options: BuilderPassOptions) {
+async function release(
+  db: WorkerDatabase, row: ClaimedRow, outcome: 'retry' | 'fail', code: string, options: BuilderPassOptions, refundAttempt = false,
+) {
   const guard = sql`tenant_id = ${row.tenantId} and id = ${row.id}::uuid and status = 'claimed'
     and claimed_at = ${row.claimedAt}::timestamptz and attempts = ${row.attempts}`;
   const r = outcome === 'retry'
     ? await db.execute(sql`/* worker:retry */
         update attesta_subjects
         set status = 'pending', claimed_at = null, last_error_code = ${code},
+            attempts = attempts - ${refundAttempt ? 1 : 0},
             not_before = now() + ${leaseInterval(backoffMs(row.attempts, options.backoffBaseMs, options.backoffMaxMs))}
         where ${guard} returning id`)
     : await db.execute(sql`/* worker:fail */
         update attesta_subjects set status = 'failed', processed_at = now(), last_error_code = ${code}
         where ${guard} returning id`);
   return r.rows.length === 1;
+}
+
+/**
+ * The ledger's commit-time guard is deferred, so a refusal or a serialization
+ * failure can surface at COMMIT, outside chainStatement's own mapping.
+ */
+async function chainMapped(db: WorkerDatabase, fn: (tx: WorkerExecutor) => Promise<ChainStatementResult>) {
+  try {
+    return await db.transaction(fn);
+  } catch (err) {
+    throw mapLedgerDatabaseError(err) ?? err;
+  }
 }
 
 async function processRow(
@@ -230,7 +257,7 @@ async function processRow(
     };
     // Steps 5 and 7: one ledger transaction (dedup on the digest, previous re-checked,
     // the row marked done against this claim). No network inside it.
-    const chained = await db.transaction((tx) => chain(tx, {
+    const chained = await chainMapped(db, (tx) => chain(tx, {
       tenantId: row.tenantId,
       statementCanonical: built.canonical,
       envelope,
@@ -247,9 +274,10 @@ async function processRow(
     count(decision.code);
     if (decision.action === 'stop') { result.claimLost += 1; return; }
     if (decision.action === 'leave_claimed') { result.leftClaimed += 1; return; }
-    const outcome = decision.action === 'retry' && row.attempts < options.maxAttempts ? 'retry' : 'fail';
+    const waiting = decision.action === 'retry' && decision.wait === true;
+    const outcome = decision.action === 'retry' && (waiting || row.attempts < options.maxAttempts) ? 'retry' : 'fail';
     try {
-      const released = await release(db, row, outcome, decision.code, options);
+      const released = await release(db, row, outcome, decision.code, options, waiting);
       if (!released) result.claimLost += 1;
       else if (outcome === 'retry') result.retried += 1;
       else result.failed += 1;
@@ -276,6 +304,8 @@ export async function runBuilderPass(
     recovered: 0, recoveredFailed: 0, claimed: 0, done: 0, duplicates: 0, retried: 0, failed: 0,
     claimLost: 0, leftClaimed: 0, codes: {},
   };
+  // Fail the pass, not the rows, if the frozen schemas cannot be loaded here.
+  if (!options.deps?.build) statementValidator();
   const recovery = await recoverExpired(db, leaseMs, options.maxAttempts);
   result.recovered = recovery.recovered;
   result.recoveredFailed = recovery.recoveredFailed;
@@ -297,11 +327,20 @@ export interface RequeueInput {
   actorId: string;
   /** false: count only, change nothing. */
   confirm: boolean;
+  /** With confirm: the dry-run's count; a different count at apply time changes nothing. */
+  expect?: number;
 }
 
 export interface RequeueResult { dryRun: boolean; matched: number; requeued: number }
 
 const ACTOR_RE = /^(?!.*@)[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+
+export class RequeueScopeChanged extends Error {
+  constructor(readonly expected: number, readonly actual: number) {
+    super(`expected ${expected} failed rows but ${actual} match now; nothing changed, run the dry-run again`);
+    this.name = 'RequeueScopeChanged';
+  }
+}
 
 /**
  * Put a tenant's `failed` rows with one error code back in the queue
@@ -312,6 +351,7 @@ export async function requeueFailedSubjects(db: WorkerDatabase, input: RequeueIn
   if (!UUID_RE.test(input.tenantId)) throw new RangeError('tenant must be a lowercase UUID');
   if (!CODE_RE.test(input.code)) throw new RangeError('code must match ^ATTESTA_[A-Z0-9_]{1,64}$');
   if (!ACTOR_RE.test(input.actorId)) throw new RangeError('actor must be a short token without spaces or @');
+  if (input.expect !== undefined && (!Number.isSafeInteger(input.expect) || input.expect < 0)) throw new RangeError('expect must be a count');
   const counted = await db.execute(sql`/* worker:requeue_count */
     select count(*)::int as n from attesta_subjects
     where tenant_id = ${input.tenantId} and status = 'failed' and last_error_code = ${input.code}`);
@@ -323,6 +363,10 @@ export async function requeueFailedSubjects(db: WorkerDatabase, input: RequeueIn
       set status = 'pending', processed_at = null, claimed_at = null, not_before = now()
       where tenant_id = ${input.tenantId} and status = 'failed' and last_error_code = ${input.code}
       returning id`);
+    if (input.expect !== undefined && moved.rows.length !== input.expect) {
+      // Thrown inside the transaction, so the update rolls back.
+      throw new RequeueScopeChanged(input.expect, moved.rows.length);
+    }
     await tx.execute(sql`/* worker:requeue_audit */
       insert into security_audit_events (tenant_id, actor_type, actor_id, action, target_type, target_id, details)
       values (${input.tenantId}, 'system_operator', ${input.actorId}, 'attesta_subjects.requeued',

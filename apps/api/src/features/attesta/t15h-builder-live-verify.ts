@@ -10,7 +10,8 @@
  *    dev key is ok; the PR statement's lineage names the commit statement and the
  *    deployment statement's `previous` names the PR statement; note and file digests
  *    match what Task2 stored.
- * 02 replay and crash: a second pass adds nothing; a worker killed after signing and
+ * 02 replay and crash: a second pass adds nothing; a second note for one commit signs
+ *    only what each note proves (B1/B2); a worker killed after signing and
  *    before chaining leaves the row claimed, lease recovery re-runs it, one statement;
  *    a worker whose lease is taken over mid-flight gets CLAIM_LOST and chains nothing;
  *    two workers in parallel chain every row exactly once.
@@ -73,12 +74,12 @@ function note(label: string): string {
   ].join('\n');
 }
 
-function commitEvent(t: Pick<Tenant, 'repoUrl' | 'label'>, commitSha: string): GitAiMetricEvent {
+function commitEvent(t: Pick<Tenant, 'repoUrl' | 'label'>, commitSha: string, noteLabel = t.label): GitAiMetricEvent {
   const now = Math.floor(Date.now() / 1000);
   return {
     t: now, e: 1,
-    v: { '0': 2, '1': 0, '2': 11, '3': ['opencode:model-x'], '5': [9], '11': 'IT synthetic commit', '13': note(t.label), '15': now - 60, '16': now - 30 },
-    a: { '1': t.repoUrl, '2': `IT Dev ${t.label} <it-dev-${t.label}@example.invalid>`, '3': commitSha, '5': 'main', '20': 'opencode', '21': 'model-x', '23': `it-session-${t.label}` },
+    v: { '0': 2, '1': 0, '2': 11, '3': ['opencode:model-x'], '5': [9], '11': 'IT synthetic commit', '13': note(noteLabel), '15': now - 60, '16': now - 30 },
+    a: { '1': t.repoUrl, '2': `IT Dev ${t.label} <it-dev-${t.label}@example.invalid>`, '3': commitSha, '5': 'main', '20': 'opencode', '21': 'model-x', '23': `it-session-${noteLabel}` },
   };
 }
 
@@ -92,8 +93,8 @@ async function seedTenant(label: string): Promise<Tenant> {
   return { label, tenantId, repoUrl: `https://github.com/${slug}/service`, repositoryId: '', repositoryExternalId: '', commitSha: sha(), mergeSha: sha() };
 }
 
-async function ingestCommit(t: Tenant, commitSha: string): Promise<void> {
-  const errors = await ingestMetricsBatch(t.tenantId, { v: 1, events: [commitEvent(t, commitSha)] });
+async function ingestCommit(t: Tenant, commitSha: string, noteLabel = t.label): Promise<void> {
+  const errors = await ingestMetricsBatch(t.tenantId, { v: 1, events: [commitEvent(t, commitSha, noteLabel)] });
   check(errors.length === 0, `${t.label}: commit ingestion failed`);
   if (!t.repositoryId) {
     const r = await pool.query(`select id::text as id, external_id from scm_repositories where tenant_id = $1`, [t.tenantId]);
@@ -179,8 +180,25 @@ async function chainOk(tenantId: string): Promise<void> {
 
 const predicate = (r: RecordRow) => (JSON.parse(r.statement_canonical) as { predicate: Record<string, any> }).predicate;
 
+/** One Task6 finding (the values of Task6's own unit test) on the commit's session string. */
+async function seedFinding(t: Tenant, sessionString: string): Promise<void> {
+  const machine = await pool.query(
+    `insert into developer_machines (tenant_id, installation_id, display_name) values ($1, $2, 'it machine') returning id`,
+    [t.tenantId, randomUUID()]);
+  await pool.query(
+    `insert into security_findings (tenant_id, machine_id, repository_id, finding_id, delivery_id, session_id, source_event_id,
+       rule_id, rule_version, rule_category, rule_severity, route_id, agent_family, host_surface, host_mode, capture_channel,
+       operating_system, timing, native_effect, activation, effect, phase, availability, completeness, result_category,
+       occurred_at, client_version, rule_pack_version)
+     values ($1, $2, $3, $4, $5, $6, 'event-001', 'trackai.exec.download_pipe_shell', '1.4', 'execution', 'high', 'AC-CLI-03',
+       'opencode', 'terminal', 'cli', 'provider-plugin', 'linux', 'pre_action', 'observe_only', 'observed', 'monitor',
+       'requested', 'available', 'complete', 'not_observed', now(), '0.1.0-test', '0.1.0-test')`,
+    [t.tenantId, machine.rows[0].id, t.repositoryId, randomUUID(), randomUUID(), sessionString]);
+}
+
 async function it01(a: Tenant): Promise<void> {
   await observeAll(a);
+  await seedFinding(a, `it-session-${a.label}`);
   const rows = await outbox(a.tenantId);
   check(rows.length === 3 && rows.every((r) => r.status === 'pending'), 'Task2 wrote three pending outbox rows');
   const pass = await runBuilderPass(db, RESOLVER, OPTIONS);
@@ -226,6 +244,10 @@ async function it01(a: Tenant): Promise<void> {
   }
   check(c.lines.value.ai === 9 && c.lines.value.human === 2 && c.files.value.total === 2, 'commit line totals');
   check(c.committer.availability === 'partial', 'committer matched to the contributor Task2 created');
+  check(c.security_findings_observed.availability === 'partial' && c.security_findings_observed.value.total === 1
+    && c.security_findings_observed.value.by_category.execution === 1 && c.security_findings_observed.value.by_severity.high === 1,
+  'the finding on the commit session is counted (observed, monitor-only)');
+  check(JSON.stringify(c.policy.rule_pack_versions.value) === '["0.1.0-test"]', 'rule pack of the counted finding');
   const url = await pool.query(`select normalized_url from scm_repositories where tenant_id = $1`, [a.tenantId]);
   check(c.repository.url_sha256.value === sha256Hex(url.rows[0].normalized_url), 'url digest = SHA-256 of the normalized URL');
   console.log('IT-T15h-01=passed');
@@ -258,6 +280,28 @@ async function it02(a: Tenant): Promise<void> {
   });
   check(inner !== null && (inner as { done: number }).done === 1, 'the second worker took over and chained');
   check(slow.claimLost === 1 && slow.done === 0, `the first worker got CLAIM_LOST: ${JSON.stringify(slow.codes)}`);
+
+  // A second note for the same commit (B1/B2): the first statement keeps only what its
+  // own note proves; the second reports only the second note's session, although Task2
+  // keeps both sessions' rows on the commit.
+  const twice = sha();
+  await ingestCommit(a, twice, 'note-one');
+  await ingestCommit(a, twice, 'note-two');
+  const both = await runBuilderPass(db, RESOLVER, OPTIONS);
+  check(both.done === 2, `two notes, two statements: ${JSON.stringify(both.codes)}`);
+  const stmts = (await records(a.tenantId)).filter((r) => r.subject_sha === twice).map(predicate);
+  check(stmts.length === 2 && stmts[1].previous.length === 1, 'the second statement links the first');
+  check(stmts[0].sessions.availability === 'unavailable' && stmts[0].files.availability === 'recorded'
+    && stmts[0].source_evidence.note_digest.value.value !== stmts[1].source_evidence.note_digest.value.value,
+  'the overwritten observation keeps its own note and files, nothing else');
+  const sessionTwo = await pool.query(`select id::text as id from ai_sessions where tenant_id = $1 and external_session_id = 'it-session-note-two'`, [a.tenantId]);
+  const kept = await pool.query(
+    `select count(*)::int as n from ai_commit_sessions cs join scm_commits c on c.id = cs.commit_id and c.tenant_id = cs.tenant_id
+     where cs.tenant_id = $1 and c.sha = $2`, [a.tenantId, twice]);
+  check(kept.rows[0].n === 2, 'Task2 kept both notes\' session rows on the commit');
+  check(stmts[1].sessions.value.length === 1 && stmts[1].sessions.value[0].session_id === sessionTwo.rows[0].id
+    && stmts[1].models.value.every((m: any) => m.session_id === sessionTwo.rows[0].id),
+  'the second statement reports only its own note\'s session and models');
 
   // Two workers in parallel.
   for (let i = 0; i < 6; i += 1) await ingestCommit(a, sha());
@@ -298,8 +342,13 @@ async function it03(): Promise<void> {
   const audits = async () => (await pool.query(
     `select actor_id, action, details from security_audit_events where tenant_id = $1 and action = 'attesta_subjects.requeued'`, [t.tenantId])).rows;
   check((await audits()).length === 0 && (await outbox(t.tenantId))[0].status === 'failed', 'dry-run changed nothing');
-  const applied = await requeueFailedSubjects(db, { tenantId: t.tenantId, code: 'ATTESTA_SIGNER_NO_CREDENTIAL', actorId: 'it-t15h', confirm: true });
-  check(applied.requeued === 1, 'confirm re-queued the row');
+  check(dry.includes('next=rerun with --confirm=REQUEUE --expect=1'), 'dry-run names the count to confirm');
+  // A confirm with a stale count changes nothing.
+  const stale = await requeueFailedSubjects(db, { tenantId: t.tenantId, code: 'ATTESTA_SIGNER_NO_CREDENTIAL', actorId: 'it-t15h', confirm: true, expect: 2 })
+    .then(() => 'applied', (err: Error) => err.name);
+  check(stale === 'RequeueScopeChanged' && (await audits()).length === 0 && (await outbox(t.tenantId))[0].status === 'failed', 'a stale confirm changed nothing');
+  const applied = runCli('attesta-requeue-cli.ts', ['--tenant', t.tenantId, '--code', 'ATTESTA_SIGNER_NO_CREDENTIAL', '--actor', 'it-t15h', '--confirm=REQUEUE', '--expect=1'], {});
+  check(applied.includes('mode=apply') && applied.includes('requeued_rows=1'), 'CLI confirm re-queued the row');
   const audit = await audits();
   check(audit.length === 1 && audit[0].actor_id === 'it-t15h' && audit[0].details.code === 'ATTESTA_SIGNER_NO_CREDENTIAL' && audit[0].details.count === 1
     && Object.keys(audit[0].details).sort().join(',') === 'code,count', 'one audit row: actor, code, count only');

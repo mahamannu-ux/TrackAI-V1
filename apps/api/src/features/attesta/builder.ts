@@ -25,6 +25,7 @@ import { dirname, join } from 'node:path';
 import Ajv, { type ValidateFunction } from 'ajv';
 import { sql, type SQL } from 'drizzle-orm';
 import { parseAuthorshipNote } from '../telemetry/authorship-note';
+import { modelAttributionsFromNote } from '../telemetry/model-lifecycle';
 import { CanonicalizationError, canonicalize, sha256Prefixed } from './canonical';
 import { checkStatementRules } from './contract-rules';
 import { IN_TOTO_PAYLOAD_TYPE, pae } from './dsse';
@@ -34,6 +35,11 @@ import type { AttestaSubjectKind } from './outbox';
 export const BUILDER_NAME = 'trackai-attesta-builder';
 /** A statement built this long after its event is signed late (`delayed_build`). */
 export const DELAYED_BUILD_AFTER_MS = 24 * 60 * 60 * 1000;
+/** Which earlier statement kinds each kind may list in `previous` (predicate schema allOf). */
+const ALLOWED_PREVIOUS: Partial<Record<AttestaSubjectKind, readonly string[]>> = {
+  commit_observed: ['commit_observed'],
+  pr_merged: ['commit_observed', 'pr_merged'],
+};
 /** The schema's own bound on `files.entries`. */
 export const MAX_FILE_ENTRIES = 2000;
 
@@ -51,10 +57,17 @@ export type AttestaBuilderErrorCode =
 
 export class AttestaBuilderError extends Error {
   readonly retryable: boolean;
-  constructor(readonly code: AttestaBuilderErrorCode, message: string) {
+  /**
+   * true when the row only waits for an earlier statement about its subject to be
+   * chained: the worker retries it without spending an attempt (the blocking row
+   * itself always ends done or failed, so the wait is finite).
+   */
+  readonly wait: boolean;
+  constructor(readonly code: AttestaBuilderErrorCode, message: string, options: { wait?: boolean } = {}) {
     super(message);
     this.name = 'AttestaBuilderError';
     this.retryable = code === 'ATTESTA_BUILDER_SOURCE_NOT_READY';
+    this.wait = this.retryable && options.wait === true;
   }
 }
 
@@ -204,6 +217,8 @@ interface CommitSource {
 interface MetricEventSource {
   id: string; fingerprint: string; eventAt: string; evidenceFamily: string; arrivalClass: string;
   eventKind: number; attrSha: string | null;
+  /** decodeAttributes a.20 / a.23 / a.24: Task2's session fallback when the note names none (svc:299–307). */
+  attrTool: string | null; attrSessionId: string | null;
   /** The Git AI note string as decoded from raw_event (decoder stringAt(v, 13)). */
   note: string | null;
 }
@@ -264,7 +279,9 @@ async function readMetricEvent(tx: BuilderReadExecutor, row: AttestaSubjectRow):
   const r = await rows(tx, sql`/* builder:metric_event */
     select e.id::text as id, e.event_fingerprint, ${ts('e.event_timestamp')} as event_at,
       e.evidence_family, e.arrival_class, e.event_kind,
-      e.raw_event -> 'a' ->> '3' as attr_sha, e.raw_event -> 'v' -> '13' as note
+      e.raw_event -> 'a' ->> '3' as attr_sha, e.raw_event -> 'v' -> '13' as note,
+      e.raw_event -> 'a' ->> '20' as attr_tool,
+      coalesce(nullif(e.raw_event -> 'a' ->> '23', ''), nullif(e.raw_event -> 'a' ->> '24', '')) as attr_session
     from telemetry_metric_events e
     where e.tenant_id = ${row.tenantId} and e.id = ${row.metricEventId}`);
   if (r.length !== 1) throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_MISSING', 'source metric event not found for this tenant');
@@ -275,6 +292,7 @@ async function readMetricEvent(tx: BuilderReadExecutor, row: AttestaSubjectRow):
     id: String(e.id), fingerprint: String(e.event_fingerprint), eventAt: String(e.event_at),
     evidenceFamily: String(e.evidence_family), arrivalClass: String(e.arrival_class),
     eventKind: int(e.event_kind, 'event_kind'), attrSha: str(e.attr_sha), note,
+    attrTool: str(e.attr_tool) || null, attrSessionId: str(e.attr_session),
   };
 }
 
@@ -339,25 +357,52 @@ async function readLineage(tx: BuilderReadExecutor, row: AttestaSubjectRow): Pro
 interface SessionRow { commitId: string; sessionId: string; tool: unknown; aiLines: number }
 interface ModelRow { commitId: string; tool: unknown; model: unknown; sessionId: string | null; aiLines: number }
 
-async function readSessions(tx: BuilderReadExecutor, row: AttestaSubjectRow, commitIds: string[]): Promise<SessionRow[]> {
+/**
+ * The sessions and models one note named (B1 applied to attribution): Task2 upserts
+ * ai_commit_sessions and ai_commit_model_attributions by key and never deletes
+ * (svc:1029–1070), so rows from an earlier note for the same sha are still there.
+ * A commit_observed statement reports only the identities its own note produced.
+ */
+interface NoteScope {
+  /** (ai_sessions.tool, ai_sessions.external_session_id) pairs, as ensureSession keys them. */
+  sessions: Array<[string, string]>;
+  /** Task2's stored model keys for this note (modelAttributionsFromNote), used only to select rows. */
+  modelKeys: string[];
+}
+
+function noteScope(event: MetricEventSource): NoteScope {
+  const parsed = parseAuthorshipNote(event.note);
+  const sessions: Array<[string, string]> = parsed.sessions.length > 0
+    ? parsed.sessions.map((x) => [x.tool, x.externalId])
+    : event.attrSessionId ? [[event.attrTool ?? 'unknown', event.attrSessionId]] : [];
+  return { sessions, modelKeys: [...new Set(modelAttributionsFromNote(parsed).map((m) => m.modelKey))] };
+}
+
+async function readSessions(tx: BuilderReadExecutor, row: AttestaSubjectRow, commitIds: string[], scope: NoteScope | null): Promise<SessionRow[]> {
+  if (scope && scope.sessions.length === 0) return [];
+  const scoped = scope
+    ? sql` and (s.tool, s.external_session_id) in (${sql.join(scope.sessions.map(([t, e]) => sql`(${t}, ${e})`), sql`, `)})`
+    : sql``;
   const r = await rows(tx, sql`/* builder:sessions */
     select cs.commit_id::text as commit_id, s.id::text as session_id, s.tool, cs.observed_ai_lines
     from ai_commit_sessions cs
     join ai_sessions s on s.tenant_id = cs.tenant_id and s.id = cs.session_id
-    where cs.tenant_id = ${row.tenantId} and cs.commit_id in ${uuidList(commitIds)}
+    where cs.tenant_id = ${row.tenantId} and cs.commit_id in ${uuidList(commitIds)}${scoped}
     order by s.id, cs.commit_id`);
-  return r.map((s) => ({
-    commitId: String(s.commit_id), sessionId: String(s.session_id), tool: s.tool,
-    aiLines: int(s.observed_ai_lines, 'observed_ai_lines'),
+  return r.map((x) => ({
+    commitId: String(x.commit_id), sessionId: String(x.session_id), tool: x.tool,
+    aiLines: int(x.observed_ai_lines, 'observed_ai_lines'),
   }));
 }
 
-async function readModels(tx: BuilderReadExecutor, row: AttestaSubjectRow, commitIds: string[]): Promise<ModelRow[]> {
-  // model_key (s:1083) is deliberately not read: rule 3 derives it.
+async function readModels(tx: BuilderReadExecutor, row: AttestaSubjectRow, commitIds: string[], scope: NoteScope | null): Promise<ModelRow[]> {
+  if (scope && scope.modelKeys.length === 0) return [];
+  // model_key (s:1083) selects this note's rows; it is never copied (rule 3 derives it).
+  const scoped = scope ? sql` and model_key in ${textList(scope.modelKeys)}` : sql``;
   const r = await rows(tx, sql`/* builder:models */
     select commit_id::text as commit_id, tool, model, session_id::text as session_id, observed_ai_lines
     from ai_commit_model_attributions
-    where tenant_id = ${row.tenantId} and commit_id in ${uuidList(commitIds)}
+    where tenant_id = ${row.tenantId} and commit_id in ${uuidList(commitIds)}${scoped}
     order by commit_id, id`);
   return r.map((m) => ({
     commitId: String(m.commit_id), tool: m.tool, model: m.model, sessionId: str(m.session_id),
@@ -366,17 +411,17 @@ async function readModels(tx: BuilderReadExecutor, row: AttestaSubjectRow, commi
 }
 
 interface FindingGroup { category: string; severity: string; rulePack: string; n: number }
-async function readFindings(tx: BuilderReadExecutor, row: AttestaSubjectRow, commitIds: string[]): Promise<FindingGroup[]> {
+async function readFindings(tx: BuilderReadExecutor, row: AttestaSubjectRow, sessionIds: string[]): Promise<FindingGroup[]> {
+  if (sessionIds.length === 0) return [];
   // s:474–505: no key to ai_sessions, so the finding's session string is matched to
-  // the external session ID of the commits' sessions (partial / linked_by_session_string_not_key).
+  // the external session ID of the reported sessions (partial / linked_by_session_string_not_key).
   const r = await rows(tx, sql`/* builder:findings */
     select f.rule_category, f.rule_severity, f.rule_pack_version, count(*)::int as n
     from security_findings f
     where f.tenant_id = ${row.tenantId} and f.repository_id = ${row.repositoryId}
       and f.session_id in (
-        select s.external_session_id from ai_commit_sessions cs
-        join ai_sessions s on s.tenant_id = cs.tenant_id and s.id = cs.session_id
-        where cs.tenant_id = ${row.tenantId} and cs.commit_id in ${uuidList(commitIds)})
+        select s.external_session_id from ai_sessions s
+        where s.tenant_id = ${row.tenantId} and s.id in ${uuidList(sessionIds)})
     group by 1, 2, 3 order by 1, 2, 3`);
   return r.map((f) => ({
     category: String(f.rule_category), severity: String(f.rule_severity),
@@ -413,7 +458,7 @@ async function waitForEarlierKinds(tx: BuilderReadExecutor, row: AttestaSubjectR
       and o.status in ('pending', 'claimed')
       and ((o.commit_sha = ${row.commitSha} and o.kind in ${textList(subjectKinds)})${sources})`);
   if (int(r[0]?.n ?? 0, 'count') > 0) {
-    throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'an earlier statement about this subject is still queued');
+    throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'an earlier statement about this subject is still queued', { wait: true });
   }
 }
 
@@ -547,16 +592,21 @@ async function readSources(tx: BuilderReadExecutor, row: AttestaSubjectRow): Pro
   }
 
   const committerId = commit && projectionsCurrent && commit.hasAuthor ? await readCommitter(tx, row, commit.id) : null;
-  const sessions = attribution ? await readSessions(tx, row, attribution.commitIds) : [];
-  const models = attribution ? await readModels(tx, row, attribution.commitIds) : [];
-  const findings = attribution ? await readFindings(tx, row, attribution.commitIds) : [];
+  const scope = metricEvent ? noteScope(metricEvent) : null;
+  const sessions = attribution ? await readSessions(tx, row, attribution.commitIds, scope) : [];
+  const models = attribution ? await readModels(tx, row, attribution.commitIds, scope) : [];
+  const findings = attribution ? await readFindings(tx, row, [...new Set(sessions.map((x) => x.sessionId))]) : [];
 
   const en = await rows(tx, sql`/* builder:enrollment */
     select id::text as id, status, ${ts('effective_from')} as effective_from,
       ${ts('effective_until')} as effective_until, ${ts('commit_note_evidence_from')} as commit_note_evidence_from
     from repository_enrollments where tenant_id = ${row.tenantId} and repository_id = ${row.repositoryId}`);
+  // The mode in force as of as_of, by Task6's activation rule (activation.ts:43–46):
+  // a revoked or expired monitor setting is off, never signed as monitoring.
   const mon = await rows(tx, sql`/* builder:security_monitor */
-    select mode, version from tenant_security_monitor_settings where tenant_id = ${row.tenantId}`);
+    select case when mode = 'monitor' and revoked_at is null and (valid_until is null or valid_until > now())
+                then 'monitor' else 'off' end as mode, version
+    from tenant_security_monitor_settings where tenant_id = ${row.tenantId}`);
   const previous = await readPrevious(tx, row);
 
   return {
@@ -675,6 +725,7 @@ function assemble(row: AttestaSubjectRow, s: Sources, options: BuilderOptions, f
     }
     const models = new Map<string, Record<string, unknown> & { ai_lines: number }>();
     let modelsHashed = false;
+    let modelsOmitted = false;
     let toolsHashed = hashed;
     for (const r of s.models) {
       const tool = fit(normalizeTool(r.tool), TOKEN_RE);
@@ -683,6 +734,10 @@ function assemble(row: AttestaSubjectRow, s: Sources, options: BuilderOptions, f
       modelsHashed ||= tool.hashed || Boolean(model?.hashed);
       toolsHashed ||= tool.hashed;
       const modelKey = `${tool.value}::${model?.value ?? 'unknown'}`;
+      // S8 fixes model_key = tool::model, and a token is at most 128 characters, so a
+      // pair too long to join (two hashed values, a long ARN) cannot be represented:
+      // the row is left out and the field says so (contract finding F7).
+      if (!TOKEN_RE.test(modelKey)) { modelsOmitted = true; continue; }
       const key = `${modelKey}\u0000${r.sessionId ?? ''}`;
       const existing = models.get(key);
       if (existing) existing.ai_lines += r.aiLines;
@@ -698,7 +753,7 @@ function assemble(row: AttestaSubjectRow, s: Sources, options: BuilderOptions, f
     const reason = (h: boolean): PartialReason | null =>
       (someMissing ? 'only_some_sources_reported' : h ? 'values_hashed_unrepresentable' : null);
     sessionsField = recordedOr(sessionList, reason(hashed));
-    modelsField = recordedOr(modelList, reason(modelsHashed));
+    modelsField = recordedOr(modelList, modelsOmitted ? 'only_some_sources_reported' : reason(modelsHashed));
     toolsField = recordedOr(tools, reason(toolsHashed));
   }
 
@@ -731,10 +786,11 @@ function assemble(row: AttestaSubjectRow, s: Sources, options: BuilderOptions, f
   // merge_lineage: scm_merge_lineage (s:1163–1172), source statements from attesta_records.
   let lineageField: Field = unavailable(kind === 'commit_observed' ? 'not_applicable' : 'source_missing');
   if (s.lineage) {
-    lineageField = recorded(s.lineage.map((l) => ({
+    // A source whose commit statement is not chained yet links later (fields.md).
+    lineageField = recordedOr(s.lineage.map((l) => ({
       source_sha: l.sourceSha, result_sha: l.resultSha, merge_method: l.mergeMethod,
       confidence: l.confidence, source_statement_digest: l.sourceStatementDigest,
-    })));
+    })), s.lineage.some((l) => l.sourceStatementDigest === null) ? 'lineage_still_being_enriched' : null);
   }
 
   // deployment: scm_deployments (s:1179–1191).
@@ -896,6 +952,21 @@ export async function buildStatement(
     throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_MISSING', 'the outbox row is malformed');
   }
   const sources = await readSources(readTx, subjectRow);
+  // The schema limits which earlier kinds each kind may list, while the ledger needs
+  // every earlier statement about the subject in `previous`. A subject chained in the
+  // other order (a deployment before a later note about the same commit) cannot be
+  // signed by any v1 statement: refuse it here, by name (contract finding F2).
+  const allowed = ALLOWED_PREVIOUS[subjectRow.kind];
+  if (allowed && sources.previous.some((p) => !allowed.includes(p.statement_kind))) {
+    throw new AttestaBuilderError('ATTESTA_BUILDER_SCHEMA_INVALID',
+      'an earlier statement about this subject has a kind this statement kind may not list in previous (contract finding F2)');
+  }
+  // S5 compares TrackAI's own observation times with as_of; a time ahead of the
+  // database clock (another server's clock) settles by itself, so wait for it.
+  const observed = [sources.commit?.firstSeenAt, sources.delivery?.receivedAt];
+  if (observed.some((t) => typeof t === 'string' && t > sources.asOf)) {
+    throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'an observation time is ahead of the database clock');
+  }
   const files = sources.metricEvent?.note ? noteFiles(sources.metricEvent.note) : null;
   const total = files?.entries.length ?? 0;
 

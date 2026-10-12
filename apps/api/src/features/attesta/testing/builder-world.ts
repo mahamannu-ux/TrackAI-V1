@@ -15,6 +15,24 @@ export interface FakeCall { tag: string; sql: string; params: unknown[] }
 
 const dialect = new PgDialect();
 
+const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const NOT_ALIAS = new Set(['where', 'on', 'order', 'group', 'left', 'join', 'limit']);
+
+/**
+ * Every table a query reads must be bound to the tenant: either `<alias>.tenant_id =
+ * $n` with the tenant as $n, or a join equality `<alias>.tenant_id = <other>.tenant_id`.
+ */
+export function assertTenantBound(sqlText: string, params: unknown[], tenantId: string, tag: string): void {
+  for (const m of sqlText.matchAll(/\b(?:from|join)\s+([a-z_]+)(?:\s+([a-z]+))?/g)) {
+    const alias = m[2] && !NOT_ALIAS.has(m[2]) ? m[2] : null;
+    const col = alias ? `${alias}.tenant_id` : 'tenant_id';
+    const direct = [...sqlText.matchAll(new RegExp(`(?<![\\w.])${escapeRe(col)} = \\$(\\d+)`, 'g'))]
+      .some((x) => params[Number(x[1]) - 1] === tenantId);
+    const joined = new RegExp(`(?<![\\w.])${escapeRe(col)} = [a-z]+\\.tenant_id|[a-z]+\\.tenant_id = ${escapeRe(col)}(?![\\w])`).test(sqlText);
+    if (!direct && !joined) throw new Error(`builder query ${tag}: ${m[1]} is not bound to the tenant`);
+  }
+}
+
 /** Answers `/* builder:<tag> *\/` queries; refuses any query not bound to `tenantId`. */
 export function fakeReader(seeds: Seeds, tenantId: string): BuilderReadExecutor & { calls: FakeCall[] } {
   const calls: FakeCall[] = [];
@@ -25,9 +43,7 @@ export function fakeReader(seeds: Seeds, tenantId: string): BuilderReadExecutor 
       const tag = /\/\* builder:(\w+) \*\//.exec(rendered.sql)?.[1];
       if (!tag) throw new Error(`untagged builder query: ${rendered.sql.slice(0, 60)}`);
       calls.push({ tag, sql: rendered.sql, params: rendered.params });
-      if (tag !== 'now' && !rendered.params.includes(tenantId)) {
-        throw new Error(`builder query ${tag} is not bound to the tenant`);
-      }
+      assertTenantBound(rendered.sql, rendered.params, tenantId, tag);
       const seed = seeds[tag];
       if (seed === undefined) throw new Error(`no seed for builder query ${tag}`);
       return { rows: typeof seed === 'function' ? seed(rendered.params) : seed };

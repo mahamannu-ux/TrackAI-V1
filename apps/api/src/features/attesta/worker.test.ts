@@ -11,7 +11,7 @@ import { SigningRejected, SigningUnavailable, type SigningAdapter } from './sign
 import { generateDevCredential } from './signer-local-dev';
 import { devSignerResolver, type SignerResolver } from './signer-resolver';
 import {
-  backoffMs, classifyError, requeueFailedSubjects, runBuilderPass, type BuilderPassOptions, type WorkerDatabase, type WorkerExecutor,
+  backoffMs, classifyError, requeueFailedSubjects, RequeueScopeChanged, runBuilderPass, type BuilderPassOptions, type WorkerDatabase, type WorkerExecutor,
 } from './worker';
 
 const TENANT = '00000000-0000-4000-8000-0000000000f1';
@@ -31,6 +31,8 @@ class FakeDb implements WorkerDatabase {
   txConfigs: unknown[] = [];
   recoverFail: string[] = [];
   recover: string[] = [];
+  claimSql = '';
+  claimParams: unknown[] = [];
   private claimCounter = 0;
 
   add(id: string, over: Partial<OutboxRow> = {}) {
@@ -46,7 +48,9 @@ class FakeDb implements WorkerDatabase {
       case 'recover_fail': return { rows: this.recoverFail.map((id) => ({ id })) };
       case 'recover': return { rows: this.recover.map((id) => ({ id })) };
       case 'claim': {
-        const limit = params[0] as number;
+        this.claimSql = text;
+        this.claimParams = params;
+        const limit = params[params.length - 1] as number;
         const out = [...this.rows.values()].filter((r) => r.status === 'pending').slice(0, limit).map((r) => {
           this.claimCounter += 1;
           r.status = 'claimed';
@@ -68,7 +72,8 @@ class FakeDb implements WorkerDatabase {
         if (!r || r.status !== 'claimed' || !params.includes(r.claimed_at) || !params.includes(r.attempts)) return { rows: [] };
         r.last_error_code = params[0] as string;
         if (tag === 'retry') {
-          r.status = 'pending'; r.claimed_at = null; r.not_before_delay_s = params[1] as number;
+          // params: code, refunded attempts (0/1), backoff seconds, then the guard.
+          r.status = 'pending'; r.claimed_at = null; r.attempts -= params[1] as number; r.not_before_delay_s = params[2] as number;
         } else { r.status = 'failed'; r.processed = true; }
         return { rows: [{ id: r.id }] };
       }
@@ -84,9 +89,23 @@ class FakeDb implements WorkerDatabase {
     }
   }
 
+  commitError: unknown = null;
+
   async transaction<T>(fn: (tx: WorkerExecutor) => Promise<T>, config?: unknown): Promise<T> {
     this.txConfigs.push(config ?? null);
-    return fn(this);
+    const saved = new Map([...this.rows].map(([k, v]) => [k, { ...v }]));
+    const savedAudits = this.audits.length;
+    try {
+      const out = await fn(this);
+      if (this.commitError && config === undefined) { const e = this.commitError; this.commitError = null; throw e; }
+      return out;
+    } catch (err) {
+      if (config === undefined) { // a write transaction rolls back (in place)
+        for (const [id, before] of saved) Object.assign(this.rows.get(id)!, before);
+        this.audits.length = savedAudits;
+      }
+      throw err;
+    }
   }
 }
 
@@ -265,7 +284,11 @@ test('T15h worker: recovery counts and option bounds', async () => {
 
 test('T15h worker: classifyError and backoff', () => {
   assert.deepEqual(classifyError(new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'x')),
-    { action: 'retry', code: 'ATTESTA_BUILDER_SOURCE_NOT_READY' });
+    { action: 'retry', code: 'ATTESTA_BUILDER_SOURCE_NOT_READY', wait: false });
+  assert.deepEqual(classifyError(new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'x', { wait: true })),
+    { action: 'retry', code: 'ATTESTA_BUILDER_SOURCE_NOT_READY', wait: true });
+  // wait only applies to the retryable code.
+  assert.equal(new AttestaBuilderError('ATTESTA_BUILDER_TOO_LARGE', 'x', { wait: true }).wait, false);
   assert.deepEqual(classifyError(new SigningUnavailable('x')), { action: 'retry', code: 'ATTESTA_SIGNER_UNAVAILABLE' });
   assert.deepEqual(classifyError(new SigningRejected('x')), { action: 'fail', code: 'ATTESTA_SIGNER_REJECTED' });
   assert.deepEqual(classifyError(new AttestaLedgerError('ATTESTA_LEDGER_CLAIM_LOST', 'x')), { action: 'stop', code: 'ATTESTA_LEDGER_CLAIM_LOST' });
@@ -293,4 +316,58 @@ test('T15h re-queue: dry-run counts only; confirm moves failed rows and writes o
   await assert.rejects(requeueFailedSubjects(db, { ...input, tenantId: 'x' }), RangeError);
   await assert.rejects(requeueFailedSubjects(db, { ...input, code: 'free text' }), RangeError);
   await assert.rejects(requeueFailedSubjects(db, { ...input, actorId: 'me@example.com' }), RangeError);
+});
+
+test('T15h worker: an ordering wait is retried without spending an attempt, past the limit', async () => {
+  const { db, options, resolver } = setup(1, { maxAttempts: 1 });
+  options.deps!.build = async () => {
+    throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_NOT_READY', 'queued', { wait: true });
+  };
+  for (let i = 0; i < 3; i += 1) {
+    const r = await runBuilderPass(db, resolver, options);
+    assert.equal(r.retried, 1);
+  }
+  const row = [...db.rows.values()][0];
+  assert.deepEqual([row.status, row.attempts, row.last_error_code], ['pending', 0, 'ATTESTA_BUILDER_SOURCE_NOT_READY']);
+  assert.equal(row.not_before_delay_s, backoffMs(1) / 1000);
+});
+
+test('T15h worker: errors raised at COMMIT are mapped to ledger codes', async () => {
+  for (const [pgCode, status, code] of [['40001', 'pending', 'ATTESTA_LEDGER_HEAD_CONFLICT'], ['ATG01', 'failed', 'ATTESTA_LEDGER_GUARD_VIOLATION']]) {
+    const { db, options, resolver } = setup(1);
+    db.commitError = Object.assign(new Error('commit refused'), { code: pgCode });
+    await runBuilderPass(db, resolver, options);
+    const row = [...db.rows.values()][0];
+    assert.deepEqual([row.status, row.last_error_code], [status, code], pgCode);
+  }
+});
+
+test('T15h worker: the claim is a materialized CTE limited to the known kinds', async () => {
+  const { db, options, resolver } = setup(1);
+  await runBuilderPass(db, resolver, options);
+  assert.match(db.claimSql, /with picked as materialized \(/);
+  assert.match(db.claimSql, /for update skip locked/);
+  assert.deepEqual(db.claimParams.slice(0, 3), ['commit_observed', 'pr_merged', 'deployed']);
+});
+
+test('T15h worker: with the real builder the frozen schemas are compiled before claiming', async () => {
+  const { db, options, resolver } = setup(1);
+  // No build stub: statementValidator() compiles from docs/contracts first, then the real
+  // builder runs against this fake (which knows no builder queries), an unexpected error.
+  const r = await runBuilderPass(db, resolver, { ...options, deps: { chain: options.deps!.chain } });
+  assert.equal(r.claimed, 1);
+  assert.equal(r.codes.unexpected_error, 1);
+  assert.equal([...db.rows.values()][0].status, 'claimed');
+});
+
+test('T15h re-queue: a confirm whose count changed since the dry-run changes nothing', async () => {
+  const db = new FakeDb();
+  db.add('00000000-0000-4000-8000-000000000201', { status: 'failed', attempts: 1, last_error_code: 'ATTESTA_SIGNER_NO_CREDENTIAL', processed: true });
+  db.add('00000000-0000-4000-8000-000000000202', { status: 'failed', attempts: 1, last_error_code: 'ATTESTA_SIGNER_NO_CREDENTIAL', processed: true });
+  const input = { tenantId: TENANT, code: 'ATTESTA_SIGNER_NO_CREDENTIAL', actorId: 'founder-cli', confirm: true, expect: 1 };
+  await assert.rejects(requeueFailedSubjects(db, input), RequeueScopeChanged);
+  assert.ok([...db.rows.values()].every((r) => r.status === 'failed'));
+  assert.equal(db.audits.length, 0);
+  assert.deepEqual(await requeueFailedSubjects(db, { ...input, expect: 2 }), { dryRun: false, matched: 2, requeued: 2 });
+  await assert.rejects(requeueFailedSubjects(db, { ...input, expect: -1 }), RangeError);
 });
