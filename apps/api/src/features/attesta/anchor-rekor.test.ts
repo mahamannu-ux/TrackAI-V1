@@ -7,8 +7,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash, createPublicKey, generateKeyPairSync, type KeyObject } from 'node:crypto';
+import { createHash, createPublicKey, generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import { p256 } from '@noble/curves/nist.js';
+import { canonicalize } from './canonical';
 import { leafHash } from './merkle';
 import { FakeRekor, REKOR_TREE_ID_HEX } from './testing/fake-rekor';
 import {
@@ -449,4 +450,61 @@ test('the adapter batch cache is bounded', async () => {
   await a.anchor(ROOT_A, 'a'); // evicted: resubmitted (random nonce → a new entry), still verified
   assert.equal(rekor.posts, 3);
   assert.equal(leafHash(rekor.bodies[2]).length, 32);
+});
+
+// ---------------------------------------------------------------------------
+// Hand-built single-entry log: each check proven necessary on its own
+// ---------------------------------------------------------------------------
+
+function selfLog(body: Record<string, unknown>, logPriv: KeyObject, opts: { logId?: string; checkpointRoot?: Buffer } = {}) {
+  const bodyBytes = Buffer.from(JSON.stringify(body), 'utf8');
+  const uuid = leafHash(bodyBytes).toString('hex');
+  const root = leafHash(bodyBytes);
+  const logPub = createPublicKey(logPriv);
+  const logId = opts.logId ?? createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest('hex');
+  const base = { body: bodyBytes.toString('base64'), integratedTime: 1_790_000_001, logID: logId, logIndex: 0 };
+  const note = `self.log - 1\n1\n${(opts.checkpointRoot ?? root).toString('base64')}\nTimestamp: 1\n`;
+  const hint = createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest().subarray(0, 4);
+  const cpSig = sign('sha256', Buffer.from(note), logPriv);
+  const entry = {
+    ...base,
+    verification: {
+      inclusionProof: {
+        checkpoint: `${note}\n— self.log ${Buffer.concat([hint, cpSig]).toString('base64')}\n`,
+        hashes: [], logIndex: 0, rootHash: root.toString('hex'), treeSize: 1,
+      },
+      signedEntryTimestamp: sign('sha256', Buffer.from(canonicalize(base)), logPriv).toString('base64'),
+    },
+  };
+  return { entryId: '0000000000000001' + uuid, entry, logKey: logPub };
+}
+
+test('hand-built log: a valid entry verifies, and each binding is necessary', async () => {
+  const signer = devSigner();
+  const spki = await signer.publicKeySpkiDer();
+  const good = proposedEntry(ROOT_A, await signer.sign(ROOT_A), spki);
+  const logPriv = otherKey();
+  const ok = selfLog(good, logPriv);
+  assert.ok(verifyRekorEntry(ok.entryId, ok.entry, { logKey: ok.logKey, artifact: ROOT_A, anchorKeySpkiDer: spki }));
+
+  // logID naming another log, SET still signed by the pinned key.
+  const foreignId = selfLog(good, logPriv, { logId: 'ab'.repeat(32) });
+  assert.throws(() => verifyRekorEntry(foreignId.entryId, foreignId.entry, { logKey: foreignId.logKey }), /logID/);
+
+  // A validly signed checkpoint for another tree head.
+  const otherHead = selfLog(good, logPriv, { checkpointRoot: Buffer.alloc(32, 9) });
+  assert.throws(() => verifyRekorEntry(otherHead.entryId, otherHead.entry, { logKey: otherHead.logKey }), /checkpoint does not commit/);
+
+  // Our key and the right digest, but a signature over something else.
+  const forged = proposedEntry(ROOT_A, await signer.sign(ROOT_B), spki);
+  const f = selfLog(forged, logPriv);
+  assert.throws(() => verifyRekorEntry(f.entryId, f.entry, { logKey: f.logKey, artifact: ROOT_A, anchorKeySpkiDer: spki }), /signature over the Merkle root/);
+
+  // Not a hashedrekord, or not sha256.
+  const notHashed = selfLog({ ...good, kind: 'rekord' }, logPriv);
+  assert.throws(() => verifyRekorEntry(notHashed.entryId, notHashed.entry, { logKey: notHashed.logKey }), /hashedrekord/);
+  const sha1 = structuredClone(good) as Entry;
+  sha1.spec.data.hash.algorithm = 'sha1';
+  const s = selfLog(sha1, logPriv);
+  assert.throws(() => verifyRekorEntry(s.entryId, s.entry, { logKey: s.logKey }), /sha256/);
 });
