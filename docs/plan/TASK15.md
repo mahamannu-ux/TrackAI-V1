@@ -47,7 +47,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.0 | Contract and design: predicate schema v1, subject and outbox interface for Task2, API routes, DB tables, error codes; frozen under `docs/contracts/attesta/` | Claude | 0.05× | founder buy-in | ✅ merged in PR #30 (contract `docs/contracts/attesta/`, outbox migration `0016`); IT-T15c-01 founder run pending |
 | A15.1 | Primitives: RFC 8785 canonical JSON, RFC 6962 Merkle trees and proofs, DSSE envelope (PAE, sign/verify) with ported test vectors | Muse | 0.08× | — (now) | ✅ merged in PR #22 |
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
-| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ⬜ prompt ready |
+| A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | 🟡 built in Task15d (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 agent-verified, founder run and merge pending |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ✅ merged in PR #28 |
 | A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ⬜ |
@@ -122,7 +122,7 @@ flowchart LR
 | Task15a-attesta-primitives | A15.1 | Muse | 0.08× | `docs/prompts/Task15/NEXT_CHAT_Task15a-attesta-primitives_PROMPT.md` |
 | Task15b-attesta-signer | A15.2 | Muse | 0.05× | `docs/prompts/Task15/NEXT_CHAT_Task15b-attesta-signer_PROMPT.md` |
 | Task15c-attesta-contract | A15.0 (+ outbox migration) | Claude | 0.08× (actual about 0.12×) | `docs/prompts/Task15/NEXT_CHAT_Task15c-attesta-contract_PROMPT.md` · handoff `docs/handoffs/Task15c-attesta-contract_HANDOFF.md` |
-| Task15d-attesta-ledger | A15.3 | Claude | 0.25× | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` |
+| Task15d-attesta-ledger | A15.3 | Claude | 0.25× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` · handoff `docs/handoffs/Task15d-attesta-ledger_HANDOFF.md` |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
 | Task15f-attesta-anchoring | A15.5 | Claude | 0.25× | after 15d, 15e |
 | Task15g-attesta-kms | A15.6 | Muse | 0.08× | after 15b + dependency OK |
