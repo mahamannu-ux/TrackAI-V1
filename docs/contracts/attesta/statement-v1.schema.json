@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/ai-provenance/v1/statement-v1.schema.json",
+  "title": "TrackAI Attesta in-toto Statement v1",
+  "description": "FROZEN CONTRACT (Task15c). An in-toto Statement v1 with exactly one git commit subject and the ai-provenance v1 predicate. The DSSE payload is the exact canonicalize() (RFC 8785) bytes of this object. Cross-field rules that JSON Schema cannot express are in README.md (S1-S12).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "_type",
+    "subject",
+    "predicateType",
+    "predicate"
+  ],
+  "properties": {
+    "_type": {
+      "const": "https://in-toto.io/Statement/v1"
+    },
+    "subject": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "digest"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^trackai:repository/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/commit/([0-9a-f]{40}|[0-9a-f]{64})$"
+          },
+          "digest": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gitCommit"
+            ],
+            "properties": {
+              "gitCommit": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+              }
+            }
+          }
+        }
+      },
+      "maxItems": 1,
+      "minItems": 1
+    },
+    "predicateType": {
+      "const": "https://trackai.dev/attesta/ai-provenance/v1"
+    },
+    "predicate": {
+      "$ref": "predicate-ai-provenance-v1.schema.json"
+    }
+  }
+}

@@ -1578,6 +1578,91 @@ export const scmBranches = pgTable('scm_branches', {
   ).on(table.tenantId, table.repositoryId, table.name),
 }));
 
+/**
+ * Attesta outbox (Task15c, frozen contract docs/contracts/attesta/outbox.md).
+ * Task2 writes one thin pointer row in the same transaction as the observation;
+ * Attesta's worker builds, signs and chains asynchronously. Source rows are
+ * bound to the tenant at insert by enqueueAttestaSubject (no foreign keys to
+ * them: those tables have no (tenant_id, id) key and Task2's reset deletes them).
+ */
+export const attestaSubjects = pgTable('attesta_subjects', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  repositoryId: uuid('repository_id').notNull(),
+  kind: text('kind').$type<'commit_observed' | 'pr_merged' | 'deployed'>().notNull(),
+  metricEventId: uuid('metric_event_id'),
+  commitId: uuid('commit_id'),
+  commitSha: text('commit_sha').notNull(),
+  provider: text('provider'),
+  providerDeliveryId: text('provider_delivery_id'),
+  pullRequestId: uuid('pull_request_id'),
+  deploymentId: uuid('deployment_id'),
+  deploymentExternalId: text('deployment_external_id'),
+  deploymentStatus: text('deployment_status'),
+  eventAt: timestamp('event_at', { withTimezone: true }).notNull(),
+  notBefore: timestamp('not_before', { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  status: text('status').$type<'pending' | 'claimed' | 'done' | 'failed'>().notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  lastErrorCode: text('last_error_code'),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_subjects_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'attesta_subjects_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  // Idempotency keys, one per kind (ATTESTA_QUESTIONS.md decision 4).
+  commitObservedKey: uniqueIndex('attesta_subjects_commit_observed_key')
+    .on(table.tenantId, table.kind, table.metricEventId)
+    .where(sql`${table.kind} = 'commit_observed'`),
+  prMergedKey: uniqueIndex('attesta_subjects_pr_merged_key')
+    .on(table.tenantId, table.kind, table.provider, table.providerDeliveryId)
+    .where(sql`${table.kind} = 'pr_merged'`),
+  deployedKey: uniqueIndex('attesta_subjects_deployed_key')
+    .on(table.tenantId, table.kind, table.provider, table.deploymentExternalId, table.deploymentStatus)
+    .where(sql`${table.kind} = 'deployed'`),
+  claimIndex: index('attesta_subjects_status_not_before_idx').on(table.status, table.notBefore),
+  tenantKindCreatedIndex: index('attesta_subjects_tenant_kind_created_idx')
+    .on(table.tenantId, table.kind, table.createdAt),
+  kindCheck: check('attesta_subjects_kind_check',
+    sql`${table.kind} in ('commit_observed', 'pr_merged', 'deployed')`),
+  kindShapeCheck: check('attesta_subjects_kind_shape_check', sql`
+    (${table.kind} = 'commit_observed'
+      and ${table.metricEventId} is not null and ${table.commitId} is not null
+      and ${table.provider} is null and ${table.providerDeliveryId} is null
+      and ${table.pullRequestId} is null and ${table.deploymentId} is null
+      and ${table.deploymentExternalId} is null and ${table.deploymentStatus} is null)
+    or (${table.kind} = 'pr_merged'
+      and ${table.provider} is not null and ${table.providerDeliveryId} is not null
+      and ${table.pullRequestId} is not null
+      and ${table.metricEventId} is null and ${table.commitId} is null
+      and ${table.deploymentId} is null and ${table.deploymentExternalId} is null
+      and ${table.deploymentStatus} is null)
+    or (${table.kind} = 'deployed'
+      and ${table.provider} is not null and ${table.providerDeliveryId} is not null
+      and ${table.deploymentId} is not null and ${table.deploymentExternalId} is not null and ${table.deploymentStatus} = 'success'
+      and ${table.metricEventId} is null and ${table.commitId} is null
+      and ${table.pullRequestId} is null)
+  `),
+  boundsCheck: check('attesta_subjects_bounds_check', sql`
+    ${table.commitSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    and (${table.provider} is null or ${table.provider} ~ '^[a-z][a-z0-9_-]{0,31}$')
+    and (${table.providerDeliveryId} is null or length(${table.providerDeliveryId}) between 1 and 128)
+    and (${table.deploymentExternalId} is null or length(${table.deploymentExternalId}) between 1 and 128)
+  `),
+  statusCheck: check('attesta_subjects_status_check', sql`
+    ${table.status} in ('pending', 'claimed', 'done', 'failed')
+    and ${table.attempts} >= 0
+    and (${table.status} <> 'claimed' or ${table.claimedAt} is not null)
+    and (${table.status} not in ('done', 'failed') or ${table.processedAt} is not null)
+    and (${table.status} <> 'pending' or (${table.processedAt} is null and ${table.claimedAt} is null))
+    and (${table.lastErrorCode} is null or ${table.lastErrorCode} ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
@@ -1617,3 +1702,4 @@ export type EvidenceIntention = typeof evidenceIntentions.$inferSelect;
 export type EvidenceLink = typeof evidenceLinks.$inferSelect;
 export type EvidenceSummary = typeof evidenceSummaries.$inferSelect;
 export type EvidenceSemanticDocument = typeof evidenceSemanticDocuments.$inferSelect;
+export type AttestaSubject = typeof attestaSubjects.$inferSelect;
