@@ -107,7 +107,7 @@ export function logFailure(log: AttestaLog, res: Response, code: AttestaApiCode,
  * the client.
  */
 export function problemizeAuth(middleware: RequestHandler): RequestHandler {
-  return (req, res, next) => {
+  return function attestaAuthorize(req, res, next) {
     const originalStatus = res.status.bind(res);
     const originalJson = res.json.bind(res);
     let pending = 200;

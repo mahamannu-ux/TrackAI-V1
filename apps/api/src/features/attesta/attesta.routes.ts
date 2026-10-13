@@ -139,9 +139,15 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
   }));
 
   // Anything else under /api/attesta (unknown path, or a method no route serves).
-  router.use((_req, res) => sendProblem(res, 404, 'ATTESTA_API_NOT_FOUND'));
+  router.use(function attestaNotFound(_req, res) { sendProblem(res, 404, 'ATTESTA_API_NOT_FOUND'); });
 
-  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+  const onError: ErrorRequestHandler = function attestaError(err, _req, res, _next) {
+    // Express refuses a malformed percent-encoded path parameter (URIError, status 400)
+    // before any handler runs: a bad request, never a 500.
+    if (err instanceof URIError || (err as { status?: unknown })?.status === 400) {
+      if (!res.headersSent) sendProblem(res, 400, 'ATTESTA_API_INVALID_QUERY');
+      return;
+    }
     logFailure(log, res, 'ATTESTA_API_INTERNAL', err instanceof Error ? err.name : 'unknown');
     if (!res.headersSent) sendProblem(res, 500, 'ATTESTA_API_INTERNAL');
   };

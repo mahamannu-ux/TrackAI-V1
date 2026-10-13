@@ -40,7 +40,10 @@ export const STATEMENT_KINDS = ['commit_observed', 'pr_merged', 'deployed', 'per
 export type StatementKindFilter = typeof STATEMENT_KINDS[number];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-/** Lowercase 40 hex (SHA-1); 64 hex (SHA-256 repositories) as the attesta_records check allows. */
+/**
+ * Lowercase 40 hex (SHA-1); also 64 hex (SHA-256 repositories), as the attesta_records
+ * check allows (deviation from the prompt's "40 hex": strictly the column's own domain).
+ */
 const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const RFC3339_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?(Z|[+-](\d{2}):(\d{2}))$/;
@@ -268,10 +271,13 @@ export interface VerifyAuditInput {
   actorRole: 'tenant_admin' | 'tenant_auditor';
   requestId: string;
   fromSeq: number;
-  toSeq: number;
+  /** null when the range ran to the end of an empty chain, or the verify failed before it was known. */
+  toSeq: number | null;
   ok: boolean;
   checked: number;
   breakCount: number;
+  /** true when the verify did not complete (an error, e.g. broken anchor configuration). */
+  failed?: boolean;
 }
 
 export interface AttestaReadStore {
@@ -398,9 +404,10 @@ export function pgReadStore(executor: ReadExecutor = db): AttestaReadStore {
         actorId: input.actorId,
         action: 'attesta.verify',
         targetType: 'attesta_chain',
-        targetId: `${input.fromSeq}-${input.toSeq}`,
+        targetId: `${input.fromSeq}-${input.toSeq ?? 'end'}`,
         details: {
           request_id: input.requestId, ok: input.ok, checked: input.checked, break_count: input.breakCount,
+          ...(input.failed ? { failed: true } : {}),
         },
       });
     },
@@ -540,20 +547,27 @@ export async function verifyRange(deps: VerifyDeps, input: VerifyInput): Promise
     if (extent >= fromSeq) toSeq = extent;
   }
   if (toSeq !== undefined && toSeq - fromSeq + 1 > MAX_VERIFY_RANGE) throw new AttestaQueryError('range is too large');
-  const [published, material] = await Promise.all([deps.keys(input.tenantId), deps.anchors()]);
-  const options: VerifyChainOptions = { fromSeq };
-  // No to_seq past an empty chain: verifyChain then reports the empty range itself.
-  if (toSeq !== undefined) options.toSeq = toSeq;
-  if (published) options.keys = Object.fromEntries(published.map((k) => [k.keyid, k.publicKey]));
-  if (material) options.anchors = { ...material, windowMs: ANCHOR_WINDOW_MS, now: deps.now() };
-  const report = await deps.verifier(input.tenantId, options);
+  const audit = { tenantId: input.tenantId, actorId: input.actorId, actorRole: input.actorRole, requestId: input.requestId };
+  let report: ChainReport;
+  try {
+    const [published, material] = await Promise.all([deps.keys(input.tenantId), deps.anchors()]);
+    const options: VerifyChainOptions = { fromSeq };
+    // No to_seq past an empty chain: verifyChain then reports the empty range itself.
+    if (toSeq !== undefined) options.toSeq = toSeq;
+    if (published) options.keys = Object.fromEntries(published.map((k) => [k.keyid, k.publicKey]));
+    if (material) options.anchors = { ...material, windowMs: ANCHOR_WINDOW_MS, now: deps.now() };
+    report = await deps.verifier(input.tenantId, options);
+  } catch (err) {
+    // Every verify is recorded (api.md), the failed ones too; the original error wins.
+    await deps.store.recordVerifyAudit({
+      ...audit, fromSeq, toSeq: toSeq ?? null, ok: false, checked: 0, breakCount: 0, failed: true,
+    }).catch(() => undefined);
+    throw err;
+  }
   await deps.store.recordVerifyAudit({
-    tenantId: input.tenantId,
-    actorId: input.actorId,
-    actorRole: input.actorRole,
-    requestId: input.requestId,
+    ...audit,
     fromSeq: report.range.from_seq,
-    toSeq: report.range.to_seq,
+    toSeq: report.range.to_seq >= report.range.from_seq ? report.range.to_seq : null,
     ok: report.ok,
     checked: report.checked,
     breakCount: report.breaks.length,

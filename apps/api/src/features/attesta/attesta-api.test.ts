@@ -523,6 +523,26 @@ describe('conventions', () => {
     assert.match(generated.headers.get('x-request-id') ?? '', REQUEST_ID_RE);
   });
 
+  test('a malformed percent-encoded path parameter is a 400, not a 500', async () => {
+    await expectProblem(await h.get('/statements/%E0%A4%A'), 400, 'ATTESTA_API_INVALID_QUERY');
+    await expectProblem(await h.get('/subjects/%zz/abc'), 400, 'ATTESTA_API_INVALID_QUERY');
+    assert.equal(h.logs.length, 0);
+  });
+
+  test('the default router is guarded by the real requireAdminAction', async () => {
+    // No identity: the real middleware refuses before any database lookup; the refusal is a problem.
+    const app = express();
+    app.use('/api/attesta', createAttestaRouter({ store: new FakeStore() }));
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    try {
+      const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/attesta/statements`);
+      await expectProblem(res, 401, 'ATTESTA_API_FORBIDDEN');
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  });
+
   test('an unknown path or method is a 404 problem; nothing falls through', async () => {
     await expectProblem(await h.get('/nope'), 404, 'ATTESTA_API_NOT_FOUND');
     const post = await fetch(`${h.url}/statements`, { method: 'POST', headers: { 'x-test-tenant': A, 'x-test-sub': 'admin-a' } });
@@ -631,12 +651,16 @@ describe('GET /verify', () => {
     }
   });
 
-  test('broken anchor configuration is a 500 with no audit row, never a silent skip', async () => {
+  test('broken anchor configuration is a 500 (never a silent skip), still audited as a failed verify', async () => {
     const h = await harness({ anchors: async () => { throw new Error('ATTESTA_TSA_ANCHORS_FILE /secret/path'); } });
     try {
       h.store.add(A, { seq: 0, ageMs: 1000, repositoryId: REPO_A });
-      await expectProblem(await h.get('/verify'), 500, 'ATTESTA_API_INTERNAL');
-      assert.equal(h.store.audits.length, 0);
+      await expectProblem(await h.get('/verify', undefined, { 'X-Request-ID': 'req-fail' }), 500, 'ATTESTA_API_INTERNAL');
+      assert.deepEqual(h.store.audits, [{
+        tenantId: A, actorId: 'auditor-a', actorRole: 'tenant_auditor', requestId: 'req-fail', fromSeq: 0, toSeq: 0,
+        ok: false, checked: 0, breakCount: 0, failed: true,
+      }]);
+      assert.equal(h.verifierCalls.length, 0);
       assert.doesNotMatch(h.logs.join('\n'), /secret/);
     } finally {
       await h.close();
@@ -692,6 +716,13 @@ const EXPECTED_ROUTES = new Set([
 const EXPECTED_MUTATING = new Set<string>();
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** The router's non-route layers, in order: a nested router or new middleware fails the sweep. */
+const EXPECTED_MIDDLEWARE = ['attestaHttp', 'attestaAuthorize', 'attestaNotFound', 'attestaError'];
+
+function middlewareTable(router: Router): string[] {
+  return (router.stack as Array<{ route?: unknown; name: string }>).filter((l) => !l.route).map((l) => l.name);
+}
+
 function routeTable(router: Router): string[] {
   const out: string[] = [];
   for (const layer of router.stack as Array<{ route?: { path: string; methods: Record<string, boolean> } }>) {
@@ -722,6 +753,7 @@ describe('route sweep (AU-1)', () => {
     assert.deepEqual(new Set(table), EXPECTED_ROUTES, 'a route was added or removed: classify it here and in the handoff');
     assert.equal(table.length, EXPECTED_ROUTES.size);
     assert.deepEqual(new Set(table.filter((r) => MUTATING.has(r.split(' ')[0]))), EXPECTED_MUTATING);
+    assert.deepEqual(middlewareTable(h.router), EXPECTED_MIDDLEWARE, 'no nested router or unclassified middleware');
   });
 
   test('every route: 403 problem for a non-member, a revoked auditor, another tenant\'s auditor; 503 when lookup fails', async () => {
