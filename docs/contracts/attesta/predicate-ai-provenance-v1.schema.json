@@ -2239,15 +2239,6 @@
               }
             }
           },
-          "previous": {
-            "items": {
-              "properties": {
-                "statement_kind": {
-                  "const": "commit_observed"
-                }
-              }
-            }
-          },
           "pull_request": {
             "$ref": "#/definitions/not_applicable"
           },
@@ -2308,18 +2299,6 @@
                       "partial"
                     ]
                   }
-                }
-              }
-            }
-          },
-          "previous": {
-            "items": {
-              "properties": {
-                "statement_kind": {
-                  "enum": [
-                    "commit_observed",
-                    "pr_merged"
-                  ]
                 }
               }
             }

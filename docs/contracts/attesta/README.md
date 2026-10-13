@@ -91,7 +91,7 @@ JSON Schema cannot compare fields, so a statement can be schema-valid and still 
 | S11 | `merge_lineage` lists each source commit once; in `pr_merged`, every non-rebase entry's `result_sha` = `commit.sha` |
 | S12 | Every provider field (`provider_delivery`, `pull_request`, `deployment`) = `repository.provider` |
 
-Kind consistency is enforced by the schema itself: which blocks a kind must or must not carry, `commit_observed` coming from a commit-note (or legacy) metric event with its note digest recorded or `not_reported_by_source`, which statement kinds may appear in `previous`, and `signed_late` consistency.
+Kind consistency is enforced by the schema itself: which blocks a kind must or must not carry, `commit_observed` coming from a commit-note (or legacy) metric event with its note digest recorded or `not_reported_by_source`, that `previous` names only ai-provenance statement kinds (any of the three, in any order: the ledger lists every earlier statement about the subject; relaxed 2026-10-13, contract finding F2 from Task15h, before any production statement existed), and `signed_late` consistency.
 
 ## Versioning rules
 
