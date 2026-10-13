@@ -1,11 +1,15 @@
 /**
  * `npm run attesta:build -w apps/api [-- --loop --sleep-ms=30000 --limit=50 --max-attempts=8 --lease-ms=600000]`
  *
- * Runs one builder pass (or passes in a loop, for local use) with the development
- * signer. Production scheduling and signers are Task14's and A15.6/A15.12's; the dev
- * resolver refuses NODE_ENV=production. Needs DATABASE_URL and one of:
- *   ATTESTA_DEV_SIGNER_KEY_FILE=<path to a P-256 PEM private key>  (stable key)
- *   --ephemeral-dev-key                                             (new key each run)
+ * Runs one builder pass (or passes in a loop, for local use). Production scheduling is
+ * Task14's. Signers (`builderResolverFromEnv`):
+ *   production (NODE_ENV=production): the trust inventory, `inventorySignerResolver(
+ *     pgTrustStore(db), await adaptersFromEnv(), trustConfigFromEnv())` (Task15i2): the
+ *     tenant's one active, published statement key; never the development signer;
+ *   otherwise the development signer, which needs one of:
+ *     ATTESTA_DEV_SIGNER_KEY_FILE=<path to a P-256 PEM private key>  (stable key)
+ *     --ephemeral-dev-key                                             (new key each run)
+ * Needs DATABASE_URL.
  * The builder version is `<apps/api version>+<git commit>`; the commit comes from
  * TRACKAI_GIT_COMMIT or `git rev-parse HEAD`. Prints codes and counts only.
  */
@@ -16,8 +20,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db, pool } from '../../core/db';
 import { sha256Prefixed } from './canonical';
+import { isProduction } from './anchor-contract';
 import { generateDevCredential } from './signer-local-dev';
-import { devSignerResolver } from './signer-resolver';
+import { devSignerResolver, type SignerResolver } from './signer-resolver';
+import { pgTrustStore, type TrustDb } from './trust-inventory';
+import { adaptersFromEnv, inventorySignerResolver, trustConfigFromEnv } from './trust-resolver';
 import { runBuilderPass } from './worker';
 
 export function parseArgs(argv: string[]): Map<string, string> {
@@ -58,16 +65,38 @@ export function resolveBuilderVersion(env: NodeJS.ProcessEnv = process.env): str
   return version;
 }
 
+export interface BuilderResolverDeps {
+  inventory?: (env: NodeJS.ProcessEnv) => Promise<SignerResolver>;
+  dev?: (pem: string, env: NodeJS.ProcessEnv) => SignerResolver;
+  read?: (path: string) => string;
+}
+
+/**
+ * The builder's signer resolver for this environment, and a label for the log line.
+ * Production always takes the inventory branch (a dev key file or flag is ignored and
+ * the dev resolver is never constructed); development keeps the dev signer.
+ */
+export async function builderResolverFromEnv(env: NodeJS.ProcessEnv, args: Map<string, string>, deps: BuilderResolverDeps = {}):
+  Promise<{ resolver: SignerResolver; label: string }> {
+  if (isProduction(env)) {
+    const inventory = deps.inventory ?? (async (e: NodeJS.ProcessEnv) =>
+      inventorySignerResolver(pgTrustStore(db as unknown as TrustDb), await adaptersFromEnv(e), trustConfigFromEnv(e)));
+    return { resolver: await inventory(env), label: 'signer=trust-inventory' };
+  }
+  const keyFile = env.ATTESTA_DEV_SIGNER_KEY_FILE;
+  let pem: string;
+  if (keyFile) pem = (deps.read ?? ((path: string) => readFileSync(path, 'utf8')))(keyFile);
+  else if (args.get('ephemeral-dev-key') === 'true') pem = generateDevCredential('dev:ephemeral', 'local').privateKeyPem;
+  else throw new Error('set ATTESTA_DEV_SIGNER_KEY_FILE or pass --ephemeral-dev-key (development signer only)');
+  const keyid = sha256Prefixed(createPublicKey(pem).export({ format: 'der', type: 'spki' }) as Buffer);
+  const dev = deps.dev ?? ((p: string, e: NodeJS.ProcessEnv) => devSignerResolver({ sharedKeyPem: p, env: e }));
+  return { resolver: dev(pem, env), label: `signer=dev dev_keyid=${keyid}` };
+}
+
 async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
   const args = parseArgs(process.argv.slice(2));
-  const keyFile = process.env.ATTESTA_DEV_SIGNER_KEY_FILE;
-  let pem: string;
-  if (keyFile) pem = readFileSync(keyFile, 'utf8');
-  else if (args.get('ephemeral-dev-key') === 'true') pem = generateDevCredential('dev:ephemeral', 'local').privateKeyPem;
-  else throw new Error('set ATTESTA_DEV_SIGNER_KEY_FILE or pass --ephemeral-dev-key (development signer only)');
-  const resolver = devSignerResolver({ sharedKeyPem: pem });
-  const keyid = sha256Prefixed(createPublicKey(pem).export({ format: 'der', type: 'spki' }) as Buffer);
+  const { resolver, label } = await builderResolverFromEnv(process.env, args);
   const options = {
     limit: intArg(args, 'limit', 50),
     maxAttempts: intArg(args, 'max-attempts', 8),
@@ -80,7 +109,7 @@ async function main(): Promise<void> {
   const sleepMs = intArg(args, 'sleep-ms', 30_000);
   let stop = false;
   process.on('SIGINT', () => { stop = true; });
-  console.log(`attesta_build builder_version=${options.builderVersion} dev_keyid=${keyid} mode=${loop ? 'loop' : 'once'}`);
+  console.log(`attesta_build builder_version=${options.builderVersion} ${label} mode=${loop ? 'loop' : 'once'}`);
   do {
     const r = await runBuilderPass(db, resolver, options);
     const codes = Object.entries(r.codes).sort().map(([code, n]) => `${code}:${n}`).join(',') || 'none';

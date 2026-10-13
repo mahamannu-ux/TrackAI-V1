@@ -1,0 +1,596 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/evidence-pack/v1/evidence-pack-v1.schema.json",
+  "title": "TrackAI Attesta evidence pack v1",
+  "description": "FROZEN CONTRACT (Task15i2, A15.9). The pack is the RFC 8785 bytes of this object; rules a schema cannot express (chain links, window, completeness, digests, signature) are in evidence-pack.md.",
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "base64": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+      "maxLength": 22369622
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "payloadType",
+        "signatures"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/definitions/base64"
+        },
+        "payloadType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "keyid",
+              "sig"
+            ],
+            "properties": {
+              "keyid": {
+                "$ref": "#/definitions/digest"
+              },
+              "sig": {
+                "type": "string",
+                "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+                "minLength": 4,
+                "maxLength": 344
+              }
+            }
+          }
+        }
+      }
+    },
+    "fullRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seq",
+        "prev_hash",
+        "record_hash",
+        "canonical_record"
+      ],
+      "properties": {
+        "seq": {
+          "$ref": "#/definitions/seq"
+        },
+        "prev_hash": {
+          "$ref": "#/definitions/digest"
+        },
+        "record_hash": {
+          "$ref": "#/definitions/digest"
+        },
+        "canonical_record": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4096
+        }
+      }
+    },
+    "redactedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seq",
+        "prev_hash",
+        "record_hash"
+      ],
+      "properties": {
+        "seq": {
+          "$ref": "#/definitions/seq"
+        },
+        "prev_hash": {
+          "$ref": "#/definitions/digest"
+        },
+        "record_hash": {
+          "$ref": "#/definitions/digest"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest",
+    "records",
+    "statements",
+    "anchors",
+    "anchor_batches",
+    "trust",
+    "verification_hint",
+    "reports",
+    "verifier"
+  ],
+  "properties": {
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "pack_id",
+        "tenant_id",
+        "scope",
+        "chain_range",
+        "generated_at",
+        "completeness",
+        "counts",
+        "sections"
+      ],
+      "properties": {
+        "format": {
+          "const": "https://trackai.dev/attesta/evidence-pack/v1"
+        },
+        "pack_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "tenant_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository_id",
+            "from",
+            "to",
+            "mode"
+          ],
+          "properties": {
+            "repository_id": {
+              "oneOf": [
+                {
+                  "$ref": "#/definitions/uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "from": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "to": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "mode": {
+              "enum": [
+                "full",
+                "repository_only"
+              ]
+            }
+          }
+        },
+        "chain_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from_seq",
+            "to_seq",
+            "prev_hash",
+            "head"
+          ],
+          "properties": {
+            "from_seq": {
+              "$ref": "#/definitions/seq"
+            },
+            "to_seq": {
+              "type": "integer",
+              "minimum": -1,
+              "maximum": 9007199254740991
+            },
+            "prev_hash": {
+              "$ref": "#/definitions/digest"
+            },
+            "head": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "next_seq",
+                    "head_hash"
+                  ],
+                  "properties": {
+                    "next_seq": {
+                      "$ref": "#/definitions/seq"
+                    },
+                    "head_hash": {
+                      "$ref": "#/definitions/digest"
+                    }
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "generated_at": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "completeness": {
+          "enum": [
+            "provable",
+            "not_provable"
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "records",
+            "statements",
+            "redacted_records",
+            "anchored",
+            "pending",
+            "anchor_rows",
+            "anchor_batches"
+          ],
+          "properties": {
+            "records": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "statements": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "redacted_records": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "anchored": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "pending": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "anchor_rows": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "anchor_batches": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "records",
+            "statements",
+            "anchors",
+            "anchor_batches",
+            "trust",
+            "verification_hint",
+            "reports",
+            "verifier"
+          ],
+          "properties": {
+            "records": {
+              "$ref": "#/definitions/digest"
+            },
+            "statements": {
+              "$ref": "#/definitions/digest"
+            },
+            "anchors": {
+              "$ref": "#/definitions/digest"
+            },
+            "anchor_batches": {
+              "$ref": "#/definitions/digest"
+            },
+            "trust": {
+              "$ref": "#/definitions/digest"
+            },
+            "verification_hint": {
+              "$ref": "#/definitions/digest"
+            },
+            "reports": {
+              "$ref": "#/definitions/digest"
+            },
+            "verifier": {
+              "$ref": "#/definitions/digest"
+            }
+          }
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/fullRecord"
+          },
+          {
+            "$ref": "#/definitions/redactedRecord"
+          }
+        ]
+      }
+    },
+    "statements": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "statement_digest",
+          "statement_canonical",
+          "envelope",
+          "anchor_status"
+        ],
+        "properties": {
+          "seq": {
+            "$ref": "#/definitions/seq"
+          },
+          "statement_digest": {
+            "$ref": "#/definitions/digest"
+          },
+          "statement_canonical": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 16777216
+          },
+          "envelope": {
+            "$ref": "#/definitions/envelope"
+          },
+          "anchor_status": {
+            "enum": [
+              "anchored",
+              "pending"
+            ]
+          }
+        }
+      }
+    },
+    "anchors": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "anchor_type",
+          "batch_id",
+          "inclusion_proof",
+          "rekor_entry_uuid",
+          "tsa_token_b64"
+        ],
+        "properties": {
+          "seq": {
+            "$ref": "#/definitions/seq"
+          },
+          "anchor_type": {
+            "enum": [
+              "rekor",
+              "tsa"
+            ]
+          },
+          "batch_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]+-[0-9]+$"
+          },
+          "inclusion_proof": {
+            "type": "object",
+            "description": "EV-2 v1 proof, shape per kind in tables.md"
+          },
+          "rekor_entry_uuid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 128
+          },
+          "tsa_token_b64": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/base64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "anchor_batches": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "batch_id",
+          "seq_from",
+          "seq_to",
+          "leaf_count",
+          "merkle_root"
+        ],
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]+-[0-9]+$"
+          },
+          "seq_from": {
+            "$ref": "#/definitions/seq"
+          },
+          "seq_to": {
+            "$ref": "#/definitions/seq"
+          },
+          "leaf_count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "merkle_root": {
+            "$ref": "#/definitions/digest"
+          }
+        }
+      }
+    },
+    "trust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_documents",
+        "keyset_documents",
+        "anchoring_keys",
+        "rekor_log_key_spki_b64",
+        "rekor_log_index_offsets",
+        "tsa_anchors_der_b64"
+      ],
+      "properties": {
+        "root_documents": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/definitions/envelope"
+          }
+        },
+        "keyset_documents": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/definitions/envelope"
+          }
+        },
+        "anchoring_keys": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "keyid",
+              "spki_der_b64",
+              "root_entry"
+            ],
+            "properties": {
+              "keyid": {
+                "$ref": "#/definitions/digest"
+              },
+              "spki_der_b64": {
+                "$ref": "#/definitions/base64"
+              },
+              "root_entry": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "description": "the key entry of the newest root document (trust-document-v1.schema.json)"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "rekor_log_key_spki_b64": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/base64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rekor_log_index_offsets": {
+          "oneOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "pattern": "^[0-9]{1,20}$"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tsa_anchors_der_b64": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/definitions/base64"
+          }
+        }
+      }
+    },
+    "verification_hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pinned_root_keyids"
+      ],
+      "properties": {
+        "pinned_root_keyids": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/digest"
+          }
+        }
+      }
+    },
+    "reports": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "verifier": {
+      "type": "null"
+    }
+  }
+}

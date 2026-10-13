@@ -121,3 +121,8 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_API_INVALID_QUERY` | 400 |
 | `ATTESTA_API_RATE_LIMITED` | 429 with `Retry-After` |
 | `ATTESTA_API_INTERNAL` | 500 (generic detail) |
+| `ATTESTA_API_UNAUTHENTICATED` | 401 (no authenticated administrator identity) |
+| `ATTESTA_API_UNAVAILABLE` | 503 (authorization lookup or a required dependency, such as the export sink or the trust inventory, temporarily unavailable) |
+| `ATTESTA_API_CONFLICT` | 409 (an `Idempotency-Key` reused with another scope or mode) |
+
+*Added 2026-10-13 (Task15i2, lead-approved; proposed in the Task15i handoff). Evidence-pack jobs that fail record one of the codes above or `ATTESTA_SIGNER_*` as their `error_code` (`evidence-pack.md`).*

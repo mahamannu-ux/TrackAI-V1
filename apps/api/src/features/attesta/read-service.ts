@@ -22,8 +22,11 @@ import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { securityAuditEvents } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
-import { anchorFromEnv, type AnchorVerifyMaterial } from './anchor-env';
+import { isProduction } from './anchor-contract';
+import { anchorFromEnv, platformAnchorKeysFromEnv, type AnchorVerifyMaterial } from './anchor-env';
 import { deriveStatementColumns, parseSeq } from './ledger';
+import { publishedKeysFor } from './trust-resolver';
+import type { TrustStore } from './trust-inventory';
 import {
   ANCHOR_TIME_SKEW_MS, DEFAULT_ANCHOR_WINDOW_MS, verifyChain,
   type ChainReadExecutor, type ChainReport, type VerifyChainOptions,
@@ -487,31 +490,52 @@ export async function subjectStatements(
 export interface PublishedKey { keyid: string; publicKey: KeyObject }
 
 /**
- * Where the verify route gets the tenant's published statement keys. Task15l (trust
- * layer) and Task15i2 fill this; until then it returns null, so verifyChain reports
- * ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED and the report is never `ok` for a non-empty range.
+ * Where the verify route gets the tenant's published statement keys. `null` means none
+ * are published: verifyChain then reports ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED and the
+ * report is never `ok` for a non-empty range.
  */
 export type VerifyKeySource = (tenantId: string) => Promise<PublishedKey[] | null>;
 export const noPublishedKeys: VerifyKeySource = async () => null;
+
+/**
+ * The production key source (Task15i2): every statement key the tenant ever had
+ * (retired and revoked included, `publishedKeysFor`), so statements signed before a
+ * rotation still verify. A tenant with no key yet → null (not checked, never "unknown key").
+ */
+export function publishedKeySource(store: () => TrustStore): VerifyKeySource {
+  return async (tenantId) => {
+    const keys = (await publishedKeysFor(store(), tenantId)).keys;
+    const list = Object.entries(keys).map(([keyid, publicKey]) => ({ keyid, publicKey }));
+    return list.length === 0 ? null : list;
+  };
+}
 
 /** The anchor verify material, or null when anchoring is not configured. */
 export type AnchorMaterialSource = () => Promise<AnchorVerifyMaterial | null>;
 
 /**
- * Anchor material from the environment (anchor-env.ts), built once. Not configured
- * (neither ATTESTA_REKOR_URL nor ATTESTA_TSA_URL set) → null, and the report says
- * anchors `not_checked`. Configured but broken → rejects (AnchorConfigError), and the
- * route answers 500: a half-configured verifier never silently skips anchors.
+ * Anchor material from the environment (anchor-env.ts). Not configured (neither
+ * ATTESTA_REKOR_URL nor ATTESTA_TSA_URL set) → null, and the report says anchors
+ * `not_checked`. Configured but broken → rejects (AnchorConfigError), and the route
+ * answers 500: a half-configured verifier never silently skips anchors.
+ * The log key and TSA anchors are built once; in production the anchoring keys are
+ * re-read for every call as windows from the trust-verified root
+ * (`platformAnchorKeysFromEnv` → `platformKeyWindows`, Task15l2 "Integration notes"),
+ * never a bare SPKI list and never a startup snapshot, so a root import takes effect
+ * without a restart.
  */
-export function anchorMaterialFromEnv(env: NodeJS.ProcessEnv = process.env): AnchorMaterialSource {
+export function anchorMaterialFromEnv(env: NodeJS.ProcessEnv = process.env,
+  windows: () => Promise<AnchorVerifyMaterial['anchorKeyWindows']> = () => platformAnchorKeysFromEnv(env)): AnchorMaterialSource {
   let cached: Promise<AnchorVerifyMaterial | null> | null = null;
-  return () => {
+  return async () => {
     if (!cached) {
       const configured = Boolean(env.ATTESTA_REKOR_URL?.trim() || env.ATTESTA_TSA_URL?.trim());
       cached = configured ? anchorFromEnv(env).then((a) => a.verify) : Promise.resolve(null);
       cached.catch(() => { cached = null; });
     }
-    return cached;
+    const base = await cached;
+    if (!base || !isProduction(env)) return base;
+    return { ...base, anchorKeysSpkiDer: [], anchorKeyWindows: await windows() };
   };
 }
 

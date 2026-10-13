@@ -1994,6 +1994,62 @@ export const attestaTrustDocuments = pgTable('attesta_trust_documents', {
   `),
 }));
 
+/**
+ * Evidence-pack export jobs (Task15i2, A15.9; docs/contracts/attesta/evidence-pack.md).
+ * One row per (tenant, Idempotency-Key). Status moves only forward (queued → running →
+ * ready | failed; running → running when an expired lease is retaken); identity columns
+ * never change; ready and failed rows are final; no DELETE or TRUNCATE (guards in 0020).
+ */
+export const attestaEvidencePacks = pgTable('attesta_evidence_packs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  /** `{repository_id, from, to}` as normalized by the service (RFC 3339 UTC, ms). */
+  scope: jsonb('scope').notNull(),
+  mode: text('mode').$type<'full' | 'repository_only'>().notNull(),
+  status: text('status').$type<'queued' | 'running' | 'ready' | 'failed'>().notNull().default('queued'),
+  requestedBy: text('requested_by').notNull(),
+  requestId: text('request_id').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  packDigest: text('pack_digest'),
+  storageReference: text('storage_reference'),
+  bytes: bigint('bytes', { mode: 'number' }),
+  counts: jsonb('counts'),
+  /** The DSSE pack signature (public; never a credential reference). */
+  signatureEnvelope: jsonb('signature_envelope'),
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_evidence_packs_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantKeyUnique: unique('attesta_evidence_packs_tenant_idempotency_key').on(table.tenantId, table.idempotencyKey),
+  // Claims and the per-tenant open-job bound.
+  tenantStatusIndex: index('attesta_evidence_packs_tenant_status_idx').on(table.tenantId, table.status),
+  shapeCheck: check('attesta_evidence_packs_shape_check', sql`
+    ${table.idempotencyKey} ~ '^[A-Za-z0-9._-]{8,64}$'
+    and ${table.mode} in ('full', 'repository_only')
+    and ${table.status} in ('queued', 'running', 'ready', 'failed')
+    and length(${table.requestedBy}) between 1 and 256
+    and length(${table.requestId}) between 1 and 128
+    and ${table.attempts} >= 0
+    and jsonb_typeof(${table.scope}) = 'object'
+    and (${table.status} = 'running') = (${table.leaseUntil} is not null)
+    and (${table.status} = 'ready') = (${table.packDigest} is not null)
+    and (${table.status} = 'ready') = (${table.storageReference} is not null)
+    and (${table.status} = 'ready') = (${table.bytes} is not null)
+    and (${table.status} = 'ready') = (${table.signatureEnvelope} is not null)
+    and (${table.status} = 'ready') = (${table.counts} is not null)
+    and (${table.status} = 'failed') = (${table.errorCode} is not null)
+    and (${table.status} in ('ready', 'failed')) = (${table.finishedAt} is not null)
+    and (${table.packDigest} is null or ${table.packDigest} ~ '^sha256:[0-9a-f]{64}$')
+    and (${table.errorCode} is null or ${table.errorCode} ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
+    and (${table.bytes} is null or ${table.bytes} > 0)
+    and (${table.storageReference} is null or length(${table.storageReference}) between 1 and 512)
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;

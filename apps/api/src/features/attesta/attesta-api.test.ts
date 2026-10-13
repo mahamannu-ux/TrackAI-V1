@@ -23,11 +23,17 @@ import { createAttestaRouter, type AttestaRouterDeps } from './attesta.routes';
 import { PROBLEM_TYPE_BASE, REQUEST_ID_RE, problemizeAuth } from './http';
 import {
   ANCHOR_WINDOW_MS, AttestaQueryError, MAX_VERIFY_RANGE, anchorStatusOf, decodeCursor, encodeCursor,
-  parseListQuery, parseRfc3339, pgReadStore,
+  noPublishedKeys, parseListQuery, parseRfc3339, pgReadStore, publishedKeySource,
   type AnchorRowOut, type AttestaReadStore, type Cursor, type ListFilter, type StatementDetailRow,
   type StatementRow, type SubjectRow, type VerifyAuditInput,
 } from './read-service';
 import { sha256Prefixed } from './canonical';
+import { MAX_OPEN_PACKS, runEvidencePack, type PackJobDeps } from './evidence-pack-service';
+import {
+  A as PA, B as PB, MemoryPackStore, MemorySink, R1 as PACK_REPO_1, T0 as PACK_T0, buildFixtureChain, trustWorld,
+} from './testing/evidence-pack-fixtures';
+import { oracleVerifyPack } from './testing/evidence-pack-oracle';
+import type { AdminAction } from '../../core/security/admin-authorization';
 import { assertTenantBound } from './testing/builder-world';
 import { buildChain, makeStatement, shaOf } from './testing/ledger-fixtures';
 import { DEFAULT_ANCHOR_WINDOW_MS, verifyChainRows, type ChainReport, type VerifyChainOptions } from './verify-chain';
@@ -154,7 +160,7 @@ class FakeStore implements AttestaReadStore {
 
 type Memberships = Map<string, AdminMembershipRecord | 'unavailable'>;
 
-function fakeRequireAdmin(memberships: Memberships): RequestHandler {
+function fakeRequireAdmin(memberships: Memberships, action: AdminAction = 'attesta.read'): RequestHandler {
   return async (req, res, next) => {
     const tenantId = req.tenantId;
     const subject = req.user?.sub;
@@ -167,7 +173,7 @@ function fakeRequireAdmin(memberships: Memberships): RequestHandler {
       res.status(503).json({ error: 'Administrator authorization is temporarily unavailable' });
       return;
     }
-    if (!adminMembershipAllows(m, { tenantId, subject, action: 'attesta.read' })) {
+    if (!adminMembershipAllows(m, { tenantId, subject, action })) {
       res.status(403).json({ error: 'Forbidden: Tenant administrator permission is required' });
       return;
     }
@@ -187,6 +193,10 @@ function memberships(): Memberships {
     [`${A}/revoked-a`, member(A, 'revoked-a', 'tenant_auditor', true)],
     [`${A}/flaky-a`, 'unavailable'],
     [`${B}/auditor-b`, member(B, 'auditor-b', 'tenant_auditor')],
+    // The evidence-pack fixtures' tenants (testing/evidence-pack-fixtures.ts).
+    [`${PA}/admin-a`, member(PA, 'admin-a', 'tenant_admin')],
+    [`${PA}/auditor-a`, member(PA, 'auditor-a', 'tenant_auditor')],
+    [`${PB}/auditor-b`, member(PB, 'auditor-b', 'tenant_auditor')],
   ]);
 }
 
@@ -196,6 +206,10 @@ function memberships(): Memberships {
 interface Harness {
   url: string;
   store: FakeStore;
+  packs: PackJobDeps & { store: MemoryPackStore };
+  sink: MemorySink;
+  started: Array<{ tenantId: string; packId: string }>;
+  post(path: string, body: unknown, who?: { tenant?: string; sub?: string }, headers?: Record<string, string>): Promise<Response>;
   router: Router;
   logs: string[];
   verifierCalls: Array<{ tenantId: string; options: VerifyChainOptions }>;
@@ -218,11 +232,22 @@ function chainVerifier(calls: Harness['verifierCalls'], store: FakeStore) {
 async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeStore()): Promise<Harness> {
   const logs: string[] = [];
   const verifierCalls: Harness['verifierCalls'] = [];
+  const sink = new MemorySink();
+  const packStore = new MemoryPackStore(new Map());
+  // Pack jobs are inert here unless a test supplies a real world (packWorld below).
+  const packs: Harness['packs'] = {
+    store: packStore, sink: () => sink, resolver: async () => ({ resolve: async () => null }),
+    trust: async () => { throw new Error('no trust in this harness'); },
+  };
+  const started: Harness['started'] = [];
   const router = createAttestaRouter({
-    store, authorize: fakeRequireAdmin(memberships()), verifier: chainVerifier(verifierCalls, store),
+    store, authorize: fakeRequireAdmin(memberships()), authorizeExport: fakeRequireAdmin(memberships(), 'attesta.export'),
+    verifier: chainVerifier(verifierCalls, store), keys: noPublishedKeys, packs,
+    startPack: (tenantId, packId) => { started.push({ tenantId, packId }); },
     anchors: async () => null, now: () => NOW, log: (l) => logs.push(l), ...over,
   });
   const app = express();
+  app.use(express.json());
   app.use((req, _res, next) => {
     // Stands in for /api's JWT + tenant middleware.
     const tenant = req.get('x-test-tenant');
@@ -236,8 +261,13 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/attesta`;
+  const headersFor = (who: { tenant?: string; sub?: string }) =>
+    ({ ...(who.tenant ? { 'x-test-tenant': who.tenant } : {}), ...(who.sub ? { 'x-test-sub': who.sub } : {}) });
   return {
-    url, store, router, logs, verifierCalls,
+    url, store, router, logs, verifierCalls, packs: (over.packs ?? packs) as Harness['packs'], sink, started,
+    post: (path, body, who = { tenant: A, sub: 'auditor-a' }, headers = {}) => fetch(url + path, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...headersFor(who), ...headers }, body: JSON.stringify(body),
+    }),
     close: () => new Promise((resolve) => server.close(() => resolve())),
     get: (path, who = { tenant: A, sub: 'auditor-a' }, headers = {}) => fetch(url + path, {
       headers: { ...(who.tenant ? { 'x-test-tenant': who.tenant } : {}), ...(who.sub ? { 'x-test-sub': who.sub } : {}), ...headers },
@@ -537,7 +567,7 @@ describe('conventions', () => {
     await new Promise((r) => server.once('listening', r));
     try {
       const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/attesta/statements`);
-      await expectProblem(res, 401, 'ATTESTA_API_FORBIDDEN');
+      await expectProblem(res, 401, 'ATTESTA_API_UNAUTHENTICATED');
     } finally {
       await new Promise((r) => server.close(r));
     }
@@ -564,8 +594,8 @@ describe('conventions', () => {
   });
 
   test('problemizeAuth maps 401, 403 and 503 and passes success through', async () => {
-    for (const [status, expected, code] of [[401, 401, 'ATTESTA_API_FORBIDDEN'], [403, 403, 'ATTESTA_API_FORBIDDEN'],
-      [503, 503, 'ATTESTA_API_INTERNAL'], [500, 503, 'ATTESTA_API_INTERNAL']] as const) {
+    for (const [status, expected, code] of [[401, 401, 'ATTESTA_API_UNAUTHENTICATED'], [403, 403, 'ATTESTA_API_FORBIDDEN'],
+      [503, 503, 'ATTESTA_API_UNAVAILABLE'], [500, 503, 'ATTESTA_API_UNAVAILABLE']] as const) {
       const app = express();
       app.use((_req, res, next) => { res.locals.attestaRequestId = 'rid'; next(); });
       app.use(problemizeAuth((_req, res) => { res.status(status).json({ error: 'internal words' }); }));
@@ -711,9 +741,16 @@ const EXPECTED_ROUTES = new Set([
   'GET /statements/:digest',
   'GET /subjects/:repository_id/:sha',
   'GET /verify',
+  'POST /evidence-packs',
+  'GET /evidence-packs/:id',
+  'GET /evidence-packs/:id/content',
 ]);
-/** Routes that change anything (Task15i2 adds the POSTs; the auditor must get 403 on them). */
-const EXPECTED_MUTATING = new Set<string>();
+/**
+ * Routes that change anything. The evidence-pack POST creates a job; it is allowed to
+ * the auditor on purpose (attesta.export: taking evidence is the auditor's job), and
+ * audited. /verify writes only its audit row (Task15i).
+ */
+const EXPECTED_MUTATING = new Set<string>(['POST /evidence-packs']);
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** The router's non-route layers, in order: a nested router or new middleware fails the sweep. */
@@ -737,7 +774,8 @@ function concrete(route: string): string {
   return path
     .replace(':digest', `sha256:${'c'.repeat(64)}`)
     .replace(':repository_id', REPO_A)
-    .replace(':sha', shaOf('sweep'));
+    .replace(':sha', shaOf('sweep'))
+    .replace(':id', '33333333-0000-4000-8000-000000000003');
 }
 
 describe('route sweep (AU-1)', () => {
@@ -756,26 +794,250 @@ describe('route sweep (AU-1)', () => {
     assert.deepEqual(middlewareTable(h.router), EXPECTED_MIDDLEWARE, 'no nested router or unclassified middleware');
   });
 
-  test('every route: 403 problem for a non-member, a revoked auditor, another tenant\'s auditor; 503 when lookup fails', async () => {
+  const call = (route: string, who: { tenant?: string; sub?: string }) => (route.startsWith('POST ')
+    ? h.post(concrete(route), { from: '2026-10-13T10:00:00Z', to: '2026-10-13T11:00:00Z' }, who, { 'Idempotency-Key': 'sweep-key-1' })
+    : h.get(concrete(route), who));
+
+  test('every route: 403 problem for a non-member, a revoked auditor, another tenant\'s auditor; 401; 503 when lookup fails', async () => {
     for (const route of EXPECTED_ROUTES) {
-      const path = concrete(route);
       for (const sub of ['stranger', 'revoked-a', 'auditor-b']) {
-        await expectProblem(await h.get(path, { tenant: A, sub }), 403, 'ATTESTA_API_FORBIDDEN');
+        await expectProblem(await call(route, { tenant: A, sub }), 403, 'ATTESTA_API_FORBIDDEN');
       }
-      await expectProblem(await h.get(path, { tenant: A }), 401, 'ATTESTA_API_FORBIDDEN');
-      await expectProblem(await h.get(path, { tenant: A, sub: 'flaky-a' }), 503, 'ATTESTA_API_INTERNAL');
+      await expectProblem(await call(route, { tenant: A }), 401, 'ATTESTA_API_UNAUTHENTICATED');
+      await expectProblem(await call(route, { tenant: A, sub: 'flaky-a' }), 503, 'ATTESTA_API_UNAVAILABLE');
     }
     assert.equal(h.store.listCalls, 0);
     assert.equal(h.store.audits.length, 0, 'a refused request writes nothing');
+    assert.equal(h.packs.store.jobs.length, 0, 'a refused request creates no job');
+    assert.equal(h.packs.store.audits.length, 0);
   });
 
   test('every route answers the auditor and the admin (none is admin-only)', async () => {
     for (const route of EXPECTED_ROUTES) {
       for (const sub of ['auditor-a', 'admin-a']) {
-        const res = await h.get(concrete(route), { tenant: A, sub });
-        assert.ok(res.status === 200 || res.status === 404, `${route} as ${sub}: ${res.status}`);
-        assert.notEqual(res.status, 403);
+        const res = await call(route, { tenant: A, sub });
+        assert.ok([200, 202, 404].includes(res.status), `${route} as ${sub}: ${res.status}`);
       }
     }
+  });
+
+  test('the evidence-pack routes need attesta.export as well (a reader without it gets 403 there only)', async () => {
+    const deny: RequestHandler = (_req, res) => { res.status(403).json({ error: 'no' }); };
+    const h2 = await harness({ authorizeExport: deny });
+    try {
+      for (const route of EXPECTED_ROUTES) {
+        const res = await (route.startsWith('POST ')
+          ? h2.post(concrete(route), {}, { tenant: A, sub: 'auditor-a' }, { 'Idempotency-Key': 'sweep-key-2' })
+          : h2.get(concrete(route), { tenant: A, sub: 'auditor-a' }));
+        if (route.includes('evidence-packs')) await expectProblem(res, 403, 'ATTESTA_API_FORBIDDEN');
+        else assert.notEqual(res.status, 403, route);
+      }
+      assert.equal(h2.packs.store.jobs.length, 0);
+    } finally {
+      await h2.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Evidence packs (Task15i2)
+
+/** A harness whose pack jobs run for real: trust inventory, chain, sink, the oracle. */
+async function packHarness() {
+  const w = await trustWorld();
+  const packStore = new MemoryPackStore(new Map([[PA, buildFixtureChain(PA, w.k.a1)]]));
+  packStore.clock = PACK_T0;
+  const sink = new MemorySink();
+  const packs = { store: packStore, sink: () => sink, resolver: async () => w.resolver, trust: w.material, log: () => undefined };
+  const h = await harness({ packs, now: () => new Date(PACK_T0) });
+  return { w, h, packStore, sink, packs };
+}
+
+const PAW = { tenant: PA, sub: 'auditor-a' };
+const PACK_BODY = { from: '2026-10-13T09:02:00.000Z', to: '2026-10-13T09:08:00.000Z' };
+
+describe('evidence packs', () => {
+  test('POST → 202 queued (audited, started once); the job runs; GET status; GET content verifies with the oracle (audited)', async () => {
+    const { w, h, packStore, packs } = await packHarness();
+    try {
+      const res = await h.post('/evidence-packs', { ...PACK_BODY, repository_id: PACK_REPO_1 }, { tenant: PA, sub: 'auditor-a' },
+        { 'Idempotency-Key': 'acq-2026-q3', 'X-Request-ID': 'req-p1' });
+      assert.equal(res.status, 202);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const body = await res.json() as { id: string; status: string; replayed: boolean };
+      assert.equal(body.status, 'queued');
+      assert.equal(body.replayed, false);
+      assert.equal(res.headers.get('location'), `/api/attesta/evidence-packs/${body.id}`);
+      assert.deepEqual(h.started, [{ tenantId: PA, packId: body.id }]);
+      assert.deepEqual(packStore.audits.map((a) => [a.action, a.actorId, a.actorRole, a.details.request_id, a.details.replayed]),
+        [['attesta.export.request', 'auditor-a', 'tenant_auditor', 'req-p1', false]]);
+      // Not ready yet: status queued, content 404.
+      const queued = await (await h.get(`/evidence-packs/${body.id}`, PAW)).json() as Record<string, unknown>;
+      assert.equal(queued.status, 'queued');
+      assert.equal(queued.content_path, null);
+      await expectProblem(await h.get(`/evidence-packs/${body.id}/content`, PAW), 404, 'ATTESTA_API_NOT_FOUND');
+      assert.equal(await runEvidencePack(packs, PA, body.id), 'ready');
+      const ready = await (await h.get(`/evidence-packs/${body.id}`, PAW)).json() as Record<string, unknown>;
+      assert.equal(ready.status, 'ready');
+      assert.equal(ready.content_path, `/api/attesta/evidence-packs/${body.id}/content`);
+      assert.deepEqual(Object.keys(ready).sort(), ['bytes', 'content_path', 'counts', 'created_at', 'error_code', 'finished_at', 'id',
+        'mode', 'pack_digest', 'retryable', 'scope', 'status']);
+      const content = await h.get(`/evidence-packs/${body.id}/content`, { tenant: PA, sub: 'admin-a' }, { 'X-Request-ID': 'req-dl' });
+      assert.equal(content.status, 200);
+      assert.equal(content.headers.get('content-type')?.split(';')[0], 'application/json');
+      assert.equal(content.headers.get('cache-control'), 'no-store');
+      assert.equal(content.headers.get('content-disposition'), `attachment; filename="trackai-evidence-pack-${body.id}.json"`);
+      const download = await content.json();
+      const verdict = oracleVerifyPack(download, [w.k.root.keyid]);
+      assert.deepEqual(verdict.breaks, []);
+      assert.equal(verdict.completeness, 'checked');
+      const dl = packStore.audits.find((a) => a.action === 'attesta.export.download')!;
+      assert.equal(dl.actorId, 'admin-a');
+      assert.equal(dl.details.request_id, 'req-dl');
+      assert.equal(dl.details.pack_digest, ready.pack_digest);
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('idempotency: same key and scope → the same job (202, replayed, not started again); another scope or mode → 409', async () => {
+    const { h, packStore } = await packHarness();
+    try {
+      const key = { 'Idempotency-Key': 'same-key-001' };
+      const first = await (await h.post('/evidence-packs', PACK_BODY, PAW, key)).json() as { id: string };
+      // The same instants written differently are the same scope.
+      const again = await h.post('/evidence-packs', { from: '2026-10-13T14:32:00+05:30', to: PACK_BODY.to, mode: 'full' }, PAW, key);
+      assert.equal(again.status, 202);
+      const body = await again.json() as { id: string; replayed: boolean };
+      assert.equal(body.id, first.id);
+      assert.equal(body.replayed, true);
+      assert.equal(h.started.length, 1, 'never built twice');
+      await expectProblem(await h.post('/evidence-packs', { ...PACK_BODY, to: '2026-10-13T09:09:00.000Z' }, PAW, key), 409, 'ATTESTA_API_CONFLICT');
+      await expectProblem(await h.post('/evidence-packs', { ...PACK_BODY, mode: 'repository_only' }, PAW, key), 409, 'ATTESTA_API_CONFLICT');
+      assert.equal(packStore.jobs.length, 1);
+      // Keys are per tenant: B may use the same key for its own job.
+      const b = await h.post('/evidence-packs', PACK_BODY, { tenant: PB, sub: 'auditor-b' }, key);
+      assert.equal(b.status, 202);
+      assert.notEqual((await b.json() as { id: string }).id, first.id);
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('Company A/B: B cannot read, download or replay A\'s pack (the same 404 as an unknown id)', async () => {
+    const { h, packs } = await packHarness();
+    try {
+      const { id } = await (await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'a-only-0001' })).json() as { id: string };
+      await runEvidencePack(packs, PA, id);
+      const b = { tenant: PB, sub: 'auditor-b' };
+      const unknown = '44444444-0000-4000-8000-000000000004';
+      for (const path of [`/evidence-packs/${id}`, `/evidence-packs/${id}/content`]) {
+        const theirs = await expectProblem(await h.get(path, b), 404, 'ATTESTA_API_NOT_FOUND');
+        const none = await expectProblem(await h.get(path.replace(id, unknown), PAW), 404, 'ATTESTA_API_NOT_FOUND');
+        assert.equal(theirs.title, none.title);
+      }
+      assert.ok(!packs.store.audits.some((a) => a.tenantId === PB), 'nothing was audited for B');
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('every header, body and path is validated before the store; bounds: repository, size, open jobs', async () => {
+    const { h, packStore } = await packHarness();
+    try {
+      const k = (v: string) => ({ 'Idempotency-Key': v });
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW), 400, 'ATTESTA_API_INVALID_QUERY');
+      for (const bad of ['short', 'has space-1', 'x'.repeat(65)]) await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, k(bad)), 400, 'ATTESTA_API_INVALID_QUERY');
+      for (const body of [{}, { ...PACK_BODY, extra: 1 }, { ...PACK_BODY, to: '2026-10-13T11:59:00Z' }, { ...PACK_BODY, mode: 'all' },
+        { ...PACK_BODY, repository_id: '99999999-0000-4000-8000-000000000009' }]) {
+        await expectProblem(await h.post('/evidence-packs', body, PAW, k('bad-body-01')), 400, 'ATTESTA_API_INVALID_QUERY');
+      }
+      await expectProblem(await h.post('/evidence-packs?x=1', PACK_BODY, PAW, k('bad-query-1')), 400, 'ATTESTA_API_INVALID_QUERY');
+      for (const path of ['/evidence-packs/not-a-uuid', '/evidence-packs/%E0%A4%A', '/evidence-packs/AAAAAAAA-0000-4000-8000-000000000001/content',
+        '/evidence-packs/44444444-0000-4000-8000-000000000004?x=1']) {
+        await expectProblem(await h.get(path, PAW), 400, 'ATTESTA_API_INVALID_QUERY');
+      }
+      assert.equal(packStore.jobs.length, 0, 'nothing reached the store');
+      packStore.segmentSize = async () => 50_001;
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, k('too-large-1')), 400, 'ATTESTA_API_INVALID_QUERY');
+      delete (packStore as Partial<MemoryPackStore>).segmentSize;
+      for (let i = 0; i < MAX_OPEN_PACKS; i++) assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, k(`open-job-${i}`))).status, 202);
+      const limited = await h.post('/evidence-packs', PACK_BODY, PAW, k('open-job-x'));
+      await expectProblem(limited, 429, 'ATTESTA_API_RATE_LIMITED');
+      assert.equal(limited.headers.get('retry-after'), '30');
+      // A replay is still answered while the tenant is at its bound.
+      assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, k('open-job-0'))).status, 202);
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('a failed audit write still starts the created job (never stranded); stranded jobs do not count toward the bound', async () => {
+    const { h, packStore } = await packHarness();
+    try {
+      packStore.audit = async () => { throw new Error('audit table down'); };
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'audit-fail-1' }), 500, 'ATTESTA_API_INTERNAL');
+      assert.equal(packStore.jobs.length, 1);
+      assert.deepEqual(h.started, [{ tenantId: PA, packId: packStore.jobs[0].id }]);
+      delete (packStore as Partial<MemoryPackStore>).audit;
+      // Four queued jobs left behind by a crash: after a lease they no longer hold the tenant at 429.
+      for (let i = 0; i < 3; i++) assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': `stranded-${i}0` })).status, 202);
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'stranded-x0' }), 429, 'ATTESTA_API_RATE_LIMITED');
+      packStore.clock += 600_001;
+      assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'stranded-y0' })).status, 202);
+      assert.equal((await packStore.runnable(10)).length, 5, 'the stranded jobs stay runnable by attesta:pack');
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('content: a stored file that changed or vanished is a 500, never a download; no sink is a 503', async () => {
+    const { h, packs, sink } = await packHarness();
+    try {
+      const { id } = await (await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'tamper-0001' })).json() as { id: string };
+      await runEvidencePack(packs, PA, id);
+      const ref = [...sink.files.keys()][0];
+      sink.files.set(ref, sink.files.get(ref)!.replace('"pending"', '"anchored"'));
+      await expectProblem(await h.get(`/evidence-packs/${id}/content`, PAW), 500, 'ATTESTA_API_INTERNAL');
+      sink.files.delete(ref);
+      await expectProblem(await h.get(`/evidence-packs/${id}/content`, PAW), 500, 'ATTESTA_API_INTERNAL');
+      packs.sink = () => null as never;
+      await expectProblem(await h.get(`/evidence-packs/${id}/content`, PAW), 503, 'ATTESTA_API_UNAVAILABLE');
+      assert.ok(!packs.store.audits.some((a) => a.action === 'attesta.export.download'), 'a failed download is not a download');
+      assert.ok(h.logs.every((l) => !l.includes('pending')), 'logs carry codes only');
+    } finally {
+      await h.close();
+    }
+  });
+});
+
+describe('verify with published keys (Task15i2)', () => {
+  test('publishedKeySource: every key the tenant ever had; none → null (not checked, never "unknown key")', async () => {
+    const w = await trustWorld();
+    const source = publishedKeySource(() => w.store);
+    const a = await source(PA);
+    assert.deepEqual(a?.map((k) => k.keyid), [w.k.a1.keyid]);
+    assert.equal(await source('dddddddd-0000-4000-8000-00000000000d'), null);
+  });
+
+  test('a chain signed with the tenant\'s published key verifies ok (signatures checked); another tenant\'s keys do not', async () => {
+    const w = await trustWorld();
+    const chain = buildFixtureChain(PA, w.k.a1);
+    const keys = await publishedKeySource(() => w.store)(PA);
+    const asMap = (list: typeof keys) => Object.fromEntries((list ?? []).map((k) => [k.keyid, k.publicKey]));
+    const rows = chain.records.map((r) => ({
+      seq: r.seq, tenantId: PA, prevHash: r.prevHash, recordHash: r.recordHash, canonicalRecord: r.canonicalRecord, recordedAt: r.recordedAt,
+      recordKind: 'statement', statementDigest: r.statementDigest, predicateType: 'https://trackai.dev/attesta/ai-provenance/v1',
+      statementKind: 'commit_observed', repositoryId: r.repositoryId, subjectSha: JSON.parse(r.canonicalRecord).subject_sha as string,
+      outboxSubjectId: null, statementCanonical: r.statementCanonicalAll, envelope: r.envelopeAll, envelopeKeyid: r.envelopeAll.signatures[0].keyid,
+      envelopePayloadType: r.envelopeAll.payloadType, envelopeSignatureB64: r.envelopeAll.signatures[0].sig,
+    }));
+    const head = { next_seq: rows.length, head_hash: rows[rows.length - 1].recordHash };
+    const ok = await verifyChainRows(rows, { tenantId: PA, fromSeq: 0, toSeq: rows.length - 1, head, keys: asMap(keys) });
+    assert.equal(ok.ok, true);
+    assert.equal(ok.signatures, 'checked');
+    const wrong = await verifyChainRows(rows, { tenantId: PA, fromSeq: 0, toSeq: rows.length - 1, head, keys: asMap(await publishedKeySource(() => w.store)(PB)) });
+    assert.equal(wrong.ok, false);
+    assert.ok(wrong.breaks.every((b) => b.detail_code === 'ATTESTA_VERIFY_KEY_UNKNOWN'));
   });
 });
