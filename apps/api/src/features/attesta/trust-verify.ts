@@ -10,7 +10,7 @@
  * TR-1): three states, UNKNOWN never CLEAN, stale or future-dated sources UNKNOWN.
  * New (reasons in trust.md "Provenance"): purposes and audiences, TUF-style root
  * chain by threshold of old and new keys, forward-only key sets, compromise bound
- * to time evidence over the exact payload, customer pins.
+ * to time evidence over this exact signature (or this tenant's ledger statement), customer pins.
  */
 import { sha256Prefixed } from './canonical';
 import { pae } from './dsse';
@@ -282,13 +282,17 @@ function verifyKeysets(c: Checked, root: ParsedDocument): ParsedDocument {
       if (d.body.version !== prev.body.version + 1) throw new Stop('ATTESTA_TRUST_DOCUMENT_UNAVAILABLE');
       if (d.body.previous !== prev.digest) throw new Stop('ATTESTA_TRUST_DOCUMENT_CONFLICT');
     }
-    checkKeysetSignature(d, root, c);
     if (i > 0) {
       const regression = forwardOnlyViolation(ordered[i - 1], d);
       if (regression) throw new Stop(regression);
     }
   }
+  // Only the newest needs a signer valid under the current root: each `previous`
+  // digest authenticates the one before, so older history stays valid after its
+  // tenant_keyset key is retired or compromised (and forged history still needs a
+  // currently valid key to sign the newest).
   const newest = ordered[ordered.length - 1];
+  checkKeysetSignature(newest, root, c);
   checkNotExpired(newest, c);
   return newest;
 }
