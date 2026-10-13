@@ -11,8 +11,8 @@ Branch `task/Task15i3-attesta-verify-keys-resume` (base: `main` at `9fd6740`). C
 | Scope | Migration 0021 `attesta_anchor_resumes`, `attesta:anchor-resume` CLI, worker resume rule | ✅ |
 | Scope | Contract: errors.md code, api.md `/verify` row, tables.md table and rule (additive) | ✅ |
 | Quality | `npm test` 815 pass (791 → 815), typecheck, lint, `drizzle-kit check` | ✅ |
-| Integration | IT-T15i3-01…04 added; IT-T15i, IT-T15i2, IT-T15f2 re-run | 🟡 agent sandbox, ⬜ founder run (blocking the merge) |
-| Review | Review subagent: 2 must-fix + 4 should-fix, all fixed (Deviations 3–5); cross-agent review pending | 🟡 |
+| Integration | IT-T15i3-01…04 added; IT-T15i, IT-T15i2, IT-T15f2 re-run | ✅ founder run 2026-10-13 (agent-verified the same day) |
+| Review | Review subagent: 2 must-fix + 4 should-fix, all fixed (Deviations 3–5); Muse cross-review: ready to push, no fixes | ✅ |
 
 ## Implemented interfaces
 ```
@@ -54,17 +54,17 @@ SushiCorp @ `0bd67a5`: `core/trust/revocation.py` (catalog TR-1: unknown is neve
 - **Worker and CLI:** resume → retry with backoff → stopped again → resumed → anchored; dry run, apply, every refusal, two resumes per stop, a race lost to the guard, terminal-then-retryable, argument validation.
 
 ## Integration test impact
-> **FOUNDER:** blocking the Task15i3 merge. Prerequisites: PostgreSQL 16 with pgvector (Docker or local). Expected: 4 + 3 + 3 + 4 passed, about 2 minutes.
+> ~~**FOUNDER:** blocking the Task15i3 merge.~~ Done 2026-10-13: all passed. Prerequisites: PostgreSQL 16 with pgvector (Docker or local). Expected: 4 + 3 + 3 + 4 passed, about 2 minutes.
 > ```bash
 > scripts/it-db.sh npm run verify:task15i3-verify-keys-resume-live -w apps/api
 > ```
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15i3-01 | Rotation with `attesta:keys`: the old key's anchored statements stay ok; a statement the retired key signs afterwards is `KEY_NOT_VALID_AT`, before and after anchoring | Blocking: merge | 🟡 agent-verified · ⬜ founder run |
-| IT-T15i3-02 | `revoke compromised --compromised-since`: anchored before → ok, after → break | Blocking: merge | 🟡 · ⬜ |
-| IT-T15i3-03 | `LOG_REJECTED` stop → CLI dry run and apply (audited) → anchored. Second resume refused (CLI, API role, RLS role, REPEATABLE READ); new stop needs a new resume, also behind a retryable failure; no audit → refused at COMMIT; `created_at` stamped; append-only | Blocking: merge | 🟡 · ⬜ |
-| IT-T15i3-04 | Company A/B: A cannot resume B's batch (CLI, store, API role, RLS role; same refusal as an unknown batch); windows only from the tenant's own key set | Blocking: merge | 🟡 · ⬜ |
+| IT-T15i3-01 | Rotation with `attesta:keys`: the old key's anchored statements stay ok; a statement the retired key signs afterwards is `KEY_NOT_VALID_AT`, before and after anchoring | Blocking: merge | ✅ founder run 2026-10-13 |
+| IT-T15i3-02 | `revoke compromised --compromised-since`: anchored before → ok, after → break | Blocking: merge | ✅ founder run 2026-10-13 |
+| IT-T15i3-03 | `LOG_REJECTED` stop → CLI dry run and apply (audited) → anchored. Second resume refused (CLI, API role, RLS role, REPEATABLE READ); new stop needs a new resume, also behind a retryable failure; no audit → refused at COMMIT; `created_at` stamped; append-only | Blocking: merge | ✅ founder run 2026-10-13 |
+| IT-T15i3-04 | Company A/B: A cannot resume B's batch (CLI, store, API role, RLS role; same refusal as an unknown batch); windows only from the tenant's own key set | Blocking: merge | ✅ founder run 2026-10-13 |
 
 Regressions re-run in the sandbox: IT-T15i-01…03, IT-T15i2-01…03, IT-T15f-01…04 passed.
 ## Integration notes
