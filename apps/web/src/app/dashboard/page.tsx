@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { AttestaWorkspace } from './attesta-workspace';
 import { AttestationCard } from './attestation-card';
 import { EvidenceWorkspace } from './evidence-workspace';
 import { FleetWorkspace } from './fleet-workspace';
@@ -190,7 +191,7 @@ type AdminResources = {
   exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit';
+type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit' | 'attestation';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
@@ -202,15 +203,16 @@ const adminNavigation: Array<{ id: AdminSection; label: string; description: str
   { id: 'operations', label: 'Operations', description: 'Evidence health and retention' },
   { id: 'findings', label: 'Security findings', description: 'Monitor-only observations' },
   { id: 'audit', label: 'Security audit', description: 'Who changed what' },
+  { id: 'attestation', label: 'Attestation', description: 'Verify the signed ledger and export evidence' },
 ];
 
 function isTask4VerificationRepository(repository: Repository): boolean {
   return repository.name.startsWith('task4-wave4-matrix-');
 }
 
-function AdminPanel({ context, resources, loading, error, onChanged }: {
+function AdminPanel({ context, resources, loading, error, onChanged, repositories }: {
   context: AdminContext | null; resources: AdminResources | null; loading: boolean;
-  error: string | null; onChanged: () => void;
+  error: string | null; onChanged: () => void; repositories: Repository[];
 }) {
   const active = context?.membership?.status === 'active';
   const canManageFleet = active && context?.membership?.role === 'tenant_admin';
@@ -624,6 +626,7 @@ function AdminPanel({ context, resources, loading, error, onChanged }: {
         {securityFindings && <TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{securityFindings.findings.length ? securityFindings.findings.map(finding => { const repository = resources.repositories?.repositories.find(row => row.id === finding.repositoryId); return <tr key={finding.id}><td className="px-5 py-4 text-slate-500">{date(finding.occurredAt)}</td><td className="px-5 py-4"><div className="font-medium text-white">{finding.ruleId.replace('trackai.exec.', '').replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">Version {finding.ruleVersion} · {finding.phase.replace('_', ' ')}</div></td><td className="px-5 py-4"><Badge tone={finding.ruleSeverity === 'critical' ? 'amber' : 'violet'}>{finding.ruleSeverity}</Badge></td><td className="px-5 py-4 text-slate-400">{repository?.name ?? finding.repositoryId.slice(0, 8)}</td><td className="px-5 py-4 text-slate-400">{finding.operatingSystem}</td><td className="px-5 py-4"><Badge tone="slate">Monitor only</Badge></td></tr>; }) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No monitor findings have been received for this tenant.</td></tr>}</TableShell>}
       </section>}
       {adminSection === 'audit' && <section><div className="mb-4"><h2 className="font-semibold text-white">Security audit</h2><p className="mt-1 text-sm text-slate-500">Immutable history of administrative security changes. Revoking a resource does not erase its earlier entries.</p></div><TableShell headers={['Time', 'Action', 'Actor type', 'Target']}>{resources.audit.events.map((event) => <tr key={event.id}><td className="px-5 py-4 text-slate-500">{date(event.occurredAt)}</td><td className="px-5 py-4 font-medium text-white">{event.action}</td><td className="px-5 py-4 text-slate-400">{event.actorType}</td><td className="px-5 py-4 text-slate-500">{event.targetType}</td></tr>)}</TableShell></section>}
+      {adminSection === 'attestation' && <section className="space-y-4"><AttestaWorkspace repositories={repositories} /></section>}
     </>}
   </div>;
 }
@@ -772,7 +775,7 @@ export default function DashboardPage() {
           {repositories.filter((row) => matches([row.name, row.url, row.provider])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4">{row.provider}</td><td className="px-5 py-4 text-slate-400"><a href={row.url} target="_blank" rel="noreferrer" className="hover:text-violet-300">{row.normalizedUrl ?? row.url}</a></td><td className="px-5 py-4 text-slate-500">{row.externalId}</td></tr>)}</TableShell>}
         {view === 'contributors' && <TableShell headers={['Contributor', 'Email', 'Repository', 'Machine']}>
           {contributors.filter((row) => matches([row.name, row.email])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4 text-slate-400">{row.email ?? 'Not provided by GitHub'}</td><td className="px-5 py-4">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-500">{row.machineId ?? '—'}</td></tr>)}</TableShell>}
-        {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} />}
+        {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} repositories={repositories} />}
       </section>
     </main>
     <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} attestaSubject={attestaSubject} />
