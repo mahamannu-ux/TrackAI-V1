@@ -66,6 +66,11 @@
       "name": "attacker2",
       "keyid": "sha256:01353d94e39fb93a6559a89454681a0450fc9ccde314ced123beafc8ea710fb8",
       "spki_der_b64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhoST/v4o5Ct1EYOPx3REyexOM5hH0S9CRbnR9QQou/h/234gCdyHO+Sbs88mK0USTMJHyjdW9UsShA5z09NbCQ=="
+    },
+    {
+      "name": "keyset2",
+      "keyid": "sha256:f7b340215a55ce7b7159d008cf9717402eabb6a62eb198fabc863ace307826cc",
+      "spki_der_b64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+KxdRS9SSlvh0hzY9lN9M09XTjMs31VHvv3pFqzT4xYJ4183pRtYtZDxm/4aCc2KNDcRIWW/ke+OaY4LdUWJSw=="
     }
   ]
 }

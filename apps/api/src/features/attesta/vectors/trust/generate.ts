@@ -44,7 +44,7 @@ function testKey(name: string): TestKey {
 
 const K = Object.fromEntries(
   ['root1', 'root2', 'anchor1', 'lease1', 'fleet1', 'policy1', 'release1', 'keyset1',
-    'stmtA1', 'stmtA2', 'stmtB1', 'attacker', 'attacker2'].map((n) => [n, testKey(n)]),
+    'stmtA1', 'stmtA2', 'stmtB1', 'attacker', 'attacker2', 'keyset2'].map((n) => [n, testKey(n)]),
 ) as Record<string, TestKey>;
 
 function signBytes(key: TestKey, bytes: Buffer): Buffer {
@@ -133,6 +133,14 @@ const R3_FAKE = signDoc(ROOT_PT, rootBody(3, '2026-10-14T00:00:00.000Z', '2027-1
   1, [...ONLINE(), entry(K.attacker2, 'release')]), [K.attacker]);
 const R2_RELEASE_COMPROMISED = signDoc(ROOT_PT, rootBody(2, KSA3_ISSUED, '2027-10-18T00:00:00.000Z', R1.digest, [entry(K.root1, 'root')], 1,
   ONLINE().map((e) => (e.purpose === 'release' ? { ...e, status: 'revoked', revoked_at: KSA3_ISSUED, revocation_reason: 'compromised', compromised_since: '2026-10-17T00:00:00.000Z' } : e))), [K.root1]);
+const R2_KEYSET_COMPROMISED = signDoc(ROOT_PT, rootBody(2, KSA3_ISSUED, '2027-10-18T00:00:00.000Z', R1.digest, [entry(K.root1, 'root')], 1,
+  [...ONLINE().map((e) => (e.purpose === 'tenant_keyset' ? { ...e, status: 'revoked', revoked_at: KSA3_ISSUED, revocation_reason: 'compromised', compromised_since: '2026-10-17T00:00:00.000Z' } : e)),
+    entry(K.keyset2, 'tenant_keyset')]), [K.root1]);
+const KSA3_BY_KEYSET2 = signDoc(KEYSET_PT, keysetBody(TENANT_A, 3, '2026-10-19T00:00:00.000Z', '2026-11-18T00:00:00.000Z', KSA2.digest,
+  [A1(A1_RETIRED), A2()]), [K.keyset2]);
+const R1_TOO_LONG = signDoc(ROOT_PT, rootBody(1, NB, '2027-10-02T00:00:00.001Z', null, [entry(K.root1, 'root')]), [K.root1]);
+const R1_SHORT_ROOT_KEY = signDoc(ROOT_PT, rootBody(1, NB, NA, null, [entry(K.root1, 'root', { not_after: '2026-10-05T00:00:00.000Z' })]), [K.root1]);
+const R2_AFTER_SHORT = signDoc(ROOT_PT, rootBody(2, '2026-10-06T00:00:00.000Z', '2027-10-06T00:00:00.000Z', R1_SHORT_ROOT_KEY.digest, [entry(K.root2, 'root')]), [K.root1, K.root2]);
 const KSB1 = signDoc(KEYSET_PT, keysetBody(TENANT_B, 1, '2026-10-10T00:00:00.000Z', '2026-11-09T00:00:00.000Z', null,
   [entry(K.stmtB1, 'statement')]), [K.keyset1]);
 
@@ -272,6 +280,15 @@ add('input-two-signatures', 'Two signatures on the artifact.', envelopeOf(IN_TOT
 add('input-statement-audience-platform', 'Purpose statement with audience platform.', stmtBy(K.stmtA2), { audience: 'platform' }, 'rejected', 'ATTESTA_TRUST_INPUT_INVALID');
 add('input-release-audience-tenant', 'Purpose release with a tenant audience.', artBy(K.release1), { purpose: 'release', audience: TENANT_A }, 'rejected', 'ATTESTA_TRUST_INPUT_INVALID');
 add('input-purpose-root', 'Purpose root is for documents only.', artBy(K.root1), { purpose: 'root' }, 'rejected', 'ATTESTA_TRUST_INPUT_INVALID');
+
+// Review round 2: recovery after a tenant_keyset compromise, and coverage
+const KC = { root_documents: [R1.env, R2_KEYSET_COMPROMISED.env] };
+add('keyset-recovery-fresh', 'tenant_keyset key compromised; v3 signed by the new keyset key: history stays valid through previous links.', stmtBy(K.stmtA2), { state: { ...KC, keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_BY_KEYSET2.env] } } }, 'verified', OK, { trusted: T({ platform: [R2_KEYSET_COMPROMISED, 2], [TENANT_A]: [KSA3_BY_KEYSET2, 3] }) });
+add('keyset-recovery-anchored', 'Same, for a verifier anchored at key set v2.', stmtBy(K.stmtA2), { state: { ...KC, last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA2.env, KSA3_BY_KEYSET2.env] } } }, 'verified', OK);
+add('keyset-newest-by-compromised-keyset-key', 'tenant_keyset key compromised and no newer key set yet: the newest is not vouched for.', stmtBy(K.stmtA2), { state: { ...KC, keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env] } } }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
+add('compromised-statement-signature-evidence', 'Statement key compromised; time evidence over this very signature before compromised_since.', stmtBy(K.stmtA2), { state: COMPROMISED, timeEvidence: evSig('2026-10-16T12:00:00.000Z', stmtBy(K.stmtA2)) }, 'verified', OK);
+add('root-lifetime-too-long', 'Root document expires more than 366 days after issued_at.', artBy(K.release1), { purpose: 'release', state: { root_documents: [R1_TOO_LONG.env] } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_MALFORMED');
+add('root-signer-outside-validity', 'Root v2 signed by root1 after root1\'s not_after.', artBy(K.release1), { purpose: 'release', state: { root_documents: [R1_SHORT_ROOT_KEY.env, R2_AFTER_SHORT.env] } }, 'rejected', 'ATTESTA_TRUST_THRESHOLD_NOT_MET');
 
 export function buildVectorFiles(): Map<string, string> {
   const files = new Map<string, string>();
