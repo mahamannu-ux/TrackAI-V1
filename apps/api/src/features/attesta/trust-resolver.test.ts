@@ -85,7 +85,7 @@ async function kmsWorld(production: boolean) {
   await reg(null, 'keyset', 'tenant_keyset');
   const sign = (body: TrustDocumentBody) => signTrustDocument(body, [{ keyid: k.root.keyid,
     sign: (b: Buffer) => cryptoSign('sha256', b, { key: k.root.priv, dsaEncoding: 'der' }) }]);
-  await importRoot(ctx, await sign((await exportRootDraft(ctx, { rootSpkis: [k.root.spki] })).body), 1);
+  await importRoot(ctx, await sign((await exportRootDraft(ctx, { rootSpkis: [k.root.spki], add: [k.anchor.keyid, k.keyset.keyid] })).body), 1);
   const activate = async (tenantId: string, keyid: string) => {
     const plan = await planTenantKeyCommand(ctx, 'activate', { tenantId, keyid });
     await applyTenantKeyCommand(ctx, 'activate', { tenantId, keyid }, plan.expect);
@@ -136,7 +136,8 @@ test('platformSigner: the latest root decides; every missing piece fails closed'
   assert.deepEqual([s.credentialId, s.keyid], ['aws-kms:anchor', w.k.anchor.keyid]);
   await assert.rejects(platformSigner(w.store, w.adapters, 'release', w.config, { now: w.now }), /lists no active release key/);
   await assert.rejects(platformSigner(w.store, {}, 'anchor', w.config, { now: w.now }), /not configured/);
-  await assert.rejects(platformSigner(w.store, w.adapters, 'anchor', { ...w.config, pinnedRootKeyids: [] }, { now: w.now }), /required in production/);
+  await assert.rejects(platformSigner(w.store, w.adapters, 'anchor', { ...w.config, pinnedRootKeyids: [] }, { now: w.now }), /ATTESTA_TRUST_ROOT_KEYIDS is required/);
+  await assert.rejects(platformSigner(w.store, w.adapters, 'anchor', { pinnedRootKeyids: [], production: false }, { now: w.now }), /ATTESTA_TRUST_ROOT_KEYIDS is required/);
   await assert.rejects(platformSigner(w.store, w.adapters, 'anchor', w.config, { now: () => new Date(T0 + 400 * DAY) }), /DOCUMENT_EXPIRED/);
   await assert.rejects(platformSigner(memoryTrustStore(), w.adapters, 'anchor', w.config, { now: w.now }), /no root document/);
   await assert.rejects(platformSigner(w.store, w.adapters, 'statement' as never, w.config, { now: w.now }), /not a platform purpose/);
@@ -224,4 +225,16 @@ test('anchor-env production branch: platformSigner(anchor) from the inventory, f
   const swapped: SigningAdapter = new KmsSigner({ provider: w.kms, credentials: [{ ...kmsCredential('anchor', ATTESTA_PLATFORM_TENANT_ID, w.k.b1), keyReference: 'ref-b1' }] });
   const bad = await platformAnchorSignerFromEnv(env, { store: w.store, adapters: { 'kms-aws': swapped }, now: w.now });
   await assert.rejects(bad.sign(Buffer.from('root')), /refused to sign|signer/);
+});
+
+test('a running anchor signer follows the latest root: a revoked anchor key stops signing at once', async () => {
+  const w = await kmsWorld(true);
+  const env = { NODE_ENV: 'production', ATTESTA_TRUST_ROOT_KEYIDS: w.k.root.keyid };
+  const signer = await platformAnchorSignerFromEnv(env, { store: w.store, adapters: w.adapters, now: w.now });
+  assert.ok((await signer.sign(Buffer.from('root-1'))).length > 0);
+  w.advance(60_000);
+  const draft = await exportRootDraft(w.ctx, { revoke: [w.k.anchor.keyid], reason: 'compromised', compromisedSince: w.now().toISOString() });
+  await importRoot(w.ctx, await w.sign(draft.body), 2);
+  await assert.rejects(signer.sign(Buffer.from('root-2')), (e: unknown) => e instanceof Error && (e as { code?: string }).code === 'ATTESTA_SIGNER_REJECTED');
+  await assert.rejects(signer.publicKeySpkiDer(), (e: unknown) => (e as { code?: string }).code === 'ATTESTA_SIGNER_REJECTED');
 });

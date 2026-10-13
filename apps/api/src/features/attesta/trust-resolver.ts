@@ -10,7 +10,7 @@
  *                            what verify-chain (A15.9 / 15i2) checks signatures with
  *   adaptersFromEnv          KMS adapters from ATTESTA_KMS_CREDENTIALS_FILE (references
  *                            only, no secrets); the dev signer outside production
- *   trustConfigFromEnv       ATTESTA_TRUST_ROOT_KEYIDS (comma-separated; required in production)
+ *   trustConfigFromEnv       ATTESTA_TRUST_ROOT_KEYIDS (comma-separated; required wherever a root is imported or a platform key signs)
  *
  * Every returned adapter is pinned to the public key registered for the credential
  * (trust-inventory.ts `pinnedAdapter`): a credentials file or KMS key swapped after

@@ -8,7 +8,7 @@
  *   npm run attesta:keys -w apps/api -- revoke   --tenant <uuid> --keyid <sha256:…> --reason superseded|compromised [--compromised-since <iso>]
  *   npm run attesta:keys -w apps/api -- publish  (--tenant <uuid> | --all-tenants)
  *   npm run attesta:keys -w apps/api -- export-root-draft --out <draft.json> [--previous-out <root.json>]
- *        [--retire <keyid>]… [--revoke <keyid>… --reason … [--compromised-since <iso>]] [--root-pub <pem>… --threshold k]
+ *        [--add <registered platform keyid>]… [--retire <keyid>]… [--revoke <keyid>… --reason … [--compromised-since <iso>]] [--root-pub <pem>… --threshold k]
  *   npm run attesta:keys -w apps/api -- import-root --file <signed root.json>
  *   npm run attesta:keys -w apps/api -- list [--tenant <uuid>]
  *
@@ -111,7 +111,7 @@ const ALLOWED: Record<string, string[]> = {
   retire: ['tenant', 'keyid'],
   revoke: ['tenant', 'keyid', 'reason', 'compromised-since'],
   publish: ['tenant', 'all-tenants'],
-  'export-root-draft': ['out', 'previous-out', 'retire', 'revoke', 'reason', 'compromised-since', 'root-pub', 'threshold'],
+  'export-root-draft': ['out', 'previous-out', 'add', 'retire', 'revoke', 'reason', 'compromised-since', 'root-pub', 'threshold'],
   'import-root': ['file'],
   list: ['tenant'],
 };
@@ -242,11 +242,11 @@ async function run(io: KeysCliIo, command: string, opts: Map<string, string[]>, 
       const threshold = one(opts, 'threshold', false);
       const reason = one(opts, 'reason', false);
       if (reason !== undefined && reason !== 'superseded' && reason !== 'compromised') throw new KeysCliError('--reason must be superseded or compromised');
-      for (const k of [...(opts.get('retire') ?? []), ...(opts.get('revoke') ?? [])]) {
-        if (!DIGEST_RE.test(k)) throw new KeysCliError('--retire / --revoke take sha256:<64 hex> keyids');
+      for (const k of [...(opts.get('add') ?? []), ...(opts.get('retire') ?? []), ...(opts.get('revoke') ?? [])]) {
+        if (!DIGEST_RE.test(k)) throw new KeysCliError('--add / --retire / --revoke take sha256:<64 hex> keyids');
       }
       const draft = await exportRootDraft(ctx, {
-        retire: opts.get('retire'), revoke: opts.get('revoke'), reason: reason as 'superseded' | 'compromised' | undefined,
+        add: opts.get('add'), retire: opts.get('retire'), revoke: opts.get('revoke'), reason: reason as 'superseded' | 'compromised' | undefined,
         compromisedSince: isoArg(opts, 'compromised-since'),
         rootSpkis: (opts.get('root-pub') ?? []).map((p) => spkiFromPem(io, p)),
         threshold: threshold === undefined ? undefined : Number(threshold),

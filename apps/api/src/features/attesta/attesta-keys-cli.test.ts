@@ -88,7 +88,7 @@ test('the full procedure through the CLI: dry runs change nothing; applied runs 
   await h.apply('register', '--adapter', 'local-dev', '--credential', 'dev:anchor-cred', '--purpose', 'anchor');
   await h.apply('register', '--adapter', 'local-dev', '--credential', 'dev:keyset-cred', '--purpose', 'tenant_keyset');
   // root v1: export the draft, sign offline, import
-  const draft = await h.cli('export-root-draft', '--out', '/w/draft1.json', '--root-pub', '/k/root.pub');
+  const draft = await h.cli('export-root-draft', '--out', '/w/draft1.json', '--root-pub', '/k/root.pub', '--add', h.k.anchor.keyid, '--add', h.k.keyset.keyid);
   assert.equal(draft.code, 0, draft.err);
   assert.match(draft.out, /draft root version 1/);
   assert.equal(await rootMain(['sign', '--draft', '/w/draft1.json', '--key', '/k/root.pem', '--out', '/w/root1.json'], h.rootIo), 0);

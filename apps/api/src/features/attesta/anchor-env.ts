@@ -12,7 +12,8 @@
  *   ATTESTA_TSA_ANCHORS_FILE          PEM bundle the TSA certificate must chain to
  *
  * In production the platform anchoring key comes from the trust inventory (Task15l2):
- * the `anchor` key the latest imported root document lists active, through the KMS
+ * the `anchor` key the latest imported root document lists active (re-resolved on
+ * every call, so a rotation or revocation takes effect at once), through the KMS
  * adapters of ATTESTA_KMS_CREDENTIALS_FILE, with the root chain checked from
  * ATTESTA_TRUST_ROOT_KEYIDS (trust-resolver.ts `platformSigner`). No such key → the
  * worker does not start (fail closed). ATTESTA_ANCHOR_CREDENTIAL_ID and the dev key
@@ -21,7 +22,7 @@
 import type { KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type * as pkijs from 'pkijs';
-import { ATTESTA_PLATFORM_TENANT_ID, anchorSignerFromAdapter, isProduction, type AnchorSigner, type FetchLike } from './anchor-contract';
+import { ATTESTA_PLATFORM_TENANT_ID, AnchorError, anchorSignerFromAdapter, isProduction, type AnchorSigner, type FetchLike } from './anchor-contract';
 import { DualAnchor, type StoredAnchorKeys } from './anchor-dual';
 import { RekorAnchor, loadLogPublicKey } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
@@ -100,24 +101,45 @@ export interface PlatformAnchorDeps {
 }
 
 /**
- * Production: the `anchor` platform key from the trust inventory. Resolved once at
- * start (a root import that changes the anchor key takes effect on the next start).
- * Any missing piece (no pin, no root, no active anchor key in the latest root, no
- * adapter) → AnchorConfigError, so the worker does not start.
+ * Production: the `anchor` platform key from the trust inventory. Checked once at
+ * start, so a missing piece (no pin, no root, no active anchor key in the latest
+ * root, no adapter) is an AnchorConfigError and the worker does not start. Then
+ * resolved again for every call: after an `import-root` that retires, revokes or
+ * replaces the anchor key, a running worker never signs with the old key (a call
+ * that finds no authorized key fails with ATTESTA_SIGNER_REJECTED, which the worker
+ * retries with backoff while anchoring stays stopped).
  */
 export async function platformAnchorSignerFromEnv(env: NodeJS.ProcessEnv = process.env, deps: PlatformAnchorDeps = {}): Promise<AnchorSigner> {
+  let resolve: () => Promise<AnchorSigner>;
   try {
     const config = trustConfigFromEnv(env);
-    if (config.production && config.pinnedRootKeyids.length === 0) throw new AnchorConfigError('ATTESTA_TRUST_ROOT_KEYIDS is required in production');
+    if (config.pinnedRootKeyids.length === 0) throw new AnchorConfigError('ATTESTA_TRUST_ROOT_KEYIDS is required');
     const adapters = deps.adapters ?? await adaptersFromEnv(env, { read: deps.read ?? defaultRead });
     const store = deps.store ?? pgTrustStore((await import('../../core/db')).db as unknown as TrustDb);
-    const signer = await platformSigner(store, adapters, 'anchor', config, { now: deps.now });
-    return anchorSignerFromAdapter(signer.adapter, signer.credentialId);
+    resolve = async () => {
+      const signer = await platformSigner(store, adapters, 'anchor', config, { now: deps.now });
+      return anchorSignerFromAdapter(signer.adapter, signer.credentialId);
+    };
+    await resolve();
   } catch (err) {
     if (err instanceof AnchorConfigError) throw err;
     if (err instanceof TrustConfigError || err instanceof PlatformSignerError) throw new AnchorConfigError(err.message);
     throw new AnchorConfigError('the platform anchor key cannot be resolved from the trust inventory');
   }
+  const current = async (): Promise<AnchorSigner> => {
+    try {
+      return await resolve();
+    } catch (err) {
+      if (err instanceof PlatformSignerError) {
+        throw new AnchorError('ATTESTA_SIGNER_REJECTED', 'no anchor key is authorized by the latest root document', { cause: err });
+      }
+      throw new AnchorError('ATTESTA_SIGNER_UNAVAILABLE', 'the anchor key cannot be resolved from the trust inventory', { cause: err });
+    }
+  };
+  return {
+    publicKeySpkiDer: async () => (await current()).publicKeySpkiDer(),
+    sign: async (artifact) => (await current()).sign(artifact),
+  };
 }
 
 /**

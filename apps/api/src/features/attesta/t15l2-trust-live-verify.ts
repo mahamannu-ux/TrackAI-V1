@@ -189,14 +189,17 @@ async function makeWorld() {
   });
   const resolver = inventorySignerResolver(store, adapters);
   /** One new statement for `t`: Task2 ingestion → builder pass (inventory resolver) → anchor pass (inventory anchor key). */
-  const statement = async (t: Tenant): Promise<Rec> => {
+  const anchorNow = async (t: Tenant) => {
+    rekor.clock = Math.floor(Date.now() / 1000);
+    const anchored = await runAnchorPass(db, { anchor: await dual() }, { tenantId: t.tenantId, partialAfterMs: 0 });
+    check(anchored.batchesAnchored >= 1 && anchored.tenantErrors === 0, `anchor pass: ${JSON.stringify(anchored)}`);
+  };
+  const statement = async (t: Tenant, opts: { anchor?: boolean } = {}): Promise<Rec> => {
     const errors = await ingestMetricsBatch(t.tenantId, { v: 1, events: [commitEvent(t, sha())] });
     check(errors.length === 0, `${t.label}: ingestion`);
     const pass = await runBuilderPass(db, resolver, OPTIONS);
     check(pass.failed === 0 && pass.retried === 0 && pass.done >= 1, `builder pass: ${JSON.stringify(pass.codes)}`);
-    rekor.clock = Math.floor(Date.now() / 1000);
-    const anchored = await runAnchorPass(db, { anchor: await dual() }, { tenantId: t.tenantId, partialAfterMs: 0 });
-    check(anchored.batchesAnchored >= 1 && anchored.tenantErrors === 0, `anchor pass: ${JSON.stringify(anchored)}`);
+    if (opts.anchor !== false) await anchorNow(t);
     const recs = await records(t.tenantId);
     return recs[recs.length - 1];
   };
@@ -213,7 +216,7 @@ async function makeWorld() {
         keysetDocuments: { [audience]: await docs(audience) }, lastTrusted: {}, now: new Date().toISOString(), production: true },
     });
   };
-  return { a, b, k, dir, env, adapters, config, cli, apply, rotateRoot, statement, material, resolver, verifyStatement, docs };
+  return { a, b, k, dir, env, adapters, config, cli, apply, rotateRoot, statement, anchorNow, material, resolver, verifyStatement, docs };
 }
 
 type World = Awaited<ReturnType<typeof makeWorld>>;
@@ -223,7 +226,7 @@ type World = Awaited<ReturnType<typeof makeWorld>>;
 async function it01(w: World): Promise<Rec> {
   await w.apply('register', '--adapter', 'local-dev', '--credential', 'dev:anchor', '--purpose', 'anchor');
   await w.apply('register', '--adapter', 'local-dev', '--credential', 'dev:keyset', '--purpose', 'tenant_keyset');
-  const imp = await w.rotateRoot();
+  const imp = await w.rotateRoot('--add', w.k.anchor.keyid, '--add', w.k.keyset.keyid);
   check(/registered -> active/.test(imp.out), 'root import activates the platform keys');
   const reg = await w.apply('register', '--adapter', 'local-dev', '--credential', 'dev:a1', '--tenant', w.a.tenantId);
   check(/proof of possession verified/.test(reg.out), 'registration proved possession');
@@ -251,8 +254,13 @@ async function it01(w: World): Promise<Rec> {
 }
 
 async function it02(w: World, s1: Rec): Promise<{ s2: Rec }> {
-  await sleep(2500); // the anchor time of s1 lies before the rotation instant
   await w.apply('register', '--adapter', 'local-dev', '--credential', 'dev:a2', '--tenant', w.a.tenantId);
+  // A signed record that is not anchored yet blocks the rotation (it would never verify afterwards).
+  await w.statement(w.a, { anchor: false });
+  const blocked = await w.cli('activate', '--tenant', w.a.tenantId, '--keyid', w.k.a2.keyid, '--replace');
+  check(blocked.code === 1 && /1 ledger records signed by key .* are not anchored yet/.test(blocked.err), `rotation waits for anchoring: ${blocked.err}`);
+  await w.anchorNow(w.a);
+  await sleep(2500); // the anchor times lie before the rotation instant
   const rot = await w.apply('activate', '--tenant', w.a.tenantId, '--keyid', w.k.a2.keyid, '--replace');
   check(/active -> retired/.test(rot.out) && /registered -> active/.test(rot.out), 'activate --replace retires the old key in the same transaction');
   await w.apply('publish', '--tenant', w.a.tenantId);

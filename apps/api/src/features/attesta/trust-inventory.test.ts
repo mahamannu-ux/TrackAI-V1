@@ -100,7 +100,7 @@ function world() {
   async function bootstrap(): Promise<DsseEnvelope> {
     await reg(null, 'dev:anchor', 'anchor');
     await reg(null, 'dev:keyset', 'tenant_keyset');
-    const draft = await exportRootDraft(ctx, { rootSpkis: [k.root.spki] });
+    const draft = await exportRootDraft(ctx, { rootSpkis: [k.root.spki], add: [k.anchor.keyid, k.keyset.keyid] });
     const env = await offlineSign(draft.body);
     await importRoot(ctx, env, 1);
     return env;
@@ -326,7 +326,11 @@ test('platform keys become active only by importing a signed root that lists the
   // No CLI path: tenant commands never see platform keys, and nothing resolves before a root.
   await assert.rejects(w.activate(A, w.k.anchor.keyid), refusedWith(undefined, /no key/));
   await assert.rejects(resolvePlatformSigner(w.store, w.adapters, 'anchor', w.ctx.config, w.now()), /no root document/);
-  const draft = await exportRootDraft(w.ctx, { rootSpkis: [w.k.root.spki] });
+  const bare = await exportRootDraft(w.ctx, { rootSpkis: [w.k.root.spki] });
+  assert.equal(bare.body.keys.length, 1, 'nothing is added unless named');
+  assert.match(bare.lines.join('\n'), /2 registered platform key\(s\) not added/);
+  await assert.rejects(exportRootDraft(w.ctx, { rootSpkis: [w.k.root.spki], add: [w.k.a1.keyid] }), refusedWith(undefined, /--add .*not a registered platform key/));
+  const draft = await exportRootDraft(w.ctx, { rootSpkis: [w.k.root.spki], add: [w.k.anchor.keyid, w.k.keyset.keyid] });
   assert.equal(draft.previous, null);
   assert.match(draft.lines.join('\n'), /anchor .* active \(new\)/);
   // A draft signed by an online key (stolen credential) is not a root.
@@ -397,7 +401,8 @@ test('export-root-draft: refuses unknown or root keyids, root keys after version
   // Rotating the tenant_keyset key: new key registered, old revoked compromised.
   await w.reg(null, 'dev:keyset2', 'tenant_keyset');
   const since = new Date(T0 + 30 * 60_000).toISOString();
-  const draft = await exportRootDraft(w.ctx, { revoke: [w.k.keyset.keyid], reason: 'compromised', compromisedSince: since });
+  const draft = await exportRootDraft(w.ctx, { add: [w.k.keyset2.keyid], revoke: [w.k.keyset.keyid], reason: 'compromised', compromisedSince: since });
+  assert.match(draft.lines.join('\n'), /revoked \(was active\)/);
   const byId = new Map(draft.body.keys.map((k) => [k.keyid, k]));
   assert.equal(byId.get(w.k.keyset2.keyid)?.status, 'active');
   assert.deepEqual([byId.get(w.k.keyset.keyid)?.status, byId.get(w.k.keyset.keyid)?.compromised_since], ['revoked', since]);
@@ -462,7 +467,7 @@ test('publish: forward-only is checked before signing; a revoked tenant_keyset k
   await assert.rejects(publishKeyset(w.ctx, A), /lists no active tenant_keyset key/);
   w.advance(HOUR);
   await w.reg(null, 'dev:keyset2', 'tenant_keyset');
-  const draft3 = await exportRootDraft(w.ctx, {});
+  const draft3 = await exportRootDraft(w.ctx, { add: [w.k.keyset2.keyid] });
   await importRoot(w.ctx, await w.offlineSign(draft3.body), 3);
   await publishKeyset(w.ctx, A);
   const latest = parseTrustDocument((await w.store.documents(A))[1].envelope);
@@ -495,4 +500,70 @@ test('memory store: a failed transaction rolls back every write', async () => {
     throw new Error('boom');
   }), /boom/);
   assert.equal(JSON.stringify(w.store.state.events), before);
+});
+
+// ---------------------------------------------------------------------------
+// Review round 1 fixes
+// ---------------------------------------------------------------------------
+
+test('a key stops signing only once every record it signed is anchored (compromise excepted)', async () => {
+  const w = world();
+  await w.reg(A, 'dev:a1');
+  await w.activate(A, w.k.a1.keyid);
+  await w.reg(A, 'dev:a2');
+  w.store.state.unanchored = { [w.k.a1.keyid]: 3 };
+  for (const [command, cmd] of [
+    ['retire', { tenantId: A, keyid: w.k.a1.keyid }],
+    ['activate', { tenantId: A, keyid: w.k.a2.keyid, replace: true }],
+    ['revoke', { tenantId: A, keyid: w.k.a1.keyid, reason: 'superseded' }],
+  ] as const) {
+    await assert.rejects(planTenantKeyCommand(w.ctx, command, cmd), refusedWith(undefined, /3 ledger records signed by key .* are not anchored yet/));
+  }
+  // A compromise is never delayed: those records must not verify anyway.
+  const plan = await planTenantKeyCommand(w.ctx, 'revoke', { tenantId: A, keyid: w.k.a1.keyid, reason: 'compromised', compromisedSince: w.now().toISOString() });
+  assert.equal(plan.expect, 1);
+  w.store.state.unanchored = {};
+  await w.activate(A, w.k.a2.keyid, true);
+});
+
+test('apply is compare-and-set: a key changed after it was read is refused, nothing written', async () => {
+  const w = world();
+  const key = await w.reg(A, 'dev:a1');
+  const stale = { ...key };
+  await w.activate(A, w.k.a1.keyid);
+  await assert.rejects(w.store.transaction((tx) => tx.updateKey(stale, { status: 'revoked', revokedAt: w.now().toISOString(),
+    revocationReason: 'superseded', compromisedSince: null, notAfter: stale.notAfter })), refusedWith(undefined, /changed while this command ran/));
+  assert.equal(w.store.state.keys[0].status, 'active');
+});
+
+test('the reserved platform tenant is never a --tenant; root import needs a pin in development too', async () => {
+  const w = world();
+  await assert.rejects(registerKey(w.ctx, { tenantId: ATTESTA_PLATFORM_TENANT_ID, purpose: 'statement', adapterName: 'local-dev', credentialRef: 'dev:anchor' }),
+    refusedWith(undefined, /reserved platform tenant/));
+  await assert.rejects(planPublish(w.ctx, ATTESTA_PLATFORM_TENANT_ID), refusedWith(undefined, /reserved platform tenant/));
+  await w.reg(null, 'dev:anchor', 'anchor');
+  const draft = await exportRootDraft(w.ctx, { rootSpkis: [w.k.root.spki], add: [w.k.anchor.keyid] });
+  const env = await w.offlineSign(draft.body);
+  await assert.rejects(planRootImport({ ...w.ctx, config: { pinnedRootKeyids: [], production: false } }, env), refusedWith('ATTESTA_TRUST_ROOT_NOT_PINNED'));
+  // A self-signed root under another key is refused against the pin.
+  const rogue = await w.offlineSign({ ...draft.body, keys: [...draft.body.keys.filter((k) => k.purpose !== 'root'),
+    { keyid: w.k.root2.keyid, purpose: 'root', spki_der_b64: w.k.root2.spki.toString('base64'), not_before: draft.body.issued_at, not_after: draft.body.expires, status: 'active' }] },
+  [w.k.root2]);
+  await assert.rejects(importRoot(w.ctx, rogue, 1), refusedWith('ATTESTA_TRUST_DOCUMENT_UNAVAILABLE'));
+});
+
+test('publish never extends a stored key set that no tenant_keyset key signed', async () => {
+  const w = world();
+  await w.bootstrap();
+  await w.reg(A, 'dev:a1');
+  await w.activate(A, w.k.a1.keyid);
+  await publishKeyset(w.ctx, A);
+  // A database writer appends a version 2 signed by a statement key (shape-valid, chained).
+  const v1 = parseTrustDocument((await w.store.documents(A))[0].envelope);
+  const forged = await signTrustDocument({ ...v1.body, version: 2, previous: v1.digest, issued_at: new Date(T0 + 1000).toISOString() },
+    [{ keyid: w.k.a1.keyid, sign: (b: Buffer) => cryptoSign('sha256', b, { key: w.k.a1.priv, dsaEncoding: 'der' }) }]);
+  w.store.state.documents.push({ scope: A, kind: 'keyset', version: 2, digest: parseTrustDocument(forged).digest, envelope: forged });
+  const signedBefore = w.adapter.calls.get('dev:keyset');
+  await assert.rejects(publishKeyset(w.ctx, A), refusedWith('ATTESTA_TRUST_DOCUMENT_SIGNATURE_INVALID', /not signed by any tenant_keyset key/));
+  assert.equal(w.adapter.calls.get('dev:keyset'), signedBefore);
 });
