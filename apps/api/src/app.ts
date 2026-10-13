@@ -2,6 +2,7 @@ import 'dotenv/config';
 import cors from 'cors';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import adminRouter from './features/admin/admin.routes';
+import { attestaRouter } from './features/attesta/attesta.routes';
 import {
   evidenceAdminRouter,
   evidenceReadRouter,
@@ -69,6 +70,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
 
   // All /api/* routes require a valid Supabase JWT and tenant resolution.
   app.use('/api', authenticateJWT, tenantMiddleware);
+  app.use('/api/attesta', attestaRouter);
   app.use('/api', telemetryReadRouter);
   app.use('/api/evidence', evidenceReadRouter);
   app.use('/api/admin', adminRouter);

@@ -468,7 +468,8 @@ test('tenant admin and auditor action matrix cannot cross tenant or subject boun
     assert.equal(adminMembershipAllows(auditor, {
       tenantId: 'tenant-a', subject: 'auditor-a', action,
     }), action === 'audit.read' || action === 'security_findings.read'
-      || action === 'operations.read' || action === 'evidence.raw.read',
+      || action === 'operations.read' || action === 'evidence.raw.read'
+      || action === 'attesta.read',
     `auditor decision mismatch for ${action}`);
   }
 });
