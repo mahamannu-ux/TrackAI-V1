@@ -12,22 +12,35 @@
  *  1. Streams rows in pages with bounded memory: no per-record list in the report
  *     (counts only), breaks capped by `maxBreaks`; rows are never sorted, so an
  *     out-of-order row is reported and skipped, and the hole it leaves is a gap.
- *  2. Each break carries a frozen errors.md `detail_code` beside its kind; the
- *     contract has no dedicated code for some kinds, so they map to the nearest
- *     one (table below) and `kind` keeps the precise reason.
+ *  2. Each break carries its exact errors.md `detail_code` beside its kind
+ *     (one code per kind since 2026-10-12; Task15f2 switched the table).
  *  3. Added kinds for the statement layer: statement digest mismatch, statement
  *     not canonical, envelope missing, envelope payload mismatch, signature
  *     invalid and key unknown (signatures checked with verifyEnvelope against the
- *     caller's published keys). Anchor kinds arrive with A15.5.
+ *     caller's published keys).
  *  4. No free-text `detail` per break (codes only, so nothing raw leaks).
+ *  5. Anchors (Task15f2, A15.5; SushiCorp core/evidence/verify.py anchor break
+ *     kinds): with `anchors` material every record gets an anchor status
+ *     (anchored in both types, pending inside the window, missing beyond it,
+ *     invalid, not checkable); each stored anchored row is bound to its record
+ *     (batch of this tenant and range, leaf_index = seq - seq_from, tree_size =
+ *     leaf_count, anchor time not before recorded_at) and checked offline with
+ *     verifyStoredAnchor. Missing key material is NOT_CHECKABLE, never ok; TSA
+ *     revocation `unknown` is a warning, not a break (Task15f decision 3). Report
+ *     version 2 adds the `anchors` summary (version 1 had no such field).
  */
 import type { KeyObject } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
+import { verifyStoredAnchor, type StoredAnchorKeys } from './anchor-dual';
 import { CanonicalizationError, canonicalize, computeRecordHash, sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, verifyEnvelope, type DsseEnvelope } from './dsse';
 import { AttestaLedgerError, deriveStatementColumns, parseSeq } from './ledger';
 
-export const CHAIN_REPORT_VERSION = 1;
+/** 2: adds `anchors` (Task15f2). */
+export const CHAIN_REPORT_VERSION = 2;
+export const DEFAULT_ANCHOR_WINDOW_MS = 3_600_000;
+/** How far an anchor's own time may precede the record's recorded_at (clock skew). */
+export const ANCHOR_TIME_SKEW_MS = 300_000;
 
 export type ChainBreakKind =
   | 'hash_mismatch'
@@ -119,6 +132,24 @@ export interface ChainHeadState {
   head_hash: string;
 }
 
+export type AnchorStatus = 'anchored' | 'pending' | 'missing' | 'invalid' | 'not_checkable';
+
+export interface AnchorSummary {
+  /** `checked` when anchor material was supplied. */
+  status: 'checked';
+  window_ms: number;
+  /** Records anchored in both types, each anchor verified offline. */
+  anchored: number;
+  /** Not anchored yet, inside the anchoring window. */
+  pending: number;
+  /** Not anchored beyond the window (ANCHOR_MISSING). */
+  missing: number;
+  /** With a stored anchor that does not verify or is not bound to the record. */
+  invalid: number;
+  /** With a stored anchor the supplied material cannot check (NOT_CHECKABLE). */
+  not_checkable: number;
+}
+
 export interface ChainReport {
   report_version: typeof CHAIN_REPORT_VERSION;
   tenant_id: string;
@@ -137,6 +168,8 @@ export interface ChainReport {
   signatures: 'checked' | 'not_checked';
   /** Machine-readable notes (no raw values): what could not be checked. */
   warnings: string[];
+  /** Anchor checks, or `not_checked` when no anchor material was supplied. */
+  anchors: AnchorSummary | { status: 'not_checked' };
 }
 
 /** One stored record with its envelope, as the verifier reads it. */
@@ -161,6 +194,27 @@ export interface LedgerRow {
   envelopePayloadType: string | null;
   /** base64 of the stored signature_der column. */
   envelopeSignatureB64: string | null;
+  /** The record's `anchored` rows with their batch (read only when anchors are checked). */
+  anchors?: StoredRecordAnchor[];
+}
+
+/** One stored `anchored` row for a record, joined with its batch. */
+export interface StoredRecordAnchor {
+  anchorType: string;
+  batchId: string;
+  /** The batch row; null when it is missing. */
+  batch: { tenantId: string; seqFrom: number; seqTo: number; leafCount: number; merkleRoot: string } | null;
+  proof: unknown;
+  rekorEntryUuid: string | null;
+  tsaTokenB64: string | null;
+}
+
+/** Anchor material: the pinned keys and trust anchors, the window and the clock. */
+export interface AnchorCheckOptions extends StoredAnchorKeys {
+  windowMs?: number;
+  now: Date;
+  /** Called once per checked record with its anchor status (bounded-memory callers). */
+  onRecord?: (seq: number, status: AnchorStatus) => void;
 }
 
 export interface VerifyRowsOptions {
@@ -174,6 +228,8 @@ export interface VerifyRowsOptions {
   /** Published keys by keyid; without them signatures are not checked. */
   keys?: Record<string, KeyObject>;
   maxBreaks?: number;
+  /** Check anchors with this material; without it the report says anchors were not checked. */
+  anchors?: AnchorCheckOptions;
 }
 
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -201,7 +257,7 @@ class Collector {
   constructor(private readonly max: number) {}
   add(seq: number, kind: ChainBreakKind): void {
     this.total++;
-    if (kind !== 'signatures_not_checked') this.chainBreaks++;
+    if (kind !== 'signatures_not_checked' && kind !== 'anchor_not_checkable') this.chainBreaks++;
     if (this.breaks.length < this.max) this.breaks.push({ seq, kind, detail_code: BREAK_DETAIL_CODES[kind] });
   }
 }
@@ -301,6 +357,88 @@ function checkEnvelope(row: LedgerRow, keys: Record<string, KeyObject> | undefin
   }
 }
 
+
+/** When the anchor says the root existed (ms), from fields verifyStoredAnchor has checked. */
+function anchorTimeMs(a: StoredRecordAnchor): number | null {
+  const anchor = isObject(a.proof) && isObject(a.proof.anchor) ? a.proof.anchor : null;
+  if (!anchor) return null;
+  if (a.anchorType === 'rekor') {
+    const entry = isObject(anchor.rekor_entry) ? anchor.rekor_entry : null;
+    return entry && typeof entry.integratedTime === 'number' ? entry.integratedTime * 1000 : null;
+  }
+  return typeof anchor.gen_time === 'string' ? Date.parse(anchor.gen_time) : null;
+}
+
+class AnchorChecker {
+  readonly summary: AnchorSummary;
+  revocationUnknown = false;
+  notCheckableSeen = false;
+  constructor(private readonly opts: AnchorCheckOptions, private readonly tenantId: string) {
+    const windowMs = opts.windowMs ?? DEFAULT_ANCHOR_WINDOW_MS;
+    if (!Number.isSafeInteger(windowMs) || windowMs < 0) throw new RangeError('anchor windowMs must be ≥ 0');
+    if (!(opts.now instanceof Date) || Number.isNaN(opts.now.getTime())) throw new RangeError('anchor check needs now');
+    this.summary = { status: 'checked', window_ms: windowMs, anchored: 0, pending: 0, missing: 0, invalid: 0, not_checkable: 0 };
+  }
+
+  /** One stored row: bound to this record, then verified offline. */
+  private checkOne(row: LedgerRow, a: StoredRecordAnchor): 'valid' | 'not_checkable' | ChainBreakKind {
+    const b = a.batch;
+    const merkle = isObject(a.proof) && isObject(a.proof.merkle) ? a.proof.merkle : null;
+    if (!b || b.tenantId !== this.tenantId || a.batchId !== `${this.tenantId}:${b.seqFrom}-${b.seqTo}` ||
+        row.seq < b.seqFrom || row.seq > b.seqTo || b.leafCount !== b.seqTo - b.seqFrom + 1 || !merkle ||
+        merkle.leaf_index !== row.seq - b.seqFrom || merkle.tree_size !== b.leafCount) {
+      return 'merkle_proof_invalid';
+    }
+    const check = verifyStoredAnchor({
+      anchorType: a.anchorType, proof: a.proof, recordHash: row.recordHash, merkleRoot: b.merkleRoot,
+      rekorEntryUuid: a.rekorEntryUuid, tsaTokenB64: a.tsaTokenB64,
+    }, this.opts);
+    if (check.status === 'not_checkable') return 'not_checkable';
+    if (check.status === 'invalid') {
+      return check.code === 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID' ? 'merkle_proof_invalid' : 'anchor_invalid';
+    }
+    if (check.revocation?.status === 'unknown') this.revocationUnknown = true;
+    // The root holds the record's hash, so the anchor cannot predate the record: an
+    // anchor time before recorded_at means recorded_at is not what was anchored.
+    const at = anchorTimeMs(a);
+    const recorded = Date.parse(row.recordedAt);
+    if (at === null || Number.isNaN(recorded) || at < recorded - ANCHOR_TIME_SKEW_MS) return 'anchor_invalid';
+    return 'valid';
+  }
+
+  check(row: LedgerRow, out: Collector): void {
+    const valid = new Set<string>();
+    let broken = false;
+    let notCheckable = false;
+    for (const a of row.anchors ?? []) {
+      const r = this.checkOne(row, a);
+      if (r === 'valid') valid.add(a.anchorType);
+      else if (r === 'not_checkable') notCheckable = true;
+      else {
+        out.add(row.seq, r);
+        broken = true;
+      }
+    }
+    let status: AnchorStatus;
+    if (broken) status = 'invalid';
+    else if (notCheckable) status = 'not_checkable';
+    else if (valid.has('rekor') && valid.has('tsa')) status = 'anchored';
+    else {
+      const recorded = Date.parse(row.recordedAt);
+      const age = this.opts.now.getTime() - recorded;
+      status = !Number.isNaN(recorded) && age <= this.summary.window_ms ? 'pending' : 'missing';
+      if (status === 'missing') out.add(row.seq, 'anchor_missing');
+    }
+    if (status === 'not_checkable' && !this.notCheckableSeen) {
+      // Once per report, like signatures_not_checked: never ok, the counts say how many.
+      this.notCheckableSeen = true;
+      out.add(row.seq, 'anchor_not_checkable');
+    }
+    this.summary[status] += 1;
+    this.opts.onRecord?.(row.seq, status);
+  }
+}
+
 /**
  * Verify `rows` as the tenant's records with fromSeq <= seq <= toSeq, in the
  * order supplied (the database reader supplies seq order). Never throws on a
@@ -326,6 +464,7 @@ export async function verifyChainRows(
   let outside = 0;
   let tailHash: string | null = null;
   const lastWritten = head ? head.next_seq - 1 : null;
+  const anchors = opts.anchors ? new AnchorChecker(opts.anchors, tenantId) : null;
 
   for await (const row of rows) {
     if (row.seq < fromSeq || row.seq > toSeq) {
@@ -358,6 +497,7 @@ export async function verifyChainRows(
     checkRecordContent(row, tenantId, out);
     checkStatement(row, out);
     checkEnvelope(row, opts.keys, out);
+    anchors?.check(row, out);
 
     if (lastWritten !== null && row.seq === lastWritten) tailHash = row.recordHash;
     link = row.recordHash;
@@ -365,6 +505,7 @@ export async function verifyChainRows(
     lastSeq = row.seq;
   }
   if (outside > 0) warnings.push('rows_outside_range_ignored');
+  if (anchors?.revocationUnknown) warnings.push('tsa_revocation_unknown');
   if (!opts.keys && checked > 0) out.add(fromSeq, 'signatures_not_checked');
 
   if (head && lastWritten !== null) {
@@ -387,6 +528,7 @@ export async function verifyChainRows(
     head,
     signatures: opts.keys ? 'checked' : 'not_checked',
     warnings,
+    anchors: anchors ? anchors.summary : { status: 'not_checked' },
   };
 }
 
@@ -407,6 +549,8 @@ export interface VerifyChainOptions {
   fromSeq?: number;
   toSeq?: number;
   keys?: Record<string, KeyObject>;
+  /** Check anchors (Task15f2); without it the report says anchors were not checked. */
+  anchors?: AnchorCheckOptions;
   pageSize?: number;
   maxBreaks?: number;
 }
@@ -437,8 +581,43 @@ function toRow(r: Record<string, unknown>): LedgerRow {
   };
 }
 
+function toAnchor(r: Record<string, unknown>): StoredRecordAnchor {
+  const hasBatch = typeof r.batch_tenant_id === 'string';
+  return {
+    anchorType: str(r.anchor_type),
+    batchId: str(r.batch_id),
+    batch: hasBatch ? {
+      tenantId: str(r.batch_tenant_id), seqFrom: parseSeq(r.seq_from), seqTo: parseSeq(r.seq_to),
+      leafCount: Number(r.leaf_count), merkleRoot: str(r.merkle_root),
+    } : null,
+    proof: r.inclusion_proof ?? null,
+    rekorEntryUuid: strOrNull(r.rekor_entry_uuid),
+    tsaTokenB64: strOrNull(r.tsa_token_b64),
+  };
+}
+
+/** The tenant's anchored rows for records lo..hi, by seq. */
+async function anchorsFor(db: ChainReadExecutor, tenantId: string, lo: number, hi: number): Promise<Map<number, StoredRecordAnchor[]>> {
+  const result = await db.execute(sql`
+    select r.seq::text as seq, a.anchor_type, a.batch_id, a.inclusion_proof, a.rekor_entry_uuid, a.tsa_token_b64,
+           b.tenant_id::text as batch_tenant_id, b.seq_from::text as seq_from, b.seq_to::text as seq_to,
+           b.leaf_count, b.merkle_root
+    from attesta_anchors a
+    join attesta_records r on r.tenant_id = a.tenant_id and r.id = a.record_id
+    left join attesta_anchor_batches b on b.tenant_id = a.tenant_id and b.batch_id = a.batch_id
+    where a.tenant_id = ${tenantId} and a.status = 'anchored' and r.seq between ${lo} and ${hi}`);
+  const out = new Map<number, StoredRecordAnchor[]>();
+  for (const r of result.rows) {
+    const seq = parseSeq(r.seq);
+    const list = out.get(seq) ?? [];
+    list.push(toAnchor(r));
+    out.set(seq, list);
+  }
+  return out;
+}
+
 async function* pages(
-  db: ChainReadExecutor, tenantId: string, fromSeq: number, toSeq: number, pageSize: number,
+  db: ChainReadExecutor, tenantId: string, fromSeq: number, toSeq: number, pageSize: number, withAnchors = false,
 ): AsyncGenerator<LedgerRow> {
   let after = fromSeq - 1;
   for (;;) {
@@ -456,8 +635,11 @@ async function* pages(
       where r.tenant_id = ${tenantId} and r.seq > ${after} and r.seq <= ${toSeq}
       order by r.seq
       limit ${pageSize}`);
-    for (const r of result.rows) {
-      const row = toRow(r);
+    const page = result.rows.map(toRow);
+    const anchored = withAnchors && page.length > 0
+      ? await anchorsFor(db, tenantId, page[0].seq, page[page.length - 1].seq) : null;
+    for (const row of page) {
+      if (anchored) row.anchors = anchored.get(row.seq) ?? [];
       after = row.seq;
       yield row;
     }
@@ -514,6 +696,9 @@ async function verifySnapshot(
       report_version: CHAIN_REPORT_VERSION, tenant_id: tenantId, range: { from_seq: fromSeq, to_seq: toSeq },
       checked: 0, ok: true, chain_intact: true, breaks: [], breaks_truncated: false, head,
       signatures: options.keys ? 'checked' : 'not_checked', warnings: head ? [] : ['head_not_supplied'],
+      anchors: options.anchors
+        ? { status: 'checked', window_ms: options.anchors.windowMs ?? DEFAULT_ANCHOR_WINDOW_MS, anchored: 0, pending: 0, missing: 0, invalid: 0, not_checkable: 0 }
+        : { status: 'not_checked' },
     };
   }
   assertRange(fromSeq, toSeq);
@@ -526,8 +711,9 @@ async function verifySnapshot(
       ? (prev[0].record_hash as string) : null;
   }
 
-  const report = await verifyChainRows(pages(db, tenantId, fromSeq, toSeq, pageSize), {
+  const report = await verifyChainRows(pages(db, tenantId, fromSeq, toSeq, pageSize, options.anchors !== undefined), {
     tenantId, fromSeq, toSeq, expectedPrevHash, head, keys: options.keys, maxBreaks: options.maxBreaks,
+    anchors: options.anchors,
   });
   const prepend = (seq: number, kind: ChainBreakKind) => {
     report.breaks.unshift({ seq, kind, detail_code: BREAK_DETAIL_CODES[kind] });

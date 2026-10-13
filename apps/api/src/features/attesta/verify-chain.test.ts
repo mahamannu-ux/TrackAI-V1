@@ -9,10 +9,22 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { computeRecordHash, sha256Prefixed } from './canonical';
 import { buildCanonicalRecord, type LedgerRecordFields } from './ledger';
 import { buildChain, makeStatement, makeTestKey, signStatement } from './testing/ledger-fixtures';
+import { createPublicKey } from 'node:crypto';
+import { FakeRekor } from './testing/fake-rekor';
+import { FakeTsa, TSA_URL } from './testing/fake-tsa';
+import { ATTESTA_PLATFORM_TENANT_ID, anchorSignerFromAdapter } from './anchor-contract';
+import { DualAnchor } from './anchor-dual';
+import { RekorAnchor } from './anchor-rekor';
+import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
+import { anchorBatchId, rowsForOutcome } from './anchor-worker';
+import { merkleRoot } from './merkle';
+import { LocalDevSigner, generateDevCredential } from './signer-local-dev';
 import {
   BREAK_DETAIL_CODES,
   verifyChain,
   verifyChainRows,
+  type AnchorCheckOptions,
+  type StoredRecordAnchor,
   type ChainBreakKind,
   type ChainHeadState,
   type ChainReport,
@@ -427,3 +439,136 @@ describe('verifyChain (database reader, scripted)', () => {
   });
 });
 
+
+// ---------------------------------------------------------------------------
+// Anchor checks (Task15f2; SushiCorp core/evidence/verify.py anchor break kinds)
+// ---------------------------------------------------------------------------
+
+describe('anchor checks', () => {
+  const ANCHORED_AT = Date.parse('2026-10-12T12:00:00.000Z'); // two hours after the fixture records
+
+  async function anchoredWorld(n: number, maxBatch: number, at = ANCHORED_AT) {
+    const key = makeTestKey();
+    const chain = buildChain(n, { tenantId: TENANT, repositoryId: REPO, key });
+    const rekor = new FakeRekor();
+    rekor.clock = Math.floor(at / 1000);
+    const tsa = await FakeTsa.create({ genTime: new Date(at) });
+    const now = () => new Date(at);
+    const cred = generateDevCredential('dev:anchor', ATTESTA_PLATFORM_TENANT_ID);
+    const signer = anchorSignerFromAdapter(new LocalDevSigner({ credentials: [cred], env: {} }), 'dev:anchor');
+    const dual = new DualAnchor(
+      new RekorAnchor({ url: 'http://rekor.test', signer, fetch: rekor.fetch, production: false,
+        logPublicKeyPem: createPublicKey(rekor.logKey).export({ type: 'spki', format: 'pem' }).toString(), now }),
+      new TsaAnchor({ url: TSA_URL, trustAnchorsPem: tsa.anchorsPem, fetch: tsa.fetch, now }),
+    );
+    const rows = chain.rows.map((r) => ({ ...r, anchors: [] as StoredRecordAnchor[] }));
+    for (let from = 0; from < n; from += maxBatch) {
+      const records = rows.slice(from, from + maxBatch).map((r) => ({ id: `id-${r.seq}`, seq: r.seq, recordHash: r.recordHash, recordedAt: r.recordedAt }));
+      const leaves = records.map((r) => Buffer.from(r.recordHash.slice(7), 'hex'));
+      const batch = { batchId: anchorBatchId(TENANT, records[0].seq, records[records.length - 1].seq), seqFrom: records[0].seq,
+        seqTo: records[records.length - 1].seq, leafCount: records.length, merkleRoot: `sha256:${merkleRoot(leaves).toString('hex')}` };
+      const outcome = await dual.anchor(merkleRoot(leaves), batch.batchId);
+      assert.equal(outcome.complete, true);
+      for (const a of rowsForOutcome({ batch, records, leaves, existing: false }, outcome)) {
+        const seq = Number(a.recordId.slice(3));
+        rows[seq].anchors.push({ anchorType: a.anchorType, batchId: batch.batchId, proof: a.inclusionProof,
+          rekorEntryUuid: a.rekorEntryUuid, tsaTokenB64: a.tsaTokenB64,
+          batch: { tenantId: TENANT, seqFrom: batch.seqFrom, seqTo: batch.seqTo, leafCount: batch.leafCount, merkleRoot: batch.merkleRoot } });
+      }
+    }
+    const material = {
+      rekorLogKey: createPublicKey(rekor.logKey), anchorKeysSpkiDer: [await signer.publicKeySpkiDer()],
+      tsaAnchors: loadTrustAnchors(tsa.anchorsPem),
+    };
+    const verify = (r: LedgerRow[], extra: Partial<AnchorCheckOptions> = {}, nowMs = at) =>
+      verifyAll(r, chain.head, { keys: { [key.keyid]: key.publicKey }, anchors: { ...material, now: new Date(nowMs), ...extra } });
+    return { rows, chain, material, verify, key };
+  }
+
+  const anchorKinds = (r: ChainReport) => r.breaks.map((b) => [b.seq, b.kind, b.detail_code]);
+
+  it('every record anchored in both types: ok, with TSA revocation unknown only a warning (report version 2)', async () => {
+    const w = await anchoredWorld(10, 4);
+    const seen: Array<[number, string]> = [];
+    const r = await w.verify(w.rows, { onRecord: (seq, s) => seen.push([seq, s]) });
+    assert.equal(r.ok, true, JSON.stringify(r.breaks));
+    assert.equal(r.report_version, 2);
+    assert.deepEqual(r.anchors, { status: 'checked', window_ms: 3_600_000, anchored: 10, pending: 0, missing: 0, invalid: 0, not_checkable: 0 });
+    assert.deepEqual(r.warnings, ['tsa_revocation_unknown']);
+    assert.equal(seen.length, 10);
+    assert.ok(seen.every(([, s]) => s === 'anchored'));
+  });
+
+  it('without anchor material nothing changes and the report says anchors were not checked', async () => {
+    const w = await anchoredWorld(3, 4);
+    const r = await verifyAll(w.rows, w.chain.head, { keys: { [w.key.keyid]: w.key.publicKey } });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.anchors, { status: 'not_checked' });
+    assert.deepEqual(r.warnings, []);
+  });
+
+  it('pending inside the window, ANCHOR_MISSING beyond it; one type alone is not anchored', async () => {
+    const w = await anchoredWorld(4, 4);
+    const bare = w.rows.map((r) => ({ ...r, anchors: [] }));
+    const recorded = Date.parse(w.rows[0].recordedAt);
+    let r = await w.verify(bare, {}, recorded + 3_600_000);
+    assert.equal(r.ok, true);
+    assert.equal(r.anchors.status === 'checked' && r.anchors.pending, 4);
+    r = await w.verify(bare, {}, recorded + 3_600_004);
+    assert.deepEqual(anchorKinds(r), [0, 1, 2, 3].map((s) => [s, 'anchor_missing', 'ATTESTA_VERIFY_ANCHOR_MISSING']));
+    assert.equal(r.ok, false);
+    assert.equal(r.chain_intact, false);
+    const rekorOnly = w.rows.map((x) => ({ ...x, anchors: x.anchors.filter((a) => a.anchorType === 'rekor') }));
+    r = await w.verify(rekorOnly, {}, recorded + 7_200_000);
+    assert.equal(r.anchors.status === 'checked' && r.anchors.missing, 4);
+  });
+
+  it('missing key material is NOT_CHECKABLE (once), never ok; the chain still reads intact', async () => {
+    const w = await anchoredWorld(5, 4);
+    for (const extra of [{ tsaAnchors: [] }, { rekorLogKey: undefined }, { anchorKeysSpkiDer: [] }]) {
+      const r = await w.verify(w.rows, extra);
+      assert.equal(r.ok, false);
+      assert.equal(r.chain_intact, true);
+      assert.deepEqual(r.breaks.map((b) => [b.kind, b.detail_code]), [['anchor_not_checkable', 'ATTESTA_VERIFY_NOT_CHECKABLE']]);
+      assert.equal(r.anchors.status === 'checked' && r.anchors.not_checkable, 5);
+    }
+  });
+
+  it('every stored-row fault is a break with its exact code', async () => {
+    const w = await anchoredWorld(8, 4);
+    const tamper = (seq: number, type: string, f: (a: StoredRecordAnchor) => StoredRecordAnchor) =>
+      w.rows.map((r) => (r.seq !== seq ? r : { ...r, anchors: r.anchors.map((a) => (a.anchorType === type ? f(structuredClone(a)) : a)) }));
+    const cases: Array<[string, LedgerRow[], ChainBreakKind]> = [
+      ['path edited', tamper(1, 'tsa', (a) => { (a.proof as any).merkle.path[0] = '0'.repeat(64); return a; }), 'merkle_proof_invalid'],
+      // seq 1's proof moved to seq 2's row: a valid path, but for another position.
+      ['proof of another position', w.rows.map((r) => (r.seq !== 2 ? r : { ...r, anchors: w.rows[1].anchors })), 'merkle_proof_invalid'],
+      ['leaf_index rebound', tamper(1, 'rekor', (a) => { (a.proof as any).merkle.leaf_index = 0; return a; }), 'merkle_proof_invalid'],
+      ['batch of another tenant', tamper(1, 'rekor', (a) => ({ ...a, batch: { ...a.batch!, tenantId: OTHER_TENANT } })), 'merkle_proof_invalid'],
+      ['batch_id not its range', tamper(1, 'rekor', (a) => ({ ...a, batchId: anchorBatchId(TENANT, 0, 4) })), 'merkle_proof_invalid'],
+      ['record outside its batch', tamper(5, 'rekor', (a) => ({ ...a, batch: { ...a.batch!, seqFrom: 0, seqTo: 3, leafCount: 4 } })), 'merkle_proof_invalid'],
+      ['batch row missing', tamper(1, 'tsa', (a) => ({ ...a, batch: null })), 'merkle_proof_invalid'],
+      ['rekor entry edited', tamper(1, 'rekor', (a) => { (a.proof as any).anchor.log_index += 1; return a; }), 'anchor_invalid'],
+      ['tsa token swapped', tamper(1, 'tsa', (a) => ({ ...a, tsaTokenB64: w.rows[5].anchors.find((x) => x.anchorType === 'tsa')!.tsaTokenB64 })), 'anchor_invalid'],
+      ['stored revoked', tamper(1, 'tsa', (a) => { (a.proof as any).anchor.revocation = { status: 'revoked', reason: 'x' }; return a; }), 'anchor_invalid'],
+    ];
+    for (const [name, rows, kind] of cases) {
+      const r = await w.verify(rows);
+      assert.equal(r.ok, false, name);
+      const anchorBreaks = r.breaks.filter((b) => b.kind !== 'anchor_missing');
+      assert.ok(anchorBreaks.length >= 1 && anchorBreaks.every((b) => b.kind === kind), `${name}: ${JSON.stringify(r.breaks)}`);
+      assert.equal(anchorBreaks[0].detail_code, BREAK_DETAIL_CODES[kind]);
+      assert.ok(r.anchors.status === 'checked' && r.anchors.invalid >= 1, name);
+    }
+    // A wrong anchoring key or log key: every record's Rekor row is ANCHOR_INVALID.
+    const wrong = await w.verify(w.rows, { anchorKeysSpkiDer: [makeTestKey().publicKey.export({ type: 'spki', format: 'der' }) as Buffer] });
+    assert.equal(wrong.anchors.status === 'checked' && wrong.anchors.invalid, 8);
+    assert.ok(wrong.breaks.every((b) => b.detail_code === 'ATTESTA_VERIFY_ANCHOR_INVALID'));
+  });
+
+  it('an anchor older than the record it holds is ANCHOR_INVALID (recorded_at bound to the anchor time)', async () => {
+    // Anchored "before" the records were stamped: the log and TSA clocks agree with each other, not with recorded_at.
+    const w = await anchoredWorld(3, 4, Date.parse('2026-10-12T09:00:00.000Z'));
+    const r = await w.verify(w.rows);
+    assert.deepEqual(r.breaks.map((b) => b.kind), Array(6).fill('anchor_invalid'));
+  });
+});
