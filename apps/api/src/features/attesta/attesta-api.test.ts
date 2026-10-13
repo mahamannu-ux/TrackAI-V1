@@ -23,7 +23,7 @@ import { createAttestaRouter, type AttestaRouterDeps } from './attesta.routes';
 import { PROBLEM_TYPE_BASE, REQUEST_ID_RE, problemizeAuth } from './http';
 import {
   ANCHOR_WINDOW_MS, AttestaQueryError, MAX_VERIFY_RANGE, anchorStatusOf, decodeCursor, encodeCursor,
-  noPublishedKeys, parseListQuery, parseRfc3339, pgReadStore, publishedKeySource,
+  noPublishedKeys, parseListQuery, parseRfc3339, pgReadStore, publishedKeySource, publishedKeyWindowsFor,
   type AnchorRowOut, type AttestaReadStore, type Cursor, type ListFilter, type StatementDetailRow,
   type StatementRow, type SubjectRow, type VerifyAuditInput,
 } from './read-service';
@@ -1014,7 +1014,7 @@ describe('evidence packs', () => {
 describe('verify with published keys (Task15i2)', () => {
   test('publishedKeySource: every key the tenant ever had; none → null (not checked, never "unknown key")', async () => {
     const w = await trustWorld();
-    const source = publishedKeySource(() => w.store);
+    const source = publishedKeySource(() => w.store, () => w.config, () => new Date(PACK_T0));
     const a = await source(PA);
     assert.deepEqual(a?.map((k) => k.keyid), [w.k.a1.keyid]);
     assert.equal(await source('dddddddd-0000-4000-8000-00000000000d'), null);
@@ -1023,7 +1023,7 @@ describe('verify with published keys (Task15i2)', () => {
   test('a chain signed with the tenant\'s published key verifies ok (signatures checked); another tenant\'s keys do not', async () => {
     const w = await trustWorld();
     const chain = buildFixtureChain(PA, w.k.a1);
-    const keys = await publishedKeySource(() => w.store)(PA);
+    const keys = await publishedKeySource(() => w.store, () => w.config, () => new Date(PACK_T0))(PA);
     const asMap = (list: typeof keys) => Object.fromEntries((list ?? []).map((k) => [k.keyid, k.publicKey]));
     const rows = chain.records.map((r) => ({
       seq: r.seq, tenantId: PA, prevHash: r.prevHash, recordHash: r.recordHash, canonicalRecord: r.canonicalRecord, recordedAt: r.recordedAt,
@@ -1036,8 +1036,108 @@ describe('verify with published keys (Task15i2)', () => {
     const ok = await verifyChainRows(rows, { tenantId: PA, fromSeq: 0, toSeq: rows.length - 1, head, keys: asMap(keys) });
     assert.equal(ok.ok, true);
     assert.equal(ok.signatures, 'checked');
-    const wrong = await verifyChainRows(rows, { tenantId: PA, fromSeq: 0, toSeq: rows.length - 1, head, keys: asMap(await publishedKeySource(() => w.store)(PB)) });
+    const wrong = await verifyChainRows(rows, { tenantId: PA, fromSeq: 0, toSeq: rows.length - 1, head, keys: asMap(await publishedKeySource(() => w.store, () => w.config, () => new Date(PACK_T0))(PB)) });
     assert.equal(wrong.ok, false);
     assert.ok(wrong.breaks.every((b) => b.detail_code === 'ATTESTA_VERIFY_KEY_UNKNOWN'));
+  });
+});
+
+describe('verify key windows from the verified key set (Task15i3)', () => {
+  const MIN = 60_000;
+  const now = () => new Date(PACK_T0);
+  const apply = async (w: Awaited<ReturnType<typeof trustWorld>>, command: 'retire' | 'revoke', cmd: Parameters<typeof import('./trust-inventory').planTenantKeyCommand>[2]) => {
+    const { planTenantKeyCommand, applyTenantKeyCommand, publishKeyset } = await import('./trust-inventory');
+    const plan = await planTenantKeyCommand(w.ctx, command, cmd);
+    await applyTenantKeyCommand(w.ctx, command, cmd, plan.expect);
+    await publishKeyset(w.ctx, cmd.tenantId);
+  };
+
+  test('an active key: window [not_before, not_after] and untilMs null, from the newest key set', async () => {
+    const w = await trustWorld();
+    const list = await publishedKeyWindowsFor(w.store, PA, w.config, now());
+    assert.equal(list?.length, 1);
+    const k = list![0];
+    assert.equal(k.keyid, w.k.a1.keyid);
+    assert.equal(k.window?.untilMs, null);
+    assert.ok(k.window!.notBeforeMs < PACK_T0 && k.window!.notAfterMs > PACK_T0);
+  });
+
+  test('retired → untilMs = revoked_at; then revoked compromised → untilMs = compromised_since', async () => {
+    const w = await trustWorld();
+    const revokedAt = w.ctx.now().getTime();
+    await apply(w, 'retire', { tenantId: PA, keyid: w.k.a1.keyid });
+    let k = (await publishedKeyWindowsFor(w.store, PA, w.config, now()))![0];
+    assert.equal(k.window?.untilMs, revokedAt);
+    const since = new Date(revokedAt - 30 * MIN).toISOString();
+    await apply(w, 'revoke', { tenantId: PA, keyid: w.k.a1.keyid, reason: 'compromised', compromisedSince: since });
+    k = (await publishedKeyWindowsFor(w.store, PA, w.config, now()))![0];
+    assert.equal(k.window?.untilMs, Date.parse(since));
+  });
+
+  test('revoked superseded → untilMs = revoked_at', async () => {
+    const w = await trustWorld();
+    const revokedAt = w.ctx.now().getTime();
+    await apply(w, 'revoke', { tenantId: PA, keyid: w.k.a1.keyid, reason: 'superseded' });
+    const k = (await publishedKeyWindowsFor(w.store, PA, w.config, now()))![0];
+    assert.equal(k.window?.untilMs, revokedAt);
+  });
+
+  test('a retirement not yet published is not applied: the signed key set, not the rows, decides', async () => {
+    const w = await trustWorld();
+    const { planTenantKeyCommand, applyTenantKeyCommand } = await import('./trust-inventory');
+    const plan = await planTenantKeyCommand(w.ctx, 'retire', { tenantId: PA, keyid: w.k.a1.keyid });
+    await applyTenantKeyCommand(w.ctx, 'retire', { tenantId: PA, keyid: w.k.a1.keyid }, plan.expect);
+    const k = (await publishedKeyWindowsFor(w.store, PA, w.config, now()))![0];
+    assert.equal(k.window?.untilMs, null);
+  });
+
+  test('no verified chain → null (signatures not_checked, never ok): no pin, wrong pin, no key set, expired key set, a tampered row', async () => {
+    const w = await trustWorld();
+    assert.equal(await publishedKeyWindowsFor(w.store, PA, { ...w.config, pinnedRootKeyids: [] }, now()), null);
+    assert.equal(await publishedKeyWindowsFor(w.store, PA, { ...w.config, pinnedRootKeyids: ['sha256:' + 'e'.repeat(64)] }, now()), null);
+    assert.equal(await publishedKeyWindowsFor(w.store, 'dddddddd-0000-4000-8000-00000000000d', w.config, now()), null);
+    assert.equal(await publishedKeyWindowsFor(w.store, PA, w.config, new Date(PACK_T0 + 40 * 86_400_000)), null);
+    // A key-set row whose payload was edited (a forged retirement lifted to active, say) fails the chain check.
+    const doc = w.store.state.documents.find((d) => d.scope === PA)!;
+    const body = JSON.parse(Buffer.from(doc.envelope.payload, 'base64').toString('utf8'));
+    body.keys[0].not_after = '2099-01-01T00:00:00.000Z';
+    const saved = doc.envelope;
+    doc.envelope = { ...saved, payload: Buffer.from(JSON.stringify(body)).toString('base64') };
+    assert.equal(await publishedKeyWindowsFor(w.store, PA, w.config, now()), null);
+    doc.envelope = saved;
+    assert.notEqual(await publishedKeyWindowsFor(w.store, PA, w.config, now()), null);
+  });
+
+  test('Company A/B: A\'s windows never come from B\'s key set; B\'s documents under A\'s scope do not verify', async () => {
+    const w = await trustWorld();
+    const a = await publishedKeyWindowsFor(w.store, PA, w.config, now());
+    const b = await publishedKeyWindowsFor(w.store, PB, w.config, now());
+    assert.deepEqual(a?.map((k) => k.keyid), [w.k.a1.keyid]);
+    assert.deepEqual(b?.map((k) => k.keyid), [w.k.b1.keyid]);
+    for (const d of w.store.state.documents) if (d.scope === PA) d.envelope = w.store.state.documents.find((x) => x.scope === PB)!.envelope;
+    assert.equal(await publishedKeyWindowsFor(w.store, PA, w.config, now()), null);
+  });
+
+  test('the route passes the windows and the clock to verifyChain; the keys seam without windows passes none', async () => {
+    const w = await trustWorld();
+    // The harness tenant is A; serve it PA's verified key set (the source itself is tenant-bound, tested above).
+    const source = publishedKeySource(() => w.store, () => w.config, now);
+    let h = await harness({ keys: () => source(PA) });
+    try {
+      assert.equal((await h.get('/verify')).status, 200);
+      const opts = h.verifierCalls[0].options;
+      assert.deepEqual(Object.keys(opts.keys ?? {}), [w.k.a1.keyid]);
+      assert.equal(opts.keyWindows?.[w.k.a1.keyid]?.untilMs, null);
+      assert.equal(opts.now?.getTime(), NOW.getTime());
+    } finally {
+      await h.close();
+    }
+    h = await harness({ keys: async () => [{ keyid: w.k.a1.keyid, publicKey: createPublicKey({ key: w.k.a1.spki, format: 'der', type: 'spki' }) }] });
+    try {
+      assert.equal((await h.get('/verify')).status, 200);
+      assert.equal(h.verifierCalls[0].options.keyWindows, undefined);
+    } finally {
+      await h.close();
+    }
   });
 });
