@@ -23,7 +23,7 @@
     "previous": [
       {
         "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-        "statement_kind": "deployed"
+        "statement_kind": "period_report"
       }
     ],
     "source_evidence": {

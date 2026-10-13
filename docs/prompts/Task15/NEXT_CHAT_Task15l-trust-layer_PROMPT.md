@@ -2,8 +2,8 @@
 
 > **Founder setup (Claude: skip to "You are…"):**
 > 1. Merge the PR that adds this prompt (`docs/Task15-prompts-f2-l`). Then `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only`.
-> 2. **Claude:** open a new chat in the TrackAI Claude project, link it to this Mac, paste everything below the line. It can start at the same time as `Task15f2-attesta-anchoring-worker`: its design checkpoint and pure library come first, and its migration waits until 15f2 has merged (§2.4).
-> 3. **Checkpoint 1** (after the design note, step 2.2): it stops for your answers to the questions there, each with a recommendation. **Checkpoint 2:** the contract (`docs/contracts/attesta/trust.md`, the `trust-contract.ts` interface, test vectors) is bundled as its own small PR, so Task9 (Codex) and D6.1 can build against it (interfaces first, AGENTS.md §5). Merge it, then the session continues on the rest.
+> 2. **Claude:** open a new chat in the TrackAI Claude project, link it to this Mac, paste everything below the line. Start it after `Task15f2-attesta-anchoring-worker` has merged (founder plan, 2026-10-13), so its migration follows 0018 directly.
+> 3. **Checkpoint 1** (after the design note, step 2.2): you already accepted its four recommendations (2026-10-13), so it only sends the note and continues unless something changed. **Checkpoint 2:** the contract (`docs/contracts/attesta/trust.md`, the `trust-contract.ts` interface, test vectors) is bundled as its own small PR, so Task9 (Codex) and D6.1 can build against it (interfaces first, AGENTS.md §5). Merge it, then the session continues on the rest.
 > 4. When it finishes, paste its review request to **Codex** (security-critical: keys, rotation, revocation; Muse if Codex is busy). Push only after "ready to push". Real KMS keys and the offline root ceremony are founder-live (A15.13).
 
 ---
@@ -48,7 +48,7 @@ Send the founder a short note: the decisions above as you will build them, the e
 2. Root custody for phase 1 (recommended: one offline root key generated on the founder's machine and kept offline, threshold 1; move to 2-of-3 on hardware keys before the first production customer).
 3. Online platform keys in a cloud KMS of TrackAI's own account (recommended: yes, one key per purpose, reusing the A15.6 adapters).
 4. Key set `expires` (recommended: 30 days for key sets, 1 year for the root, refreshed by `publish` weekly) and clock skew (5 minutes).
-Wait for answers before checkpoint 2.
+**The founder accepted all four recommendations on 2026-10-13** (`TASK15.md` §7 item 10): confirm the note matches them and continue to checkpoint 2 without waiting, unless your design changes one of them.
 
 ### 2.3 Port from
 - Catalog `~/dev/agent-kit/reuse/COMPONENT_CATALOG.md` SG-1 (inventory, rotation) and TR-1 (three-state revocation).
