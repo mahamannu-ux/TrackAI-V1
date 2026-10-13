@@ -179,7 +179,32 @@ export interface StoredAnchorKeys {
   rekorLogIndexOffsets?: Readonly<Record<string, number>>;
   /** SPKI DER of the platform anchoring keys, current and retired (rotation keeps old anchors checkable). */
   anchorKeysSpkiDer?: Buffer[];
+  /**
+   * Task15l2 (trust.md step 8): the anchoring keys with the window in which each
+   * could sign, from the trust-verified root (`platformKeyWindows`). When present it
+   * replaces `anchorKeysSpkiDer`: a Rekor anchor counts only if the log's
+   * `integratedTime` (independent time evidence bound to the signature) lies in
+   * [notBefore, notAfter] and before `untilMs` (`revoked_at` of a retired or
+   * superseded key, `compromised_since` of a compromised one). So a retired or
+   * stolen anchor key cannot make a fresh anchor that verifies. Production always
+   * passes windows.
+   */
+  anchorKeyWindows?: AnchorKeyWindow[];
   tsaAnchors?: pkijs.Certificate[];
+}
+
+export interface AnchorKeyWindow {
+  spkiDer: Buffer;
+  notBeforeMs: number;
+  notAfterMs: number;
+  /** Exclusive cutoff, or null for a key still active. */
+  untilMs: number | null;
+}
+
+/** True when a log time (seconds) lies inside the key's signing window. */
+export function anchorKeyWindowCovers(w: AnchorKeyWindow, integratedTimeSec: number): boolean {
+  const t = integratedTimeSec * 1000;
+  return Number.isFinite(t) && t >= w.notBeforeMs && t <= w.notAfterMs && (w.untilMs === null || t < w.untilMs);
 }
 
 export type StoredAnchorCheck =
@@ -251,17 +276,25 @@ export function verifyStoredAnchor(row: StoredAnchorRow, keys: StoredAnchorKeys)
     // Row columns for this kind: the entry UUID is required and must match; no token.
     if (typeof row.rekorEntryUuid !== 'string' || row.rekorEntryUuid.toLowerCase() !== anchor.ref.toLowerCase()) return INVALID_ANCHOR;
     if (row.tsaTokenB64 !== null && row.tsaTokenB64 !== undefined) return INVALID_ANCHOR;
-    if (!keys.rekorLogKey || !keys.anchorKeysSpkiDer || keys.anchorKeysSpkiDer.length === 0) return NOT_CHECKABLE;
+    const candidates: Array<{ spkiDer: Buffer; window: AnchorKeyWindow | null }> = keys.anchorKeyWindows
+      ? keys.anchorKeyWindows.map((w) => ({ spkiDer: w.spkiDer, window: w }))
+      : (keys.anchorKeysSpkiDer ?? []).map((spkiDer) => ({ spkiDer, window: null }));
+    if (!keys.rekorLogKey || candidates.length === 0) return NOT_CHECKABLE;
     let verified: VerifiedRekorEntry | null = null;
-    for (const anchorKeySpkiDer of keys.anchorKeysSpkiDer) {
+    for (const candidate of candidates) {
+      let v: VerifiedRekorEntry;
       try {
-        verified = verifyRekorEntry(anchor.ref, entry, {
-          logKey: keys.rekorLogKey, artifact: root, anchorKeySpkiDer, logIndexOffsets: keys.rekorLogIndexOffsets,
+        v = verifyRekorEntry(anchor.ref, entry, {
+          logKey: keys.rekorLogKey, artifact: root, anchorKeySpkiDer: candidate.spkiDer, logIndexOffsets: keys.rekorLogIndexOffsets,
         });
-        break;
       } catch (err) {
         if (!(err instanceof RekorVerificationError)) throw err;
+        continue;
       }
+      // Signed by this key, but outside its window (retired, revoked, compromised, expired): not an anchor.
+      if (candidate.window && !anchorKeyWindowCovers(candidate.window, v.integratedTime)) continue;
+      verified = v;
+      break;
     }
     if (verified === null) return INVALID_ANCHOR;
     const inclusion = (entry.verification as Record<string, unknown>).inclusionProof;
