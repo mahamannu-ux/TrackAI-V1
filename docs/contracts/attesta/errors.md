@@ -83,6 +83,34 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 
 *Added 2026-10-12 (founder decision in Task15d): one exact code per break kind of `verify-chain.ts`; earlier codes are unchanged. Task15f switches `BREAK_DETAIL_CODES` to these.*
 
+## Trust (A15.12)
+
+`verifyTrusted` (`trust.md`, `trust-contract.ts`) returns exactly one of these codes; each maps to exactly one status. Evidence of tampering is `rejected`; absent trust information is `unavailable`, never `verified`.
+
+| Code | Status | When |
+|---|---|---|
+| `ATTESTA_TRUST_VERIFIED` | verified | every check passed (not an error) |
+| `ATTESTA_TRUST_ROOT_NOT_PINNED` | unavailable | no pinned root keyid (production), and outside production no `allowUnpinnedRoot` |
+| `ATTESTA_TRUST_DOCUMENT_UNAVAILABLE` | unavailable | no root document held, none of them lists the pinned keys, the last trusted document is not held, a key-set chain without a last trusted document does not start at version 1, or a gap in the versions |
+| `ATTESTA_TRUST_DOCUMENT_EXPIRED` | unavailable | the newest root document or key set is past `expires` + skew |
+| `ATTESTA_TRUST_DOCUMENT_FROM_FUTURE` | unavailable | a document's `issued_at` is after `now` + skew |
+| `ATTESTA_TRUST_REVOCATION_UNKNOWN` | unavailable | no key set held for the tenant, so its keys' status is unknown |
+| `ATTESTA_TRUST_DOCUMENT_MALFORMED` | rejected | a document breaks the schema or trust.md's document rules (including its maximum lifetime), or exceeds a bound |
+| `ATTESTA_TRUST_DOCUMENT_SIGNATURE_INVALID` | rejected | a key set is not signed by a valid `tenant_keyset` key of the current root |
+| `ATTESTA_TRUST_THRESHOLD_NOT_MET` | rejected | a root document lacks k valid signatures of the previous root or of its own root keys, or the start document lists the pinned keys but lacks their signatures |
+| `ATTESTA_TRUST_DOCUMENT_CONFLICT` | rejected | two different documents claim one scope and version (including the last trusted one), or a document's `previous` is not the one before it |
+| `ATTESTA_TRUST_ROLLBACK` | rejected | every held document of the scope is older than the last trusted one |
+| `ATTESTA_TRUST_KEYSET_REGRESSION` | rejected | a newer document drops a key or moves a key's status, validity or revocation backwards |
+| `ATTESTA_TRUST_KEY_UNKNOWN` | rejected | the signing keyid is not listed (or not pinned) for the audience |
+| `ATTESTA_TRUST_PURPOSE_MISMATCH` | rejected | the key is listed for another purpose |
+| `ATTESTA_TRUST_AUDIENCE_MISMATCH` | rejected | the key belongs to another tenant |
+| `ATTESTA_TRUST_KEY_NOT_VALID_AT` | rejected | `signedAt` outside `[not_before, not_after]`, after `now` + skew, or at/after a retired key's `revoked_at` |
+| `ATTESTA_TRUST_KEY_REVOKED` | rejected | revoked `superseded` and `signedAt` ≥ `revoked_at`; revoked `compromised` without bound time evidence before `compromised_since` |
+| `ATTESTA_TRUST_SIGNATURE_INVALID` | rejected | the artifact signature does not verify with the listed key |
+| `ATTESTA_TRUST_INPUT_INVALID` | rejected | the call itself is malformed (payload not the envelope's, signature count, purpose, audience, timestamps, bounds) |
+
+*Added 2026-10-13 (lead-approved contract PR, Task15l checkpoint 2).*
+
 ## API (A15.9)
 
 | Code | HTTP |

@@ -1,0 +1,343 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/trust/trust-document-v1.schema.json",
+  "title": "TrackAI Attesta trust document v1 (root document or tenant key set)",
+  "description": "FROZEN CONTRACT (Task15l, A15.12). The DSSE payload of a trust document is the exact canonicalize() (RFC 8785) bytes of this object. Rules JSON Schema cannot express (keyid = SHA-256 of the SPKI, P-256 key, time ordering, signatures, threshold, forward-only key sets) are in trust.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "_type",
+    "scope",
+    "version",
+    "issued_at",
+    "expires",
+    "previous",
+    "keys"
+  ],
+  "properties": {
+    "_type": {
+      "type": "string",
+      "enum": [
+        "https://trackai.dev/attesta/trust-root/v1",
+        "https://trackai.dev/attesta/keyset/v1"
+      ]
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^(platform|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "issued_at": {
+      "$ref": "#/definitions/timestamp"
+    },
+    "expires": {
+      "$ref": "#/definitions/timestamp"
+    },
+    "previous": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/digest"
+        }
+      ]
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/definitions/key"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "_type": {
+            "const": "https://trackai.dev/attesta/trust-root/v1"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "threshold"
+        ],
+        "properties": {
+          "scope": {
+            "const": "platform"
+          },
+          "keys": {
+            "items": {
+              "properties": {
+                "purpose": {
+                  "enum": [
+                    "root",
+                    "anchor",
+                    "activation_lease",
+                    "fleet_config",
+                    "policy_bundle",
+                    "release",
+                    "tenant_keyset"
+                  ]
+                }
+              }
+            },
+            "contains": {
+              "properties": {
+                "purpose": {
+                  "const": "root"
+                },
+                "status": {
+                  "const": "active"
+                }
+              },
+              "required": [
+                "purpose",
+                "status"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "_type": {
+            "const": "https://trackai.dev/attesta/keyset/v1"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "threshold"
+          ]
+        },
+        "properties": {
+          "scope": {
+            "not": {
+              "const": "platform"
+            }
+          },
+          "keys": {
+            "items": {
+              "properties": {
+                "purpose": {
+                  "const": "statement"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "version": {
+            "const": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "previous": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "previous": {
+            "$ref": "#/definitions/digest"
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "description": "RFC 3339 UTC with milliseconds; a real instant (Date round trip).",
+      "pattern": "^(19|20|21)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "keyid",
+        "purpose",
+        "spki_der_b64",
+        "not_before",
+        "not_after",
+        "status"
+      ],
+      "properties": {
+        "keyid": {
+          "$ref": "#/definitions/digest"
+        },
+        "purpose": {
+          "type": "string",
+          "enum": [
+            "root",
+            "anchor",
+            "activation_lease",
+            "fleet_config",
+            "policy_bundle",
+            "release",
+            "tenant_keyset",
+            "statement"
+          ]
+        },
+        "spki_der_b64": {
+          "type": "string",
+          "description": "Standard base64 of an ECDSA P-256 SubjectPublicKeyInfo (uncompressed point), 91 bytes.",
+          "pattern": "^MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE[A-Za-z0-9+/]{85}[AQgw]==$"
+        },
+        "not_before": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "not_after": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "retired",
+            "revoked"
+          ]
+        },
+        "revoked_at": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "revocation_reason": {
+          "type": "string",
+          "enum": [
+            "superseded",
+            "compromised"
+          ]
+        },
+        "compromised_since": {
+          "$ref": "#/definitions/timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "active"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "revoked_at"
+                  ]
+                },
+                {
+                  "required": [
+                    "revocation_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "compromised_since"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "retired"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "revoked_at"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "revocation_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "compromised_since"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "revoked"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "revoked_at",
+              "revocation_reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "revocation_reason"
+            ],
+            "properties": {
+              "revocation_reason": {
+                "const": "compromised"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "compromised_since"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "compromised_since"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
