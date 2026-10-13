@@ -1995,6 +1995,38 @@ export const attestaTrustDocuments = pgTable('attesta_trust_documents', {
 }));
 
 /**
+ * Operator resume of an anchor batch stopped by a terminal code (Task15i3; tables.md
+ * "attesta_anchor_resumes"). Append-only (migration 0021 guards): one row per resume,
+ * accepted only while the batch's latest failed attempt is terminal, the batch is not
+ * fully anchored and no resume is newer than that attempt; `created_at` is set by the
+ * guard (clock_timestamp()). A batch is stopped only while its latest terminal failure
+ * is newer than its latest resume. Written by attesta-anchor-resume-cli.ts only.
+ */
+export const attestaAnchorResumes = pgTable('attesta_anchor_resumes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  batchId: text('batch_id').notNull(),
+  actor: text('actor').notNull(),
+  reason: text('reason').notNull(),
+  requestId: text('request_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_anchor_resumes_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantBatchForeignKey: foreignKey({
+    name: 'attesta_anchor_resumes_tenant_batch_fk',
+    columns: [table.tenantId, table.batchId],
+    foreignColumns: [attestaAnchorBatches.tenantId, attestaAnchorBatches.batchId],
+  }),
+  // The worker reads a batch's latest resume.
+  tenantBatchIndex: index('attesta_anchor_resumes_tenant_batch_idx').on(table.tenantId, table.batchId, table.createdAt),
+  shapeCheck: check('attesta_anchor_resumes_shape_check', sql`
+    length(${table.actor}) between 1 and 128
+    and length(${table.reason}) between 1 and 256
+    and length(${table.requestId}) between 1 and 128
+  `),
+}));
+
+/**
  * Evidence-pack export jobs (Task15i2, A15.9; docs/contracts/attesta/evidence-pack.md).
  * One row per (tenant, Idempotency-Key). Status moves only forward (queued → running →
  * ready | failed; running → running when an expired lease is retaken); identity columns
@@ -2091,4 +2123,5 @@ export type EvidenceSummary = typeof evidenceSummaries.$inferSelect;
 export type EvidenceSemanticDocument = typeof evidenceSemanticDocuments.$inferSelect;
 export type AttestaSubject = typeof attestaSubjects.$inferSelect;
 export type AttestaAnchorBatch = typeof attestaAnchorBatches.$inferSelect;
+export type AttestaAnchorResume = typeof attestaAnchorResumes.$inferSelect;
 export type AttestaAnchor = typeof attestaAnchors.$inferSelect;
