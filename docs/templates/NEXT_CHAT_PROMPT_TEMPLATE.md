@@ -61,7 +61,8 @@ You are **<agent>**, building **<name>** for **TrackAI**, an AI code provenance,
 - The handoff from `docs/templates/HANDOFF_TEMPLATE.md`, **under <N> lines**, with <what it must name> and **Effort**.
 - `docs/plan/STATUS_BOARD.md`: the status board row, the integration test registry rows, the remaining-plan actual.
 - Clean tree. Do **not** push, open a PR or merge.
-- **Final reply** in the AGENTS.md §12.4 shape: the effort line; one bash block (<tests, integration runs>, then under `# after the cross-agent review` the push and `gh pr create --base main --head task/<name> … --repo mahamannu-ux/TrackAI-V1`); then the review request in a `text` block.
+- **Final reply** in the AGENTS.md §12.4 shape: the effort line; one bash block (<tests, integration runs>, then under `# after the cross-agent review` the push, `gh pr create --base main --head task/<name> … --repo mahamannu-ux/TrackAI-V1`, `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only && scripts/pr-preflight.sh task/<name>`, and `gh pr merge task/<name> --merge --repo mahamannu-ux/TrackAI-V1` only after the preflight says ok (AGENTS.md §9 items 22–23)); then the review request in a `text` block.
+- **Ledger lines (AGENTS.md §9 item 23):** edit only your own rows in the tracker and the registry; leave the status board's Task row to the lead; add `package.json` scripts in alphabetical position.
 
 ## Lessons so far
 - **<earlier session> (<agent>):** <one line each: what to repeat, what to avoid>. Take them from the lessons table in `docs/agents/MANAGER_PROMPT.md` and `~/dev/agent-kit/agents/LESSONS.md`.

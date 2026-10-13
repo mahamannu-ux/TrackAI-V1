@@ -53,7 +53,7 @@ Attesta signs one statement per commit, merged PR and production deployment, cha
 None: SushiCorp has no SCM integration (catalog checked: WH-1 covers inbound webhooks only). The GitHub calls follow the existing `github-app.ts` conventions; say so in the file header.
 
 ### 2.3 Pre-approved files
-`apps/api/src/features/scm/github-app.ts` (only the two new exported helpers), `apps/api/src/features/attesta/github-check.ts` (new) and `github-check.test.ts` (new), `apps/api/src/features/attesta/attesta-github-check-cli.ts` (new), `apps/api/src/features/attesta/t15m-github-check-live-verify.ts` (new), `apps/api/package.json` (the `test` registration, the `attesta:github-checks` and `verify:task15m-github-check-live` scripts only), `docs/handoffs/Task15m-attesta-github-check_HANDOFF.md`, `docs/plan/STATUS_BOARD.md` (Task15 row, registry rows), `docs/plan/TASK15.md` (A15.14 status only).
+`apps/api/src/features/scm/github-app.ts` (only the two new exported helpers), `apps/api/src/features/attesta/github-check.ts` (new) and `github-check.test.ts` (new), `apps/api/src/features/attesta/attesta-github-check-cli.ts` (new), `apps/api/src/features/attesta/t15m-github-check-live-verify.ts` (new), `apps/api/package.json` (the `test` registration, the `attesta:github-checks` and `verify:task15m-github-check-live` scripts only, in alphabetical position), `docs/handoffs/Task15m-attesta-github-check_HANDOFF.md`, `docs/plan/STATUS_BOARD.md` (its registry rows only), `docs/plan/TASK15.md` (A15.14 status only).
 
 ### 2.4 Never touch
 `docs/contracts/`, every migration and `schema.ts`, the rest of `github-app.ts`, `scm.routes.ts` and every other `features/scm/` file, every other `features/attesta/` file (read and import only), `apps/web/`, `apps/api/src/app.ts`, `core/`, dependencies. If something seems to need one of these, stop and say so.
@@ -75,7 +75,7 @@ None: SushiCorp has no SCM integration (catalog checked: WH-1 covers inbound web
 
 ## 4. Close-out
 - Handoff (`docs/templates/HANDOFF_TEMPLATE.md`), under 60 lines: the check's wording, the result codes, the founder's App permission step, IT rows, Effort.
-- Status board Task15 row; registry rows IT-T15m-01…03 (01–02 🟡 sandbox, ⬜ founder; 03 ⬜). `TASK15.md` A15.14 🟡.
+- Registry rows IT-T15m-01…03 (01–02 🟡 sandbox, ⬜ founder; 03 ⬜), inserted in ID order; `TASK15.md` A15.14 row 🟡. Leave the status board's Task15 row to the lead (AGENTS.md §9 item 23). Final bash block: preflight before merge (§9 item 22).
 - Clean tree; do not push. Final reply in the AGENTS.md §12.4 shape, with the review request (for the Task15 lead Claude chat) in a `text` block.
 
 ## Lessons so far
