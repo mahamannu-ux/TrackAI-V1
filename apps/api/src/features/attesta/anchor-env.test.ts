@@ -52,10 +52,13 @@ test('a pinned shard offset reaches the verifier: the fake log\'s tree with offs
   assert.equal((await right.anchor.anchor(randomBytes(32), 'b2')).complete, true);
 });
 
-test('production refuses to start until the Task15l platform resolver exists', async () => {
+test('production never uses the development key: the anchor key comes from the trust inventory (Task15l2)', async () => {
   const f = await fixture();
   assert.throws(() => anchorSignerFromEnv({ ...f.env, NODE_ENV: 'production' }, f.read),
-    (e: unknown) => e instanceof AnchorConfigError && /Task15l/.test(e.message));
+    (e: unknown) => e instanceof AnchorConfigError && /trust inventory/.test(e.message));
+  // Without a pinned root the production branch does not start (more in trust-resolver.test.ts).
+  await assert.rejects(anchorFromEnv({ ...f.env, NODE_ENV: 'production' }, { read: f.read }),
+    (e: unknown) => e instanceof AnchorConfigError && /ATTESTA_TRUST_ROOT_KEYIDS/.test(e.message));
 });
 
 test('missing or unreadable configuration names the variable, never its value', async () => {

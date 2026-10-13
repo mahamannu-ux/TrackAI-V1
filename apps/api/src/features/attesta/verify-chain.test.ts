@@ -452,7 +452,11 @@ describe('anchor checks', () => {
     const chain = buildChain(n, { tenantId: TENANT, repositoryId: REPO, key });
     const rekor = new FakeRekor();
     rekor.clock = Math.floor(at / 1000);
-    const tsa = await FakeTsa.create({ genTime: new Date(at) });
+    // The fake TSA dates its certificates from Date.now(); issue them as of the fixed anchor time,
+    // so this fixture does not expire a day after it was written (Task15l2: was a time bomb since 2026-10-13).
+    const realNow = Date.now;
+    Date.now = () => at;
+    const tsa = await FakeTsa.create({ genTime: new Date(at) }).finally(() => { Date.now = realNow; });
     const now = () => new Date(at);
     const cred = generateDevCredential('dev:anchor', ATTESTA_PLATFORM_TENANT_ID);
     const signer = anchorSignerFromAdapter(new LocalDevSigner({ credentials: [cred], env: {} }), 'dev:anchor');
