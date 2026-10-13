@@ -972,6 +972,25 @@ describe('evidence packs', () => {
     }
   });
 
+  test('a failed audit write still starts the created job (never stranded); stranded jobs do not count toward the bound', async () => {
+    const { h, packStore } = await packHarness();
+    try {
+      packStore.audit = async () => { throw new Error('audit table down'); };
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'audit-fail-1' }), 500, 'ATTESTA_API_INTERNAL');
+      assert.equal(packStore.jobs.length, 1);
+      assert.deepEqual(h.started, [{ tenantId: PA, packId: packStore.jobs[0].id }]);
+      delete (packStore as Partial<MemoryPackStore>).audit;
+      // Four queued jobs left behind by a crash: after a lease they no longer hold the tenant at 429.
+      for (let i = 0; i < 3; i++) assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': `stranded-${i}0` })).status, 202);
+      await expectProblem(await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'stranded-x0' }), 429, 'ATTESTA_API_RATE_LIMITED');
+      packStore.clock += 600_001;
+      assert.equal((await h.post('/evidence-packs', PACK_BODY, PAW, { 'Idempotency-Key': 'stranded-y0' })).status, 202);
+      assert.equal((await packStore.runnable(10)).length, 5, 'the stranded jobs stay runnable by attesta:pack');
+    } finally {
+      await h.close();
+    }
+  });
+
   test('content: a stored file that changed or vanished is a 500, never a download; no sink is a 503', async () => {
     const { h, packs, sink } = await packHarness();
     try {

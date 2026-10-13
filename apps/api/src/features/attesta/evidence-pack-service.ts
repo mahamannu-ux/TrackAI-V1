@@ -24,7 +24,7 @@
  * credential reference. No network call inside a transaction: the segment is read in one
  * repeatable-read transaction, signing and the sink write happen after it.
  */
-import { randomUUID } from 'node:crypto';
+import { createPublicKey, randomUUID, type KeyObject } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { db as coreDb } from '../../core/db';
 import { securityAuditEvents } from '../../core/db/schema';
@@ -32,7 +32,7 @@ import { withTenant } from '../../core/db/tenant';
 import { LocalFileEvidenceExportSink, type EvidenceExportSink } from '../../core/operations/evidence-export-sink';
 import type { AnchorVerifyMaterial } from './anchor-env';
 import { GENESIS_PREV_HASH, canonicalize, computeRecordHash, sha256Prefixed } from './canonical';
-import { pae, type DsseEnvelope } from './dsse';
+import { pae, verifyEnvelope, type DsseEnvelope } from './dsse';
 import { parseSeq } from './ledger';
 import { AttestaQueryError, anchorMaterialFromEnv, parseRfc3339, type AnchorMaterialSource } from './read-service';
 import { SigningRejected, SigningUnavailable, signVerified } from './signer-contract';
@@ -437,7 +437,7 @@ export interface PackStore {
     Promise<{ job: PackJob; created: boolean }>;
   get(tenantId: string, id: string): Promise<PackJob | null>;
   findByKey(tenantId: string, idempotencyKey: string): Promise<PackJob | null>;
-  /** queued + running jobs of the tenant. */
+  /** Live unfinished jobs of the tenant: queued for less than a lease, or running with a live lease (stranded ones are the recovery CLI's). */
   openCount(tenantId: string): Promise<number>;
   repositoryExists(tenantId: string, repositoryId: string): Promise<boolean>;
   /** The segment size a scope would read now (request-time bound). */
@@ -506,6 +506,12 @@ export async function runEvidencePack(deps: PackJobDeps, tenantId: string, packI
       throw new PackJobError('ATTESTA_SIGNER_UNAVAILABLE', 'the signer cannot be configured');
     }
     const envelope = await signPack(built, resolver, tenantId, job.requestId);
+    // The pack must verify with its own trust material: a key set published between the
+    // trust read and the signature would otherwise give a "ready" pack every offline
+    // verifier rejects (review finding). Retryable: the next request reads the new key set.
+    if (!signedByNewestKeyset(envelope, trust.trust)) {
+      throw new PackJobError('ATTESTA_SIGNER_UNAVAILABLE', 'the signing key is not active in the pack\'s newest key set');
+    }
     try {
       written = await sink.write(packId, built.text);
     } catch {
@@ -538,6 +544,25 @@ export function parseStoredScope(raw: unknown): PackScope {
     throw internal('the stored scope is malformed');
   }
   return { repository_id: s.repository_id as string | null, from: s.from, to: s.to };
+}
+
+/** True when the envelope verifies with a statement key the newest key set lists active. */
+export function signedByNewestKeyset(envelope: DsseEnvelope, trust: PackTrust): boolean {
+  const newest = trust.keyset_documents[trust.keyset_documents.length - 1];
+  if (!newest) return false;
+  let doc: ReturnType<typeof parseTrustDocument>;
+  try {
+    doc = parseTrustDocument(newest);
+  } catch {
+    return false;
+  }
+  const keys: Record<string, KeyObject> = {};
+  for (const [keyid, k] of doc.keys) {
+    if (k.entry.purpose === 'statement' && k.entry.status === 'active') {
+      keys[keyid] = createPublicKey({ key: Buffer.from(k.entry.spki_der_b64, 'base64'), format: 'der', type: 'spki' });
+    }
+  }
+  return verifyEnvelope(envelope, keys).ok;
 }
 
 /** The status body of GET /evidence-packs/{id}. */
@@ -642,7 +667,9 @@ export function pgPackStore(db: PackDatabase): PackStore {
 
     async openCount(tenantId) {
       const r = await db.execute(sql`/* pack:open */
-        select count(*)::int as n from attesta_evidence_packs where tenant_id = ${tenantId} and status in ('queued', 'running')`);
+        select count(*)::int as n from attesta_evidence_packs where tenant_id = ${tenantId}
+          and ((status = 'queued' and created_at > now() - (${PACK_LEASE_MS}::int * interval '1 millisecond'))
+            or (status = 'running' and lease_until > now()))`);
       return Number(r.rows[0]?.n ?? 0);
     },
 

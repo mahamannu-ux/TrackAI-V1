@@ -102,49 +102,68 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
   }
   const packDigest = prefixed(canonicalize(pack));
 
-  // --- trust: root chain from the USER's pin, then the tenant's key sets.
+  // --- trust: root chain from the USER's pin, then the tenant's key sets. Each chain
+  // must run 1, 2, 3 … with every `previous` the digest of the payload before it, and
+  // the newest must not have expired before generated_at: a reordered, truncated or
+  // rolled-back list fails (trust.md "Documents", "Key sets only move forward").
   const trust = pack.trust as Obj;
-  let rootKeys = new Map<string, KeyObject>();
-  let newestRootKeys: Obj[] = [];
+  const generatedAt = String(m.generated_at);
+  /** Walks one document chain; returns each accepted body and payload, in order. */
+  const walk = (docs: unknown[], payloadType: string, label: string, signersFor: (i: number, payload: Buffer, before: Buffer | null) => Map<string, KeyObject>,
+    scope: string): Array<{ body: Obj; payload: Buffer }> => {
+    const accepted: Array<{ body: Obj; payload: Buffer }> = [];
+    let previous: string | null = null;
+    for (const [i, doc] of docs.entries()) {
+      const raw = isObj(doc) && typeof doc.payload === 'string' ? Buffer.from(doc.payload, 'base64') : Buffer.alloc(0);
+      const ok = dsse(doc, payloadType, signersFor(i, raw, accepted.length > 0 ? accepted[accepted.length - 1].payload : null));
+      if (!ok) {
+        breaks.push(`${label} ${i + 1} not signed by a trusted key`);
+        return accepted;
+      }
+      let body: Obj;
+      try {
+        body = JSON.parse(ok.payload.toString('utf8')) as Obj;
+      } catch {
+        breaks.push(`${label} ${i + 1} is not JSON`);
+        return accepted;
+      }
+      if (body.version !== i + 1 || body.previous !== previous || body.scope !== scope) {
+        breaks.push(`${label} ${i + 1}: version, previous or scope out of order`);
+        return accepted;
+      }
+      previous = prefixed(ok.payload);
+      accepted.push({ body, payload: ok.payload });
+    }
+    const newest = accepted[accepted.length - 1];
+    if (newest && !(typeof newest.body.expires === 'string' && newest.body.expires >= generatedAt)) {
+      breaks.push(`the newest ${label} had expired at generated_at`);
+    }
+    return accepted;
+  };
+  const keyMap = (entries: Obj[], purpose: string, status?: string) =>
+    new Map(entries.filter((k) => k.purpose === purpose && (status === undefined || k.status === status))
+      .map(keyOf).filter((x): x is [string, KeyObject] => x !== null));
   const roots = Array.isArray(trust?.root_documents) ? trust.root_documents as unknown[] : [];
-  roots.forEach((doc, i) => {
-    let signerKeys = rootKeys;
+  const rootChain = walk(roots, 'application/vnd.trackai.trust-root+json', 'root document', (i, raw, before) => {
+    // Version 1 is signed by its own root keys, and only the user's pinned ones count;
+    // each later version by the active root keys of the version before (threshold 1 here).
     if (i === 0) {
-      // Version 1 is signed by its own root keys; only the user's pinned ones count.
-      const payload = isObj(doc) && typeof doc.payload === 'string' ? Buffer.from(doc.payload, 'base64') : Buffer.alloc(0);
-      signerKeys = new Map(docKeys(payload).filter((k) => k.purpose === 'root' && userPinnedRootKeyids.includes(k.keyid as string))
-        .map(keyOf).filter((x): x is [string, KeyObject] => x !== null));
+      let entries: Obj[] = [];
+      try { entries = docKeys(raw); } catch { entries = []; }
+      return keyMap(entries.filter((k) => userPinnedRootKeyids.includes(String(k.keyid))), 'root', 'active');
     }
-    const ok = dsse(doc, 'application/vnd.trackai.trust-root+json', signerKeys);
-    if (!ok) {
-      breaks.push(`root document ${i + 1} not signed by a trusted root key`);
-      return;
-    }
-    const keys = docKeys(ok.payload);
-    rootKeys = new Map(keys.filter((k) => k.purpose === 'root').map(keyOf).filter((x): x is [string, KeyObject] => x !== null));
-    newestRootKeys = keys;
-  });
-  if (roots.length === 0) breaks.push('no root document');
-  const keysetSigners = new Map(newestRootKeys.filter((k) => k.purpose === 'tenant_keyset').map(keyOf).filter((x): x is [string, KeyObject] => x !== null));
-  const statementKeys = new Map<string, KeyObject>();
-  let activeKeys = new Map<string, KeyObject>();
+    return before ? keyMap(docKeys(before), 'root', 'active') : new Map<string, KeyObject>();
+  }, 'platform');
+  if (rootChain.length === 0) breaks.push('no root document verifies from the user\'s pin');
+  const newestRoot = rootChain.length > 0 ? docKeys(rootChain[rootChain.length - 1].payload) : [];
+  const keysetSigners = keyMap(newestRoot, 'tenant_keyset');
   const keysets = Array.isArray(trust?.keyset_documents) ? trust.keyset_documents as unknown[] : [];
-  keysets.forEach((doc, i) => {
-    const ok = dsse(doc, 'application/vnd.trackai.keyset+json', keysetSigners);
-    if (!ok) {
-      breaks.push(`key set ${i + 1} not signed by a tenant_keyset key of the root`);
-      return;
-    }
-    const body = JSON.parse(ok.payload.toString('utf8')) as Obj;
-    if (body.scope !== m.tenant_id) breaks.push(`key set ${i + 1} is for another tenant`);
-    activeKeys = new Map();
-    for (const k of docKeys(ok.payload)) {
-      const kv = keyOf(k);
-      if (!kv || k.purpose !== 'statement') continue;
-      statementKeys.set(kv[0], kv[1]);
-      if (k.status === 'active') activeKeys.set(kv[0], kv[1]);
-    }
-  });
+  const keysetChain = walk(keysets, 'application/vnd.trackai.keyset+json', 'key set', () => keysetSigners, String(m.tenant_id));
+  if (keysetChain.length === 0) breaks.push('no key set verifies');
+  // Every statement key any accepted version listed (history), and the active keys of the newest only.
+  const statementKeys = new Map<string, KeyObject>();
+  for (const k of keysetChain) for (const [id, key] of keyMap(docKeys(k.payload), 'statement')) statementKeys.set(id, key);
+  const activeKeys = keysetChain.length > 0 ? keyMap(docKeys(keysetChain[keysetChain.length - 1].payload), 'statement', 'active') : new Map<string, KeyObject>();
 
   // --- the pack signature (RP-1)
   const sig = dsse(download.signature, 'application/vnd.trackai.evidence-pack+json', activeKeys);
@@ -177,7 +196,15 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
       if (prefixed(Buffer.concat([Buffer.from(r.canonical_record, 'utf8'), Buffer.from(String(r.prev_hash), 'utf8')])) !== r.record_hash) {
         breaks.push(`record hash at ${r.seq}`);
       }
-      const c = JSON.parse(r.canonical_record) as Obj;
+      let c: Obj;
+      try {
+        c = JSON.parse(r.canonical_record) as Obj;
+      } catch {
+        breaks.push(`record not JSON at ${r.seq}`);
+        parsed.push(null);
+        prev = r.record_hash;
+        return;
+      }
       if (canonicalize(c) !== r.canonical_record) breaks.push(`record not canonical at ${r.seq}`);
       if (c.seq !== r.seq || c.prev_hash !== r.prev_hash || c.tenant_id !== m.tenant_id) breaks.push(`record fields at ${r.seq}`);
       parsed.push(c);
@@ -198,6 +225,10 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
     (scope.repository_id === null || c.repository_id === scope.repository_id);
   let completeness: OracleResult['completeness'] = 'not_checkable';
   const expected = new Map<number, string>();
+  if ((scope.mode === 'full') !== (m.completeness === 'provable') || !['full', 'repository_only'].includes(String(scope.mode))) {
+    breaks.push('completeness does not match the mode');
+  }
+  if (scope.mode === 'full' && parsed.some((c) => c === null)) breaks.push('a full pack must carry every canonical_record');
   if (scope.mode === 'full' && parsed.every((c) => c !== null)) {
     const first = parsed[0];
     const last = parsed[parsed.length - 1];
@@ -215,6 +246,7 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
   const listed = new Set<number>();
   for (const s of statements) {
     const seq = Number(s.seq);
+    if (listed.has(seq)) breaks.push(`statement ${seq} listed twice`);
     listed.add(seq);
     if (typeof s.statement_canonical !== 'string' || prefixed(Buffer.from(s.statement_canonical, 'utf8')) !== s.statement_digest) {
       breaks.push(`statement digest at ${seq}`);
@@ -227,14 +259,11 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
   if (completeness === 'checked') {
     for (const seq of expected.keys()) if (!listed.has(seq)) breaks.push(`in-scope statement ${seq} left out`);
   }
-  const anchoredCount = statements.filter((s) => s.anchor_status === 'anchored').length;
-  const counts = m.counts as Obj;
-  if (counts?.statements !== statements.length || counts?.pending !== statements.length - anchoredCount) breaks.push('counts');
-
   // --- anchors: Merkle path from the record hash to the batch root
   const batches = new Map((Array.isArray(pack.anchor_batches) ? pack.anchor_batches as Obj[] : []).map((b) => [b.batch_id, b]));
   const hashBySeq = new Map(records.map((r) => [Number(r.seq), String(r.record_hash)]));
   let anchorPaths = 0;
+  const provenTypes = new Map<number, Set<string>>();
   for (const a of Array.isArray(pack.anchors) ? pack.anchors as Obj[] : []) {
     const b = batches.get(a.batch_id);
     const proof = isObj(a.inclusion_proof) && isObj(a.inclusion_proof.merkle) ? a.inclusion_proof.merkle : null;
@@ -247,7 +276,26 @@ export function oracleVerifyPack(download: unknown, userPinnedRootKeyids: readon
     const leaf = createHash('sha256').update(Buffer.from([0])).update(Buffer.from(recordHash.slice(7), 'hex')).digest();
     const root = rootFromPath(leaf, Number(proof.leaf_index), Number(proof.tree_size), (proof.path as string[]).map((h) => Buffer.from(h, 'hex')));
     if (!root || 'sha256:' + root.toString('hex') !== b.merkle_root) breaks.push(`merkle path at ${a.seq}`);
-    else anchorPaths += 1;
+    else {
+      anchorPaths += 1;
+      const types = provenTypes.get(Number(a.seq)) ?? new Set<string>();
+      types.add(String(a.anchor_type));
+      provenTypes.set(Number(a.seq), types);
+    }
   }
+  // A statement says `anchored` only with a proven rekor and tsa path; `pending` only without.
+  for (const s of statements) {
+    const types = provenTypes.get(Number(s.seq));
+    const both = !!types && types.has('rekor') && types.has('tsa');
+    if ((s.anchor_status === 'anchored') !== both) breaks.push(`anchor_status at ${s.seq} disagrees with its anchors`);
+  }
+  const anchoredCount = statements.filter((s) => s.anchor_status === 'anchored').length;
+  const counts = m.counts as Obj;
+  const anchorsList = Array.isArray(pack.anchors) ? pack.anchors : [];
+  const expectedCounts = {
+    records: records.length, statements: statements.length, redacted_records: records.filter((r) => typeof r.canonical_record !== 'string').length,
+    anchored: anchoredCount, pending: statements.length - anchoredCount, anchor_rows: anchorsList.length, anchor_batches: batches.size,
+  };
+  if (canonicalize(counts) !== canonicalize(expectedCounts)) breaks.push('manifest counts do not match the pack');
   return out(breaks.length === 0, completeness, { records: records.length, statements: statements.length, anchorPaths });
 }

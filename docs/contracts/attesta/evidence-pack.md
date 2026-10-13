@@ -52,7 +52,7 @@ The pack signature is **not chained** and not anchored in phase 1: everything in
 
 A record is **in the window** when `from ≤ recorded_at ≤ to`, and **in scope** when it is in the window and (`repository_id` is null or equals the record's `repository_id`). `statements` holds exactly the in-scope records.
 
-`to` must be at least 5 minutes before `generated_at` (a writer stamps `recorded_at` with its own clock just before it commits; the margin covers that and clock skew). A request with a later `to` is refused (400).
+`to` must be at least 5 minutes before `generated_at` (a writer stamps `recorded_at` with its own clock just before it commits; the margin covers that and clock skew). A request with a later `to` is refused (400). **Assumption:** every API process that chains statements keeps its clock within 5 minutes of the database clock. `recorded_at` is the writer's clock, only clamped to be no earlier than the previous record's; a writer lagging further could chain a record into a window a pack has already called complete. Nothing enforces the bound in phase 1 (operations: NTP on every API host).
 
 ### Modes (record redaction)
 
@@ -87,13 +87,14 @@ Use `full` for the tenant itself and its own auditors; `repository_only` for out
 
 ## What a verifier checks (A15.10 copies this list)
 
-1. `signature`: payload type; payload is the JCS of `{manifest, pack_digest}`; `manifest` equals the pack's; `pack_digest` equals the recomputed digest; the signature verifies with `verifyTrusted` (purpose `statement`, audience `tenant_id`, `signedAt` `generated_at`, root pinned **by the user**).
-2. Every `sections` digest matches; top-level keys and `format` are exactly v1's.
-3. `records`: seq contiguous `from_seq..to_seq`; the first `prev_hash` = `chain_range.prev_hash` (genesis at 0); each `prev_hash` = the previous `record_hash`; where `canonical_record` is present, `record_hash` = `"sha256:" + hex(SHA-256(canonical_record ‖ prev_hash))`, the bytes are their own JCS form, and its `seq`, `prev_hash` and `tenant_id` agree; with `head` set, `head.head_hash` = the last `record_hash` and `head.next_seq` = `to_seq + 1`.
-4. Window (mode `full`): the first record is seq 0 or has `recorded_at` < `from`; the last has `recorded_at` > `to` or `head` is set; `to` ≤ `generated_at` − 5 min; `statements` lists exactly the in-scope records (by seq and `statement_digest`). Mode `repository_only`: report completeness not checkable.
-5. Each statement: `statement_digest` = SHA-256 of `statement_canonical` and equals its record's; the envelope payload is those bytes; the envelope verifies with a key of the tenant's key sets via `verifyTrusted`, passing the record's anchor time as `timeEvidence` (`binds: ledger_statement`) for retired or revoked keys; then `envelope.md` "Verifier steps".
-6. Anchors: each row's Merkle path from the 32 raw bytes of its record's `record_hash` (RFC 6962, `leaf_index = seq − seq_from`, `tree_size = leaf_count`) reaches its batch's `merkle_root`; the Rekor entry and TSA token verify offline with `trust` material (`anchor-dual.ts` `verifyStoredAnchor`); a Rekor anchor's `integratedTime` lies inside its anchoring key's window from `root_entry`.
-7. Exit codes: 0 all checked and passed; 1 a break; 2 something not checkable (a pending anchor beyond the window is a break; inside it, a warning).
+1. Trust documents: root documents run version 1, 2, 3 … from the **user's** pin, each `previous` the digest of the one before; the tenant's key sets the same from version 1; the newest of each had not expired at `generated_at` (withholding a newer key set is detectable only with a persisted `lastTrusted`, `trust.md` "First-use limit").
+2. `signature`: payload type; payload is the JCS of `{manifest, pack_digest}`; `manifest` equals the pack's; `pack_digest` equals the recomputed digest; the signature verifies with `verifyTrusted` (purpose `statement`, audience `tenant_id`, `signedAt` `generated_at`, root pinned **by the user**).
+3. Every `sections` digest matches; top-level keys and `format` are exactly v1's; `counts` and `completeness` agree with the pack's own content and `mode`; no statement is listed twice.
+4. `records`: seq contiguous `from_seq..to_seq`; the first `prev_hash` = `chain_range.prev_hash` (genesis at 0); each `prev_hash` = the previous `record_hash`; where `canonical_record` is present, `record_hash` = `"sha256:" + hex(SHA-256(canonical_record ‖ prev_hash))`, the bytes are their own JCS form, and its `seq`, `prev_hash` and `tenant_id` agree; with `head` set, `head.head_hash` = the last `record_hash` and `head.next_seq` = `to_seq + 1`.
+5. Window (mode `full`): the first record is seq 0 or has `recorded_at` < `from`; the last has `recorded_at` > `to` or `head` is set; `to` ≤ `generated_at` − 5 min; `statements` lists exactly the in-scope records (by seq and `statement_digest`). Mode `repository_only`: report completeness not checkable.
+6. Each statement: `statement_digest` = SHA-256 of `statement_canonical` and equals its record's; the envelope payload is those bytes; the envelope verifies with a key of the tenant's key sets via `verifyTrusted`, passing the record's anchor time as `timeEvidence` (`binds: ledger_statement`) for retired or revoked keys; then `envelope.md` "Verifier steps".
+7. Anchors: a statement is `anchored` exactly when both a rekor and a tsa row prove its record; each row's Merkle path from the 32 raw bytes of its record's `record_hash` (RFC 6962, `leaf_index = seq − seq_from`, `tree_size = leaf_count`) reaches its batch's `merkle_root`; the Rekor entry and TSA token verify offline with `trust` material (`anchor-dual.ts` `verifyStoredAnchor`); a Rekor anchor's `integratedTime` lies inside its anchoring key's window from `root_entry`.
+8. Exit codes: 0 all checked and passed; 1 a break; 2 something not checkable (a pending anchor beyond the window is a break; inside it, a warning).
 
 ## Routes and jobs (`api.md`)
 

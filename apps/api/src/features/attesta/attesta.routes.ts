@@ -218,9 +218,11 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
       tenantId: who.tenantId, idempotencyKey: key, request, requestedBy: who.actorId, requestId: requestIdOf(res),
     });
     if (!created) return replay(job); // a concurrent request with the same key won the insert
+    // Started even when the audit write fails, so a created job is never stranded; the
+    // failure still answers 500 and a retry with the same key replays (and audits) it.
+    startPack(who.tenantId, job.id);
     await packs.store.audit({ tenantId: who.tenantId, actorId: who.actorId, actorRole: who.role, action: 'attesta.export.request',
       packId: job.id, details: { request_id: requestIdOf(res), ...scopeDetails(job), replayed: false } });
-    startPack(who.tenantId, job.id);
     answer(job, false);
   }));
 

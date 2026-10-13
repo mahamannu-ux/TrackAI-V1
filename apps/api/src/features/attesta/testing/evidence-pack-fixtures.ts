@@ -207,7 +207,10 @@ export class MemoryPackStore implements PackStore {
   private find(t: string, id: string) { return this.jobs.find((j) => j.tenantId === t && j.id === id); }
   async get(t: string, id: string) { const j = this.find(t, id); return j ? { ...j } : null; }
   async findByKey(t: string, k: string) { const j = this.jobs.find((x) => x.tenantId === t && x.idempotencyKey === k); return j ? { ...j } : null; }
-  async openCount(t: string) { return this.jobs.filter((j) => j.tenantId === t && (j.status === 'queued' || j.status === 'running')).length; }
+  async openCount(t: string) {
+    return this.jobs.filter((j) => j.tenantId === t && ((j.status === 'queued' && Date.parse(j.createdAt) > this.clock - 600_000)
+      || (j.status === 'running' && (j.leaseUntil ?? 0) > this.clock))).length;
+  }
   async repositoryExists(_t: string, r: string) { return r === R1 || r === R2; }
   async segmentSize(t: string, scope: PackScope) { const s = segmentOf(this.chains.get(t) ?? buildFixtureChain(t, newKey(), 0), scope, at(this.clock)); return s.toSeq - s.fromSeq + 1; }
   async claim(t: string, id: string, leaseMs: number) {

@@ -15,7 +15,7 @@ import { createPublicKey, sign as cryptoSign, verify } from 'node:crypto';
 import { describe, test } from 'node:test';
 import type { EvidenceExportSink } from '../../core/operations/evidence-export-sink';
 import { GENESIS_PREV_HASH, canonicalize, sha256Prefixed } from './canonical';
-import { verifyEnvelope, type DsseEnvelope } from './dsse';
+import { pae, verifyEnvelope, type DsseEnvelope } from './dsse';
 import {
   EVIDENCE_PACK_PAYLOAD_TYPE, MAX_PACK_RECORDS, PackJobError, buildPack, downloadBody, packStatusBody,
   packTrustFrom, parseIdempotencyKey, parsePackRequest, parseStoredScope, runEvidencePack, sameRequest, signPack,
@@ -30,7 +30,7 @@ import {
 } from './testing/evidence-pack-fixtures';
 import { oracleVerifyPack } from './testing/evidence-pack-oracle';
 import {
-  applyTenantKeyCommand, planTenantKeyCommand, registerKey, type InventoryContext, type TrustAdapters,
+  applyTenantKeyCommand, planTenantKeyCommand, publishKeyset, registerKey, type InventoryContext, type TrustAdapters,
 } from './trust-inventory';
 import { inventorySignerResolver, publishedKeysFor } from './trust-resolver';
 
@@ -168,6 +168,67 @@ describe('buildPack (ported: SushiCorp reporting integrity)', () => {
     for (const url of text.match(/https?:\/\/[^"\s]+/g) ?? []) {
       assert.match(url, /^https:\/\/(trackai\.dev|in-toto\.io)\//, url);
     }
+  });
+});
+
+/** Re-sign an altered pack as a dishonest exporter holding A's real key would: digests and signature redone. */
+function resign(d: { pack: Record<string, any>; signature: DsseEnvelope }, w: World) {
+  const p = d.pack;
+  for (const name of Object.keys(p.manifest.sections)) p.manifest.sections[name] = sha256Prefixed(canonicalize(p[name]));
+  const payload = Buffer.from(canonicalize({ manifest: p.manifest, pack_digest: sha256Prefixed(canonicalize(p)) }), 'utf8');
+  const sig = cryptoSign('sha256', pae(EVIDENCE_PACK_PAYLOAD_TYPE, payload), { key: w.k.a1.priv, dsaEncoding: 'der' });
+  d.signature = { payload: payload.toString('base64'), payloadType: EVIDENCE_PACK_PAYLOAD_TYPE, signatures: [{ keyid: w.k.a1.keyid, sig: sig.toString('base64') }] };
+  return d;
+}
+
+describe('oracle: claims a dishonest exporter re-signs are still checked against the pack', () => {
+  test('anchor_status, counts, completeness, duplicates, a left-out statement, a missing canonical_record', async () => {
+    const w = await trustWorld();
+    const { download } = await packFor(w, SCOPE_ALL);
+    assert.deepEqual(oracleVerifyPack(resign(structuredClone(download), w), [w.k.root.keyid]).breaks, [], 're-signing alone changes nothing');
+    const cases: Array<[string, (p: Record<string, any>) => void, RegExp]> = [
+      ['pending shown as anchored', (p) => { p.statements[2].anchor_status = 'anchored'; p.manifest.counts.anchored += 1; p.manifest.counts.pending -= 1; }, /anchor_status at 4/],
+      ['counts', (p) => { p.manifest.counts.records += 1; }, /counts/],
+      ['completeness vs mode', (p) => { p.manifest.scope.mode = 'repository_only'; }, /completeness/],
+      ['statement twice', (p) => { p.statements.push(structuredClone(p.statements[0])); p.manifest.counts.statements += 1; }, /listed twice/],
+      ['statement left out', (p) => { p.statements.splice(3, 1); p.manifest.counts.statements -= 1; p.manifest.counts.pending -= 1; }, /left out/],
+      ['canonical_record withheld in full', (p) => { delete p.records[4].canonical_record; p.manifest.counts.redacted_records += 1; }, /every canonical_record/],
+      ['record not JSON', (p) => { p.records[4].canonical_record = '{'; }, /record/],
+    ];
+    for (const [name, mutate, expected] of cases) {
+      const d = structuredClone(download);
+      mutate(d.pack);
+      const res = oracleVerifyPack(resign(d, w), [w.k.root.keyid]);
+      assert.equal(res.ok, false, name);
+      assert.ok(res.breaks.some((b) => expected.test(b)), `${name}: ${res.breaks.join('; ')}`);
+    }
+  });
+
+  test('trust documents reordered, truncated or rolled back fail (key sets and roots run 1, 2, 3 …)', async () => {
+    const w = await trustWorld();
+    await publishKeyset(w.ctx, A); // key set version 2
+    const { download } = await packFor(w, SCOPE_ALL);
+    const bTrust = (await w.material(B)).trust;
+    assert.equal(download.pack.trust.keyset_documents.length, 2);
+    assert.deepEqual(oracleVerifyPack(download, [w.k.root.keyid]).breaks, []);
+    const cases: Array<[string, (t: Record<string, any>) => void]> = [
+      ['key sets reordered', (t) => { t.keyset_documents.reverse(); }],
+      ['key set history truncated', (t) => { t.keyset_documents.shift(); }],
+      ['root duplicated', (t) => { t.root_documents.push(t.root_documents[0]); }],
+      ['no root', (t) => { t.root_documents = []; }],
+      ['another tenant\'s key sets', (t) => { t.keyset_documents = bTrust.keyset_documents; }],
+    ];
+    for (const [name, mutate] of cases) {
+      const d = structuredClone(download);
+      mutate(d.pack.trust);
+      assert.equal(oracleVerifyPack(resign(d, w), [w.k.root.keyid]).ok, false, name);
+    }
+    // Documented limit (trust.md "First-use limit"): withholding the newest key set is not
+    // detectable offline without a persisted lastTrusted; a key set that still lists the
+    // signer active and has not expired at generated_at is accepted. A15.10 persists lastTrusted.
+    const withheld = structuredClone(download);
+    withheld.pack.trust.keyset_documents.pop();
+    assert.equal(oracleVerifyPack(resign(withheld, w), [w.k.root.keyid]).ok, true);
   });
 });
 
@@ -320,6 +381,7 @@ describe('runEvidencePack', () => {
       ['no credential', (j) => { j.deps.resolver = async () => ({ resolve: async () => null }); }, 'ATTESTA_SIGNER_NO_CREDENTIAL', false],
       ['kms down', (j) => { j.w.kms.down = true; }, 'ATTESTA_SIGNER_UNAVAILABLE', true],
       ['chain inconsistent', (j) => { j.store.chains.get(A)!.records[4].prevHash = GENESIS_PREV_HASH; }, 'ATTESTA_API_INTERNAL', true],
+      ['signer not in the pack\'s key set', (j) => { j.deps.trust = async () => j.w.material(B); }, 'ATTESTA_SIGNER_UNAVAILABLE', true],
     ];
     for (const [name, arrange, code, retryable] of cases) {
       const j = await jobWorld();
