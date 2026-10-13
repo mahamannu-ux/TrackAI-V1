@@ -81,6 +81,7 @@ interface Checked {
   skew: number;
   timeEvidence: TimeEvidence | undefined;
   state: TrustState;
+  floor: number | null;
 }
 
 /** Step 1: the call itself, bounded. Any breach → INPUT_INVALID. */
@@ -108,11 +109,20 @@ function checkInput(input: VerifyTrustedInput): Checked {
   let timeEvidence: TimeEvidence | undefined;
   if (input.timeEvidence !== undefined) {
     const te = input.timeEvidence;
-    if (!isRecord(te) || typeof te.kind !== 'string' || typeof te.time !== 'string' || typeof te.binds !== 'string' ||
-        typeof te.digest !== 'string') throw fail();
+    // Exact shape: a malformed object is a caller error, never silently ignored.
+    if (!isRecord(te) || Object.keys(te).some((k) => !['kind', 'time', 'binds', 'digest'].includes(k)) ||
+        (te.kind !== 'tsa_gen_time' && te.kind !== 'rekor_integrated_time') ||
+        (te.binds !== 'signature' && te.binds !== 'ledger_statement') ||
+        (te.binds === 'ledger_statement' && purpose !== 'statement') ||
+        parseTimestamp(te.time) === null || typeof te.digest !== 'string' || !DIGEST_RE.test(te.digest)) throw fail();
     timeEvidence = te;
   }
   if (typeof state.production !== 'boolean') throw fail();
+  let floor: number | null = null;
+  if (state.trustedTimeFloor !== undefined) {
+    floor = parseTimestamp(state.trustedTimeFloor);
+    if (floor === null) throw fail();
+  }
   if (!Array.isArray(state.pinnedRootKeyids) || state.pinnedRootKeyids.length > MAX_PINS ||
       state.pinnedRootKeyids.some((k) => typeof k !== 'string' || !DIGEST_RE.test(k))) throw fail();
   const pinThreshold = state.pinnedRootThreshold ?? 1;
@@ -137,7 +147,7 @@ function checkInput(input: VerifyTrustedInput): Checked {
   }
   if (state.customerPins !== undefined &&
       (!isRecord(state.customerPins) || Object.keys(state.customerPins).length > TRUST_MAX_SCOPES)) throw fail();
-  return { payload, payloadType, keyid, sig, purpose: purpose as ArtifactPurpose, audience, signedAt, now, skew, timeEvidence, state };
+  return { payload, payloadType, keyid, sig, purpose: purpose as ArtifactPurpose, audience, signedAt, now, skew, timeEvidence, state, floor };
 }
 
 function parseAll(envelopes: readonly unknown[], kind: 'root' | 'keyset', scope: string): ParsedDocument[] {
@@ -334,6 +344,8 @@ function listedForOtherTenant(c: Checked): boolean {
 
 function run(input: VerifyTrustedInput): TrustVerdict {
   const c = checkInput(input);
+  // A clock behind the persisted floor (beyond skew) cannot judge expiry or validity.
+  if (c.floor !== null && c.now < c.floor - c.skew) throw new Stop('ATTESTA_TRUST_CLOCK_BEHIND');
   let keys: Map<string, ParsedKey>;
   let trusted: Record<string, TrustedDocumentRef> = {};
   let root: ParsedDocument | null = null;
@@ -365,7 +377,8 @@ function run(input: VerifyTrustedInput): TrustVerdict {
   const violation = keyValidityViolation(key, c.signedAt, c.now, c.skew, c.timeEvidence,
     { purpose: c.purpose, signatureDigest: sha256Prefixed(c.sig), payloadDigest: sha256Prefixed(c.payload) });
   if (violation) throw new Stop(violation);
-  return verdict('ATTESTA_TRUST_VERIFIED', { keyid: c.keyid, trusted });
+  const trustedTime = new Date(Math.max(c.now, c.floor ?? c.now)).toISOString();
+  return verdict('ATTESTA_TRUST_VERIFIED', { keyid: c.keyid, trusted, trustedTime });
 }
 
 /** trust-contract.ts `VerifyTrusted`. */

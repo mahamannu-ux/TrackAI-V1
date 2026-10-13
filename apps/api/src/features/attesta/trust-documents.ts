@@ -312,10 +312,18 @@ function boundEvidenceTime(ev: TimeEvidence | undefined, facts: SignatureFacts |
 }
 
 /**
- * Was `key` valid for a signature claimed at `signedAt`? (trust.md step 8.)
- * Time evidence counts only when it is bound to this signature (or, for a
- * statement, to this ledger statement); documents pass `facts = null` (they
- * carry no evidence). Returns null (valid) or the rejection code.
+ * Was `key` valid for this signature? (trust.md step 8.)
+ *
+ * `signedAt` is the caller's claim and is not covered by the signature, so it is
+ * trusted only while the key is still usable: active and `now` inside its validity.
+ * Grandfathering anything else (retired, revoked `superseded`, revoked
+ * `compromised`, or past `not_after`) needs time evidence bound to this signature
+ * (or, for a statement, to this ledger statement) that lies inside the validity
+ * and before `revoked_at` / `compromised_since`.
+ *
+ * Documents pass `facts = null`: they carry no evidence, their `issued_at` claim is
+ * accepted against `revoked_at`, and the document lifetime bounds how long a
+ * back-dated document can live (trust.md "Documents").
  */
 export function keyValidityViolation(
   key: ParsedKey,
@@ -327,21 +335,24 @@ export function keyValidityViolation(
 ): TrustCode | null {
   if (signedAt < key.notBefore || signedAt > key.notAfter || signedAt > nowMs + skewMs) return 'ATTESTA_TRUST_KEY_NOT_VALID_AT';
   const e = key.entry;
-  if (e.status === 'retired') {
-    return signedAt < (key.revokedAt as number) ? null : 'ATTESTA_TRUST_KEY_NOT_VALID_AT';
-  }
-  if (e.status === 'revoked' && e.revocation_reason === 'superseded') {
-    return signedAt < (key.revokedAt as number) ? null : 'ATTESTA_TRUST_KEY_REVOKED';
-  }
-  if (e.status === 'revoked') {
-    // Compromised: the signer could back-date signedAt, so only independent time
-    // evidence over these exact bytes counts.
-    const evTime = boundEvidenceTime(timeEvidence, facts);
-    if (evTime === null || evTime > nowMs + skewMs) return 'ATTESTA_TRUST_KEY_REVOKED';
-    if (evTime >= (key.compromisedSince as number) || evTime < key.notBefore || evTime > key.notAfter) return 'ATTESTA_TRUST_KEY_REVOKED';
+  const superseded = e.status === 'revoked' && e.revocation_reason === 'superseded';
+  const compromised = e.status === 'revoked' && e.revocation_reason === 'compromised';
+  if (facts === null) {
+    if (e.status === 'retired') return signedAt < (key.revokedAt as number) ? null : 'ATTESTA_TRUST_KEY_NOT_VALID_AT';
+    if (superseded) return signedAt < (key.revokedAt as number) ? null : 'ATTESTA_TRUST_KEY_REVOKED';
+    if (compromised) return 'ATTESTA_TRUST_KEY_REVOKED';
     return null;
   }
-  return null;
+  const usableNow = e.status === 'active' && nowMs + skewMs >= key.notBefore && nowMs - skewMs <= key.notAfter;
+  if (usableNow) return null;
+  const evTime = boundEvidenceTime(timeEvidence, facts);
+  const before = (limit: number) =>
+    evTime !== null && evTime <= nowMs + skewMs && evTime >= key.notBefore && evTime <= key.notAfter && evTime < limit;
+  if (e.status === 'active' || e.status === 'retired') {
+    return before(e.status === 'retired' ? (key.revokedAt as number) : Number.POSITIVE_INFINITY) ? null : 'ATTESTA_TRUST_KEY_NOT_VALID_AT';
+  }
+  if (superseded) return before(key.revokedAt as number) ? null : 'ATTESTA_TRUST_KEY_REVOKED';
+  return before(key.compromisedSince as number) ? null : 'ATTESTA_TRUST_KEY_REVOKED';
 }
 
 // ---------------------------------------------------------------------------

@@ -203,13 +203,14 @@ test('T15l: every contract vector gives its expected status and code through ver
       purpose: v.input.purpose, audience: v.input.audience, signedAt: v.input.signed_at,
       timeEvidence: te && { kind: te.kind, time: te.time, binds: te.binds, digest: te.digest },
       state: { pinnedRootKeyids: s.pinned_root_keyids, pinnedRootThreshold: s.pinned_root_threshold, rootDocuments: s.root_documents,
-        keysetDocuments: s.keyset_documents, customerPins: s.customer_pins, lastTrusted: s.last_trusted, now: s.now,
+        keysetDocuments: s.keyset_documents, customerPins: s.customer_pins, lastTrusted: s.last_trusted, now: s.now, trustedTimeFloor: s.trusted_time_floor,
         clockSkewMs: s.clock_skew_ms, production: s.production, allowUnpinnedRoot: s.allow_unpinned_root },
     });
     assert.equal(r.status, v.expected.status, f);
     assert.equal(r.code, v.expected.code, f);
     if (v.expected.keyid !== undefined) assert.equal(r.keyid, v.expected.keyid, f);
     if (v.expected.trusted !== undefined) assert.deepEqual(r.trusted, v.expected.trusted, f);
+    if (v.expected.trusted_time !== undefined) assert.equal(r.trustedTime, v.expected.trusted_time, f);
     if (r.status !== 'verified') assert.equal(r.keyid, undefined, f);
   }
 });
@@ -230,11 +231,32 @@ test('T15l validity: not_before, not_after and revoked_at boundaries', async () 
   const RA = '2026-10-15T00:00:00.000Z';
   const retired = await doc(keysetBody({ issued: RA, keys: [entry(W.a1, 'statement', { status: 'retired', revoked_at: RA })] }), [W.keyset]);
   const superseded = await doc(keysetBody({ issued: RA, keys: [entry(W.a1, 'statement', { status: 'revoked', revoked_at: RA, revocation_reason: 'superseded' })] }), [W.keyset]);
+  const ledger = (time: string): TimeEvidence => ({ kind: 'rekor_integrated_time', time, binds: 'ledger_statement', digest: sha256Prefixed(STATEMENT) });
   for (const [ks, code] of [[retired, 'ATTESTA_TRUST_KEY_NOT_VALID_AT'], [superseded, 'ATTESTA_TRUST_KEY_REVOKED']] as const) {
     const st = { keysetDocuments: { [TENANT_A]: [ks] } };
-    expect(at('2026-10-14T23:59:59.999Z', st), 'ATTESTA_TRUST_VERIFIED');
-    expect(at(RA, st), code);
+    const withEv = (signedAt: string, time: string) => verifyTrusted(stmt(W.a1, { signedAt, timeEvidence: ledger(time) }, st));
+    // The claim alone never grandfathers a non-active key (Codex review): only evidence before revoked_at.
+    expect(at('2026-10-14T23:59:59.999Z', st), code);
+    expect(withEv('2026-10-14T23:59:59.999Z', '2026-10-14T23:59:59.999Z'), 'ATTESTA_TRUST_VERIFIED');
+    expect(withEv('2026-10-14T00:00:00.000Z', RA), code);
+    expect(withEv(RA, '2026-10-14T00:00:00.000Z'), 'ATTESTA_TRUST_VERIFIED'); // the bound evidence decides, not the claim
   }
+  // An active key past not_after at now: the claim alone is not enough either.
+  const expiredNow = { now: '2027-10-01T00:05:00.001Z', keysetDocuments: { [TENANT_A]: [await doc(keysetBody({ issued: '2027-09-20T00:00:00.000Z', expires: '2027-10-20T00:00:00.000Z' }), [W.keyset])] },
+    rootDocuments: late.rootDocuments };
+  expect(at('2027-09-30T00:00:00.000Z', expiredNow), 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
+  expect(verifyTrusted(stmt(W.a1, { signedAt: '2027-09-30T00:00:00.000Z', timeEvidence: ledger('2027-09-30T00:00:00.000Z') }, expiredNow)), 'ATTESTA_TRUST_VERIFIED');
+});
+
+test('T15l clock floor: a rolled-back clock is refused; trustedTime only moves forward', async () => {
+  await ready;
+  expect(verifyTrusted(stmt(W.a1, {}, { trustedTimeFloor: '2026-10-20T12:05:00.001Z' })), 'ATTESTA_TRUST_CLOCK_BEHIND');
+  const ok = verifyTrusted(stmt(W.a1, {}, { trustedTimeFloor: '2026-10-20T12:05:00.000Z' }));
+  expect(ok, 'ATTESTA_TRUST_VERIFIED');
+  assert.equal(ok.trustedTime, '2026-10-20T12:05:00.000Z');
+  assert.equal(verifyTrusted(stmt(W.a1, {}, { trustedTimeFloor: '2026-10-01T00:00:00.000Z' })).trustedTime, NOW);
+  assert.equal(verifyTrusted(stmt(W.a1)).trustedTime, NOW);
+  assert.equal(verifyTrusted(stmt(W.a1, {}, { trustedTimeFloor: 'yesterday' })).code, 'ATTESTA_TRUST_INPUT_INVALID');
 });
 
 test('T15l compromise: only bound, independent, earlier time evidence saves a signature', async () => {
@@ -249,10 +271,10 @@ test('T15l compromise: only bound, independent, earlier time evidence saves a si
   expect(run(ev({ kind: 'rekor_integrated_time' })), 'ATTESTA_TRUST_VERIFIED');
   expect(run(ev({ time: '2026-10-16T23:59:59.999Z' })), 'ATTESTA_TRUST_VERIFIED');
   expect(run(ev({ time: CS })), 'ATTESTA_TRUST_KEY_REVOKED');
-  expect(run(ev({ kind: 'self_claimed' as TimeEvidence['kind'] })), 'ATTESTA_TRUST_KEY_REVOKED');
+  expect(run(ev({ kind: 'self_claimed' as TimeEvidence['kind'] })), 'ATTESTA_TRUST_INPUT_INVALID');
   expect(run(ev({ digest: sha256Prefixed(ARTIFACT) })), 'ATTESTA_TRUST_KEY_REVOKED');
   expect(run(ev({ binds: 'signature' })), 'ATTESTA_TRUST_KEY_REVOKED'); // a payload digest is not the signature's
-  expect(run(ev({ binds: 'other' as TimeEvidence['binds'] })), 'ATTESTA_TRUST_KEY_REVOKED');
+  expect(run(ev({ binds: 'other' as TimeEvidence['binds'] })), 'ATTESTA_TRUST_INPUT_INVALID');
   // Bound to the signature itself.
   const input = stmt(W.a1, { signedAt: '2026-10-10T00:00:00.000Z' }, st);
   const sigDigest = sha256Prefixed(Buffer.from(input.envelope.signatures[0].sig, 'base64'));
@@ -261,7 +283,9 @@ test('T15l compromise: only bound, independent, earlier time evidence saves a si
   // A fresh signature over the same payload is not covered by the old signature's evidence.
   const resigned = stmt(W.a1, { signedAt: '2026-10-10T00:00:00.000Z' }, st);
   expect(verifyTrusted({ ...resigned, timeEvidence: ev({ binds: 'signature', digest: sigDigest }) }), 'ATTESTA_TRUST_KEY_REVOKED');
-  expect(run(ev({ time: 'yesterday' })), 'ATTESTA_TRUST_KEY_REVOKED');
+  expect(run(ev({ time: 'yesterday' })), 'ATTESTA_TRUST_INPUT_INVALID');
+  expect(run(ev({ digest: 'junk' })), 'ATTESTA_TRUST_INPUT_INVALID');
+  expect(run({ ...ev({}), extra: 1 } as TimeEvidence), 'ATTESTA_TRUST_INPUT_INVALID');
   expect(run(ev({ time: '2026-09-01T00:00:00.000Z' })), 'ATTESTA_TRUST_KEY_REVOKED'); // before the key existed
   // A back-dated signedAt never helps without evidence.
   expect(run(undefined, '2026-10-02T00:00:00.000Z'), 'ATTESTA_TRUST_KEY_REVOKED');
