@@ -32,7 +32,11 @@ export type AttestaApiCode =
   | 'ATTESTA_API_NOT_FOUND'
   | 'ATTESTA_API_INVALID_QUERY'
   | 'ATTESTA_API_RATE_LIMITED'
-  | 'ATTESTA_API_INTERNAL';
+  | 'ATTESTA_API_INTERNAL'
+  // Added 2026-10-13 (Task15i2, errors.md §API).
+  | 'ATTESTA_API_UNAUTHENTICATED'
+  | 'ATTESTA_API_UNAVAILABLE'
+  | 'ATTESTA_API_CONFLICT';
 
 const TITLES: Readonly<Record<AttestaApiCode, string>> = {
   ATTESTA_API_FORBIDDEN: 'Administrator or auditor access is required',
@@ -40,6 +44,9 @@ const TITLES: Readonly<Record<AttestaApiCode, string>> = {
   ATTESTA_API_INVALID_QUERY: 'The request parameters are invalid',
   ATTESTA_API_RATE_LIMITED: 'Too many requests',
   ATTESTA_API_INTERNAL: 'The service could not complete the request',
+  ATTESTA_API_UNAUTHENTICATED: 'Authentication is required',
+  ATTESTA_API_UNAVAILABLE: 'The service is temporarily unavailable',
+  ATTESTA_API_CONFLICT: 'The Idempotency-Key was already used for another request',
 };
 
 export interface Problem {
@@ -101,9 +108,9 @@ export function logFailure(log: AttestaLog, res: Response, code: AttestaApiCode,
 /**
  * Wraps an authorization middleware that answers with `res.status(n).json({error})`
  * (core/middleware/admin.ts `requireAdminAction`) so its refusals become problems:
- * 403 → ATTESTA_API_FORBIDDEN; 401 → 401 with ATTESTA_API_FORBIDDEN (errors.md has no
- * unauthenticated code; /api's JWT middleware answers first in practice); 503 or any
- * other status → 503 ATTESTA_API_INTERNAL. The middleware's own text never reaches
+ * 403 → ATTESTA_API_FORBIDDEN; 401 → ATTESTA_API_UNAUTHENTICATED (/api's JWT middleware
+ * answers first in practice); 503 or any other status → 503 ATTESTA_API_UNAVAILABLE
+ * (codes added to errors.md in Task15i2). The middleware's own text never reaches
  * the client.
  */
 export function problemizeAuth(middleware: RequestHandler): RequestHandler {
@@ -121,8 +128,9 @@ export function problemizeAuth(middleware: RequestHandler): RequestHandler {
     }) as Response['status'];
     res.json = ((_body: unknown) => {
       restore();
-      if (pending === 401 || pending === 403) sendProblem(res, pending, 'ATTESTA_API_FORBIDDEN');
-      else sendProblem(res, 503, 'ATTESTA_API_INTERNAL');
+      if (pending === 401) sendProblem(res, 401, 'ATTESTA_API_UNAUTHENTICATED');
+      else if (pending === 403) sendProblem(res, 403, 'ATTESTA_API_FORBIDDEN');
+      else sendProblem(res, 503, 'ATTESTA_API_UNAVAILABLE');
       return res;
     }) as Response['json'];
     let called = false;

@@ -537,7 +537,7 @@ describe('conventions', () => {
     await new Promise((r) => server.once('listening', r));
     try {
       const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/attesta/statements`);
-      await expectProblem(res, 401, 'ATTESTA_API_FORBIDDEN');
+      await expectProblem(res, 401, 'ATTESTA_API_UNAUTHENTICATED');
     } finally {
       await new Promise((r) => server.close(r));
     }
@@ -564,8 +564,8 @@ describe('conventions', () => {
   });
 
   test('problemizeAuth maps 401, 403 and 503 and passes success through', async () => {
-    for (const [status, expected, code] of [[401, 401, 'ATTESTA_API_FORBIDDEN'], [403, 403, 'ATTESTA_API_FORBIDDEN'],
-      [503, 503, 'ATTESTA_API_INTERNAL'], [500, 503, 'ATTESTA_API_INTERNAL']] as const) {
+    for (const [status, expected, code] of [[401, 401, 'ATTESTA_API_UNAUTHENTICATED'], [403, 403, 'ATTESTA_API_FORBIDDEN'],
+      [503, 503, 'ATTESTA_API_UNAVAILABLE'], [500, 503, 'ATTESTA_API_UNAVAILABLE']] as const) {
       const app = express();
       app.use((_req, res, next) => { res.locals.attestaRequestId = 'rid'; next(); });
       app.use(problemizeAuth((_req, res) => { res.status(status).json({ error: 'internal words' }); }));
@@ -762,8 +762,8 @@ describe('route sweep (AU-1)', () => {
       for (const sub of ['stranger', 'revoked-a', 'auditor-b']) {
         await expectProblem(await h.get(path, { tenant: A, sub }), 403, 'ATTESTA_API_FORBIDDEN');
       }
-      await expectProblem(await h.get(path, { tenant: A }), 401, 'ATTESTA_API_FORBIDDEN');
-      await expectProblem(await h.get(path, { tenant: A, sub: 'flaky-a' }), 503, 'ATTESTA_API_INTERNAL');
+      await expectProblem(await h.get(path, { tenant: A }), 401, 'ATTESTA_API_UNAUTHENTICATED');
+      await expectProblem(await h.get(path, { tenant: A, sub: 'flaky-a' }), 503, 'ATTESTA_API_UNAVAILABLE');
     }
     assert.equal(h.store.listCalls, 0);
     assert.equal(h.store.audits.length, 0, 'a refused request writes nothing');
