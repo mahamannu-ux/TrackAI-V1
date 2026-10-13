@@ -1,7 +1,7 @@
 {
   "vector_version": 1,
   "name": "rotation-old-key-before-retirement",
-  "description": "Retired key A1, signature before its revoked_at: still verifies (rotation overlap).",
+  "description": "Retired key A1 with anchored ledger time evidence before its revoked_at: still verifies (rotation overlap).",
   "input": {
     "payload_type": "application/vnd.in-toto+json",
     "payload_b64": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJub3RlIjoic3ludGhldGljIHRydXN0IHZlY3RvciBzdGF0ZW1lbnQifQ==",
@@ -18,6 +18,12 @@
     "purpose": "statement",
     "audience": "0a0a0a0a-0000-4000-8000-00000000000a",
     "signed_at": "2026-10-12T00:00:00.000Z",
+    "time_evidence": {
+      "kind": "rekor_integrated_time",
+      "time": "2026-10-12T00:00:00.000Z",
+      "binds": "ledger_statement",
+      "digest": "sha256:33b724cf5697c7f358449b947777c3e1087ca9c494e498f86f50b8d053f20f69"
+    },
     "state": {
       "pinned_root_keyids": [
         "sha256:8967391807b5d99219191000657962a999fc89a477f310f8be32cbb4455aa63b"
@@ -81,6 +87,7 @@
   "expected": {
     "status": "verified",
     "code": "ATTESTA_TRUST_VERIFIED",
-    "keyid": "sha256:c84df3c7afeb7ddc1d0c181de89d9bf1289829c117a0372face8ef6758b1ebef"
+    "keyid": "sha256:c84df3c7afeb7ddc1d0c181de89d9bf1289829c117a0372face8ef6758b1ebef",
+    "trusted_time": "2026-10-20T12:00:00.000Z"
   }
 }

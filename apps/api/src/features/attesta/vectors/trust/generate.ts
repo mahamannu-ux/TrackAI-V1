@@ -154,13 +154,13 @@ const artBy = (k: TestKey) => envelopeOf(ARTIFACT_PT, ARTIFACT, [k]);
 interface State {
   pinned_root_keyids: string[]; pinned_root_threshold: number; root_documents: DsseEnvelope[];
   keyset_documents: Record<string, DsseEnvelope[]>; customer_pins?: Record<string, Entry[]>;
-  last_trusted: Record<string, { version: number; digest: string }>; now: string; clock_skew_ms: number; production: boolean; allow_unpinned_root: boolean;
+  last_trusted: Record<string, { version: number; digest: string }>; now: string; trusted_time_floor?: string; clock_skew_ms: number; production: boolean; allow_unpinned_root: boolean;
 }
 interface Vector {
   vector_version: number; name: string; description: string;
   input: { payload_type: string; payload_b64: string; envelope: DsseEnvelope; purpose: string; audience: string; signed_at: string;
     time_evidence?: { kind: string; time: string; binds: string; digest: string }; state: State };
-  expected: { status: string; code: string; keyid?: string; trusted?: Record<string, { version: number; digest: string }> };
+  expected: { status: string; code: string; keyid?: string; trusted_time?: string; trusted?: Record<string, { version: number; digest: string }> };
 }
 
 const baseState = (): State => ({
@@ -190,6 +190,8 @@ function add(name: string, description: string, art: Signed, o: {
   };
   if (status === 'verified') {
     v.expected.keyid = art.env.signatures[0]?.keyid;
+    const st = v.input.state;
+    v.expected.trusted_time = st.trusted_time_floor && st.trusted_time_floor > st.now ? st.trusted_time_floor : st.now;
     if (verifiedExtras?.trusted) v.expected.trusted = verifiedExtras.trusted;
   }
   vectors.push(v);
@@ -207,7 +209,7 @@ add('good-activation-lease', 'Activation lease signed by the activation_lease ke
 add('good-fleet-config', 'Fleet configuration signed by the fleet_config key.', artBy(K.fleet1), { purpose: 'fleet_config' }, 'verified', OK, { trusted: T({ platform: [R1, 1] }) });
 add('good-tenant-b', 'Tenant B statement signed by its own key.', stmtBy(K.stmtB1), { audience: TENANT_B }, 'verified', OK, { trusted: T({ platform: [R1, 1], [TENANT_B]: [KSB1, 1] }) });
 // Rotation with overlap
-add('rotation-old-key-before-retirement', 'Retired key A1, signature before its revoked_at: still verifies (rotation overlap).', stmtBy(K.stmtA1), { signedAt: '2026-10-12T00:00:00.000Z' }, 'verified', OK);
+add('rotation-old-key-before-retirement', 'Retired key A1 with anchored ledger time evidence before its revoked_at: still verifies (rotation overlap).', stmtBy(K.stmtA1), { signedAt: '2026-10-12T00:00:00.000Z', timeEvidence: ev('2026-10-12T00:00:00.000Z') }, 'verified', OK);
 add('rotation-old-key-after-retirement', 'Retired key A1 used after its revoked_at.', stmtBy(K.stmtA1), {}, 'rejected', 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
 add('key-before-not-before', 'Key A2 used before its not_before.', stmtBy(K.stmtA2), { signedAt: '2026-10-14T00:00:00.000Z' }, 'rejected', 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
 add('signed-at-in-future', 'signedAt after now plus skew.', stmtBy(K.stmtA2), { signedAt: '2026-10-20T12:05:00.001Z' }, 'rejected', 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
@@ -240,7 +242,7 @@ add('keyset-signed-by-wrong-purpose', 'Key set signed by the release key.', stmt
 add('keyset-not-canonical', 'Key set payload is not its RFC 8785 form.', stmtBy(K.stmtA2), { state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2_NOT_CANONICAL.env] } } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_MALFORMED');
 add('keyset-keyid-not-spki-digest', 'A key entry names a keyid that is not the SHA-256 of its SPKI.', stmtBy(K.stmtA2), { state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2_BAD_KEYID.env] } } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_MALFORMED');
 // Revocation
-add('revoked-superseded-before', 'A2 revoked superseded; signature before revoked_at.', stmtBy(K.stmtA2), { signedAt: '2026-10-17T00:00:00.000Z', state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_SUPERSEDED.env] } } }, 'verified', OK);
+add('revoked-superseded-before', 'A2 revoked superseded; time evidence before revoked_at.', stmtBy(K.stmtA2), { signedAt: '2026-10-17T00:00:00.000Z', timeEvidence: ev('2026-10-17T00:00:00.000Z'), state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_SUPERSEDED.env] } } }, 'verified', OK);
 add('revoked-superseded-after', 'A2 revoked superseded; signature after revoked_at.', stmtBy(K.stmtA2), { signedAt: '2026-10-19T00:00:00.000Z', state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_SUPERSEDED.env] } } }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
 const COMPROMISED = { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_COMPROMISED.env] } };
 add('compromised-no-time-evidence', 'A2 compromised; self-claimed signedAt before compromised_since is not enough.', stmtBy(K.stmtA2), { state: COMPROMISED }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
@@ -260,14 +262,14 @@ add('keyset-first-use-needs-history', 'No last trusted key set: a lone v3 (hidin
 add('keyset-forged-after-last-trusted', 'Last trusted A v2; a v3 that does not link to it (stolen tenant_keyset key).', stmtBy(K.stmtA2), { state: { last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA2.env, KSA3_FORGED_NO_LINK.env] } } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_CONFLICT');
 add('keyset-forged-without-last-trusted-doc', 'Last trusted A v2 not held; only a v3 is offered.', stmtBy(K.stmtA2), { state: { last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA3_FORGED_NO_LINK.env] } } }, 'unavailable', 'ATTESTA_TRUST_DOCUMENT_UNAVAILABLE');
 add('keyset-same-version-fork', 'Last trusted A v2; a different v2 is offered.', stmtBy(K.stmtA2), { state: { last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA2_CONFLICT.env] } } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_CONFLICT');
-add('keyset-anchored-at-last-trusted', 'Last trusted A v2 held with a linked v3: verified without v1.', stmtBy(K.stmtA2), { signedAt: '2026-10-17T00:00:00.000Z', state: { last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA2.env, KSA3_SUPERSEDED.env] } } }, 'verified', OK, { trusted: T({ platform: [R1, 1], [TENANT_A]: [KSA3_SUPERSEDED, 3] }) });
+add('keyset-anchored-at-last-trusted', 'Last trusted A v2 held with a linked v3: verified without v1.', stmtBy(K.stmtA2), { signedAt: '2026-10-17T00:00:00.000Z', timeEvidence: ev('2026-10-17T00:00:00.000Z'), state: { last_trusted: { [TENANT_A]: ref(KSA2, 2) }, keyset_documents: { [TENANT_A]: [KSA2.env, KSA3_SUPERSEDED.env] } } }, 'verified', OK, { trusted: T({ platform: [R1, 1], [TENANT_A]: [KSA3_SUPERSEDED, 3] }) });
 add('keyset-lifetime-too-long', 'Key set expires more than 31 days after issued_at.', stmtBy(K.stmtA1), { signedAt: '2026-10-12T00:00:00.000Z', state: { keyset_documents: { [TENANT_A]: [KSA1_TOO_LONG.env] } } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_MALFORMED');
 add('root-fork-by-rotated-out-key', 'Last trusted root v2; the retired root1 key forges a v2\' and v3\' with an attacker release key.', artBy(K.attacker2), { purpose: 'release', state: { last_trusted: { platform: ref(R2, 2) }, root_documents: [R1.env, R2_FAKE.env, R3_FAKE.env] } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_CONFLICT');
 add('root-fork-first-use', 'Without a last trusted root the same fork chains from the pin (documented first-use limit; evidence packs and enrollment pin the current root).', artBy(K.attacker2), { purpose: 'release', state: { root_documents: [R1.env, R2_FAKE.env, R3_FAKE.env] } }, 'verified', OK, { trusted: T({ platform: [R3_FAKE, 3] }) });
 add('root-anchored-at-last-trusted', 'Last trusted root v2 held alone, pinned root1: the chain starts at v2.', artBy(K.release1), { purpose: 'release', state: { last_trusted: { platform: ref(R2, 2) }, root_documents: [R2.env] } }, 'verified', OK, { trusted: T({ platform: [R2, 2] }) });
 const RC = { purpose: 'release', state: { root_documents: [R1.env, R2_RELEASE_COMPROMISED.env] } };
 add('compromised-release-signature-evidence', 'Release key compromised; time evidence over this very signature before compromised_since.', artBy(K.release1), { ...RC, timeEvidence: evSig('2026-10-16T12:00:00.000Z', artBy(K.release1)) }, 'verified', OK, { trusted: T({ platform: [R2_RELEASE_COMPROMISED, 2] }) });
-add('compromised-release-payload-timestamped', 'Release key compromised; a timestamp over the payload alone (anyone can get one) is not evidence for a release.', artBy(K.release1), { ...RC, timeEvidence: ev('2026-10-16T12:00:00.000Z', ARTIFACT) }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
+add('compromised-release-payload-timestamped', 'Release key compromised; ledger_statement evidence (a payload timestamp) is a caller error outside statements.', artBy(K.release1), { ...RC, timeEvidence: ev('2026-10-16T12:00:00.000Z', ARTIFACT) }, 'rejected', 'ATTESTA_TRUST_INPUT_INVALID');
 add('compromised-release-other-signature-evidence', 'Release key compromised; evidence names a different signature.', artBy(K.release1), { ...RC, timeEvidence: evSig('2026-10-16T12:00:00.000Z', artBy(K.lease1)) }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
 // Customer pins
 add('pin-overrides-without-trackai', 'Customer pins A2: no root, no key set needed.', stmtBy(K.stmtA2), { state: { root_documents: [], keyset_documents: {}, pinned_root_keyids: [], customer_pins: { [TENANT_A]: [A2()] } } }, 'verified', OK, { trusted: {} });
@@ -289,6 +291,16 @@ add('keyset-newest-by-compromised-keyset-key', 'tenant_keyset key compromised an
 add('compromised-statement-signature-evidence', 'Statement key compromised; time evidence over this very signature before compromised_since.', stmtBy(K.stmtA2), { state: COMPROMISED, timeEvidence: evSig('2026-10-16T12:00:00.000Z', stmtBy(K.stmtA2)) }, 'verified', OK);
 add('root-lifetime-too-long', 'Root document expires more than 366 days after issued_at.', artBy(K.release1), { purpose: 'release', state: { root_documents: [R1_TOO_LONG.env] } }, 'rejected', 'ATTESTA_TRUST_DOCUMENT_MALFORMED');
 add('root-signer-outside-validity', 'Root v2 signed by root1 after root1\'s not_after.', artBy(K.release1), { purpose: 'release', state: { root_documents: [R1_SHORT_ROOT_KEY.env, R2_AFTER_SHORT.env] } }, 'rejected', 'ATTESTA_TRUST_THRESHOLD_NOT_MET');
+
+// Cross-agent review (Codex): signedAt is not signed; clock rollback; strict time evidence
+add('rotation-old-key-signed-at-only', 'Vector 07 with only signedAt rewritten to before revoked_at and no evidence: a retired key is never grandfathered on the claim.', stmtBy(K.stmtA1), { signedAt: '2026-10-12T00:00:00.000Z' }, 'rejected', 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
+add('revoked-superseded-signed-at-only', 'A2 revoked superseded; signedAt before revoked_at but no evidence.', stmtBy(K.stmtA2), { signedAt: '2026-10-17T00:00:00.000Z', state: { keyset_documents: { [TENANT_A]: [KSA1.env, KSA2.env, KSA3_SUPERSEDED.env] } } }, 'rejected', 'ATTESTA_TRUST_KEY_REVOKED');
+const PIN_EXPIRED = { root_documents: [], keyset_documents: {}, pinned_root_keyids: [], customer_pins: { [TENANT_A]: [A2({ not_after: '2026-10-18T00:00:00.000Z' })] } };
+add('key-expired-signed-at-only', 'Active key past not_after at now; signedAt inside its validity is only a claim.', stmtBy(K.stmtA2), { state: PIN_EXPIRED }, 'rejected', 'ATTESTA_TRUST_KEY_NOT_VALID_AT');
+add('key-expired-signature-evidence', 'Same, with time evidence over this signature inside the validity.', stmtBy(K.stmtA2), { state: PIN_EXPIRED, timeEvidence: evSig('2026-10-16T12:00:00.000Z', stmtBy(K.stmtA2)) }, 'verified', OK, { trusted: {} });
+add('time-evidence-malformed', 'A malformed time evidence object is refused, not ignored.', stmtBy(K.stmtA2), { timeEvidence: { kind: 'attacker', time: 'not-a-time', binds: 'anything', digest: 'junk' } }, 'rejected', 'ATTESTA_TRUST_INPUT_INVALID');
+add('clock-behind-floor', 'now is more than the skew behind the persisted trusted-time floor.', stmtBy(K.stmtA2), { state: { trusted_time_floor: '2026-10-20T12:05:00.001Z' } }, 'unavailable', 'ATTESTA_TRUST_CLOCK_BEHIND');
+add('clock-floor-within-skew', 'now within the skew of the floor: verified, trusted time stays at the floor.', stmtBy(K.stmtA2), { state: { trusted_time_floor: '2026-10-20T12:05:00.000Z' } }, 'verified', OK);
 
 export function buildVectorFiles(): Map<string, string> {
   const files = new Map<string, string>();

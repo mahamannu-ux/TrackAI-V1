@@ -95,6 +95,7 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_TRUST_DOCUMENT_EXPIRED` | unavailable | the newest root document or key set is past `expires` + skew |
 | `ATTESTA_TRUST_DOCUMENT_FROM_FUTURE` | unavailable | a document's `issued_at` is after `now` + skew |
 | `ATTESTA_TRUST_REVOCATION_UNKNOWN` | unavailable | no key set held for the tenant, so its keys' status is unknown |
+| `ATTESTA_TRUST_CLOCK_BEHIND` | unavailable | `now` is more than the skew behind the persisted `trustedTimeFloor` |
 | `ATTESTA_TRUST_DOCUMENT_MALFORMED` | rejected | a document breaks the schema or trust.md's document rules (including its maximum lifetime), or exceeds a bound |
 | `ATTESTA_TRUST_DOCUMENT_SIGNATURE_INVALID` | rejected | a key set is not signed by a valid `tenant_keyset` key of the current root |
 | `ATTESTA_TRUST_THRESHOLD_NOT_MET` | rejected | a root document lacks k valid signatures of the previous root or of its own root keys, or the start document lists the pinned keys but lacks their signatures |
@@ -104,10 +105,10 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_TRUST_KEY_UNKNOWN` | rejected | the signing keyid is not listed (or not pinned) for the audience |
 | `ATTESTA_TRUST_PURPOSE_MISMATCH` | rejected | the key is listed for another purpose |
 | `ATTESTA_TRUST_AUDIENCE_MISMATCH` | rejected | the key belongs to another tenant |
-| `ATTESTA_TRUST_KEY_NOT_VALID_AT` | rejected | `signedAt` outside `[not_before, not_after]`, after `now` + skew, or at/after a retired key's `revoked_at` |
-| `ATTESTA_TRUST_KEY_REVOKED` | rejected | revoked `superseded` and `signedAt` ≥ `revoked_at`; revoked `compromised` without bound time evidence before `compromised_since` |
+| `ATTESTA_TRUST_KEY_NOT_VALID_AT` | rejected | `signedAt` outside `[not_before, not_after]` or after `now` + skew; a retired key, or an active key outside its validity at `now`, without bound time evidence inside its validity (and before a retired key's `revoked_at`) |
+| `ATTESTA_TRUST_KEY_REVOKED` | rejected | revoked `superseded` without bound time evidence before `revoked_at`; revoked `compromised` without bound time evidence before `compromised_since` |
 | `ATTESTA_TRUST_SIGNATURE_INVALID` | rejected | the artifact signature does not verify with the listed key |
-| `ATTESTA_TRUST_INPUT_INVALID` | rejected | the call itself is malformed (payload not the envelope's, signature count, purpose, audience, timestamps, bounds) |
+| `ATTESTA_TRUST_INPUT_INVALID` | rejected | the call itself is malformed (payload not the envelope's, signature count, purpose, audience, timestamps, `timeEvidence` shape, bounds) |
 
 *Added 2026-10-13 (lead-approved contract PR, Task15l checkpoint 2).*
 

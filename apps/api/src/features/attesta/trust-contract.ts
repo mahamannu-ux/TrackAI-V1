@@ -134,6 +134,13 @@ export interface TrustState {
   lastTrusted: Readonly<Record<string, TrustedDocumentRef>>;
   /** The verifier's clock, RFC 3339 UTC. */
   now: string;
+  /**
+   * The latest trusted time this verifier has seen, persisted from
+   * `TrustVerdict.trustedTime`. A `now` more than the skew behind it is refused
+   * (`CLOCK_BEHIND`), so a rolled-back clock cannot revive expired documents while
+   * newer revocations are withheld. Consumers persist it; absent on first use.
+   */
+  trustedTimeFloor?: string;
   /** Allowed clock skew in ms (default 300000 = 5 minutes). */
   clockSkewMs?: number;
   /** Production: a pinned root is mandatory and `allowUnpinnedRoot` is ignored. */
@@ -181,7 +188,11 @@ export interface VerifyTrustedInput {
   purpose: ArtifactPurpose;
   /** Tenant UUID for `statement`; `platform` for every other purpose. */
   audience: string;
-  /** When the artifact claims it was signed (RFC 3339 UTC). Never enough on its own for a compromised key. */
+  /**
+   * When the artifact claims it was signed (RFC 3339 UTC). It is not covered by the
+   * signature: it is trusted only while the key is active and inside its validity
+   * at `now`; a retired, revoked or expired key needs bound `timeEvidence`.
+   */
   signedAt: string;
   timeEvidence?: TimeEvidence;
   state: TrustState;
@@ -197,6 +208,7 @@ export const TRUST_CODE_STATUS = {
   ATTESTA_TRUST_DOCUMENT_EXPIRED: 'unavailable',
   ATTESTA_TRUST_DOCUMENT_FROM_FUTURE: 'unavailable',
   ATTESTA_TRUST_REVOCATION_UNKNOWN: 'unavailable',
+  ATTESTA_TRUST_CLOCK_BEHIND: 'unavailable',
   ATTESTA_TRUST_DOCUMENT_MALFORMED: 'rejected',
   ATTESTA_TRUST_DOCUMENT_SIGNATURE_INVALID: 'rejected',
   ATTESTA_TRUST_THRESHOLD_NOT_MET: 'rejected',
@@ -224,6 +236,8 @@ export interface TrustVerdict {
    * result (rollback and fork protection).
    */
   trusted?: Record<string, TrustedDocumentRef>;
+  /** On `verified`: max(`trustedTimeFloor`, `now`), for consumers to persist as the next floor. */
+  trustedTime?: string;
 }
 
 /** Signature of the verifier. Pure: never throws, never reads a clock, a file or the network. */

@@ -86,6 +86,7 @@
     "status": "verified",
     "code": "ATTESTA_TRUST_VERIFIED",
     "keyid": "sha256:a2aec1c4b840a971ac819e6d3d7e498bc86649f942a0837993c3aa4a9303b03a",
+    "trusted_time": "2026-10-20T12:00:00.000Z",
     "trusted": {
       "platform": {
         "version": 2,

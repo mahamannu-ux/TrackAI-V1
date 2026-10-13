@@ -1,7 +1,7 @@
 {
   "vector_version": 1,
   "name": "compromised-release-payload-timestamped",
-  "description": "Release key compromised; a timestamp over the payload alone (anyone can get one) is not evidence for a release.",
+  "description": "Release key compromised; ledger_statement evidence (a payload timestamp) is a caller error outside statements.",
   "input": {
     "payload_type": "application/vnd.trackai.test-artifact+json",
     "payload_b64": "eyJhcnRpZmFjdCI6InN5bnRoZXRpYyB0cnVzdCB2ZWN0b3IgYXJ0aWZhY3QiLCJ2ZXJzaW9uIjoiMS4yLjMifQ==",
@@ -96,6 +96,6 @@
   },
   "expected": {
     "status": "rejected",
-    "code": "ATTESTA_TRUST_KEY_REVOKED"
+    "code": "ATTESTA_TRUST_INPUT_INVALID"
   }
 }

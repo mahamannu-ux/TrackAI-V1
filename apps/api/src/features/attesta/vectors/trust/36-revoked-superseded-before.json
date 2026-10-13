@@ -1,7 +1,7 @@
 {
   "vector_version": 1,
   "name": "revoked-superseded-before",
-  "description": "A2 revoked superseded; signature before revoked_at.",
+  "description": "A2 revoked superseded; time evidence before revoked_at.",
   "input": {
     "payload_type": "application/vnd.in-toto+json",
     "payload_b64": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJub3RlIjoic3ludGhldGljIHRydXN0IHZlY3RvciBzdGF0ZW1lbnQifQ==",
@@ -18,6 +18,12 @@
     "purpose": "statement",
     "audience": "0a0a0a0a-0000-4000-8000-00000000000a",
     "signed_at": "2026-10-17T00:00:00.000Z",
+    "time_evidence": {
+      "kind": "rekor_integrated_time",
+      "time": "2026-10-17T00:00:00.000Z",
+      "binds": "ledger_statement",
+      "digest": "sha256:33b724cf5697c7f358449b947777c3e1087ca9c494e498f86f50b8d053f20f69"
+    },
     "state": {
       "pinned_root_keyids": [
         "sha256:8967391807b5d99219191000657962a999fc89a477f310f8be32cbb4455aa63b"
@@ -79,6 +85,7 @@
   "expected": {
     "status": "verified",
     "code": "ATTESTA_TRUST_VERIFIED",
-    "keyid": "sha256:5963e86dfaec51dffdfc0cb409e9ebe3a5933ccb58f8f8b12a6bc8776f9c181c"
+    "keyid": "sha256:5963e86dfaec51dffdfc0cb409e9ebe3a5933ccb58f8f8b12a6bc8776f9c181c",
+    "trusted_time": "2026-10-20T12:00:00.000Z"
   }
 }
