@@ -1,7 +1,7 @@
 # Task15f-attesta-anchoring Handoff — Rekor and RFC 3161 anchoring adapters (A15.5, part 1 of 2)
 
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
-Branch `task/Task15f-attesta-anchoring` (base: `main` at `07373b0`, rebased after Task15g merged). Founder approved the split at the checkpoint (2026-10-12): this session ships the adapters; **Task15f2** ships the migration, worker, CLI, verify-report anchor checks, the exact `BREAK_DETAIL_CODES` switch and IT-T15f-01…04.
+Branch `task/Task15f-attesta-anchoring` (base: `main` at `5fce15f`, rebased after Task15g and Task15h merged). Founder approved the split at the checkpoint (2026-10-12): this session ships the adapters; **Task15f2** ships the migration, worker, CLI, verify-report anchor checks, the exact `BREAK_DETAIL_CODES` switch and IT-T15f-01…04.
 
 ## At a glance
 | | Item | Status |
