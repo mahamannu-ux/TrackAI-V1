@@ -47,7 +47,8 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
     origin: getAllowedOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-TrackAI-Machine-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-TrackAI-Machine-ID', 'Idempotency-Key', 'X-Request-ID'],
+    exposedHeaders: ['X-Request-ID', 'Content-Disposition', 'Retry-After'],
   }));
 
   // Webhooks need their exact bytes for HMAC validation and must be mounted
