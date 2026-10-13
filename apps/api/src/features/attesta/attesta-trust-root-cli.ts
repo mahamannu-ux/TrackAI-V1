@@ -26,6 +26,7 @@ import {
   type TrustKeyEntry,
 } from './trust-contract';
 import {
+  forwardOnlyViolation,
   keyidOf,
   parseTimestamp,
   parseTrustDocument,
@@ -114,6 +115,11 @@ function readSignedRoot(io: CliIo, path: string): ParsedDocument {
     throw new CliError('--previous: not a valid signed root document');
   }
   if (doc.kind !== 'root') throw new CliError('--previous: not a root document');
+  // The predecessor must carry its own root threshold of valid signatures (a
+  // tampered or under-signed file is refused before anything builds on it).
+  if (validDocumentSigners(doc, activeRoots(doc), 'root').size < (doc.body.threshold as number)) {
+    throw new CliError('--previous: its root signatures do not meet its own threshold (tampered or incomplete)');
+  }
   return doc;
 }
 
@@ -210,6 +216,11 @@ async function signCmd(io: CliIo, opts: Map<string, string[]>): Promise<void> {
     if (!prevPath) throw new CliError('--previous is required after version 1 (the chain is checked before writing)');
     const prev = readSignedRoot(io, prevPath);
     if (prev.body.version + 1 !== body.version || prev.digest !== body.previous) throw new CliError('--previous is not the version before this draft');
+    // The same transition rules the verifier applies: forward-only platform keys,
+    // issued_at never going back.
+    if (forwardOnlyViolation(prev, doc)) {
+      throw new CliError('the draft drops, widens or un-revokes a platform key, or moves issued_at back (forward-only rule)');
+    }
     const old = validDocumentSigners(doc, activeRoots(prev), 'root');
     if (old.size < (prev.body.threshold as number)) {
       throw new CliError(`only ${old.size} of the previous root's keys signed; its threshold is ${prev.body.threshold}`);

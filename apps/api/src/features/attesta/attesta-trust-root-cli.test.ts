@@ -112,3 +112,46 @@ test('T15l root tool: refusals', async () => {
   assert.doesNotMatch(dbIo.errors[0], /example\.invalid/);
   assert.doesNotMatch([...io.errors].join('\n'), /BEGIN|PRIVATE|not a key\b.*not a key/);
 });
+
+test('T15l root tool: refuses a tampered predecessor and drafts that break the forward-only rule', async () => {
+  const files: Record<string, string> = { 'r1.pem': root1.priv, 'r1.pub': root1.pub, 'rel.pub': release.pub, 'ks.pub': keyset.pub };
+  const io = memIo(files);
+  assert.equal(await main(['draft', '--root-pub', 'r1.pub', '--online', 'release=rel.pub', '--online', 'tenant_keyset=ks.pub', '--out', 'd1.json'], io), 0);
+  assert.equal(await main(['sign', '--draft', 'd1.json', '--key', 'r1.pem', '--out', 'root1.json'], io), 0);
+  assert.equal(await main(['draft', '--root-pub', 'r1.pub', '--previous', 'root1.json', '--issued-at', '2026-10-13T11:00:00.000Z', '--out', 'd2.json'], io), 0);
+  const good = JSON.parse(files['d2.json']);
+  // Tampered predecessor: one payload byte changed, signature kept.
+  const r1 = JSON.parse(files['root1.json']);
+  const body = JSON.parse(Buffer.from(r1.payload, 'base64').toString('utf8'));
+  body.expires = '2027-10-12T10:00:00.000Z';
+  files['tampered.json'] = JSON.stringify({ ...r1, payload: Buffer.from(JSON.stringify(body)).toString('base64') });
+  assert.equal(await main(['draft', '--root-pub', 'r1.pub', '--previous', 'tampered.json', '--out', 'x.json'], io), 1);
+  assert.equal(await main(['sign', '--draft', 'd2.json', '--key', 'r1.pem', '--previous', 'tampered.json', '--out', 'x.json'], io), 1);
+  const nonRoot = (d: { keys: Array<{ purpose: string }> }) => d.keys.findIndex((k) => k.purpose === 'release');
+  const variants: Array<[string, (d: typeof good) => void]> = [
+    ['removes a key', (d) => { d.keys.splice(nonRoot(d), 1); }],
+    ['widens a key', (d) => { d.keys[nonRoot(d)].not_after = '2028-01-01T00:00:00.000Z'; }],
+    ['moves issued_at back', (d) => { d.issued_at = '2026-10-13T09:59:59.999Z'; d.expires = '2027-10-13T09:59:59.999Z'; }],
+  ];
+  for (const [name, mutate] of variants) {
+    const d = JSON.parse(JSON.stringify(good));
+    mutate(d);
+    files[`bad-${name}.json`] = JSON.stringify(d);
+    assert.equal(await main(['sign', '--draft', `bad-${name}.json`, '--key', 'r1.pem', '--previous', 'root1.json', '--out', 'x.json'], io), 1, name);
+    assert.match(io.errors.at(-1) ?? '', /forward-only|not a valid|threshold/, name);
+  }
+  // Undo a revocation: v2 revokes the release key, a v3 draft marks it active again.
+  const revoked = JSON.parse(JSON.stringify(good));
+  revoked.keys[nonRoot(revoked)] = { ...revoked.keys[nonRoot(revoked)], status: 'revoked', revoked_at: revoked.issued_at, revocation_reason: 'superseded' };
+  files['d2r.json'] = JSON.stringify(revoked);
+  assert.equal(await main(['sign', '--draft', 'd2r.json', '--key', 'r1.pem', '--previous', 'root1.json', '--out', 'root2.json'], io), 0, io.errors.join());
+  const undo = JSON.parse(JSON.stringify(good));
+  undo.version = 3;
+  undo.issued_at = '2026-10-13T12:00:00.000Z';
+  undo.expires = '2027-10-13T12:00:00.000Z';
+  undo.previous = 'sha256:' + require('node:crypto').createHash('sha256').update(Buffer.from(JSON.parse(files['root2.json']).payload, 'base64')).digest('hex');
+  files['d3.json'] = JSON.stringify(undo);
+  assert.equal(await main(['sign', '--draft', 'd3.json', '--key', 'r1.pem', '--previous', 'root2.json', '--out', 'x.json'], io), 1);
+  assert.match(io.errors.at(-1) ?? '', /forward-only/);
+  assert.equal(files['x.json'], undefined);
+});
