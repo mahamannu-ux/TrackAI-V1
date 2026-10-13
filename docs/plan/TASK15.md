@@ -56,7 +56,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× (re-estimated 0.4×, split 15i + 15i2) | A15.5, A15.8 (+ A15.12 for packs) | ⬜ 15i prompt ready; 15i2 after 15l |
 | A15.10 | Offline verifier (standalone Node script, ported from `offline_verify.py`) | Muse | 0.08× | A15.9 format frozen | ⬜ |
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
-| A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× (re-estimated 0.38×, split 15l + 15l2, founder 2026-10-13) | A15.2, A15.3 | 🟡 Task15l: contract (`trust.md`, schema, codes, 82 vectors), pure verifier, offline root tool, two review rounds; Task15l2: inventory migration, resolvers, online CLIs, IT-T15l-01…04 |
+| A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× (re-estimated 0.38×, split 15l + 15l2, founder 2026-10-13) | A15.2, A15.3 | 🟡 Task15l: contract (`trust.md`, schema, codes, 82 vectors), pure verifier, offline root tool, two review rounds (merged); Task15l2: migration 0019, proof-of-possession registration, resolvers, key-set publish, root import, `attesta:keys` CLI, IT-T15l-01…04 sandbox-passed, founder run ⬜ |
 | A15.13 | Founder-live gates: rekor.sigstage.dev + FreeTSA anchoring, KMS signing, offline verification on a clean machine | founder-live | 0.05× | A15.5, A15.6, A15.10 | ⬜ |
 | A15.14 | GitHub check on each PR showing attestation status (posted by TrackAI's server through the installed GitHub App; policy rules later in Task6.b) | Muse after Claude's design note | 0.05× | A15.9 | ⬜ |
 | A15.P2 | Phase 2: SCANOSS enrichment, risk factors, M&A/insurer formats, GitLab/Bitbucket, private Rekor, keyless | later | — | phase 1 | n/a |
@@ -134,7 +134,7 @@ flowchart LR
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i2 (pack format) |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i (read routes) and the lead's design note |
 | Task15l-trust-layer | A15.12 part 1: contract PR (checkpoint 2), verifier, document library, offline root tool | Claude | 0.18× (actual about 0.25× with two review rounds) | `docs/prompts/Task15/NEXT_CHAT_Task15l-trust-layer_PROMPT.md` · handoff `docs/handoffs/Task15l-trust-layer_HANDOFF.md` |
-| Task15l2-trust-inventory | A15.12 part 2: migration 0019 (four tables), resolvers, `anchor-env` production branch, online `attesta:keys` CLIs, IT-T15l-01…04 | Claude | 0.2× (likely 0.25–0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15l2-trust-inventory_PROMPT.md` (runs alongside 15i) |
+| Task15l2-trust-inventory | A15.12 part 2: migration 0019 (four tables), resolvers, `anchor-env` production branch, online `attesta:keys` CLIs, IT-T15l-01…04 | Claude | 0.2× (actual about 0.25× with one review round) | `docs/prompts/Task15/NEXT_CHAT_Task15l2-trust-inventory_PROMPT.md` · handoff `docs/handoffs/Task15l2-trust-inventory_HANDOFF.md` |
 | Task15m-attesta-github-check | A15.14 | Muse (after the lead's design note) | 0.05× | after 15i |
 
 ## 6. Invariants (acceptance criteria for every session; AGENTS.md §9 items 16–21)
