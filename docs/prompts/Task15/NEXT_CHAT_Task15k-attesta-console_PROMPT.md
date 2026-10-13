@@ -75,7 +75,7 @@ Add `'attestation'` to `AdminSection` and `{ id: 'attestation', label: 'Attestat
 Catalog `~/dev/agent-kit/reuse/COMPONENT_CATALOG.md` UI-1 (verdict card wording: "attested / anchored / pending / broken"; auditor sees no write controls beyond the export the role allows). No code to port: TrackAI's console uses its own Tailwind components (`Badge`, `Metric`, `TableShell`); reuse them.
 
 ### 2.6 Pre-approved files
-`apps/web/src/lib/api.ts` (the appended Attesta section only), `apps/web/src/app/dashboard/attestation-card.tsx` (new), `apps/web/src/app/dashboard/attesta-workspace.tsx` (new), `apps/web/src/app/dashboard/page.tsx` (only: the `DetailDrawer` prop and section, passing the subject, the `AdminSection` entry and its render line), `apps/api/src/app.ts` (the `cors(...)` options only), `apps/api/src/app-cors.test.ts` (new), `apps/api/package.json` (test script registration only), `docs/handoffs/Task15k-attesta-console_HANDOFF.md`, `docs/plan/STATUS_BOARD.md` (Task15 row and one registry row), `docs/plan/TASK15.md` (A15.11 status only).
+`apps/web/src/lib/api.ts` (the appended Attesta section only), `apps/web/src/app/dashboard/attestation-card.tsx` (new), `apps/web/src/app/dashboard/attesta-workspace.tsx` (new), `apps/web/src/app/dashboard/page.tsx` (only: the `DetailDrawer` prop and section, passing the subject, the `AdminSection` entry and its render line), `apps/api/src/app.ts` (the `cors(...)` options only), `apps/api/src/app-cors.test.ts` (new), `apps/api/package.json` (test script registration only), `docs/handoffs/Task15k-attesta-console_HANDOFF.md`, `docs/plan/STATUS_BOARD.md` (its registry row only), `docs/plan/TASK15.md` (A15.11 status only).
 
 ### 2.7 Never touch
 `docs/contracts/`, every migration, everything under `apps/api/src/features/` (the API is done), `apps/api/src/core/`, other dashboard components (`fleet-workspace.tsx`, `evidence-workspace.tsx`), dependencies (`package.json` dependencies, `package-lock.json`). If something seems to need one of these, stop and say so.
@@ -90,7 +90,7 @@ Catalog `~/dev/agent-kit/reuse/COMPONENT_CATALOG.md` UI-1 (verdict card wording:
 
 ## 4. Close-out
 - Handoff (`docs/templates/HANDOFF_TEMPLATE.md`), under 60 lines: what each screen shows, the CORS change, IT-T15k-01 steps, Effort.
-- Status board Task15 row; registry row `IT-T15k-01` (⬜ founder run). `TASK15.md` A15.11 🟡.
+- Registry row `IT-T15k-01` (⬜ founder run), inserted in ID order; `TASK15.md` A15.11 row 🟡. Leave the status board's Task15 row to the lead (AGENTS.md §9 item 23). Final bash block: preflight before merge (§9 item 22).
 - Clean tree; do not push. Final reply in the AGENTS.md §12.4 shape, with the review request (for the Task15 lead Claude chat) in a `text` block.
 
 ## Lessons so far
