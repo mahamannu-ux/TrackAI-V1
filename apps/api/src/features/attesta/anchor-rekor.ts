@@ -22,8 +22,8 @@
 // Deviations: (1) `AnchorError` with errors.md codes: transport, 5xx and
 // "duplicate but cannot fetch it" → LOG_UNAVAILABLE; an answer that does not
 // verify (including malformed JSON) → LOG_PROOF_INVALID; the log refusing our
-// submission (400/422) → LOG_UNAVAILABLE with `retryable: false` (errors.md has
-// no "rejected" code; flagged in the handoff); (2) no pinned log key →
+// submission (400/422) → ATTESTA_ANCHOR_LOG_REJECTED, terminal (added to
+// errors.md 2026-10-13; Task15f2 switched to it); (2) no pinned log key →
 // ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED at construction, in the adapter itself;
 // trust on first use needs an explicit dev-only option and is refused in
 // production;
@@ -533,7 +533,7 @@ export class RekorAnchor {
       return { entryId: existing, entry, created: false };
     }
     if (res.status === 400 || res.status === 422) {
-      throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', `rekor rejected the entry: HTTP ${res.status}`, { retryable: false });
+      throw new AnchorError('ATTESTA_ANCHOR_LOG_REJECTED', `rekor rejected the entry: HTTP ${res.status}`);
     }
     throw new AnchorError('ATTESTA_ANCHOR_LOG_UNAVAILABLE', `rekor returned HTTP ${res.status}`);
   }

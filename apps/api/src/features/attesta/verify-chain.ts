@@ -47,7 +47,11 @@ export type ChainBreakKind =
   | 'envelope_payload_mismatch'
   | 'signature_invalid'
   | 'key_unknown'
-  | 'signatures_not_checked';
+  | 'signatures_not_checked'
+  | 'merkle_proof_invalid'
+  | 'anchor_invalid'
+  | 'anchor_missing'
+  | 'anchor_not_checkable';
 
 export type AttestaVerifyCode =
   | 'ATTESTA_VERIFY_SEQ_GAP'
@@ -57,39 +61,51 @@ export type AttestaVerifyCode =
   | 'ATTESTA_VERIFY_NOT_CANONICAL'
   | 'ATTESTA_VERIFY_SIGNATURE_INVALID'
   | 'ATTESTA_VERIFY_KEY_UNKNOWN'
-  | 'ATTESTA_VERIFY_NOT_CHECKABLE';
+  | 'ATTESTA_VERIFY_NOT_CHECKABLE'
+  | 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID'
+  | 'ATTESTA_VERIFY_ANCHOR_MISSING'
+  | 'ATTESTA_VERIFY_ANCHOR_INVALID'
+  | 'ATTESTA_VERIFY_SEQ_MISMATCH'
+  | 'ATTESTA_VERIFY_FIELD_MISMATCH'
+  | 'ATTESTA_VERIFY_TENANT_MISMATCH'
+  | 'ATTESTA_VERIFY_OUT_OF_ORDER'
+  | 'ATTESTA_VERIFY_DUPLICATE_SEQ'
+  | 'ATTESTA_VERIFY_HEAD_MISMATCH'
+  | 'ATTESTA_VERIFY_BEYOND_HEAD'
+  | 'ATTESTA_VERIFY_ENVELOPE_MISSING'
+  | 'ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH'
+  | 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED';
 
 /**
- * Kind → frozen code. Where errors.md has no exact code: a row whose columns or
- * position disagree with its hashed bytes is a RECORD_HASH_MISMATCH ("record_hash
- * does not match the stored bytes" read as "the row is not what was hashed"); a
- * tail whose hash differs from the head is a PREV_HASH_MISMATCH (the head is the
- * next record's prev_hash); ordering and beyond-head faults are SEQ_GAP faults; an
- * envelope that does not carry the record's statement is SIGNATURE_INVALID (the
- * record is not signed); a missing envelope is NOT_CHECKABLE (material absent), and
- * so is a report run without published keys: an unchecked signature is never a pass
- * (AGENTS.md §9 item 19), so `ok` is false and `chain_intact` says whether the chain
- * itself held.
+ * Kind → frozen errors.md code: one exact code per kind (errors.md §Verification,
+ * added 2026-10-12, switched in Task15f2). An unchecked signature or anchor is
+ * never a pass (AGENTS.md §9 item 19): `signatures_not_checked` and
+ * `anchor_not_checkable` keep `ok` false while `chain_intact` says whether the
+ * chain itself held.
  */
 export const BREAK_DETAIL_CODES: Readonly<Record<ChainBreakKind, AttestaVerifyCode>> = {
   hash_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
   link_mismatch: 'ATTESTA_VERIFY_PREV_HASH_MISMATCH',
   seq_gap: 'ATTESTA_VERIFY_SEQ_GAP',
-  seq_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
-  field_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
-  tenant_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
+  seq_mismatch: 'ATTESTA_VERIFY_SEQ_MISMATCH',
+  field_mismatch: 'ATTESTA_VERIFY_FIELD_MISMATCH',
+  tenant_mismatch: 'ATTESTA_VERIFY_TENANT_MISMATCH',
   not_canonical: 'ATTESTA_VERIFY_NOT_CANONICAL',
-  out_of_order: 'ATTESTA_VERIFY_SEQ_GAP',
-  duplicate_seq: 'ATTESTA_VERIFY_SEQ_GAP',
-  head_mismatch: 'ATTESTA_VERIFY_PREV_HASH_MISMATCH',
-  beyond_head: 'ATTESTA_VERIFY_SEQ_GAP',
+  out_of_order: 'ATTESTA_VERIFY_OUT_OF_ORDER',
+  duplicate_seq: 'ATTESTA_VERIFY_DUPLICATE_SEQ',
+  head_mismatch: 'ATTESTA_VERIFY_HEAD_MISMATCH',
+  beyond_head: 'ATTESTA_VERIFY_BEYOND_HEAD',
   statement_digest_mismatch: 'ATTESTA_VERIFY_STATEMENT_DIGEST_MISMATCH',
   statement_not_canonical: 'ATTESTA_VERIFY_NOT_CANONICAL',
-  envelope_missing: 'ATTESTA_VERIFY_NOT_CHECKABLE',
-  envelope_payload_mismatch: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
+  envelope_missing: 'ATTESTA_VERIFY_ENVELOPE_MISSING',
+  envelope_payload_mismatch: 'ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH',
   signature_invalid: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
   key_unknown: 'ATTESTA_VERIFY_KEY_UNKNOWN',
-  signatures_not_checked: 'ATTESTA_VERIFY_NOT_CHECKABLE',
+  signatures_not_checked: 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED',
+  merkle_proof_invalid: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID',
+  anchor_invalid: 'ATTESTA_VERIFY_ANCHOR_INVALID',
+  anchor_missing: 'ATTESTA_VERIFY_ANCHOR_MISSING',
+  anchor_not_checkable: 'ATTESTA_VERIFY_NOT_CHECKABLE',
 };
 
 export interface ChainBreak {

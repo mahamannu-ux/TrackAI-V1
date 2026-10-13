@@ -86,7 +86,7 @@ describe('intact chains', () => {
     assert.equal(report.checked, N);
     // Without published keys the report is never ok: an unchecked signature is not a pass.
     assert.equal(report.ok, false);
-    assert.deepEqual(report.breaks, [{ seq: 0, kind: 'signatures_not_checked', detail_code: 'ATTESTA_VERIFY_NOT_CHECKABLE' }]);
+    assert.deepEqual(report.breaks, [{ seq: 0, kind: 'signatures_not_checked', detail_code: 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED' }]);
     assert.deepEqual(report.warnings, []);
     assert.deepEqual(report.head, big.head);
     assert.ok(elapsed < 15_000, `verifying ${N} records took ${elapsed.toFixed(0)} ms`);
@@ -104,6 +104,33 @@ describe('intact chains', () => {
 
   it('every break kind maps to a frozen errors.md code', () => {
     for (const code of Object.values(BREAK_DETAIL_CODES)) assert.match(code, /^ATTESTA_VERIFY_[A-Z_]+$/);
+  });
+
+  it('each break kind has its exact 2026-10-12 code (errors.md §Verification)', () => {
+    assert.deepEqual({ ...BREAK_DETAIL_CODES }, {
+      hash_mismatch: 'ATTESTA_VERIFY_RECORD_HASH_MISMATCH',
+      link_mismatch: 'ATTESTA_VERIFY_PREV_HASH_MISMATCH',
+      seq_gap: 'ATTESTA_VERIFY_SEQ_GAP',
+      seq_mismatch: 'ATTESTA_VERIFY_SEQ_MISMATCH',
+      field_mismatch: 'ATTESTA_VERIFY_FIELD_MISMATCH',
+      tenant_mismatch: 'ATTESTA_VERIFY_TENANT_MISMATCH',
+      not_canonical: 'ATTESTA_VERIFY_NOT_CANONICAL',
+      out_of_order: 'ATTESTA_VERIFY_OUT_OF_ORDER',
+      duplicate_seq: 'ATTESTA_VERIFY_DUPLICATE_SEQ',
+      head_mismatch: 'ATTESTA_VERIFY_HEAD_MISMATCH',
+      beyond_head: 'ATTESTA_VERIFY_BEYOND_HEAD',
+      statement_digest_mismatch: 'ATTESTA_VERIFY_STATEMENT_DIGEST_MISMATCH',
+      statement_not_canonical: 'ATTESTA_VERIFY_NOT_CANONICAL',
+      envelope_missing: 'ATTESTA_VERIFY_ENVELOPE_MISSING',
+      envelope_payload_mismatch: 'ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH',
+      signature_invalid: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
+      key_unknown: 'ATTESTA_VERIFY_KEY_UNKNOWN',
+      signatures_not_checked: 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED',
+      merkle_proof_invalid: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID',
+      anchor_invalid: 'ATTESTA_VERIFY_ANCHOR_INVALID',
+      anchor_missing: 'ATTESTA_VERIFY_ANCHOR_MISSING',
+      anchor_not_checkable: 'ATTESTA_VERIFY_NOT_CHECKABLE',
+    });
   });
 });
 
