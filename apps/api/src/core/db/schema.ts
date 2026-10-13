@@ -1847,6 +1847,153 @@ export const attestaAnchors = pgTable('attesta_anchors', {
   `),
 }));
 
+/**
+ * Attesta trust inventory (Task15l2, A15.12 part 2; binding design
+ * docs/contracts/attesta/trust.md "Hierarchy", "Rotation and revocation procedures",
+ * "Registration"). Public material only: the private keys stay in KMS (tenant keys in
+ * the tenant's own KMS). `credential_ref` names the adapter credential and is never
+ * published, printed or logged. Migration 0019 adds the guards: keyids unique across
+ * both key tables, status only forward and only with an attesta_key_events row in the
+ * same transaction, platform key status only as the latest stored root document
+ * lists it, documents append-only and chained (version + previous). Writes go through
+ * features/attesta/trust-inventory.ts only.
+ * Ported from SushiCorp A1b db/migrations/versions/0007_signing_inventory.py @ 0bd67a5
+ * (catalog SG-1): public-only inventory, adapter-qualified opaque credential reference.
+ */
+const TRUST_KEY_STATUS_SQL = `'registered', 'active', 'retired', 'revoked'`;
+
+export const attestaPlatformKeys = pgTable('attesta_platform_keys', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  /** `sha256:` + hex(SHA-256(spki_der)). */
+  keyid: text('keyid').notNull(),
+  /** A platform online purpose; `root` keys live only in root documents. */
+  purpose: text('purpose').notNull(),
+  adapterName: text('adapter_name').notNull(),
+  /** Adapter credential (names the KMS key through the credentials file). Internal only. */
+  credentialRef: text('credential_ref').notNull(),
+  spkiDer: bytea('spki_der').notNull(),
+  notBefore: timestamp('not_before', { withTimezone: true, precision: 3 }).notNull(),
+  notAfter: timestamp('not_after', { withTimezone: true, precision: 3 }).notNull(),
+  status: text('status').$type<'registered' | 'active' | 'retired' | 'revoked'>().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true, precision: 3 }),
+  revocationReason: text('revocation_reason').$type<'superseded' | 'compromised'>(),
+  compromisedSince: timestamp('compromised_since', { withTimezone: true, precision: 3 }),
+  registeredAt: timestamp('registered_at', { withTimezone: true }).defaultNow().notNull(),
+  /** `sha256:` of the signed proof-of-possession envelope (the envelope itself is not kept). */
+  popDigest: text('pop_digest').notNull(),
+}, (table) => ({
+  keyidUnique: unique('attesta_platform_keys_keyid_key').on(table.keyid),
+  shapeCheck: check('attesta_platform_keys_shape_check', sql`
+    ${table.purpose} in ('anchor', 'activation_lease', 'fleet_config', 'policy_bundle', 'release', 'tenant_keyset')
+    and ${table.keyid} = 'sha256:' || encode(sha256(${table.spkiDer}), 'hex')
+    and length(${table.spkiDer}) = 91
+    and ${table.adapterName} ~ '^[a-z][a-z0-9-]{0,31}$'
+    and length(${table.credentialRef}) between 1 and 512
+    and ${table.notBefore} < ${table.notAfter}
+    and ${table.popDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.status} in (${sql.raw(TRUST_KEY_STATUS_SQL)})
+    and (${table.status} in ('registered', 'active')) = (${table.revokedAt} is null)
+    and (${table.status} = 'revoked') = (${table.revocationReason} is not null)
+    and (${table.revocationReason} is null or ${table.revocationReason} in ('superseded', 'compromised'))
+    and (${table.revocationReason} = 'compromised') is not distinct from (${table.compromisedSince} is not null)
+    and (${table.compromisedSince} is null or ${table.compromisedSince} <= ${table.revokedAt})
+  `),
+}));
+
+export const attestaTenantKeys = pgTable('attesta_tenant_keys', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  keyid: text('keyid').notNull(),
+  /** Always `statement`: tenant keys sign that tenant's Attesta statements only. */
+  purpose: text('purpose').notNull(),
+  adapterName: text('adapter_name').notNull(),
+  credentialRef: text('credential_ref').notNull(),
+  spkiDer: bytea('spki_der').notNull(),
+  notBefore: timestamp('not_before', { withTimezone: true, precision: 3 }).notNull(),
+  notAfter: timestamp('not_after', { withTimezone: true, precision: 3 }).notNull(),
+  status: text('status').$type<'registered' | 'active' | 'retired' | 'revoked'>().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true, precision: 3 }),
+  revocationReason: text('revocation_reason').$type<'superseded' | 'compromised'>(),
+  compromisedSince: timestamp('compromised_since', { withTimezone: true, precision: 3 }),
+  registeredAt: timestamp('registered_at', { withTimezone: true }).defaultNow().notNull(),
+  popDigest: text('pop_digest').notNull(),
+}, (table) => ({
+  keyidUnique: unique('attesta_tenant_keys_keyid_key').on(table.keyid),
+  tenantIdIdUnique: unique('attesta_tenant_keys_tenant_id_id_key').on(table.tenantId, table.id),
+  // At most one active statement key per tenant (the resolver's answer is never ambiguous).
+  oneActive: uniqueIndex('attesta_tenant_keys_one_active_key').on(table.tenantId).where(sql`${table.status} = 'active'`),
+  shapeCheck: check('attesta_tenant_keys_shape_check', sql`
+    ${table.purpose} = 'statement'
+    and ${table.keyid} = 'sha256:' || encode(sha256(${table.spkiDer}), 'hex')
+    and length(${table.spkiDer}) = 91
+    and ${table.adapterName} ~ '^[a-z][a-z0-9-]{0,31}$'
+    and length(${table.credentialRef}) between 1 and 512
+    and ${table.notBefore} < ${table.notAfter}
+    and ${table.popDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.status} in (${sql.raw(TRUST_KEY_STATUS_SQL)})
+    and (${table.status} in ('registered', 'active')) = (${table.revokedAt} is null)
+    and (${table.status} = 'revoked') = (${table.revocationReason} is not null)
+    and (${table.revocationReason} is null or ${table.revocationReason} in ('superseded', 'compromised'))
+    and (${table.revocationReason} = 'compromised') is not distinct from (${table.compromisedSince} is not null)
+    and (${table.compromisedSince} is null or ${table.compromisedSince} <= ${table.revokedAt})
+  `),
+}));
+
+/** Append-only log of every applied inventory action (platform rows have no tenant). */
+export const attestaKeyEvents = pgTable('attesta_key_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').references(() => ssoTenants.id),
+  /** attesta_platform_keys.id (tenant_id null) or attesta_tenant_keys.id; null for publish / import_root. */
+  keyId: uuid('key_id'),
+  action: text('action').$type<'register' | 'activate' | 'retire' | 'revoke' | 'publish' | 'import_root'>().notNull(),
+  actor: text('actor').notNull(),
+  reason: text('reason'),
+  documentVersion: bigint('document_version', { mode: 'number' }),
+  requestId: text('request_id').notNull(),
+  /** Forced to the transaction's now() by the 0019 guard (ties the event to its UPDATE). */
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  keyIndex: index('attesta_key_events_key_idx').on(table.keyId, table.action),
+  tenantCreatedIndex: index('attesta_key_events_tenant_created_idx').on(table.tenantId, table.createdAt),
+  shapeCheck: check('attesta_key_events_shape_check', sql`
+    ${table.action} in ('register', 'activate', 'retire', 'revoke', 'publish', 'import_root')
+    and (${table.action} in ('publish', 'import_root')) = (${table.keyId} is null)
+    and (${table.action} in ('publish', 'import_root')) = (${table.documentVersion} is not null)
+    and (${table.action} <> 'import_root' or ${table.tenantId} is null)
+    and (${table.action} <> 'publish' or ${table.tenantId} is not null)
+    and length(${table.actor}) between 1 and 128
+    and (${table.reason} is null or length(${table.reason}) between 1 and 256)
+    and length(${table.requestId}) between 1 and 128
+    and (${table.documentVersion} is null or ${table.documentVersion} >= 1)
+  `),
+}));
+
+/** Append-only signed trust documents: root documents (scope platform) and tenant key sets. */
+export const attestaTrustDocuments = pgTable('attesta_trust_documents', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  /** `platform` or the tenant UUID (lowercase). */
+  scope: text('scope').notNull(),
+  kind: text('kind').$type<'root' | 'keyset'>().notNull(),
+  version: bigint('version', { mode: 'number' }).notNull(),
+  /** `sha256:` of the payload bytes (what the next version's `previous` names). */
+  digest: text('digest').notNull(),
+  payloadType: text('payload_type').notNull(),
+  /** The DSSE envelope exactly as signed. */
+  envelope: jsonb('envelope').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  scopeVersionUnique: unique('attesta_trust_documents_scope_version_key').on(table.scope, table.version),
+  shapeCheck: check('attesta_trust_documents_shape_check', sql`
+    ((${table.kind} = 'root' and ${table.scope} = 'platform'
+        and ${table.payloadType} = 'application/vnd.trackai.trust-root+json')
+      or (${table.kind} = 'keyset'
+        and ${table.scope} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        and ${table.payloadType} = 'application/vnd.trackai.keyset+json'))
+    and ${table.version} >= 1
+    and ${table.digest} ~ '^sha256:[0-9a-f]{64}$'
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
