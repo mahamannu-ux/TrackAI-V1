@@ -53,7 +53,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ✅ merged in PR #35 |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ✅ merged in PR #32; IT-T2AT-01…04 passed 2026-10-12 |
 | A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | ✅ merged in PR #36 (worker, CLIs); contract findings F1–F8 in `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` (F2 resolved 2026-10-13, §7 item 10; builder change in 15f2) |
-| A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× | A15.5, A15.8 | ⬜ |
+| A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× (re-estimated 0.4×, split 15i + 15i2) | A15.5, A15.8 (+ A15.12 for packs) | ⬜ 15i prompt ready; 15i2 after 15l |
 | A15.10 | Offline verifier (standalone Node script, ported from `offline_verify.py`) | Muse | 0.08× | A15.9 format frozen | ⬜ |
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
 | A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× (likely 0.3×, may split 15l/15l2) | A15.2, A15.3 | ⬜ prompt ready (`Task15l-trust-layer`) |
@@ -129,9 +129,10 @@ flowchart LR
 | Task15g-attesta-kms | A15.6 | Muse | 0.1× (actual about 0.1×) | `docs/prompts/Task15/NEXT_CHAT_Task15g-attesta-kms_PROMPT.md` (deps approved by merging it) |
 | Task2-attesta-trigger | A15.7 | Codex | 0.15× | `docs/prompts/Task15/NEXT_CHAT_Task2-attesta-trigger_PROMPT.md` (merge gated on IT-T15c-01) |
 | Task15h-attesta-builder | A15.8 | Claude | 0.2× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` · handoff `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
-| Task15i-attesta-evidence | A15.9 (+ `period_report`) | Claude | 0.15× | after 15f, 15h |
-| Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i |
-| Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i |
+| Task15i-attesta-evidence-api | A15.9 part 1: the four read routes, AP-1 conventions, audited verify (no migration) | Claude | 0.15–0.2× | `docs/prompts/Task15/NEXT_CHAT_Task15i-attesta-evidence-api_PROMPT.md` (runs alongside 15l) |
+| Task15i2-attesta-evidence-packs | A15.9 part 2: `period_report` schema and statement, report document, evidence-pack export (RP-1 signed, Task4 export sink), the anchor-resume action from 15f2, one migration after 15l's | Claude | about 0.25× | prompt after 15l's contract PR (checkpoint 2), so it uses `publishedKeysFor` and the key-set format |
+| Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i2 (pack format) |
+| Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i (read routes) and the lead's design note |
 | Task15l-trust-layer | A15.12 (contract PR at checkpoint 2, then the rest) | Claude | 0.2× (likely 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15l-trust-layer_PROMPT.md` (migration after 15f2) |
 | Task15m-attesta-github-check | A15.14 | Muse (after the lead's design note) | 0.05× | after 15i |
 
@@ -151,3 +152,4 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 8. **2026-10-12 (Task15d close-out):** additive errors.md codes for the precise verify break kinds and for invalid ledger input (orchestrator, contract PR; until then `verify-chain.ts` maps to the nearest frozen code); production runs the API as a database role that does not own the ledger tables (Task4/ops, before A15.13). Guard functions use `search_path = pg_catalog, pg_temp`.
 9. **2026-10-13 (lead, Task15f2/15l prompts):** additive contract changes: `ATTESTA_ANCHOR_LOG_REJECTED` (terminal) in `errors.md`; the fixed per-kind `inclusion_proof` shape in `tables.md`. 15f2 moves `ajv` to `dependencies` (Task15h to-do). The trust layer's contract (`trust.md`, `trust-contract.ts`, vectors) lands as its own PR at 15l's checkpoint 2, before its implementation.
 10. **2026-10-13 (founder, on the lead's recommendations):** contract finding F2 resolved: `previous` may name any ai-provenance kind in any order (schema relaxed before any production statement; `invalid-previous-kind` fixture now uses an unknown kind); 15f2 removes the builder's refusal. Trust layer (15l checkpoint 1): auditors accept both the platform-signed tenant key set and a customer-pinned keyid (the pin overrides); phase 1 root = one offline key held by the founder, threshold 1, moving to 2-of-3 hardware keys before the first production customer; online platform keys in TrackAI's own cloud KMS, one per purpose, via the A15.6 adapters; key sets expire after 30 days (weekly `publish`), the root after 1 year; clock skew 5 minutes. Sequencing: 15f2 first, 15l starts after 15f2 merges.
+11. **2026-10-13 (lead):** A15.9 split: Task15i (read routes, no migration, runs alongside 15l) and Task15i2 (period reports, evidence packs, the 15f2 anchor-resume action; after 15l). Muse's 15k and 15m can start after 15i; 15j waits for 15i2's pack format.
