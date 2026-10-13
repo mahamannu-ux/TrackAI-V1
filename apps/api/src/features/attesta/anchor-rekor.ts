@@ -11,7 +11,8 @@
 //  2. the inclusion proof recomputes the stated root hash (`rootFromPath`);
 //  3. the checkpoint (signed tree head) is signed by the pinned log key and
 //     commits to that same root hash and tree size;
-//  4. `logID` is the pinned key's ID and the Signed Entry Timestamp (SET) over
+//  4. entry.logIndex (signed by the SET) equals the proof position (plus a pinned
+//     shard offset), `logID` is the pinned key's ID and the Signed Entry Timestamp (SET) over
 //     the canonical {body, integratedTime, logID, logIndex} verifies;
 //  5. the body is a hashedrekord v0.0.1 over sha256(root), carrying exactly our
 //     anchoring key, and its signature verifies over the root.
@@ -210,6 +211,11 @@ export interface VerifyRekorEntryOptions {
   artifact?: Buffer;
   /** SPKI DER of our anchoring key; the body must carry exactly this key. */
   anchorKeySpkiDer?: Buffer;
+  /**
+   * Pinned per-shard offsets, keyed by 16-hex tree ID: entry.logIndex must equal
+   * proof.logIndex + offset. Absent tree → offset 0 (strict equality).
+   */
+  logIndexOffsets?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -259,6 +265,15 @@ export function verifyRekorEntry(entryId: string, entry: unknown, opts: VerifyRe
   const origin = /^.+ - ([0-9]{1,20})$/.exec(checkpoint.origin);
   if (id.length === 80 && (!origin || BigInt(origin[1]).toString(16).padStart(16, '0') !== id.slice(0, 16))) {
     throw new RekorVerificationError('entry tree ID does not match the checkpoint origin');
+  }
+  // The SET signs entry.logIndex; the proof places the leaf at proof.logIndex. Bind the two:
+  // equal, unless this tree is a pinned shard whose global index starts at a configured offset
+  // (Rekor v1 shards: global index = shard-local index + entries in earlier shards).
+  const treeHex = origin ? BigInt(origin[1]).toString(16).padStart(16, '0') : null;
+  const offset = treeHex !== null && opts.logIndexOffsets && Object.prototype.hasOwnProperty.call(opts.logIndexOffsets, treeHex)
+    ? opts.logIndexOffsets[treeHex] : 0;
+  if (!Number.isSafeInteger(offset) || offset < 0 || logIndex !== proofIndex + offset) {
+    throw new RekorVerificationError('entry logIndex does not match the inclusion proof position');
   }
   if (entry.logID !== logIdOf(opts.logKey)) throw new RekorVerificationError("entry logID is not the pinned log's key ID");
   verifySignedEntryTimestamp(entry, opts.logKey);
@@ -330,9 +345,14 @@ export interface RekorAnchorOptions {
   signer: AnchorSigner;
   /** PEM of the log's public key. Required in production. */
   logPublicKeyPem?: string;
+  /** Pinned shard offsets (see `VerifyRekorEntryOptions.logIndexOffsets`); configured with the log key. */
+  logIndexOffsets?: Readonly<Record<string, number>>;
   fetch?: FetchLike;
   timeoutMs?: number;
-  /** Defaults to NODE_ENV === 'production'. */
+  /**
+   * Treat this process as production. Can only add strictness: NODE_ENV=production
+   * always counts, and `false` never downgrades it.
+   */
   production?: boolean;
   /**
    * Development only: with no pinned key, fetch the log's key once and trust
@@ -359,12 +379,13 @@ export class RekorAnchor {
   private readonly batches: BoundedCache<string, { root: Buffer; result: RekorAnchorResult }>;
   private readonly skewMs: number;
   private readonly now: () => Date;
+  private readonly logIndexOffsets?: Readonly<Record<string, number>>;
   /** `pinned` when configured, `first_use` once a dev log's key was fetched and trusted. */
   logKeySource: 'pinned' | 'first_use' | null;
 
   constructor(opts: RekorAnchorOptions) {
     if (!opts.url) throw new RangeError('a Rekor anchor needs a URL');
-    const production = opts.production ?? isProduction();
+    const production = isProduction() || opts.production === true;
     if (opts.logPublicKeyPem === undefined || opts.logPublicKeyPem.trim() === '') {
       if (production) {
         throw new AnchorError('ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED', 'production requires a pinned Rekor log key');
@@ -390,6 +411,7 @@ export class RekorAnchor {
     this.skewMs = opts.maxClockSkewMs ?? DEFAULT_REKOR_CLOCK_SKEW_MS;
     if (!Number.isSafeInteger(this.skewMs) || this.skewMs < 0) throw new RangeError('maxClockSkewMs must be a non-negative integer');
     this.now = opts.now ?? (() => new Date());
+    this.logIndexOffsets = opts.logIndexOffsets;
   }
 
   /** Log `root` for `batchId` and return the verified entry. Idempotent on `batchId` in-process. */
@@ -407,7 +429,7 @@ export class RekorAnchor {
     const logKey = await this.logKey();
     let verified: VerifiedRekorEntry;
     try {
-      verified = verifyRekorEntry(entryId, entry, { logKey, artifact: root, anchorKeySpkiDer: spki });
+      verified = verifyRekorEntry(entryId, entry, { logKey, artifact: root, anchorKeySpkiDer: spki, logIndexOffsets: this.logIndexOffsets });
     } catch (err) {
       if (!(err instanceof RekorVerificationError)) throw err;
       throw new AnchorError('ATTESTA_ANCHOR_LOG_PROOF_INVALID', `log returned an entry that does not verify: ${err.message}`);
@@ -441,6 +463,7 @@ export class RekorAnchor {
     const logKey = await this.logKey();
     try {
       verifyRekorEntry(entryId, found, {
+        logIndexOffsets: this.logIndexOffsets,
         logKey,
         artifact: root,
         anchorKeySpkiDer: await this.signer.publicKeySpkiDer(),

@@ -185,11 +185,36 @@ test('tampering with a stored row is caught offline with the right code', async 
     recordedRevocation: { status: 'clean', reason: 'ocsp_good' },
   });
   const junk = mutateProof(tsaRow, (p) => { p.anchor.revocation = { status: 'CLEAN' }; });
-  assert.deepEqual(verifyStoredAnchor(junk, keys), {
-    status: 'valid',
-    revocation: { status: 'unknown', reason: 'not_rechecked_offline' },
-    recordedRevocation: { status: 'unknown', reason: 'not_recorded' },
-  });
+  assert.deepEqual(verifyStoredAnchor(junk, keys), { status: 'invalid', code: A });
+});
+
+test('Codex review #3: each kind has a fixed row and proof shape; incomplete or cross-kind rows are invalid', async () => {
+  const { rows, keys } = await anchoredBatch(3);
+  const rekorRow = rows.find((r) => r.anchorType === 'rekor')!;
+  const tsaRow = rows.find((r) => r.anchorType === 'tsa')!;
+  const A = { status: 'invalid', code: 'ATTESTA_VERIFY_ANCHOR_INVALID' };
+  const M = { status: 'invalid', code: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID' };
+  const cases: Array<[string, Row, object]> = [
+    ['rekor row without entry uuid (null)', { ...rekorRow, rekorEntryUuid: null }, A],
+    ['rekor row without entry uuid (absent)', { ...rekorRow, rekorEntryUuid: undefined as unknown as null }, A],
+    ['rekor row carrying a token', { ...rekorRow, tsaTokenB64: tsaRow.tsaTokenB64 }, A],
+    ['rekor proof without rekor_entry', mutateProof(rekorRow, (p) => { delete p.anchor.rekor_entry; }), A],
+    ['rekor proof with tsa fields', mutateProof(rekorRow, (p) => { p.anchor.gen_time = '2026-01-01T00:00:00.000Z'; }), A],
+    ['rekor proof without proof_b64', mutateProof(rekorRow, (p) => { delete p.anchor.proof_b64; }), A],
+    ['tsa row without token', { ...tsaRow, tsaTokenB64: null }, A],
+    ['tsa row with an entry uuid', { ...tsaRow, rekorEntryUuid: rekorRow.rekorEntryUuid }, A],
+    ['tsa proof with a rekor_entry', mutateProof(tsaRow, (p) => { p.anchor.rekor_entry = rekorRow.proof.anchor.rekor_entry; }), A],
+    ['tsa proof without rekor_entry key', mutateProof(tsaRow, (p) => { delete p.anchor.rekor_entry; }), A],
+    ['tsa proof without revocation', mutateProof(tsaRow, (p) => { delete p.anchor.revocation; }), A],
+    ['tsa revocation with an extra key', mutateProof(tsaRow, (p) => { p.anchor.revocation.signed = true; }), A],
+    ['extra top-level key', mutateProof(rekorRow, (p) => { p.note = 'x'; }), A],
+    ['extra anchor key', mutateProof(tsaRow, (p) => { p.anchor.extra = 1; }), A],
+    ['extra merkle key', mutateProof(rekorRow, (p) => { p.merkle.root = 'x'; }), M],
+  ];
+  for (const [name, row, expected] of cases) assert.deepEqual(verifyStoredAnchor(row, keys), expected, name);
+  // Verifier-side material missing stays not_checkable, for a well-formed row.
+  assert.equal(verifyStoredAnchor(tsaRow, {}).status, 'not_checkable');
+  assert.equal(verifyStoredAnchor(rekorRow, {}).status, 'not_checkable');
 });
 
 test('wrong keys are invalid; missing keys or material are not checkable, never valid', async () => {
@@ -208,8 +233,8 @@ test('wrong keys are invalid; missing keys or material are not checkable, never 
   assert.deepEqual(verifyStoredAnchor(tsaRow, { ...keys, tsaAnchors: [(await makeCa('Other')).cert] }), A);
   assert.deepEqual(verifyStoredAnchor(rekorRow, {}), NC);
   assert.deepEqual(verifyStoredAnchor(tsaRow, {}), NC);
-  assert.deepEqual(verifyStoredAnchor({ ...tsaRow, tsaTokenB64: null }, keys), NC);
-  assert.deepEqual(verifyStoredAnchor(mutateProof(rekorRow, (p) => { delete p.anchor.rekor_entry; }), keys), NC);
+  assert.deepEqual(verifyStoredAnchor({ ...tsaRow, tsaTokenB64: null }, keys), A);
+  assert.deepEqual(verifyStoredAnchor(mutateProof(rekorRow, (p) => { delete p.anchor.rekor_entry; }), keys), A);
 });
 
 test('a clean revocation answer is carried into the proof', async () => {

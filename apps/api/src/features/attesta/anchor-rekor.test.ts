@@ -38,6 +38,8 @@ const VECTOR = JSON.parse(readFileSync(join(__dirname, 'vectors', 'rekor', 'sigs
   log_public_key_pem: string;
 };
 const ROOT_A = createHash('sha256').update('batch a').digest();
+// rekor.sigstage.dev in 2023 was a sharded v1 log: global logIndex 7390977 = shard index 7376158 + 14819.
+const VECTOR_OFFSETS = { [8050909264565447525n.toString(16).padStart(16, '0')]: 7390977 - 7376158 };
 const ROOT_B = createHash('sha256').update('batch b').digest();
 
 /** Deterministic (RFC 6979) P-256 signer, like SushiCorp's anchoring key: lets Rekor's 409 dedup show. */
@@ -99,11 +101,15 @@ type Entry = Record<string, any>; // eslint-disable-line @typescript-eslint/no-e
 
 test('real sigstage entry verifies under the staging log key', () => {
   const logKey = loadLogPublicKey(VECTOR.log_public_key_pem);
-  const v = verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey });
+  const v = verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, logIndexOffsets: VECTOR_OFFSETS });
   assert.equal(v.treeSize, 7376159);
   assert.equal(v.logIndex, 7390977);
   assert.ok(VECTOR.entry_id.startsWith(8050909264565447525n.toString(16).padStart(16, '0')));
   assert.equal(logIdOf(logKey), VECTOR.entry.logID);
+  // Without the pinned shard offset the SET-signed logIndex and the proof position disagree: refused.
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey }), /logIndex does not match/);
+  const wrongOffset = { [Object.keys(VECTOR_OFFSETS)[0]]: 14818 };
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, logIndexOffsets: wrongOffset }), /logIndex does not match/);
 });
 
 const realTampers: Array<[string, (e: Entry) => void]> = [
@@ -133,29 +139,29 @@ for (const [name, mutate] of realTampers) {
     const entry = clone(VECTOR.entry) as Entry;
     mutate(entry);
     const logKey = loadLogPublicKey(VECTOR.log_public_key_pem);
-    assert.throws(() => verifyRekorEntry(VECTOR.entry_id, entry, { logKey }), RekorVerificationError);
+    assert.throws(() => verifyRekorEntry(VECTOR.entry_id, entry, { logKey, logIndexOffsets: VECTOR_OFFSETS }), RekorVerificationError);
   });
 }
 
 test('real entry rejected under a wrong log key', () => {
   const other = createPublicKey(otherKey());
-  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey: other }), /checkpoint/);
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey: other, logIndexOffsets: VECTOR_OFFSETS }), /checkpoint/);
 });
 
 test('real entry ID must match the body; bare UUID accepted', () => {
   const logKey = loadLogPublicKey(VECTOR.log_public_key_pem);
   const last = VECTOR.entry_id.at(-1) === '0' ? '1' : '0';
-  assert.throws(() => verifyRekorEntry(VECTOR.entry_id.slice(0, -1) + last, VECTOR.entry, { logKey }), /UUID/);
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id.slice(0, -1) + last, VECTOR.entry, { logKey, logIndexOffsets: VECTOR_OFFSETS }), /UUID/);
   assert.throws(() => verifyRekorEntry('zz' + VECTOR.entry_id.slice(2), VECTOR.entry, { logKey }), /UUID/);
-  assert.ok(verifyRekorEntry(VECTOR.entry_id.slice(16), VECTOR.entry, { logKey }));
+  assert.ok(verifyRekorEntry(VECTOR.entry_id.slice(16), VECTOR.entry, { logKey, logIndexOffsets: VECTOR_OFFSETS }));
   const otherPrefix = '0'.repeat(16) + VECTOR.entry_id.slice(16);
-  assert.throws(() => verifyRekorEntry(otherPrefix, VECTOR.entry, { logKey }), /tree ID/);
+  assert.throws(() => verifyRekorEntry(otherPrefix, VECTOR.entry, { logKey, logIndexOffsets: VECTOR_OFFSETS }), /tree ID/);
 });
 
 test("real entry is not our anchor (someone else's artifact or key)", () => {
   const logKey = loadLogPublicKey(VECTOR.log_public_key_pem);
   const ours = Buffer.from(createPublicKey(otherKey()).export({ type: 'spki', format: 'der' }));
-  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A, anchorKeySpkiDer: ours }), /commit/);
+  assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A, anchorKeySpkiDer: ours, logIndexOffsets: VECTOR_OFFSETS }), /commit/);
   // "Our anchor" is the key AND the root together: one alone is refused.
   assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, anchorKeySpkiDer: ours }), /together/);
   assert.throws(() => verifyRekorEntry(VECTOR.entry_id, VECTOR.entry, { logKey, artifact: ROOT_A }), /together/);
@@ -293,6 +299,16 @@ test('production refuses to run without a pinned log key; trust on first use onl
   const rekor = new FakeRekor();
   assert.throws(() => adapter(rekor, devSigner(), { pinned: false, production: true }), (err: unknown) =>
     err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED' && !err.retryable);
+  // Codex review #1: an explicit `production: false` never downgrades a real production environment.
+  const saved = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'production';
+  try {
+    assert.throws(() => adapter(rekor, devSigner(), { pinned: false, production: false, tofu: true }), (err: unknown) =>
+      err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED' && /production/.test(err.message));
+  } finally {
+    if (saved === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = saved;
+  }
   // A deployment that forgot NODE_ENV still refuses to run unpinned.
   assert.throws(() => adapter(rekor, devSigner(), { pinned: false, production: false, tofu: false }), (err: unknown) =>
     err instanceof AnchorError && err.code === 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED');
@@ -465,13 +481,13 @@ test('the adapter batch cache is bounded', async () => {
 // Hand-built single-entry log: each check proven necessary on its own
 // ---------------------------------------------------------------------------
 
-function selfLog(body: Record<string, unknown>, logPriv: KeyObject, opts: { logId?: string; checkpointRoot?: Buffer; checkpointSize?: number; origin?: string } = {}) {
+function selfLog(body: Record<string, unknown>, logPriv: KeyObject, opts: { logId?: string; checkpointRoot?: Buffer; checkpointSize?: number; origin?: string; entryLogIndex?: number } = {}) {
   const bodyBytes = Buffer.from(JSON.stringify(body), 'utf8');
   const uuid = leafHash(bodyBytes).toString('hex');
   const root = leafHash(bodyBytes);
   const logPub = createPublicKey(logPriv);
   const logId = opts.logId ?? createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest('hex');
-  const base = { body: bodyBytes.toString('base64'), integratedTime: 1_790_000_001, logID: logId, logIndex: 0 };
+  const base = { body: bodyBytes.toString('base64'), integratedTime: 1_790_000_001, logID: logId, logIndex: opts.entryLogIndex ?? 0 };
   const note = `${opts.origin ?? 'self.log - 1'}\n${opts.checkpointSize ?? 1}\n${(opts.checkpointRoot ?? root).toString('base64')}\nTimestamp: 1\n`;
   const hint = createHash('sha256').update(logPub.export({ type: 'spki', format: 'der' })).digest().subarray(0, 4);
   const cpSig = sign('sha256', Buffer.from(note), logPriv);
@@ -503,6 +519,15 @@ test('hand-built log: a valid entry verifies, and each binding is necessary', as
   // A validly signed checkpoint for another tree head.
   const otherHead = selfLog(good, logPriv, { checkpointRoot: Buffer.alloc(32, 9) });
   assert.throws(() => verifyRekorEntry(otherHead.entryId, otherHead.entry, { logKey: otherHead.logKey }), /checkpoint does not commit/);
+
+  // Codex review #2: a validly signed size-1 proof for position 0 while the SET signs entry index 1.
+  const shifted = selfLog(good, logPriv, { entryLogIndex: 1 });
+  assert.throws(() => verifyRekorEntry(shifted.entryId, shifted.entry, { logKey: shifted.logKey, artifact: ROOT_A, anchorKeySpkiDer: spki }),
+    /logIndex does not match/);
+  // ...accepted only when that tree's shard offset is pinned to exactly 1.
+  assert.ok(verifyRekorEntry(shifted.entryId, shifted.entry, { logKey: shifted.logKey, artifact: ROOT_A, anchorKeySpkiDer: spki,
+    logIndexOffsets: { '0000000000000001': 1 } }));
+  assert.throws(() => verifyRekorEntry(ok.entryId, ok.entry, { logKey: ok.logKey, logIndexOffsets: { '0000000000000001': -1 } }), /logIndex/);
 
   // A validly signed checkpoint for the same root but another size.
   const otherSize = selfLog(good, logPriv, { checkpointSize: 2 });
