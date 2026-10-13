@@ -8,18 +8,19 @@ Branches `task/Task15l-trust-contract` (contract PR, 2 commits) and `task/Task15
 | | Item | Status |
 |---|---|---|
 | Hierarchy | offline root (k-of-n) → root document listing root keys and one platform online key per purpose (`anchor`, `activation_lease`, `fleet_config`, `policy_bundle`, `release`, `tenant_keyset`) → per-tenant key sets of `statement` keys, signed by `tenant_keyset`; customer pins override key sets | ✅ |
-| Contract | `docs/contracts/attesta/trust.md`, `trust-document-v1.schema.json`, `errors.md` "Trust (A15.12)" (19 codes, one status each), `trust-contract.ts` [FROZEN], 75 vectors + `generate.ts` | ✅ checkpoint-2 PR |
+| Contract | `docs/contracts/attesta/trust.md`, `trust-document-v1.schema.json`, `errors.md` "Trust (A15.12)" (19 codes, one status each), `trust-contract.ts` [FROZEN], 82 vectors + `generate.ts` | ✅ checkpoint-2 PR |
 | Verifier | `verifyTrusted` → `verified` / `rejected` / `unavailable` (Task9's three states); UNKNOWN never verified | ✅ |
 | Root tool | `npm run attesta:trust-root -w apps/api -- keyid|draft|sign` (offline, prints keyids and digests only) | ✅ |
 | Inventory, resolvers, online CLIs, IT-T15l-01…04 | moved to Task15l2 | n/a here |
 | Quality | 689 unit tests (31 new test groups), typecheck clean; vectors reproduce byte for byte; OpenSSL oracle | ✅ |
-| Review | subagent round 1: 3 must-fix (rollback/fork, payload-only time evidence, old-root fork) + 5 should-fix, all fixed; round 2: 1 must-fix (key-set recovery after a `tenant_keyset` compromise) + coverage, fixed; no wrong `verified` left | ✅ · Codex ⬜ |
+| Review | subagent round 1: 3 must-fix (rollback/fork, payload-only time evidence, old-root fork) + 5 should-fix, all fixed; round 2: 1 must-fix (key-set recovery after a `tenant_keyset` compromise) + coverage, fixed; no wrong `verified` left | ✅ · Codex round 1 "fix first": unsigned `signedAt` grandfathering, clock rollback floor, strict `timeEvidence`, root tool predecessor and forward-only checks — all fixed; re-review ⬜ |
 
 ## Implemented interfaces
 ```ts
 // trust-contract.ts (frozen): types, constants, TRUST_CODE_STATUS
 verifyTrusted({ payloadType, payload, envelope, purpose, audience, signedAt, timeEvidence?, state }): { status, code, keyid?, trusted? }
-TrustState = { pinnedRootKeyids, pinnedRootThreshold?, rootDocuments, keysetDocuments, customerPins?, lastTrusted, now, clockSkewMs?, production, allowUnpinnedRoot? }
+TrustState = { pinnedRootKeyids, pinnedRootThreshold?, rootDocuments, keysetDocuments, customerPins?, lastTrusted, now, trustedTimeFloor?, clockSkewMs?, production, allowUnpinnedRoot? }
+// verdict on verified: { keyid, trusted, trustedTime } → persist into lastTrusted / trustedTimeFloor
 TimeEvidence = { kind: 'tsa_gen_time'|'rekor_integrated_time', time, binds: 'signature'|'ledger_statement', digest }
 // trust-documents.ts: parseTrustDocument, signTrustDocument(body, signers), trustDocumentPayload, forwardOnlyViolation, keyValidityViolation
 ```
@@ -33,7 +34,7 @@ TimeEvidence = { kind: 'tsa_gen_time'|'rekor_integrated_time', time, binds: 'sig
 | old root key after rotation | fork the root | conflict when `lastTrusted` is set (55); first-use limit documented (56) |
 | compromised key + public TSA | back-date or pre-timestamp a payload | key revoked unless evidence names this signature (38–41, 58–60, 73) |
 | retired key | back-dated document living forever | lifetimes ≤ 31 days / 366 days (54, 74) |
-| clock / `signedAt` | future or out-of-validity times | not valid at / from future (8, 9, 29) |
+| clock / `signedAt` | future or out-of-validity times; rewrite the unsigned `signedAt` to grandfather a retired, superseded or expired key; roll the clock back | not valid at / from future / revoked unless bound evidence (8, 9, 29, 76–79); clock behind the persisted floor (81–82) |
 
 ## Ported from
 SushiCorp @ `0bd67a5` (catalog TR-1, SG-1): `core/trust/revocation.py` three states and its failure tests (ported first, `trust-verify.test.ts` part 1); inventory and rotation from `adapters/signing/inventory.py`, `MODULE_A1b_HANDOFF.md` (keep retired public keys forever). Deviation: a present-but-forged document is `rejected` (SushiCorp: UNKNOWN); neither verifies. New, with reasons in trust.md "Provenance": purposes, signed key sets, TUF root rotation, bound time evidence, forward-only key sets, last-trusted anchoring.
@@ -44,7 +45,8 @@ SushiCorp @ `0bd67a5` (catalog TR-1, SG-1): `core/trust/revocation.py` three sta
 
 ## Deviations from spec
 - `TrustState.highestVersionSeen` became `lastTrusted` (version + digest) after review: a version number alone allowed forks and old-root forks.
-- Time evidence binds the signature (or, for statements, the tenant's ledger statement), not the payload.
+- Time evidence binds the signature (or, for statements, the tenant's ledger statement), not the payload; `signedAt` alone grandfathers nothing (Codex review): non-active or expired keys need that evidence.
+- `trustedTimeFloor` / `trustedTime` added (Codex review): a rolled-back clock gets `CLOCK_BEHIND`.
 - `trust-contract.ts`: the main PR replaces only the `verifyTrusted` stub body (allowed by trust.md). Contract README file table not updated (not pre-approved): trust.md is self-describing.
 
 ## Known limitations
