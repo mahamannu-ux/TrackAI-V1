@@ -173,7 +173,9 @@ async function makeWorld(dir: string) {
   const out: string[] = [];
   const err: string[] = [];
   const io = { readFile: (p: string) => readFileSync(p, 'utf8'), writeFile: (p: string, t: string) => writeFileSync(p, t, { flag: 'wx' }),
-    out: (l: string) => out.push(l), err: (l: string) => err.push(l), env, now: () => new Date() };
+    // Set up two hours back (Task15i3): /verify applies key windows, and the statements below are
+    // stamped up to 50 minutes in the past; recorded_at before a key's not_before is KEY_NOT_VALID_AT.
+    out: (l: string) => out.push(l), err: (l: string) => err.push(l), env, now: () => new Date(Date.now() - 2 * 60 * MIN) };
   const cli = async (...argv: string[]) => { out.length = 0; err.length = 0; const code = await keysMain(argv, io); return { code, out: out.join('\n'), err: err.join('\n') }; };
   const apply = async (...argv: string[]) => {
     const dry = await cli(...argv);

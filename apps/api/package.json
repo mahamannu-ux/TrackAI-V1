@@ -60,6 +60,7 @@
     "verify:task15l2-trust-live": "tsx src/features/attesta/t15l2-trust-live-verify.ts",
     "verify:task15i-evidence-api-live": "tsx src/features/attesta/t15i-evidence-api-live-verify.ts",
     "verify:task15i2-evidence-packs-live": "tsx src/features/attesta/t15i2-evidence-packs-live-verify.ts",
+    "verify:task15i3-verify-keys-resume-live": "tsx src/features/attesta/t15i3-verify-keys-resume-live-verify.ts",
     "attesta:build": "tsx src/features/attesta/attesta-build-cli.ts",
     "attesta:requeue": "tsx src/features/attesta/attesta-requeue-cli.ts",
     "attesta:anchor": "tsx src/features/attesta/attesta-anchor-cli.ts",
