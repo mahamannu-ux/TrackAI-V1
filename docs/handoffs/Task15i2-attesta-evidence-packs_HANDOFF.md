@@ -71,10 +71,7 @@ npm run attesta:pack -w apps/api -- --run-queued [--limit 20]   # recovery of qu
 
 ## Integration notes
 - **A15.10 (Muse):** copy "What a verifier checks" in `evidence-pack.md`. Start from `testing/evidence-pack-oracle.ts` and its negative cases in `evidence-pack.test.ts`. Add the Rekor and TSA checks (`verifyStoredAnchor`), key windows with time evidence, a persisted `lastTrusted`, and exit codes 0, 1 and 2.
-- **Task15i3:**
-  - fills `reports` with period-report documents;
-  - adds the anchor-resume action (append-only `attesta_anchor_resumes`, the audited CLI, the resume rule in `anchor-worker.ts`, IT for a stopped batch);
-  - adds the `/verify` key-validity check above.
+- **Task15i3** (split 2026-10-13): the anchor-resume action (append-only `attesta_anchor_resumes`, the audited CLI, the resume rule in `anchor-worker.ts`) and the `/verify` key-validity check above. **Task15i4:** fills `reports` with period-report documents.
 - **Task14:** schedule `attesta:pack --run-queued`, provision `TASK4_EXPORT_DIR` and keep API host clocks in sync.
 
 ## Effort (estimate vs actual)
