@@ -18,9 +18,10 @@
  *    pass, the one anchored after it breaks.
  * 03 a batch stopped by LOG_REJECTED (the fake log answers 400) is resumed by the CLI
  *    (dry run, then --confirm=RESUME), audited, and anchors on the next pass; a second
- *    resume without a new stop is refused by the guard (CLI, API role, RLS-bound role);
- *    a new stop needs a new resume; the guard stamps created_at; no UPDATE, DELETE or
- *    TRUNCATE.
+ *    resume without a new stop is refused by the guard (CLI, API role, RLS-bound role,
+ *    REPEATABLE READ); a new stop needs a new resume, also when a retryable failure
+ *    follows the terminal one; a resume without its audit row fails at COMMIT; the
+ *    guard stamps created_at; no UPDATE, DELETE or TRUNCATE.
  * 04 Company A/B: B cannot resume A's batch (CLI scope, store, API role, RLS role);
  *    A's windows never come from B's key set.
  *
@@ -339,7 +340,10 @@ async function it03and04(base: string, w: World): Promise<void> {
   }
   await asRlsRole(a, async (client) => {
     await refused(client, 'rls-role A resumes B\'s batch under A', 'ATG01', resumeInsert, [a.tenantId, batch]);
-    await refused(client, 'rls-role A writes a resume row for B', '42501', resumeInsert, [b.tenantId, batch]);
+    // The invoker-rights visibility guard fires first: B's batch is invisible, so A gets the same
+    // refusal as for an unknown batch and learns nothing about B's batch state.
+    await refused(client, 'rls-role A writes a resume row for B', 'ATG01', resumeInsert, [b.tenantId, batch]);
+    await refused(client, 'rls-role A names an unknown batch', 'ATG01', resumeInsert, [b.tenantId, `${b.tenantId}:900-901`]);
   });
   const aWindows = await publishedKeyWindowsFor(pgTrustStore(db as unknown as TrustDb), a.tenantId, trustConfigFromEnv(process.env));
   const bWindows = await publishedKeyWindowsFor(pgTrustStore(db as unknown as TrustDb), b.tenantId, trustConfigFromEnv(process.env));
@@ -375,6 +379,9 @@ async function it03and04(base: string, w: World): Promise<void> {
     await refused(api2, 'api-role delete', 'ATG01', `delete from attesta_anchor_resumes where tenant_id = $1`, [b.tenantId]);
     await refused(api2, 'api-role truncate', 'ATG01', `truncate attesta_anchor_resumes`, []);
     await api2.query('rollback');
+    await api2.query('begin isolation level repeatable read');
+    await refused(api2, 'api-role resume under REPEATABLE READ', 'ATG01', resumeInsert, [b.tenantId, batch]);
+    await api2.query('rollback');
   } finally {
     api2.release();
   }
@@ -387,10 +394,35 @@ async function it03and04(base: string, w: World): Promise<void> {
   check(p.codes.ATTESTA_ANCHOR_LOG_REJECTED === 1 && p.batchesAnchored === 0, `retried once after the resume: ${JSON.stringify(p)}`);
   p = await w.anchorPass(b, Date.now() + 2 * 3_600_000);
   check(p.tenants === 0, 'a new terminal failure stops it again');
-  // The new stop is resumable once more; the guard stamps created_at itself (a future date is ignored).
-  const ins = await pool.query(`insert into attesta_anchor_resumes (tenant_id, batch_id, actor, reason, request_id, created_at)
-    values ($1, $2, 'it-operator', 'second stop', 'it-req-2', '2099-01-01T00:00:00Z') returning created_at`, [b.tenantId, batch]);
-  check(new Date(ins.rows[0].created_at).getTime() < Date.now() + MIN, 'created_at is the database clock, not the caller\'s');
+  // Two concurrent passes can leave a retryable failure after the terminal one: the batch stays
+  // stopped (worker rule) and must stay resumable (the guard uses the same rule).
+  await pool.query(`insert into attesta_anchors (tenant_id, batch_id, record_id, anchor_type, status, error_code)
+    select r.tenant_id, $2, r.id, 'rekor', 'failed', 'ATTESTA_ANCHOR_LOG_UNAVAILABLE' from attesta_records r
+    where r.tenant_id = $1 and r.seq between 0 and 1`, [b.tenantId, batch]);
+  p = await w.anchorPass(b, Date.now() + 2 * 3_600_000);
+  check(p.tenants === 0, 'still stopped after a later retryable failure');
+  // A direct INSERT that skips the audit row is refused at COMMIT.
+  const direct = await pool.connect();
+  try {
+    await direct.query('begin');
+    await direct.query(resumeInsert, [b.tenantId, batch]);
+    const commit = await direct.query('commit').then(() => 'committed', (e: { code?: string }) => e.code ?? 'error');
+    check(commit === 'ATG01', `a resume without its audit row: ${commit}`);
+    // With its audit row it is accepted, and the guard stamps created_at itself (a 2099 date is ignored).
+    await direct.query('begin');
+    await direct.query(`insert into security_audit_events (tenant_id, actor_type, actor_id, action, target_type, target_id, details)
+      values ($1, 'system_operator', 'it-operator', 'attesta.anchor.resume', 'attesta_anchor_batch', $2, '{"request_id":"it-req-2"}'::jsonb)`, [b.tenantId, batch]);
+    const ins = await direct.query(`insert into attesta_anchor_resumes (tenant_id, batch_id, actor, reason, request_id, created_at)
+      values ($1, $2, 'it-operator', 'second stop', 'it-req-2', '2099-01-01T00:00:00Z') returning created_at,
+      (select max(created_at) from attesta_anchors where tenant_id = $1 and batch_id = $2 and status = 'failed') as last_failed`, [b.tenantId, batch]);
+    check(ins.rows[0].created_at > ins.rows[0].last_failed && new Date(ins.rows[0].created_at).getTime() < Date.now() + MIN,
+      'created_at is the database clock: after every failure, not the caller\'s 2099');
+    await direct.query('rollback');
+  } finally {
+    direct.release();
+  }
+  c = resumeCli('--tenant', b.tenantId, '--batch', batch, '--actor', 'it-operator', '--reason', 'second stop', '--confirm=RESUME');
+  check(c.code === 0 && /terminal_code=ATTESTA_ANCHOR_LOG_REJECTED/.test(c.out), `the second stop is resumable: ${c.out} ${c.err}`);
   w.rekor.failStatus = null;
   p = await w.anchorPass(b, Date.now() + 10 * MIN);
   check(p.batchesAnchored === 1 && p.tenantErrors === 0, `anchors on the next pass: ${JSON.stringify(p)}`);
@@ -401,7 +433,10 @@ async function it03and04(base: string, w: World): Promise<void> {
   const rls = await pool.query(`select relrowsecurity, (select count(*)::int from pg_policies where tablename = 'attesta_anchor_resumes') as policies
     from pg_class where relname = 'attesta_anchor_resumes'`);
   check(rls.rows[0].relrowsecurity === true && rls.rows[0].policies === 0, 'RLS on, no policies');
-  console.log('it03_resumes=2 audits=1 stops=2 anchored=2');
+  const counts = await pool.query(`select (select count(*)::int from attesta_anchor_resumes where tenant_id = $1) as resumes,
+    (select count(*)::int from security_audit_events where tenant_id = $1 and action = 'attesta.anchor.resume') as audits`, [b.tenantId]);
+  check(counts.rows[0].resumes === 2 && counts.rows[0].audits === 2, `two resumes, two audit rows: ${JSON.stringify(counts.rows[0])}`);
+  console.log('it03_resumes=2 audits=2 stops=2 anchored=2');
   console.log('IT-T15i3-03=passed');
 }
 

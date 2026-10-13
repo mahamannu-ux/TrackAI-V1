@@ -1,5 +1,5 @@
 {
-  "id": "b5c94182-8220-49af-bd29-66c10908d57d",
+  "id": "7633b7d3-c473-49ab-86fd-963418230139",
   "prevId": "4ab892dc-ee02-4691-8b33-682e9b2a25da",
   "version": "7",
   "dialect": "postgresql",
@@ -1473,6 +1473,14 @@
           "columns": [
             "tenant_id",
             "id"
+          ]
+        },
+        "attesta_anchor_resumes_tenant_request_id_key": {
+          "name": "attesta_anchor_resumes_tenant_request_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "request_id"
           ]
         }
       },

@@ -1012,7 +1012,7 @@ describe('evidence packs', () => {
 });
 
 describe('verify with published keys (Task15i2)', () => {
-  test('publishedKeySource: every key the tenant ever had; none → null (not checked, never "unknown key")', async () => {
+  test('publishedKeySource: the keys of the tenant\'s newest verified key set; none → null (not checked, never "unknown key")', async () => {
     const w = await trustWorld();
     const source = publishedKeySource(() => w.store, () => w.config, () => new Date(PACK_T0));
     const a = await source(PA);

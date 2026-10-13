@@ -627,20 +627,29 @@ describe('anchor checks', () => {
       assert.equal(keyBreaks(r).length, 3);
     });
 
-    it('retired, superseded and compromised: an anchor strictly before the cut-off saves the record; at or after it breaks', async () => {
-      for (const label of ['retired', 'superseded', 'compromised']) {
-        // retired / superseded cut at revoked_at; compromised at compromised_since (the caller maps it to untilMs).
-        let r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }));
-        assert.equal(r.ok, true, `${label} before: ${JSON.stringify(r.breaks)}`);
-        r = await run((k) => ({ [k]: win({ untilMs: A }) }));
-        assert.equal(keyBreaks(r).length, 3, `${label} at the cut-off`);
-        // Recorded before the cut-off but anchored after it (key retired 10:30, records 10:00, anchors 12:00).
-        r = await run((k) => ({ [k]: win({ untilMs: T0 + H / 2 }) }));
-        assert.deepEqual(keyBreaks(r).map((b) => b.seq), [0, 1, 2], label);
-        // Recorded after the cut-off: breaks however it is anchored.
-        r = await run((k) => ({ [k]: win({ untilMs: T0 - 1 }) }));
-        assert.equal(keyBreaks(r).length, 3, label);
-      }
+    // The status → cut-off mapping (retired/superseded → revoked_at, compromised → compromised_since)
+    // is publishedKeyWindowsFor's and is tested from real key sets in attesta-api.test.ts; here the cut-off itself.
+    it('a revoked or retired key: an anchor strictly before the cut-off saves the record; at or after it breaks', async () => {
+      let r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }));
+      assert.equal(r.ok, true, JSON.stringify(r.breaks));
+      r = await run((k) => ({ [k]: win({ untilMs: A }) }));
+      assert.equal(keyBreaks(r).length, 3, 'at the cut-off');
+      // Recorded before the cut-off but anchored after it (cut 10:30, records 10:00, anchors 12:00).
+      r = await run((k) => ({ [k]: win({ untilMs: T0 + H / 2 }) }));
+      assert.deepEqual(keyBreaks(r).map((b) => b.seq), [0, 1, 2]);
+      // Recorded after the cut-off: breaks however it is anchored.
+      r = await run((k) => ({ [k]: win({ untilMs: T0 - 1 }) }));
+      assert.equal(keyBreaks(r).length, 3);
+    });
+
+    it('recorded at or after the cut-off + skew is a break even without anchor material (no anchor could save it)', async () => {
+      let r = await run((k) => ({ [k]: win({ untilMs: T0 - 300_000 }) }), { noAnchors: true });
+      assert.equal(keyBreaks(r).length, 3);
+      assert.ok(!r.warnings.includes('key_windows_not_checked'));
+      // Inside the skew an earlier-stamped anchor could still exist: unknown, not a break.
+      r = await run((k) => ({ [k]: win({ untilMs: T0 - 299_000 }) }), { noAnchors: true });
+      assert.equal(keyBreaks(r).length, 0);
+      assert.ok(r.warnings.includes('key_windows_not_checked'));
     });
 
     it('the founder example (shifted so the fixture record is the statement): retired 10:00, recorded 09:55 + anchored 09:58 passes, recorded 10:05 + anchored 10:07 fails', async () => {

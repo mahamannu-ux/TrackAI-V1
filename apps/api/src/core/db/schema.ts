@@ -1997,10 +1997,10 @@ export const attestaTrustDocuments = pgTable('attesta_trust_documents', {
 /**
  * Operator resume of an anchor batch stopped by a terminal code (Task15i3; tables.md
  * "attesta_anchor_resumes"). Append-only (migration 0021 guards): one row per resume,
- * accepted only while the batch's latest failed attempt is terminal, the batch is not
- * fully anchored and no resume is newer than that attempt; `created_at` is set by the
- * guard (clock_timestamp()). A batch is stopped only while its latest terminal failure
- * is newer than its latest resume. Written by attesta-anchor-resume-cli.ts only.
+ * accepted only while the batch is stopped (a terminal failure newer than its latest
+ * resume) and not fully anchored, with its `attesta.anchor.resume` audit row (same
+ * request_id) in the same transaction; `created_at` is set by the guard
+ * (clock_timestamp()). Written by attesta-anchor-resume-cli.ts only.
  */
 export const attestaAnchorResumes = pgTable('attesta_anchor_resumes', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -2012,6 +2012,8 @@ export const attestaAnchorResumes = pgTable('attesta_anchor_resumes', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   tenantIdIdUnique: unique('attesta_anchor_resumes_tenant_id_id_key').on(table.tenantId, table.id),
+  // One resume per request ID: its audit row (same request_id, checked at commit) is used once.
+  tenantRequestUnique: unique('attesta_anchor_resumes_tenant_request_id_key').on(table.tenantId, table.requestId),
   tenantBatchForeignKey: foreignKey({
     name: 'attesta_anchor_resumes_tenant_batch_fk',
     columns: [table.tenantId, table.batchId],

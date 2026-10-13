@@ -65,10 +65,10 @@ Rules: Merkle leaves are the **32 raw bytes** of each `record_hash` (RFC 6962, `
 | `batch_id` | composite FK `(tenant_id, batch_id)` → `attesta_anchor_batches` |
 | `actor` | the operator's name (1–128) |
 | `reason` | 1–256 characters, why the stop is lifted |
-| `request_id` | the CLI run's request ID, also in the `security_audit_events` row (`attesta.anchor.resume`) |
+| `request_id` | the CLI run's request ID, also in the `security_audit_events` row (`attesta.anchor.resume`); unique per tenant |
 | `created_at` | set by the guard to the database's `clock_timestamp()`, so it is later than the failure it lifts |
 
-Guard (`SECURITY DEFINER`, fixed `search_path`, ERRCODE `ATG01`): the batch's latest failed attempt (its newest failed rows) has a terminal code (`errors.md` §Anchoring), the batch is not anchored in both types for every record, and no resume row is newer than that attempt (one resume per stop). No UPDATE, DELETE or TRUNCATE. RLS on, no browser policies.
+Guards (ERRCODE `ATG01`): (1) as the caller (`SECURITY INVOKER`, so RLS applies), the batch must be visible, so a foreign batch is refused like an unknown one; (2) `SECURITY DEFINER`, fixed `search_path`, READ COMMITTED only, per-batch lock: the batch is stopped by the resume rule below (a terminal code of `errors.md` §Anchoring newer than its latest resume) and not anchored in both types for every record, so one resume lifts one stop; (3) at commit, the `attesta.anchor.resume` audit row with the same tenant, batch and `request_id` exists. No UPDATE, DELETE or TRUNCATE. RLS on, no browser policies.
 
 **Resume rule (lead-approved 2026-10-13):** a batch is stopped only while its latest terminal failure is newer than its latest resume row. A resumed batch is retried with the normal backoff (failed attempts so far); a new terminal failure stops it again and needs a new resume. Applied by the audited CLI `attesta:anchor-resume` only (dry run by default; `--confirm=RESUME` writes the resume row and the audit row in one transaction); there is no route.
 

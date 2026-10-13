@@ -410,9 +410,12 @@ function keyWindowVerdict(row: LedgerRow, w: KeyWindow, nowMs: number, facts: Re
   }
   const usableNow = w.untilMs === null && nowMs >= w.notBeforeMs - ANCHOR_TIME_SKEW_MS && nowMs <= w.notAfterMs + ANCHOR_TIME_SKEW_MS;
   if (usableNow) return 'ok';
+  const until = w.untilMs;
+  // No anchor can save a record stamped at or after the cut-off plus the skew: a valid anchor
+  // is never earlier than recorded_at − skew (AnchorChecker), so this is a break, not "unknown".
+  if (until !== null && recorded >= until + ANCHOR_TIME_SKEW_MS) return 'broken';
   if (facts === null) return 'unknown';
   // Inside the key's validity and strictly before `untilMs`.
-  const until = w.untilMs;
   const saved = facts.validTimes.some((t) => t >= w.notBeforeMs && t <= w.notAfterMs && (until === null || t < until));
   if (saved) return 'ok';
   return facts.notCheckable ? 'unknown' : 'broken';

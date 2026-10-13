@@ -28,12 +28,15 @@ class MemResumeStore implements ResumeStore {
     this.batches.set(batchId, { tenantId, seqFrom: from, seqTo: to, failures, anchored });
   }
 
+  /** The worker's rule (anchor-worker.ts stoppedBatch): a terminal failure newer than the latest resume. */
   private state(tenantId: string, batchId: string) {
     const b = this.batches.get(batchId);
     if (!b || b.tenantId !== tenantId) return null;
     const lastAt = b.failures.length ? Math.max(...b.failures.map((f) => f.at)) : null;
-    const terminal = b.failures.find((f) => f.at === lastAt && ['ATTESTA_ANCHOR_LOG_REJECTED', 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED'].includes(f.code));
-    return { b, lastAt, terminal };
+    const lastResume = Math.max(-Infinity, ...this.resumes.filter((r) => r.tenantId === tenantId && r.batchId === batchId).map((r) => r.at));
+    const terminals = b.failures.filter((f) => ['ATTESTA_ANCHOR_LOG_REJECTED', 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED'].includes(f.code));
+    const open = terminals.filter((f) => f.at > lastResume).sort((x, y) => y.at - x.at);
+    return { b, lastAt, terminal: open[0], everTerminal: terminals.length > 0 };
   }
 
   async batchState(tenantId: string, batchId: string): Promise<ResumeBatchState | null> {
@@ -42,7 +45,7 @@ class MemResumeStore implements ResumeStore {
     return {
       batchId, seqFrom: s.b.seqFrom, seqTo: s.b.seqTo, leafCount: s.b.seqTo - s.b.seqFrom + 1, complete: s.b.anchored,
       lastFailedAt: s.lastAt === null ? null : new Date(s.lastAt).toISOString(), terminalCode: s.terminal?.code ?? null,
-      resumedSinceStop: s.lastAt !== null && this.resumes.some((r) => r.tenantId === tenantId && r.batchId === batchId && r.at > s.lastAt!),
+      everTerminal: s.everTerminal,
     };
   }
 
@@ -52,11 +55,9 @@ class MemResumeStore implements ResumeStore {
     const s = this.state(input.tenantId, input.batchId);
     if (!s) throw guard('no such batch for this tenant');
     if (s.b.anchored) throw guard('the batch is anchored');
-    if (s.lastAt === null || !s.terminal) throw guard('the batch is not stopped by a terminal code');
+    if (!s.everTerminal) throw guard('the batch is not stopped by a terminal code');
+    if (!s.terminal) throw guard('this stop was already resumed');
     const at = this.clock + 1; // clock_timestamp(): after every failure the statement sees
-    if (this.resumes.some((r) => r.tenantId === input.tenantId && r.batchId === input.batchId && r.at > s.lastAt!)) {
-      throw guard('this stop was already resumed');
-    }
     this.resumes.push({ ...input, at });
     this.audits.push({ tenantId: input.tenantId, action: RESUME_AUDIT_ACTION, actor: input.actor, target: input.batchId,
       details: { request_id: input.requestId, terminal_code: input.terminalCode, records: input.records, reason: input.reason } });
@@ -104,7 +105,7 @@ test('a batch that is not stopped is refused with the reason, dry run and apply 
     ['unknown batch', () => undefined, /no such batch/],
     ['anchored', (s) => s.add(A, BATCH, [rejected()], true), /anchored/],
     ['never failed', (s) => s.add(A, BATCH, []), /no failed attempt/],
-    ['latest failure retryable', (s) => s.add(A, BATCH, [rejected(T0), { at: T0 + 5, code: 'ATTESTA_ANCHOR_LOG_UNAVAILABLE' }]), /not a terminal code/],
+    ['only retryable failures', (s) => s.add(A, BATCH, [{ at: T0, code: 'ATTESTA_ANCHOR_LOG_UNAVAILABLE' }]), /never failed with a terminal code/],
     ['another tenant\'s batch under its own tenant', (s) => s.add(B, BATCH), /no such batch/],
   ];
   for (const [name, setup, why] of cases) {
@@ -130,7 +131,7 @@ test('two resumes for one stop: the second is refused; a new terminal failure ne
   const raced = new MemResumeStore();
   raced.add(A, BATCH, [rejected()]);
   const original = raced.batchState.bind(raced);
-  raced.batchState = async (t, b) => ({ ...(await original(t, b))!, resumedSinceStop: false });
+  raced.batchState = async (t, b) => ({ ...(await original(t, b))!, terminalCode: 'ATTESTA_ANCHOR_LOG_REJECTED' });
   raced.resumes.push({ tenantId: A, batchId: BATCH, actor: 'other', reason: 'x', requestId: 'r0', terminalCode: 'x', records: 3, at: T0 + 1 });
   const lost = await cli(raced, [...base, '--confirm=RESUME']);
   assert.equal(lost.code, 1);
@@ -142,6 +143,18 @@ test('two resumes for one stop: the second is refused; a new terminal failure ne
   assert.equal((await cli(s, [...base, '--confirm=RESUME'])).code, 0);
   assert.equal(s.resumes.length, 2);
   assert.equal(s.audits.length, 2);
+});
+
+test('a retryable failure recorded after the terminal one (two concurrent passes) does not hide the stop: still resumable', async () => {
+  // The worker stops the batch while any terminal failure is newer than the latest resume; the
+  // resume rule must be the same, or the batch would be stopped with no way to resume it.
+  const s = new MemResumeStore();
+  s.add(A, BATCH, [rejected(T0), { at: T0 + 5, code: 'ATTESTA_ANCHOR_LOG_UNAVAILABLE' }]);
+  const dry = await cli(s, base);
+  assert.equal(dry.code, 0, dry.err.join('\n'));
+  assert.ok(dry.out.includes('terminal_code=ATTESTA_ANCHOR_LOG_REJECTED'));
+  assert.equal((await cli(s, [...base, '--confirm=RESUME'])).code, 0);
+  assert.match((await cli(s, base)).err.join('\n'), /already resumed/);
 });
 
 test('arguments are validated before anything reaches the store', async () => {

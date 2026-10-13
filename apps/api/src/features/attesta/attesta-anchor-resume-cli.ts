@@ -8,12 +8,13 @@
  * record count, the terminal code that stopped it and when, and the flag that applies
  * it. With `--confirm=RESUME` it writes, in one transaction, one append-only
  * `attesta_anchor_resumes` row and one `security_audit_events` row
- * (`attesta.anchor.resume`). A batch that is not stopped (unknown, anchored, its
- * latest failure not terminal, or already resumed since that stop) is refused with
- * the reason; the 0021 guard refuses the same cases again inside the transaction, so
- * a race between the dry run and the apply cannot resume a batch twice. The anchor
- * worker then retries the batch once with the normal backoff; a new terminal failure
- * stops it again (anchor-worker.ts deviation 3b).
+ * (`attesta.anchor.resume`). "Stopped" is the anchor worker's own rule (anchor-worker.ts
+ * deviation 3b): a terminal failure newer than the batch's latest resume. A batch that
+ * is not stopped (unknown, anchored, never failed, never failed terminally, or every
+ * terminal failure already resumed) is refused with the reason; the 0021 guard applies
+ * the same rule inside the transaction (and requires the audit row at commit), so a
+ * race between the dry run and the apply cannot resume one stop twice. The worker then
+ * retries the batch once with the normal backoff; a new terminal failure stops it again.
  *
  * Output names the tenant, the batch, counts, codes and times only. There is no route:
  * resuming is an operator action.
@@ -46,10 +47,10 @@ export interface ResumeBatchState {
   complete: boolean;
   /** created_at of the latest failed attempt (ms ISO), or null when it never failed. */
   lastFailedAt: string | null;
-  /** The terminal code of the latest failed attempt, or null when that attempt was not terminal. */
+  /** The code of the latest terminal failure newer than the latest resume (the stop), or null. */
   terminalCode: string | null;
-  /** A resume row is newer than the latest failed attempt. */
-  resumedSinceStop: boolean;
+  /** Some terminal failure exists, resumed or not. */
+  everTerminal: boolean;
 }
 
 export interface ResumeInput {
@@ -71,21 +72,20 @@ export interface ResumeStore {
 
 export type ResumeRefusal = 'not_found' | 'anchored' | 'never_failed' | 'not_terminal' | 'already_resumed';
 
-/** Stopped (resumable) or why not. REVOKED > CLEAN > UNKNOWN style: anything unclear is refused. */
+/** Stopped (resumable) or why not, by the worker's rule; anything unclear is refused. */
 export function resumeVerdict(state: ResumeBatchState | null): { stopped: true; code: string } | { stopped: false; why: ResumeRefusal } {
   if (state === null) return { stopped: false, why: 'not_found' };
   if (state.complete) return { stopped: false, why: 'anchored' };
   if (state.lastFailedAt === null) return { stopped: false, why: 'never_failed' };
-  if (state.terminalCode === null || !TERMINAL_ANCHOR_CODES.has(state.terminalCode as never)) return { stopped: false, why: 'not_terminal' };
-  if (state.resumedSinceStop) return { stopped: false, why: 'already_resumed' };
-  return { stopped: true, code: state.terminalCode };
+  if (state.terminalCode !== null && TERMINAL_ANCHOR_CODES.has(state.terminalCode as never)) return { stopped: true, code: state.terminalCode };
+  return { stopped: false, why: state.everTerminal ? 'already_resumed' : 'not_terminal' };
 }
 
 const REFUSAL_TEXT: Record<ResumeRefusal, string> = {
   not_found: 'no such batch for this tenant',
   anchored: 'the batch is anchored in both types; nothing to resume',
   never_failed: 'the batch has no failed attempt; the worker retries it on its own',
-  not_terminal: 'its latest failed attempt is not a terminal code; the worker retries it with backoff',
+  not_terminal: 'it never failed with a terminal code; the worker retries it with backoff',
   already_resumed: 'this stop was already resumed; a new terminal failure is needed before another resume',
 };
 
@@ -231,24 +231,28 @@ const terminalList = sql`(${sql.join([...TERMINAL_ANCHOR_CODES].map((c) => sql`$
 export function pgResumeStore(db: WorkerDatabase): ResumeStore {
   return {
     async batchState(tenantId, batchId) {
+      // The worker's stop rule (anchor-worker.ts `stoppedBatch`), compared on the database clock.
       const r = await db.execute(sql`/* anchor_resume:state */
         with f as (
           select max(a.created_at) as last_failed from attesta_anchors a
           where a.tenant_id = ${tenantId} and a.batch_id = ${batchId} and a.status = 'failed'
+        ), x as (
+          select coalesce(max(x.created_at), '-infinity'::timestamptz) as last_resume from attesta_anchor_resumes x
+          where x.tenant_id = ${tenantId} and x.batch_id = ${batchId}
         )
         select b.batch_id, b.seq_from::text as seq_from, b.seq_to::text as seq_to, b.leaf_count,
           ${sql.raw(`to_char(f.last_failed at time zone 'UTC', ${TS_MS})`)} as last_failed_at,
           (select a.error_code from attesta_anchors a
              where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id and a.status = 'failed'
-               and a.created_at = f.last_failed and a.error_code in ${terminalList}
-             order by a.error_code limit 1) as terminal_code,
-          exists (select 1 from attesta_anchor_resumes x
-             where x.tenant_id = b.tenant_id and x.batch_id = b.batch_id and x.created_at > f.last_failed) as resumed_since_stop,
+               and a.error_code in ${terminalList} and a.created_at > x.last_resume
+             order by a.created_at desc, a.error_code limit 1) as terminal_code,
+          exists (select 1 from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
+             and a.status = 'failed' and a.error_code in ${terminalList}) as ever_terminal,
           ((select count(*) from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
               and a.anchor_type = 'rekor' and a.status = 'anchored') >= b.leaf_count
            and (select count(*) from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
               and a.anchor_type = 'tsa' and a.status = 'anchored') >= b.leaf_count) as complete
-        from attesta_anchor_batches b cross join f
+        from attesta_anchor_batches b cross join f cross join x
         where b.tenant_id = ${tenantId} and b.batch_id = ${batchId}`);
       const row = r.rows[0];
       if (!row) return null;
@@ -260,11 +264,12 @@ export function pgResumeStore(db: WorkerDatabase): ResumeStore {
         complete: row.complete === true,
         lastFailedAt: typeof row.last_failed_at === 'string' ? row.last_failed_at : null,
         terminalCode: typeof row.terminal_code === 'string' ? row.terminal_code : null,
-        resumedSinceStop: row.resumed_since_stop === true,
+        everTerminal: row.ever_terminal === true,
       };
     },
 
     async applyResume(input) {
+      // READ COMMITTED (the default; the 0021 guard requires it). The audit row is checked at commit.
       return db.transaction(async (tx) => {
         const inserted = await tx.execute(sql`/* anchor_resume:insert */
           insert into attesta_anchor_resumes (tenant_id, batch_id, actor, reason, request_id)
