@@ -49,14 +49,14 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
 | A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ✅ merged in PR #33 (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 passed 2026-10-12 |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ✅ merged in PR #28 |
-| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× (re-estimated 0.4×, split 15f + 15f2) | A15.3, A15.4 | 🟡 adapters done (Task15f, `docs/handoffs/Task15f-attesta-anchoring_HANDOFF.md`); migration, worker, verify report in Task15f2 |
-| A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | 🟡 implemented + unit-tested on `task/Task15g-attesta-kms`, review pending |
+| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× (re-estimated 0.4×, split 15f + 15f2) | A15.3, A15.4 | 🟡 adapters merged (Task15f); migration, worker, verify report in Task15f2 (prompt ready) |
+| A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | ✅ merged in PR #35 |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ✅ merged in PR #32; IT-T2AT-01…04 passed 2026-10-12 |
-| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | 🟡 built on `task/Task15h-attesta-builder` (worker, CLIs, IT-T15h-01…04 agent-verified); contract findings F1–F8 in `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
+| A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | ✅ merged in PR #36 (worker, CLIs); contract findings F1–F8 in `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` (F2 needs a founder decision) |
 | A15.9 | Evidence API (auditor-readable), signed evidence-pack export, and the `period_report` statement (`docs/contracts/attesta/period-report.md`; founder 2026-10-12) | Claude | 0.15× | A15.5, A15.8 | ⬜ |
 | A15.10 | Offline verifier (standalone Node script, ported from `offline_verify.py`) | Muse | 0.08× | A15.9 format frozen | ⬜ |
 | A15.11 | Console: "attested / anchored / pending / broken" on commit and PR views, verify panel | Muse (structure) after Claude's design note | 0.08× | A15.9 | ⬜ |
-| A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× | A15.2, A15.3 | ⬜ |
+| A15.12 | Shared trust layer: key hierarchy (root and online keys), rotation, revocation (three-state rule from TR-1), interface for D6.1 and Task6.b | Claude | 0.2× (likely 0.3×, may split 15l/15l2) | A15.2, A15.3 | ⬜ prompt ready (`Task15l-trust-layer`) |
 | A15.13 | Founder-live gates: rekor.sigstage.dev + FreeTSA anchoring, KMS signing, offline verification on a clean machine | founder-live | 0.05× | A15.5, A15.6, A15.10 | ⬜ |
 | A15.14 | GitHub check on each PR showing attestation status (posted by TrackAI's server through the installed GitHub App; policy rules later in Task6.b) | Muse after Claude's design note | 0.05× | A15.9 | ⬜ |
 | A15.P2 | Phase 2: SCANOSS enrichment, risk factors, M&A/insurer formats, GitLab/Bitbucket, private Rekor, keyless | later | — | phase 1 | n/a |
@@ -125,14 +125,14 @@ flowchart LR
 | Task15d-attesta-ledger | A15.3 | Claude | 0.25× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` · handoff `docs/handoffs/Task15d-attesta-ledger_HANDOFF.md` |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
 | Task15f-attesta-anchoring | A15.5 part 1: Rekor, TSA and dual adapters, proof JSON, offline proof check | Claude | 0.2× (actual about 0.3× with the Codex fix round) | `docs/prompts/Task15/NEXT_CHAT_Task15f-attesta-anchoring_PROMPT.md` · handoff `docs/handoffs/Task15f-attesta-anchoring_HANDOFF.md` |
-| Task15f2-attesta-anchoring-worker | A15.5 part 2: migration 0018, worker and CLI, verify-report anchor checks, exact verify codes, IT-T15f-01…04 | Claude | 0.2× | prompt to write (scope: Task15f handoff "Integration notes" and the Task15f prompt §2.1 items 5–7) |
+| Task15f2-attesta-anchoring-worker | A15.5 part 2: migration 0018, worker and CLI, verify-report anchor checks, exact verify codes, IT-T15f-01…04 | Claude | 0.2× (likely 0.25×) | `docs/prompts/Task15/NEXT_CHAT_Task15f2-attesta-anchoring-worker_PROMPT.md` |
 | Task15g-attesta-kms | A15.6 | Muse | 0.1× (actual about 0.1×) | `docs/prompts/Task15/NEXT_CHAT_Task15g-attesta-kms_PROMPT.md` (deps approved by merging it) |
 | Task2-attesta-trigger | A15.7 | Codex | 0.15× | `docs/prompts/Task15/NEXT_CHAT_Task2-attesta-trigger_PROMPT.md` (merge gated on IT-T15c-01) |
 | Task15h-attesta-builder | A15.8 | Claude | 0.2× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` · handoff `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
 | Task15i-attesta-evidence | A15.9 (+ `period_report`) | Claude | 0.15× | after 15f, 15h |
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i |
-| Task15l-trust-layer | A15.12 | Claude | 0.2× | after 15b, 15d |
+| Task15l-trust-layer | A15.12 (contract PR at checkpoint 2, then the rest) | Claude | 0.2× (likely 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15l-trust-layer_PROMPT.md` (migration after 15f2) |
 | Task15m-attesta-github-check | A15.14 | Muse (after the lead's design note) | 0.05× | after 15i |
 
 ## 6. Invariants (acceptance criteria for every session; AGENTS.md §9 items 16–21)
@@ -149,3 +149,4 @@ Gap-free `seq` from `chain_head` under `FOR UPDATE`; anchoring never changes `re
 6. **2026-10-12:** A15.14 added: the first CI gate is a GitHub check posted by TrackAI's server (no public API needed; `docs/plan/TASK7.md`, `docs/plan/TASK11.md`). New Attesta routes follow the AP-1 conventions (AGENTS.md §10).
 7. **2026-10-12 (Task15c design checkpoint):** subject `trackai:repository/<uuid>/commit/<sha>` without the repository URL (predicate carries `url_sha256`); file paths hashed; availability wrapper on every field; `ajv@8.17.1` devDependency; `note_digest` from the source metric event; outbox without source foreign keys (tenant bound by the insert). Developer-level statements are never a subject; repository-level figures come from signed statements and a **`period_report`** statement, added to phase 1 in A15.9. Proposed gap **G6**: Task2 publishes a lifecycle calculation version.
 8. **2026-10-12 (Task15d close-out):** additive errors.md codes for the precise verify break kinds and for invalid ledger input (orchestrator, contract PR; until then `verify-chain.ts` maps to the nearest frozen code); production runs the API as a database role that does not own the ledger tables (Task4/ops, before A15.13). Guard functions use `search_path = pg_catalog, pg_temp`.
+9. **2026-10-13 (lead, Task15f2/15l prompts):** additive contract changes: `ATTESTA_ANCHOR_LOG_REJECTED` (terminal) in `errors.md`; the fixed per-kind `inclusion_proof` shape in `tables.md`. 15f2 moves `ajv` to `dependencies` (Task15h to-do). The trust layer's contract (`trust.md`, `trust-contract.ts`, vectors) lands as its own PR at 15l's checkpoint 2, before its implementation.

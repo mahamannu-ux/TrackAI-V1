@@ -51,6 +51,7 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_ANCHOR_TSA_UNAVAILABLE` | TSA unreachable | retry |
 | `ATTESTA_ANCHOR_TSA_TOKEN_INVALID` | imprint, nonce, ESS, signature, chain or EKU fails | retry, then alert |
 | `ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED` | production without a pinned log key | terminal (configuration) |
+| `ATTESTA_ANCHOR_LOG_REJECTED` | the log refused the submission (HTTP 400/422): a malformed entry, never a network fault | terminal; alert |  <!-- added 2026-10-13, founder decision in Task15f -->
 
 ## Verification (verify report break kinds; A15.3, A15.9, A15.10)
 
