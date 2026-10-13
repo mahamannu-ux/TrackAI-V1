@@ -13,6 +13,8 @@ export const ADMIN_ACTIONS = [
   'evidence.correct',
   // Task15i (A15.9): the Attesta evidence API's read routes and audited verify.
   'attesta.read',
+  // Task15i2 (A15.9): request and download Attesta evidence packs (every one audited).
+  'attesta.export',
 ] as const;
 
 export type AdminAction = typeof ADMIN_ACTIONS[number];
@@ -58,5 +60,7 @@ export function adminMembershipAllows(
       || input.action === 'security_findings.read'
       || input.action === 'operations.read'
       || input.action === 'evidence.raw.read'
-      || input.action === 'attesta.read');
+      || input.action === 'attesta.read'
+      // An auditor's job is to take evidence away; each request and download is audited.
+      || input.action === 'attesta.export');
 }
