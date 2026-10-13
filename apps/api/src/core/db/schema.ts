@@ -1764,6 +1764,89 @@ export const attestaEnvelopes = pgTable('attesta_envelopes', {
   `),
 }));
 
+/**
+ * Attesta anchoring (Task15f2, A15.5; binding design docs/contracts/attesta/tables.md
+ * §attesta_anchor_batches and attesta_anchors). Ported from SushiCorp EV-2 @ 0bd67a5.
+ * Both tables are append-only (migration 0018 guards): one row per batch, one row per
+ * record, anchor type and attempt; no row means pending. Anchoring never touches
+ * attesta_records. Writes go through features/attesta/anchor-worker.ts only.
+ */
+export const attestaAnchorBatches = pgTable('attesta_anchor_batches', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  /** "<tenant_id>:<seq_from>-<seq_to>": deterministic, so a retry re-forms the same root. */
+  batchId: text('batch_id').notNull(),
+  seqFrom: bigint('seq_from', { mode: 'number' }).notNull(),
+  seqTo: bigint('seq_to', { mode: 'number' }).notNull(),
+  /** "sha256:<hex>" RFC 6962 root over the 32 raw bytes of each record_hash. */
+  merkleRoot: text('merkle_root').notNull(),
+  leafCount: integer('leaf_count').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  batchIdUnique: unique('attesta_anchor_batches_batch_id_key').on(table.batchId),
+  tenantIdIdUnique: unique('attesta_anchor_batches_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantBatchIdUnique: unique('attesta_anchor_batches_tenant_batch_id_key').on(table.tenantId, table.batchId),
+  // The planner reads a tenant's last batch (max seq_to).
+  tenantSeqToIndex: index('attesta_anchor_batches_tenant_seq_to_idx').on(table.tenantId, table.seqTo),
+  shapeCheck: check('attesta_anchor_batches_shape_check', sql`
+    ${table.seqFrom} >= 0
+    and ${table.seqFrom} <= ${table.seqTo}
+    and ${table.leafCount} = ${table.seqTo} - ${table.seqFrom} + 1
+    and ${table.leafCount} <= 4096
+    and ${table.batchId} = ${table.tenantId}::text || ':' || ${table.seqFrom}::text || '-' || ${table.seqTo}::text
+    and ${table.merkleRoot} ~ '^sha256:[0-9a-f]{64}$'
+  `),
+}));
+
+export const attestaAnchors = pgTable('attesta_anchors', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  batchId: text('batch_id').notNull(),
+  recordId: uuid('record_id').notNull(),
+  anchorType: text('anchor_type').$type<'rekor' | 'tsa'>().notNull(),
+  status: text('status').$type<'anchored' | 'failed'>().notNull(),
+  /** EV-2 v1 proof JSON (tables.md per-kind shape); null for a failed attempt. */
+  inclusionProof: jsonb('inclusion_proof'),
+  rekorEntryUuid: text('rekor_entry_uuid'),
+  tsaTokenB64: text('tsa_token_b64'),
+  /** errors.md §Anchoring code of a failed attempt. */
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_anchors_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantBatchForeignKey: foreignKey({
+    name: 'attesta_anchors_tenant_batch_fk',
+    columns: [table.tenantId, table.batchId],
+    foreignColumns: [attestaAnchorBatches.tenantId, attestaAnchorBatches.batchId],
+  }),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_anchors_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  // One anchored row per record and anchor type; failed attempts are not limited.
+  anchoredUnique: uniqueIndex('attesta_anchors_anchored_key')
+    .on(table.tenantId, table.recordId, table.anchorType)
+    .where(sql`${table.status} = 'anchored'`),
+  batchIndex: index('attesta_anchors_tenant_batch_idx').on(table.tenantId, table.batchId, table.anchorType),
+  shapeCheck: check('attesta_anchors_shape_check', sql`
+    ${table.anchorType} in ('rekor', 'tsa')
+    and ${table.status} in ('anchored', 'failed')
+    and (
+      (${table.status} = 'anchored' and ${table.inclusionProof} is not null and ${table.errorCode} is null
+        and (
+          (${table.anchorType} = 'rekor' and ${table.rekorEntryUuid} is not null and ${table.tsaTokenB64} is null)
+          or (${table.anchorType} = 'tsa' and ${table.tsaTokenB64} is not null and ${table.rekorEntryUuid} is null)))
+      or (${table.status} = 'failed' and ${table.errorCode} is not null and ${table.inclusionProof} is null
+        and ${table.rekorEntryUuid} is null and ${table.tsaTokenB64} is null)
+    )
+    and (${table.errorCode} is null or ${table.errorCode} ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
+    and (${table.rekorEntryUuid} is null or ${table.rekorEntryUuid} ~ '^([0-9a-f]{16})?[0-9a-f]{64}$')
+    and (${table.tsaTokenB64} is null or (length(${table.tsaTokenB64}) between 4 and 131072
+      and ${table.tsaTokenB64} ~ '^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$'))
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
@@ -1804,3 +1887,5 @@ export type EvidenceLink = typeof evidenceLinks.$inferSelect;
 export type EvidenceSummary = typeof evidenceSummaries.$inferSelect;
 export type EvidenceSemanticDocument = typeof evidenceSemanticDocuments.$inferSelect;
 export type AttestaSubject = typeof attestaSubjects.$inferSelect;
+export type AttestaAnchorBatch = typeof attestaAnchorBatches.$inferSelect;
+export type AttestaAnchor = typeof attestaAnchors.$inferSelect;

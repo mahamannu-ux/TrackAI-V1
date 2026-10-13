@@ -334,10 +334,13 @@ test('T15h builder: sources gone or no longer matching the pointer are SOURCE_MI
 });
 
 test('T15h builder: the schema and S1–S12 are checked on the snapshot', async () => {
-  // A commit_observed may list only commit_observed statements (schema).
+  // Two entries with one digest break S6.
   const prev = commitSeeds();
-  prev.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'pr_merged' }];
-  await expectCode(build(commitRow(), prev), 'ATTESTA_BUILDER_SCHEMA_INVALID');
+  prev.previous = [
+    { statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'commit_observed' },
+    { statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'commit_observed' },
+  ];
+  await expectCode(build(commitRow(), prev), 'ATTESTA_BUILDER_RULE_VIOLATION');
   // A model naming a session that is not listed breaks S8.
   const s8 = commitSeeds();
   (s8.models as any)[0].session_id = '00000000-0000-4000-8000-000000000031';
@@ -453,17 +456,28 @@ test('T15h builder: a note naming no session falls back to the event attributes,
   assert.deepEqual(r.p.sessions.value, []);
 });
 
-test('T15h builder F2: an earlier kind the schema forbids in previous is refused by name', async () => {
+test('T15f2 builder F2 (resolved 2026-10-13): previous may name any kind, in chain order', async () => {
+  // A later commit note about an already-deployed commit builds, lists the deployed
+  // statement in previous, passes the schema and S1–S12, and hands the ledger the
+  // digests it re-checks under the chain lock (previousSeen, oldest first).
+  const commitDigest = `sha256:${'a'.repeat(64)}`;
+  const deployedDigest = `sha256:${'b'.repeat(64)}`;
   const seeds = commitSeeds();
-  seeds.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'deployed' }];
-  await assert.rejects(build(commitRow(), seeds), (err: unknown) => err instanceof AttestaBuilderError
-    && err.code === 'ATTESTA_BUILDER_SCHEMA_INVALID' && /F2/.test(err.message));
+  seeds.previous = [
+    { statement_digest: commitDigest, statement_kind: 'commit_observed' },
+    { statement_digest: deployedDigest, statement_kind: 'deployed' },
+  ];
+  const { built, p } = await build(commitRow(), seeds);
+  assert.deepEqual(p.previous, [
+    { digest: commitDigest, statement_kind: 'commit_observed' },
+    { digest: deployedDigest, statement_kind: 'deployed' },
+  ]);
+  assert.deepEqual(built.previousSeen, [commitDigest, deployedDigest]);
+  assert.deepEqual(checkStatementRules(built.statement as any), []);
+  // pr_merged after a deployment of the same commit builds too.
   const pr = prSeeds();
-  pr.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'deployed' }];
-  await expectCode(build(prRow(), pr), 'ATTESTA_BUILDER_SCHEMA_INVALID');
-  const ok = prSeeds();
-  ok.previous = [{ statement_digest: `sha256:${'a'.repeat(64)}`, statement_kind: 'pr_merged' }];
-  assert.equal((await build(prRow(), ok)).p.previous.length, 1);
+  pr.previous = [{ statement_digest: deployedDigest, statement_kind: 'deployed' }];
+  assert.deepEqual((await build(prRow(), pr)).built.previousSeen, [deployedDigest]);
 });
 
 test('T15h builder F7: a model_key too long for a token leaves that row out, flagged', async () => {

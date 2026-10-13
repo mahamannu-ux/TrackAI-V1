@@ -252,8 +252,11 @@ test('log errors map to errors.md codes; unreachable is never a pass', async () 
   await rejectsCode(a.anchor(ROOT_A, 'b1'), 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', true);
   rekor.failStatus = 500;
   await rejectsCode(a.anchor(ROOT_A, 'b1'), 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', true);
+  // The log refusing the entry is never a network fault: terminal LOG_REJECTED (errors.md, 2026-10-13).
   rekor.failStatus = 400;
-  await rejectsCode(a.anchor(ROOT_A, 'b1'), 'ATTESTA_ANCHOR_LOG_UNAVAILABLE', false);
+  await rejectsCode(a.anchor(ROOT_A, 'b1'), 'ATTESTA_ANCHOR_LOG_REJECTED', false);
+  rekor.failStatus = 422;
+  await rejectsCode(a.anchor(ROOT_A, 'b1'), 'ATTESTA_ANCHOR_LOG_REJECTED', false);
 });
 
 test('the request is a hashedrekord the log accepts, and the log checks our signature', async () => {

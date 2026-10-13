@@ -26,8 +26,21 @@ export type AnchorErrorCode =
   | 'ATTESTA_ANCHOR_TSA_UNAVAILABLE'
   | 'ATTESTA_ANCHOR_TSA_TOKEN_INVALID'
   | 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED'
+  | 'ATTESTA_ANCHOR_LOG_REJECTED'
   | 'ATTESTA_SIGNER_UNAVAILABLE'
   | 'ATTESTA_SIGNER_REJECTED';
+
+/**
+ * Codes that stop a batch for good in the anchoring worker (errors.md: terminal;
+ * Task2-attesta-trigger lesson: a persistent error ends in a visible terminal state,
+ * never an endless retry). ATTESTA_SIGNER_REJECTED is not retryable inside one call,
+ * but the worker retries it with backoff: a credential fixed by an operator then
+ * resumes anchoring, and nothing stops a batch for good on a signer refusal.
+ */
+export const TERMINAL_ANCHOR_CODES: ReadonlySet<AnchorErrorCode> = new Set<AnchorErrorCode>([
+  'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED',
+  'ATTESTA_ANCHOR_LOG_REJECTED',
+]);
 
 /** Why an anchor attempt failed. Messages carry no raw values, only reasons. */
 export class AnchorError extends Error {
@@ -38,7 +51,7 @@ export class AnchorError extends Error {
     super(message, opts.cause === undefined ? undefined : { cause: opts.cause });
     this.name = 'AnchorError';
     this.code = code;
-    this.retryable = opts.retryable ?? (code !== 'ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED' && code !== 'ATTESTA_SIGNER_REJECTED');
+    this.retryable = opts.retryable ?? (!TERMINAL_ANCHOR_CODES.has(code) && code !== 'ATTESTA_SIGNER_REJECTED');
   }
 }
 
