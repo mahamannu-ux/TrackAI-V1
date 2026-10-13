@@ -1895,7 +1895,7 @@ export const attestaPlatformKeys = pgTable('attesta_platform_keys', {
     and (${table.status} in ('registered', 'active')) = (${table.revokedAt} is null)
     and (${table.status} = 'revoked') = (${table.revocationReason} is not null)
     and (${table.revocationReason} is null or ${table.revocationReason} in ('superseded', 'compromised'))
-    and (${table.revocationReason} = 'compromised') is not distinct from (${table.compromisedSince} is not null)
+    and (coalesce(${table.revocationReason}, '') = 'compromised') = (${table.compromisedSince} is not null)
     and (${table.compromisedSince} is null or ${table.compromisedSince} <= ${table.revokedAt})
   `),
 }));
@@ -1934,7 +1934,7 @@ export const attestaTenantKeys = pgTable('attesta_tenant_keys', {
     and (${table.status} in ('registered', 'active')) = (${table.revokedAt} is null)
     and (${table.status} = 'revoked') = (${table.revocationReason} is not null)
     and (${table.revocationReason} is null or ${table.revocationReason} in ('superseded', 'compromised'))
-    and (${table.revocationReason} = 'compromised') is not distinct from (${table.compromisedSince} is not null)
+    and (coalesce(${table.revocationReason}, '') = 'compromised') = (${table.compromisedSince} is not null)
     and (${table.compromisedSince} is null or ${table.compromisedSince} <= ${table.revokedAt})
   `),
 }));

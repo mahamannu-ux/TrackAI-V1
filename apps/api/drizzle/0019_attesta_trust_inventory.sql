@@ -49,7 +49,7 @@ CREATE TABLE "attesta_platform_keys" (
     and ("attesta_platform_keys"."status" in ('registered', 'active')) = ("attesta_platform_keys"."revoked_at" is null)
     and ("attesta_platform_keys"."status" = 'revoked') = ("attesta_platform_keys"."revocation_reason" is not null)
     and ("attesta_platform_keys"."revocation_reason" is null or "attesta_platform_keys"."revocation_reason" in ('superseded', 'compromised'))
-    and ("attesta_platform_keys"."revocation_reason" = 'compromised') is not distinct from ("attesta_platform_keys"."compromised_since" is not null)
+    and (coalesce("attesta_platform_keys"."revocation_reason", '') = 'compromised') = ("attesta_platform_keys"."compromised_since" is not null)
     and ("attesta_platform_keys"."compromised_since" is null or "attesta_platform_keys"."compromised_since" <= "attesta_platform_keys"."revoked_at")
   )
 );
@@ -84,7 +84,7 @@ CREATE TABLE "attesta_tenant_keys" (
     and ("attesta_tenant_keys"."status" in ('registered', 'active')) = ("attesta_tenant_keys"."revoked_at" is null)
     and ("attesta_tenant_keys"."status" = 'revoked') = ("attesta_tenant_keys"."revocation_reason" is not null)
     and ("attesta_tenant_keys"."revocation_reason" is null or "attesta_tenant_keys"."revocation_reason" in ('superseded', 'compromised'))
-    and ("attesta_tenant_keys"."revocation_reason" = 'compromised') is not distinct from ("attesta_tenant_keys"."compromised_since" is not null)
+    and (coalesce("attesta_tenant_keys"."revocation_reason", '') = 'compromised') = ("attesta_tenant_keys"."compromised_since" is not null)
     and ("attesta_tenant_keys"."compromised_since" is null or "attesta_tenant_keys"."compromised_since" <= "attesta_tenant_keys"."revoked_at")
   )
 );
