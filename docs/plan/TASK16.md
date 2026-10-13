@@ -74,21 +74,20 @@ flowchart LR
   T159 --> B13
 ```
 
-**Critical path:** A16.1 → A16.3 → A16.6 → A16.8 → A16.12. **Start at once:** A16.1 + A16.2 (one Muse session). A16.4 and A16.7 wait for Attesta.
+**Critical path:** A16.1 → A16.3 → A16.6 → A16.8 → A16.12 (sessions 16a → 16b → 16c → 16f, then the founder walkthrough). **Start at once:** A16.1 + A16.2 (one Muse session). A16.4 and A16.7 wait for Attesta.
 
 ## 4. Sessions
 | Session | Subtasks | Agent | Estimate | Prompt |
 |---|---|---|---|---|
 | Task16a-audit-inventory | A16.1, A16.2 | Muse | 0.06× | `docs/prompts/Task16/NEXT_CHAT_Task16a-audit-inventory_PROMPT.md` |
 | Task16b-audit-contract | A16.3 | Claude | 0.05× | lead writes after 16a |
-| Task16c-audit-emitters | A16.5 | Muse | 0.06× | after 16b |
-| Task16d-audit-api | A16.6 | Muse | 0.06× | after 16b |
-| Task16e-audit-tamper | A16.4, A16.7 | Claude | 0.15× | after 16d and Task15d/15i |
-| Task16f-audit-console | A16.8 | Claude design note, Muse build | 0.1× | after 16d |
-| Task16g-audit-db-role | A16.10 | Claude | 0.05× | after 16d |
-| Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i |
+| Task16c-audit-emitters-api | A16.5, A16.6 | Muse | 0.12× | after 16b. The prompt pre-approves every Task4, Task5 and Task6 audit call site the emitter migration touches, listed by `file:line` from `docs/plan/AUDIT_EVENT_CATALOG.md` (A16.1); the read API's tests read back events written through `recordAuditEvent()`, never rows inserted directly |
+| Task16e-audit-tamper | A16.4, A16.7, A16.10 | Claude | 0.2× | after 16c (Task15d and Task15i2 have merged) |
+| Task16f-audit-console | A16.8 | Claude design note, Muse build (one Muse session) | 0.1× | after 16c |
+| Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i2 |
 
 ## 5. Founder decisions
 1. **2026-10-08:** D1–D5 approved as recommended.
 2. **2026-10-12:** add A16.13 Auditor Q&A, driven by the question catalogue `docs/plan/ATTESTA_QUESTIONS.md` (founder, in the Task15 lead chat).
 3. **2026-10-12:** A16.9 (auditor invitations) moves to Task8 (T8.12); SIEM delivery stays with Task11, now deferred until a customer asks (`docs/plan/TASK11.md`); Task16 applies the AP-1 API conventions to its routes and must not assume a human session (B17).
+4. **2026-10-12 (recorded 2026-10-13):** reduce Task16 session overhead. Task16c-audit-emitters and Task16d-audit-api merge into one Muse session, **Task16c-audit-emitters-api** (A16.5 + A16.6, about 0.12×, after 16b); A16.10 (auditor DB read-only role) folds into **Task16e-audit-tamper** (now A16.4 + A16.7 + A16.10, Claude, about 0.2×) and Task16g-audit-db-role is dropped; Task16f-audit-console stays one Muse session built from the lead's design note. Sessions go from eight to six; the total estimate is unchanged.
