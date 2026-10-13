@@ -35,11 +35,6 @@ import type { AttestaSubjectKind } from './outbox';
 export const BUILDER_NAME = 'trackai-attesta-builder';
 /** A statement built this long after its event is signed late (`delayed_build`). */
 export const DELAYED_BUILD_AFTER_MS = 24 * 60 * 60 * 1000;
-/** Which earlier statement kinds each kind may list in `previous` (predicate schema allOf). */
-const ALLOWED_PREVIOUS: Partial<Record<AttestaSubjectKind, readonly string[]>> = {
-  commit_observed: ['commit_observed'],
-  pr_merged: ['commit_observed', 'pr_merged'],
-};
 /** The schema's own bound on `files.entries`. */
 export const MAX_FILE_ENTRIES = 2000;
 
@@ -439,10 +434,9 @@ async function readPrevious(tx: BuilderReadExecutor, row: AttestaSubjectRow) {
 }
 
 /**
- * Chain order inside a subject: the schema lets commit_observed list only
- * commit_observed, and pr_merged only commit_observed / pr_merged, in `previous`,
- * while the ledger requires `previous` to list every earlier statement about the
- * subject. So a pr_merged waits for pending commit_observed rows about its subject
+ * Chain order inside a subject (kept after F2 was resolved on 2026-10-13: the schema
+ * now lets `previous` name any kind, but the natural order commit → PR → deploy keeps
+ * statements readable, and a wait costs no attempt). A pr_merged waits for pending commit_observed rows about its subject
  * and its lineage sources, and a deployed also for pending pr_merged rows. Failed
  * rows never block (they end visible; see the handoff, contract finding F2).
  */
@@ -951,16 +945,9 @@ export async function buildStatement(
   if (!UUID_RE.test(subjectRow.tenantId) || !UUID_RE.test(subjectRow.repositoryId) || !GIT_SHA_RE.test(subjectRow.commitSha)) {
     throw new AttestaBuilderError('ATTESTA_BUILDER_SOURCE_MISSING', 'the outbox row is malformed');
   }
+  // `previous` lists every earlier statement about the subject, of any kind, in chain
+  // order (contract finding F2, resolved 2026-10-13: the schema no longer limits kinds).
   const sources = await readSources(readTx, subjectRow);
-  // The schema limits which earlier kinds each kind may list, while the ledger needs
-  // every earlier statement about the subject in `previous`. A subject chained in the
-  // other order (a deployment before a later note about the same commit) cannot be
-  // signed by any v1 statement: refuse it here, by name (contract finding F2).
-  const allowed = ALLOWED_PREVIOUS[subjectRow.kind];
-  if (allowed && sources.previous.some((p) => !allowed.includes(p.statement_kind))) {
-    throw new AttestaBuilderError('ATTESTA_BUILDER_SCHEMA_INVALID',
-      'an earlier statement about this subject has a kind this statement kind may not list in previous (contract finding F2)');
-  }
   // S5 compares TrackAI's own observation times with as_of; a time ahead of the
   // database clock (another server's clock) settles by itself, so wait for it.
   const observed = [sources.commit?.firstSeenAt, sources.delivery?.receivedAt];
