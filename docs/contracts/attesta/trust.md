@@ -94,10 +94,10 @@ A timestamp over the payload alone is never enough for other purposes: anyone ca
 
 | Action | Steps | Old signatures |
 |---|---|---|
-| Rotate a tenant statement key | register the new key (validity from now) → activate it → retire the old one (`revoked_at` = now) → `publish` a new key set | keep verifying for `signedAt` < `revoked_at` (rotation overlap) |
-| Revoke, superseded | revoke `superseded` → `publish` | verify before `revoked_at` |
-| Revoke, compromised | revoke `compromised --compromised-since <first suspect instant>` → `publish` | verify only with anchored time evidence before `compromised_since` |
-| Rotate a platform online key | add the new key and retire or revoke the old one in a draft root → sign offline with the root keys → import | as above |
+| Rotate a tenant statement key | register the new key (validity from now) → activate it → retire the old one (`revoked_at` = now) → `publish` a new key set | keep verifying with bound time evidence (for statements, the record's anchor time) before `revoked_at` (rotation overlap); `signedAt` alone never does |
+| Revoke, superseded | revoke `superseded` → `publish` | verify only with bound time evidence before `revoked_at` |
+| Revoke, compromised | revoke `compromised --compromised-since <first suspect instant>` → `publish` | verify only with bound time evidence before `compromised_since` |
+| Rotate a platform online key | add the new key and retire or revoke the old one in a draft root → sign offline with the root keys → import | as above: retired, superseded, expired and compromised keys verify only with bound time evidence (step 8) |
 | `tenant_keyset` key compromised | new root document: revoke the key `compromised`, add a new `tenant_keyset` key (offline) → `publish` every tenant's next key set with the new key | earlier key sets stay valid through the `previous` chain from the new key set |
 | Rotate the root | new root document: new root keys and threshold, same online keys, signed by k old and k' new root keys (offline) | earlier root documents stay in the chain; verifiers pinned to the old root walk forward |
 | Key-set refresh | `publish` weekly; key sets expire after 30 days (hard limit 31), the root after 1 year (hard limit 366 days) | — |
