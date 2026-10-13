@@ -28,6 +28,7 @@ import {
   type ChainBreakKind,
   type ChainHeadState,
   type ChainReport,
+  type KeyWindow,
   type LedgerRow,
 } from './verify-chain';
 
@@ -137,6 +138,7 @@ describe('intact chains', () => {
       envelope_payload_mismatch: 'ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH',
       signature_invalid: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
       key_unknown: 'ATTESTA_VERIFY_KEY_UNKNOWN',
+      key_not_valid_at: 'ATTESTA_VERIFY_KEY_NOT_VALID_AT',
       signatures_not_checked: 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED',
       merkle_proof_invalid: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID',
       anchor_invalid: 'ATTESTA_VERIFY_ANCHOR_INVALID',
@@ -579,5 +581,137 @@ describe('anchor checks', () => {
     const w = await anchoredWorld(3, 4, Date.parse('2026-10-12T09:00:00.000Z'));
     const r = await w.verify(w.rows);
     assert.deepEqual(r.breaks.map((b) => b.kind), Array(6).fill('anchor_invalid'));
+  });
+
+  // -------------------------------------------------------------------------
+  // Key validity windows (Task15i3; trust.md step 8, ported from trust-verify.test.ts
+  // and the KEY_NOT_VALID_AT / KEY_REVOKED trust vectors). One clock: T0 is the
+  // fixture's first recorded_at, every time below is computed from it.
+  // -------------------------------------------------------------------------
+  describe('key validity windows', () => {
+    const T0 = Date.parse('2026-10-12T10:00:00.000Z');
+    const H = 3_600_000;
+    const D = 24 * H;
+    const A = T0 + 2 * H; // the anchors' time (anchoredWorld default)
+    const win = (o: Partial<KeyWindow> = {}): KeyWindow => ({ notBeforeMs: T0 - D, notAfterMs: T0 + 365 * D, untilMs: null, ...o });
+    const keyBreaks = (r: ChainReport) => r.breaks.filter((b) => b.kind === 'key_not_valid_at');
+
+    async function run(windows: (keyid: string) => Record<string, KeyWindow>, opts: { rows?: (w: Awaited<ReturnType<typeof anchoredWorld>>) => LedgerRow[]; nowMs?: number; noAnchors?: boolean } = {}) {
+      const w = await anchoredWorld(3, 4);
+      const rows = opts.rows ? opts.rows(w) : w.rows;
+      const nowMs = opts.nowMs ?? A;
+      const keys = { [w.key.keyid]: w.key.publicKey };
+      if (opts.noAnchors) {
+        return verifyAll(rows, w.chain.head, { keys, keyWindows: windows(w.key.keyid), now: new Date(nowMs) });
+      }
+      return verifyAll(rows, w.chain.head, { keys, keyWindows: windows(w.key.keyid), anchors: { ...w.material, now: new Date(nowMs) } });
+    }
+
+    it('active key inside its validity: ok on recorded_at alone, with or without anchors', async () => {
+      let r = await run((k) => ({ [k]: win() }));
+      assert.equal(r.ok, true, JSON.stringify(r.breaks));
+      r = await run((k) => ({ [k]: win() }), { noAnchors: true });
+      assert.equal(r.ok, true);
+      assert.ok(!r.warnings.includes('key_windows_not_checked'));
+    });
+
+    it('recorded outside [not_before, not_after], or ahead of the clock: KEY_NOT_VALID_AT on every record', async () => {
+      for (const w of [win({ notAfterMs: T0 - 1 }), win({ notBeforeMs: T0 + 3 })]) {
+        const r = await run((k) => ({ [k]: w }));
+        assert.equal(r.ok, false);
+        assert.equal(r.chain_intact, false);
+        assert.deepEqual(keyBreaks(r).map((b) => b.detail_code), Array(3).fill('ATTESTA_VERIFY_KEY_NOT_VALID_AT'));
+      }
+      // recorded_at more than the skew after the verifier's clock (no anchors, so no anchor_missing noise).
+      const r = await run((k) => ({ [k]: win() }), { noAnchors: true, nowMs: T0 - 300_001 });
+      assert.equal(keyBreaks(r).length, 3);
+    });
+
+    it('retired, superseded and compromised: an anchor strictly before the cut-off saves the record; at or after it breaks', async () => {
+      for (const label of ['retired', 'superseded', 'compromised']) {
+        // retired / superseded cut at revoked_at; compromised at compromised_since (the caller maps it to untilMs).
+        let r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }));
+        assert.equal(r.ok, true, `${label} before: ${JSON.stringify(r.breaks)}`);
+        r = await run((k) => ({ [k]: win({ untilMs: A }) }));
+        assert.equal(keyBreaks(r).length, 3, `${label} at the cut-off`);
+        // Recorded before the cut-off but anchored after it (key retired 10:30, records 10:00, anchors 12:00).
+        r = await run((k) => ({ [k]: win({ untilMs: T0 + H / 2 }) }));
+        assert.deepEqual(keyBreaks(r).map((b) => b.seq), [0, 1, 2], label);
+        // Recorded after the cut-off: breaks however it is anchored.
+        r = await run((k) => ({ [k]: win({ untilMs: T0 - 1 }) }));
+        assert.equal(keyBreaks(r).length, 3, label);
+      }
+    });
+
+    it('the founder example (shifted so the fixture record is the statement): retired 10:00, recorded 09:55 + anchored 09:58 passes, recorded 10:05 + anchored 10:07 fails', async () => {
+      const M = 60_000;
+      // The fixture's record is stamped T0. Case 1: T0 plays 09:55, so "retired 10:00" is T0 + 5 min, anchored 09:58 = T0 + 3 min.
+      const early = await anchoredWorld(1, 4, T0 + 3 * M);
+      let r = await verifyAll(early.rows, early.chain.head, { keys: { [early.key.keyid]: early.key.publicKey },
+        keyWindows: { [early.key.keyid]: win({ untilMs: T0 + 5 * M }) }, anchors: { ...early.material, now: new Date(T0 + 3 * M) } });
+      assert.equal(r.ok, true, JSON.stringify(r.breaks));
+      // Case 2: T0 plays 10:05, so "retired 10:00" is T0 − 5 min, anchored 10:07 = T0 + 2 min.
+      const late = await anchoredWorld(1, 4, T0 + 2 * M);
+      r = await verifyAll(late.rows, late.chain.head, { keys: { [late.key.keyid]: late.key.publicKey },
+        keyWindows: { [late.key.keyid]: win({ untilMs: T0 - 5 * M }) }, anchors: { ...late.material, now: new Date(T0 + 2 * M) } });
+      assert.deepEqual(r.breaks.map((b) => b.detail_code), ['ATTESTA_VERIFY_KEY_NOT_VALID_AT']);
+    });
+
+    it('active key past not_after at now: recorded_at alone is not enough; an anchor before not_after is', async () => {
+      let r = await run((k) => ({ [k]: win({ notAfterMs: A + 60_000 }) }), { nowMs: A + 3_600_000 });
+      assert.equal(keyBreaks(r).length, 0, JSON.stringify(r.breaks));
+      r = await run((k) => ({ [k]: win({ notAfterMs: T0 + H }) }), { nowMs: A });
+      assert.equal(keyBreaks(r).length, 3); // anchored 12:00, after not_after 11:00
+      r = await run((k) => ({ [k]: win({ notAfterMs: T0 + H }) }), { nowMs: A, noAnchors: true });
+      assert.equal(keyBreaks(r).length, 0);
+      assert.ok(r.warnings.includes('key_windows_not_checked'));
+      assert.equal(r.ok, false);
+    });
+
+    it('a failed anchor is never time evidence; one verified type is', async () => {
+      const tamperAll = (w: Awaited<ReturnType<typeof anchoredWorld>>) => w.rows.map((r) => ({ ...r, anchors: r.anchors.map((a) => {
+        const c = structuredClone(a);
+        if (c.anchorType === 'rekor') (c.proof as any).anchor.log_index += 1;
+        else c.tsaTokenB64 = Buffer.from('not a token').toString('base64');
+        return c;
+      }) }));
+      let r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }), { rows: tamperAll });
+      assert.equal(keyBreaks(r).length, 3, JSON.stringify(r.breaks));
+      // One valid type is enough evidence (each verified anchor binds the record's hash).
+      const tamperRekor = (w: Awaited<ReturnType<typeof anchoredWorld>>) => w.rows.map((r) => ({ ...r, anchors: r.anchors.map((a) => {
+        const c = structuredClone(a);
+        if (c.anchorType === 'rekor') (c.proof as any).anchor.log_index += 1;
+        return c;
+      }) }));
+      r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }), { rows: tamperRekor });
+      assert.equal(keyBreaks(r).length, 0);
+      // No anchored rows at all: nothing saves a retired key's record.
+      r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }), { rows: (w) => w.rows.map((x) => ({ ...x, anchors: [] })) });
+      assert.equal(keyBreaks(r).length, 3);
+    });
+
+    it('without anchor material, or with only not-checkable anchors: key_windows_not_checked, never ok and no break', async () => {
+      let r = await run((k) => ({ [k]: win({ untilMs: A + 1 }) }), { noAnchors: true });
+      assert.equal(r.ok, false);
+      assert.equal(r.chain_intact, true);
+      assert.deepEqual(r.breaks, []);
+      assert.deepEqual(r.warnings, ['key_windows_not_checked']);
+      const w = await anchoredWorld(3, 4);
+      r = await verifyAll(w.rows, w.chain.head, { keys: { [w.key.keyid]: w.key.publicKey },
+        keyWindows: { [w.key.keyid]: win({ untilMs: A + 1 }) }, anchors: { ...w.material, tsaAnchors: [], anchorKeysSpkiDer: [], now: new Date(A) } });
+      assert.equal(keyBreaks(r).length, 0);
+      assert.ok(r.warnings.includes('key_windows_not_checked'));
+      assert.equal(r.ok, false);
+    });
+
+    it('a key not in the windows, or a signature that did not verify, is not window-checked', async () => {
+      const r = await run(() => ({ ['sha256:' + 'f'.repeat(64)]: win({ untilMs: T0 - 1 }) }));
+      assert.equal(r.ok, true);
+      const w = await anchoredWorld(2, 4);
+      const other = makeTestKey();
+      const r2 = await verifyAll(w.rows, w.chain.head, { keys: { [w.key.keyid]: other.publicKey },
+        keyWindows: { [w.key.keyid]: win({ untilMs: T0 - 1 }) }, anchors: { ...w.material, now: new Date(A) } });
+      assert.deepEqual([...kinds(r2)], ['signature_invalid']);
+    });
   });
 });
