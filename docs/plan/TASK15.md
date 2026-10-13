@@ -49,7 +49,7 @@ Sizes against T6 (1.0× = all of Task6.a ≈ 4× SushiCorp S3). "Who": Claude, M
 | A15.2 | Signer contract and local dev signer (SG-1 rev 1.1 translated), verify-before-use, error split | Muse | 0.05× | — (now) | ✅ merged in PR #23 |
 | A15.3 | Ledger: migration, chain guard triggers (SECURITY DEFINER), sealing transaction, verify report, Company A/B isolation | Claude | 0.2× | A15.0, A15.1 | ✅ merged in PR #33 (migration `0017`, `ledger.ts`, `verify-chain.ts`); IT-T15d-01…04 passed 2026-10-12 |
 | A15.4 | Fake Rekor and fake TSA as test specifications (ported behaviour, lying-log cases) | Muse | 0.08× | A15.1 | ✅ merged in PR #28 |
-| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× | A15.3, A15.4 | ⬜ prompt ready |
+| A15.5 | Anchoring: Rekor and TSA adapters, batching worker (plan → submit → record), stored proofs | Claude | 0.25× (re-estimated 0.4×, split 15f + 15f2) | A15.3, A15.4 | 🟡 adapters done (Task15f, `docs/handoffs/Task15f-attesta-anchoring_HANDOFF.md`); migration, worker, verify report in Task15f2 |
 | A15.6 | KMS signer adapters (AWS, Google Cloud) | Muse | 0.08× | A15.2, founder OK for SDK dependencies | 🟡 implemented + unit-tested on `task/Task15g-attesta-kms`, review pending |
 | A15.7 | Task2 trigger: write `attesta_subjects` outbox rows at commit-observed, PR-merged, deployment | Codex (Task2) | 0.1× | A15.0 | ✅ merged in PR #32; IT-T2AT-01…04 passed 2026-10-12 |
 | A15.8 | Statement builder: Task2 records → predicate → DSSE → ledger | Claude | 0.1× | A15.0–A15.3, A15.7 | 🟡 built on `task/Task15h-attesta-builder` (worker, CLIs, IT-T15h-01…04 agent-verified); contract findings F1–F8 in `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
@@ -124,7 +124,8 @@ flowchart LR
 | Task15c-attesta-contract | A15.0 (+ outbox migration) | Claude | 0.08× (actual about 0.12×) | `docs/prompts/Task15/NEXT_CHAT_Task15c-attesta-contract_PROMPT.md` · handoff `docs/handoffs/Task15c-attesta-contract_HANDOFF.md` |
 | Task15d-attesta-ledger | A15.3 | Claude | 0.25× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15d-attesta-ledger_PROMPT.md` · handoff `docs/handoffs/Task15d-attesta-ledger_HANDOFF.md` |
 | Task15e-attesta-fakes | A15.4 | Muse | 0.1× | `docs/prompts/Task15/NEXT_CHAT_Task15e-attesta-fakes_PROMPT.md` |
-| Task15f-attesta-anchoring | A15.5 (+ exact verify codes) | Claude | 0.3× | `docs/prompts/Task15/NEXT_CHAT_Task15f-attesta-anchoring_PROMPT.md` |
+| Task15f-attesta-anchoring | A15.5 part 1: Rekor, TSA and dual adapters, proof JSON, offline proof check | Claude | 0.2× (actual about 0.3× with the Codex fix round) | `docs/prompts/Task15/NEXT_CHAT_Task15f-attesta-anchoring_PROMPT.md` · handoff `docs/handoffs/Task15f-attesta-anchoring_HANDOFF.md` |
+| Task15f2-attesta-anchoring-worker | A15.5 part 2: migration 0018, worker and CLI, verify-report anchor checks, exact verify codes, IT-T15f-01…04 | Claude | 0.2× | prompt to write (scope: Task15f handoff "Integration notes" and the Task15f prompt §2.1 items 5–7) |
 | Task15g-attesta-kms | A15.6 | Muse | 0.1× (actual about 0.1×) | `docs/prompts/Task15/NEXT_CHAT_Task15g-attesta-kms_PROMPT.md` (deps approved by merging it) |
 | Task2-attesta-trigger | A15.7 | Codex | 0.15× | `docs/prompts/Task15/NEXT_CHAT_Task2-attesta-trigger_PROMPT.md` (merge gated on IT-T15c-01) |
 | Task15h-attesta-builder | A15.8 | Claude | 0.2× (actual about 0.3×) | `docs/prompts/Task15/NEXT_CHAT_Task15h-attesta-builder_PROMPT.md` · handoff `docs/handoffs/Task15h-attesta-builder_HANDOFF.md` |
