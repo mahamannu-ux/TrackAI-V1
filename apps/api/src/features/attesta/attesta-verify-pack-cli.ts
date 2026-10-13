@@ -1,7 +1,8 @@
 /**
  * `npm run attesta:verify-pack -w apps/api -- --pack <download.json>
  *   (--root-keyid sha256:… … | --customer-pin <file>)
- *   [--rekor-log-key <pem>] [--tsa-anchors <pem>] [--state <file>] [--json]`
+ *   [--rekor-log-key <pem>] [--tsa-anchors <pem>] [--rekor-log-index-offsets <json>]
+ *   [--state <file>] [--json]`
  *
  * Offline evidence-pack check (Task15j, A15.10): counsel runs this on a laptop with no
  * TrackAI account and no network. It reads the files, calls the pure
@@ -10,6 +11,9 @@
  * 2 not checkable). An unreadable or invalid file is exit 2 with a clear message, never
  * a stack trace. Only codes, seqs and counts are printed: never statement contents and
  * never key material. There is no flag for `allowUnpinnedRoot` or `production: false`.
+ * `--customer-pin` may combine with `--root-keyid`: the pin decides the trust verdict
+ * while the root pin feeds the anchor-key windows, so customer-pinned packs can still
+ * check Rekor anchors.
  *
  * Ported from SushiCorp services/anchoring/offline_verify.py @ 0bd67a5 (catalog EV-2)
  * - Node instead of Python;
@@ -51,6 +55,7 @@ interface ParsedArgs {
   customerPin?: string;
   rekorLogKey?: string;
   tsaAnchors?: string;
+  rekorLogIndexOffsets?: string;
   state?: string;
   json: boolean;
 }
@@ -92,6 +97,11 @@ function parseCliArgs(argv: string[]): ParsedArgs {
       case 'tsa-anchors': {
         if (out.tsaAnchors !== undefined) throw new Error('--tsa-anchors given twice');
         out.tsaAnchors = value('tsa-anchors');
+        break;
+      }
+      case 'rekor-log-index-offsets': {
+        if (out.rekorLogIndexOffsets !== undefined) throw new Error('--rekor-log-index-offsets given twice');
+        out.rekorLogIndexOffsets = value('rekor-log-index-offsets');
         break;
       }
       case 'state': {
@@ -137,7 +147,10 @@ function readStateFile(io: VerifyPackIo, path: string): StateFile {
   } catch (err) {
     // First use has no state file yet: start from the empty state (trust.md
     // "First-use limit"). Anything else unreadable is exit 2.
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return { lastTrusted: {} };
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      io.err('state file not found; starting fresh (first use)');
+      return { lastTrusted: {} };
+    }
     throw new Error(`state file ${JSON.stringify(path)} cannot be read`);
   }
   let raw: unknown;
@@ -167,6 +180,26 @@ function readStateFile(io: VerifyPackIo, path: string): StateFile {
     lastTrusted: lastTrusted as Record<string, TrustedDocumentRef>,
     ...(trustedTimeFloor !== undefined ? { trustedTimeFloor: trustedTimeFloor as string } : {}),
   };
+}
+
+/** Pinned Rekor shard offsets from a JSON file (`{"<decimal tree id>": <offset>}`). */
+function readOffsetsFile(io: VerifyPackIo, path: string): Record<string, number> {
+  const raw = readJsonFile(io, path, 'rekor log index offsets file');
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error(`rekor log index offsets file ${JSON.stringify(path)} must be an object of "<decimal tree id>": <offset>`);
+  }
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    let treeOk = /^[0-9]{1,20}$/.test(k);
+    try {
+      treeOk = treeOk && BigInt(k) <= 0xffffffffffffffffn;
+    } catch {
+      treeOk = false;
+    }
+    if (!treeOk || typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+      throw new Error(`rekor log index offsets file ${JSON.stringify(path)} must be an object of "<decimal tree id>": <non-negative integer>`);
+    }
+  }
+  return raw as Record<string, number>;
 }
 
 function printHuman(io: VerifyPackIo, report: OfflineReport): void {
@@ -199,10 +232,6 @@ export async function main(argv: string[], io: VerifyPackIo = defaultIo()): Prom
   }
   if (args.rootKeyids.length === 0 && args.customerPin === undefined) {
     io.err('attesta:verify-pack: give --root-keyid sha256:… (repeatable) or --customer-pin <file>');
-    return 2;
-  }
-  if (args.rootKeyids.length > 0 && args.customerPin !== undefined) {
-    io.err('attesta:verify-pack: --root-keyid and --customer-pin cannot be combined');
     return 2;
   }
   for (const keyid of args.rootKeyids) {
@@ -272,11 +301,21 @@ export async function main(argv: string[], io: VerifyPackIo = defaultIo()): Prom
       return 2;
     }
   }
+  let rekorLogIndexOffsets: Record<string, number> | undefined;
+  if (args.rekorLogIndexOffsets !== undefined) {
+    try {
+      rekorLogIndexOffsets = readOffsetsFile(io, args.rekorLogIndexOffsets);
+    } catch (err) {
+      io.err(`attesta:verify-pack: ${err instanceof Error ? err.message : 'the offsets file cannot be read'}`);
+      return 2;
+    }
+  }
   const report = verifyEvidencePack(download, {
     pinnedRootKeyids: args.rootKeyids,
     ...(customerPins !== undefined ? { customerPins } : {}),
     ...(rekorLogKeyPem !== undefined ? { rekorLogKeyPem } : {}),
     ...(tsaAnchorsPem !== undefined ? { tsaAnchorsPem } : {}),
+    ...(rekorLogIndexOffsets !== undefined ? { rekorLogIndexOffsets } : {}),
     ...(state !== undefined ? { lastTrusted: state.lastTrusted } : {}),
     ...(state?.trustedTimeFloor !== undefined ? { trustedTimeFloor: state.trustedTimeFloor as string } : {}),
     now: io.now().toISOString(),
@@ -285,6 +324,13 @@ export async function main(argv: string[], io: VerifyPackIo = defaultIo()): Prom
     io.out(JSON.stringify(report, null, 2));
   } else {
     printHuman(io, report);
+  }
+  if (report.verifier_error !== undefined) {
+    io.err(`verifier error: ${report.verifier_error}`);
+  }
+  const anchors = report.checks.find((c) => c.id === 'anchors');
+  if (anchors !== undefined && anchors.status === 'failed' && rekorLogKeyPem !== undefined && rekorLogIndexOffsets === undefined) {
+    io.err('hint: if the Rekor log shards its tree, pass --rekor-log-index-offsets <offsets.json> (decimal tree id to offset)');
   }
   // Persist the accepted trust documents (trust.md "Consumers"): merge, never replace.
   if (args.state !== undefined && report.checks.some((c) => c.id === 'trust_and_signature' && c.status === 'passed')

@@ -105,6 +105,13 @@ export interface OfflineVerifyOptions {
   now: string;
   /** Pending age at `generated_at` past which a missing anchor is a break (default 1 hour). */
   anchorWindowMs?: number;
+  /**
+   * Pinned Rekor shard offsets (`{"<decimal tree id>": <offset>}`, as a checkpoint
+   * prints the tree ID), supplied by the user like the log key. The pack's own value
+   * is attacker-controlled and only cross-checked (a mismatch warns). Without this,
+   * entries verify with offset 0 (unsharded trees).
+   */
+  rekorLogIndexOffsets?: Readonly<Record<string, number>>;
 }
 
 export type OfflineCheckStatus = 'passed' | 'failed' | 'not_checkable' | 'warning';
@@ -137,6 +144,12 @@ export interface OfflineReport {
   trusted?: Record<string, TrustedDocumentRef>;
   /** max(`trustedTimeFloor`, `now`): persist as the next floor once accepted. */
   trustedTime?: string;
+  /**
+   * The verifier itself is broken (its schema files are missing, or an unexpected
+   * failure escaped the checks): a fixed generic message, never pack contents. The
+   * CLI prints it as `verifier error: <message>`. Absent when only the pack was judged.
+   */
+  verifier_error?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,14 +191,26 @@ function decodeB64(value: unknown): Buffer | null {
 // Schema validators (the builder's ajv setup, copied; the builder pulls in the database)
 // ---------------------------------------------------------------------------
 
+/** Test-only schema directory override (see __setSchemaDirForTests). */
+let schemaDirOverride: string | undefined;
+
 function contractDir(): string {
-  let dir = __dirname;
+  // Test seam only (__setSchemaDirForTests): points the walk at an empty directory
+  // so tests can prove environment failures read not_checkable, never failed.
+  let dir: string = schemaDirOverride ?? __dirname;
   for (let i = 0; i < 8; i += 1) {
     const candidate = join(dir, 'docs', 'contracts', 'attesta');
     if (existsSync(join(candidate, 'evidence-pack-v1.schema.json'))) return candidate;
     dir = dirname(dir);
   }
   throw new Error('docs/contracts/attesta not found above the verifier');
+}
+
+/** Test-only override for the schema directory (resets the cached validators). */
+export function __setSchemaDirForTests(dir: string | undefined): void {
+  schemaDirOverride = dir;
+  packValidator = null;
+  statementValidator = null;
 }
 
 let packValidator: ValidateFunction | null = null;
@@ -216,7 +241,8 @@ function statementSchemaValidator(): ValidateFunction {
 /**
  * `{"<decimal tree id>": <offset>}` to the 16-hex form the Rekor check looks up.
  * The rule is copied from anchor-env.ts `parseLogIndexOffsets` (decimal tree IDs as the
- * checkpoint prints them, each naming one tree). Null when the pack carries none.
+ * checkpoint prints them, each naming one tree). Applied to the USER's offsets only:
+ * the pack's value is attacker-controlled and never feeds verification.
  */
 function decimalOffsetsToHex(raw: unknown): { offsets?: Record<string, number>; bad: boolean } {
   if (raw === null || raw === undefined) return { bad: false };
@@ -289,29 +315,30 @@ export function verifyEvidencePack(download: unknown, options: OfflineVerifyOpti
   try {
     return verify(download, options);
   } catch {
+    // The verifier itself failed (never the pack's verdict): not checkable, never
+    // a break. Every check carries the code; the CLI prints verifier_error.
+    const nc = (id: OfflineCheck['id'], count?: number): OfflineCheck => ({
+      id, status: NOT_CHECKABLE, code: 'ATTESTA_VERIFY_NOT_CHECKABLE', ...(count !== undefined ? { count } : {}),
+    });
     return {
       report_version: 1,
-      result: 'failed',
-      exit_code: 1,
+      result: 'not_checkable',
+      exit_code: 2,
       tenant_id: '',
       pack_id: '',
       generated_at: '',
-      checks: [
-        { id: 'trust_and_signature', status: FAILED },
-        { id: 'structure', status: FAILED },
-        { id: 'chain', status: FAILED },
-        { id: 'completeness', status: FAILED },
-        { id: 'statements', status: FAILED, count: 0 },
-        { id: 'anchors', status: FAILED, count: 0 },
-        { id: 'reports', status: FAILED },
-      ],
+      checks: [nc('trust_and_signature'), nc('structure'), nc('chain'), nc('completeness'), nc('statements', 0), nc('anchors', 0), nc('reports')],
       counts: { records: 0, statements: 0, anchors_verified: 0 },
+      verifier_error: 'unexpected verifier failure',
     };
   }
 }
 
 function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport {
   const windowMs = options.anchorWindowMs ?? DEFAULT_ANCHOR_WINDOW_MS;
+  // Set when the verifier's own schema files cannot be loaded: the affected checks
+  // read not_checkable (never failed), and the report carries verifier_error.
+  let schemaEnvFailed = false;
 
   // --- download shape (attacker bytes first; every check below assumes as little as possible)
   const dl = isObj(download) ? download : null;
@@ -331,34 +358,54 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
   let trust: OfflineCheck = { id: 'trust_and_signature', status: FAILED };
   let trusted: Record<string, TrustedDocumentRef> | undefined;
   let trustedTime: string | undefined;
+  // With customer pins the platform root is skipped (trust.md step 2), so no
+  // trusted.platform comes back. A second call without the pins, verified or not,
+  // supplies anchor windows only; the verdict above still decides this check.
+  let windowsPlatform: TrustedDocumentRef | undefined;
   {
     const rootDocs = trustSection !== null && Array.isArray(trustSection.root_documents)
       ? (trustSection.root_documents as DsseEnvelope[]) : [];
     const keysetDocs = trustSection !== null && Array.isArray(trustSection.keyset_documents)
       ? (trustSection.keyset_documents as DsseEnvelope[]) : [];
     const payloadBytes = signature !== null ? decodeB64((signature as unknown as Obj).payload) : null;
+    const baseState = {
+      pinnedRootKeyids: [...(options.pinnedRootKeyids ?? [])],
+      rootDocuments: rootDocs,
+      keysetDocuments: tenantId !== '' ? { [tenantId]: keysetDocs } : {},
+      lastTrusted: options.lastTrusted ?? {},
+      now: options.now,
+      ...(options.trustedTimeFloor !== undefined ? { trustedTimeFloor: options.trustedTimeFloor } : {}),
+      production: true,
+    };
+    const input = {
+      payloadType: EVIDENCE_PACK_PAYLOAD_TYPE,
+      payload: payloadBytes ?? Buffer.alloc(0),
+      envelope: (signature ?? { payload: '', payloadType: '', signatures: [] }) as DsseEnvelope,
+      purpose: 'statement',
+      audience: tenantId,
+      signedAt: generatedAt,
+    } as const;
     let verdict: TrustVerdict = { status: 'unavailable', code: 'ATTESTA_TRUST_DOCUMENT_UNAVAILABLE' };
     try {
       verdict = verifyTrusted({
-        payloadType: EVIDENCE_PACK_PAYLOAD_TYPE,
-        payload: payloadBytes ?? Buffer.alloc(0),
-        envelope: (signature ?? { payload: '', payloadType: '', signatures: [] }) as DsseEnvelope,
-        purpose: 'statement',
-        audience: tenantId,
-        signedAt: generatedAt,
+        ...input,
         state: {
-          pinnedRootKeyids: [...(options.pinnedRootKeyids ?? [])],
-          rootDocuments: rootDocs,
-          keysetDocuments: tenantId !== '' ? { [tenantId]: keysetDocs } : {},
+          ...baseState,
           ...(options.customerPins !== undefined && tenantId !== '' ? { customerPins: { [tenantId]: options.customerPins } } : {}),
-          lastTrusted: options.lastTrusted ?? {},
-          now: options.now,
-          ...(options.trustedTimeFloor !== undefined ? { trustedTimeFloor: options.trustedTimeFloor } : {}),
-          production: true,
         },
       });
     } catch {
       verdict = { status: 'rejected', code: 'ATTESTA_TRUST_INPUT_INVALID' };
+    }
+    if (options.customerPins !== undefined && (options.pinnedRootKeyids ?? []).length > 0 && payloadBytes !== null) {
+      try {
+        const platformVerdict = verifyTrusted({ ...input, state: { ...baseState, production: true } });
+        if (platformVerdict.status === 'verified' && platformVerdict.trusted?.platform !== undefined) {
+          windowsPlatform = platformVerdict.trusted.platform;
+        }
+      } catch {
+        windowsPlatform = undefined;
+      }
     }
     // The payload must be the JCS of {manifest, pack_digest} over THIS pack.
     let payloadOk = false;
@@ -395,10 +442,18 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
   {
     let ok = shapeOk;
     if (ok && (manifest === null || manifest.format !== EVIDENCE_PACK_FORMAT)) ok = false;
+    let schemaMissing = false;
     if (ok && pack !== null) {
+      let validate: ValidateFunction | null = null;
       try {
-        const validate = evidencePackValidator();
-        if (validate(pack) !== true) {
+        validate = evidencePackValidator();
+      } catch {
+        validate = null;
+      }
+      if (validate === null) {
+        schemaMissing = true;
+      } else if (validate(pack) !== true) {
+        try {
           // v1 freezes `reports: []`; a pack carrying period reports (Task15i4) is
           // well-formed future data this verifier cannot check, so schema errors
           // confined to `/reports` defer to the reports check (not_checkable),
@@ -406,9 +461,9 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
           const errs = (validate.errors ?? []) as Array<{ instancePath?: string }>;
           const onlyReports = errs.length > 0 && errs.every((e) => (e.instancePath ?? '').split('/')[1] === 'reports');
           if (!onlyReports) ok = false;
+        } catch {
+          ok = false;
         }
-      } catch {
-        ok = false;
       }
     }
     if (ok && pack !== null && manifest !== null && isObj(manifest.sections)) {
@@ -439,7 +494,12 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         seen.add(seq);
       }
     }
-    structure = ok ? { id: 'structure', status: 'passed' } : { id: 'structure', status: FAILED };
+    if (schemaMissing) {
+      schemaEnvFailed = true;
+      structure = { id: 'structure', status: NOT_CHECKABLE, code: 'ATTESTA_VERIFY_NOT_CHECKABLE' };
+    } else {
+      structure = ok ? { id: 'structure', status: 'passed' } : { id: 'structure', status: FAILED };
+    }
   }
 
   // --- 3. chain (contiguous seq, links, recomputed hashes, canonical form, head)
@@ -557,14 +617,17 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
   } catch {
     tsaAnchors = undefined;
   }
-  const { offsets: logIndexOffsets, bad: offsetsBad } = decimalOffsetsToHex(
-    trustSection !== null ? trustSection.rekor_log_index_offsets : undefined,
-  );
+  // Only the user's offsets ever reach the Rekor check. A malformed user value is
+  // treated as absent here (the CLI rejects it upfront with exit 2).
+  const userOffsets = options.rekorLogIndexOffsets !== undefined
+    ? decimalOffsetsToHex(options.rekorLogIndexOffsets).offsets
+    : undefined;
   // Windows come ONLY from the root document the trust check accepted.
   const rootDocs = trustSection !== null && Array.isArray(trustSection.root_documents)
     ? (trustSection.root_documents as DsseEnvelope[]) : [];
-  const anchorWindows = trusted?.platform !== undefined
-    ? anchorWindowsFor(rootDocs, trusted.platform.digest)
+  const windowDigest = trusted?.platform?.digest ?? windowsPlatform?.digest;
+  const anchorWindows = windowDigest !== undefined
+    ? anchorWindowsFor(rootDocs, windowDigest)
     : undefined;
 
   // --- 6. anchors (run before statements; the report keeps the contract's order)
@@ -662,18 +725,20 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
     }
     const keys: StoredAnchorKeys = {
       ...(rekorLogKey !== undefined ? { rekorLogKey } : {}),
-      ...(logIndexOffsets !== undefined ? { rekorLogIndexOffsets: logIndexOffsets } : {}),
+      ...(userOffsets !== undefined ? { rekorLogIndexOffsets: userOffsets } : {}),
       ...(anchorWindows !== undefined ? { anchorKeyWindows: anchorWindows } : {}),
       ...(tsaAnchors !== undefined ? { tsaAnchors } : {}),
     };
     const rekorOkBySeq = new Map<number, boolean>();
     const tsaOkBySeq = new Map<number, boolean>();
-    const rowBySeq = new Map<number, boolean>();
+    const rekorRowBySeq = new Map<number, boolean>();
+    const tsaRowBySeq = new Map<number, boolean>();
     const invalidBySeq = new Map<number, boolean>();
     for (const seq of statementSeqs) {
       rekorOkBySeq.set(seq, false);
       tsaOkBySeq.set(seq, false);
-      rowBySeq.set(seq, false);
+      rekorRowBySeq.set(seq, false);
+      tsaRowBySeq.set(seq, false);
       invalidBySeq.set(seq, false);
     }
     for (const { row, seq, proof } of rows) {
@@ -681,12 +746,8 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         fail('ATTESTA_VERIFY_ANCHOR_INVALID');
         continue;
       }
-      rowBySeq.set(seq, true);
-      if (offsetsBad && row.anchorType === 'rekor') {
-        invalidBySeq.set(seq, true);
-        fail('ATTESTA_VERIFY_ANCHOR_INVALID');
-        continue;
-      }
+      if (row.anchorType === 'rekor') rekorRowBySeq.set(seq, true);
+      else if (row.anchorType === 'tsa') tsaRowBySeq.set(seq, true);
       let checked;
       try {
         checked = verifyStoredAnchor(row, keys);
@@ -726,10 +787,12 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         continue;
       }
       if (status === 'anchored') {
-        // A claimed anchor with no row at all is invalid; with rows that verified
-        // nowhere, missing material makes it not checkable (invalid rows already failed above).
+        // Dual anchoring is all or nothing: a claimed anchor missing either type's
+        // row is invalid (a half-proof is no proof). With both rows present but
+        // neither usable, missing material makes it not checkable (invalid rows
+        // already failed above).
         if (both || invalidBySeq.get(seq) === true) continue;
-        if (rowBySeq.get(seq) === true) {
+        if (rekorRowBySeq.get(seq) === true && tsaRowBySeq.get(seq) === true) {
           checkable = false;
         } else {
           fail('ATTESTA_VERIFY_ANCHOR_INVALID');
@@ -788,6 +851,14 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         } catch {
           warned = true;
         }
+      }
+      // The pack's offsets are a hint only: they never feed verification, and a
+      // mismatch with the user's pinned offsets warns.
+      if (options.rekorLogIndexOffsets !== undefined && trustSection !== null
+        && trustSection.rekor_log_index_offsets !== null && trustSection.rekor_log_index_offsets !== undefined) {
+        const packText = jcs(trustSection.rekor_log_index_offsets);
+        const userText = jcs(options.rekorLogIndexOffsets);
+        if (packText === null || userText === null || packText !== userText) warned = true;
       }
     }
     if (failedCode !== undefined) {
@@ -945,7 +1016,10 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         continue;
       }
       if (!statementValidatorOk) {
-        bump('ATTESTA_VERIFY_SCHEMA_INVALID');
+        // The schema files are an environment dependency, not pack evidence.
+        schemaEnvFailed = true;
+        unknowns.set('ATTESTA_VERIFY_NOT_CHECKABLE', (unknowns.get('ATTESTA_VERIFY_NOT_CHECKABLE') ?? 0) + 1);
+        uncheckableStatements += 1;
         continue;
       }
       const snapshot = parseJson(text);
@@ -960,6 +1034,13 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
       }
       if (checkStatementRules(snapshot).length > 0) {
         bump('ATTESTA_VERIFY_RULE_VIOLATION');
+        continue;
+      }
+      // The record's typed copies must be what the signed statement says (the
+      // ledger's 0017 guard rule): an exporter that rewrites a record without
+      // re-signing its statement is caught here, not just by the chain links.
+      if (!recordMatchesStatement(record, snapshot)) {
+        bump('ATTESTA_VERIFY_FIELD_MISMATCH');
         continue;
       }
       // The signature, with the record's anchor time as bound evidence for retired keys.
@@ -1039,6 +1120,7 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
     counts: { records: recordsRaw.length, statements: statementsRaw.length, anchors_verified: anchorsVerified },
     ...(trusted !== undefined ? { trusted } : {}),
     ...(trustedTime !== undefined ? { trustedTime } : {}),
+    ...(schemaEnvFailed ? { verifier_error: 'contract schemas unavailable' } : {}),
   };
 }
 
@@ -1077,6 +1159,33 @@ function tsaTimeIso(proof: Obj): string | null {
   const t = anchor !== null ? anchor.gen_time : undefined;
   if (typeof t !== 'string' || parseTimestamp(t) === null) return null;
   return t;
+}
+
+/** The ledger's 0017 guard rule: typed record copies equal the signed statement's
+ * identity (predicate type and kind, repository, subject sha, and the subject name
+ * built from them). Missing or mistyped fields compare as distinct, as in SQL. */
+function recordMatchesStatement(record: Obj, snapshot: unknown): boolean {
+  if (!isObj(snapshot)) return false;
+  const subject = snapshot.subject;
+  if (!Array.isArray(subject) || subject.length !== 1 || !isObj(subject[0])) return false;
+  const first = subject[0];
+  const digest = isObj(first.digest) ? first.digest : null;
+  const predicate = isObj(snapshot.predicate) ? snapshot.predicate : null;
+  const repository = predicate !== null && isObj(predicate.repository) ? predicate.repository : null;
+  if (typeof snapshot.predicateType !== 'string'
+    || predicate === null || typeof predicate.statement_kind !== 'string'
+    || repository === null || typeof repository.id !== 'string'
+    || digest === null || typeof digest.gitCommit !== 'string'
+    || typeof first.name !== 'string') {
+    return false;
+  }
+  const repoId = repository.id as string;
+  const sha = digest.gitCommit as string;
+  return record.predicate_type === snapshot.predicateType
+    && record.statement_kind === predicate.statement_kind
+    && record.repository_id === repoId
+    && record.subject_sha === sha
+    && first.name === `trackai:repository/${repoId}/commit/${sha}`;
 }
 
 /** Counts recomputed from the pack's own content (never the manifest's claims). */

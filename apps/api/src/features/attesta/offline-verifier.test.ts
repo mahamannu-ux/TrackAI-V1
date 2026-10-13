@@ -15,7 +15,8 @@
  */
 import assert from 'node:assert/strict';
 import { createPublicKey, sign as cryptoSign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { canonicalize, sha256Prefixed, GENESIS_PREV_HASH, computeRecordHash } from './canonical';
@@ -27,13 +28,13 @@ import {
   signPack,
   type PackScope,
 } from './evidence-pack-service';
-import { FakeRekor, REKOR_TREE_ID_HEX } from './testing/fake-rekor';
+import { FakeRekor, REKOR_TREE_ID_DEC, REKOR_TREE_ID_HEX } from './testing/fake-rekor';
 import { FakeTsa, TSA_URL } from './testing/fake-tsa';
 import { DualAnchor, anchorProofJson } from './anchor-dual';
 import { RekorAnchor } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
 import { inclusionPath, merkleRoot, proofToJson } from './merkle';
-import { verifyEvidencePack, type OfflineReport } from './offline-verifier';
+import { __setSchemaDirForTests, verifyEvidencePack, type OfflineReport, type OfflineVerifyOptions } from './offline-verifier';
 import {
   A,
   B,
@@ -104,6 +105,10 @@ function buildValidChain(
     const repositoryId = seq % 2 === 0 ? R1 : R2;
     const stmt = fixtureStatement(pick(seq));
     tweak(stmt, seq);
+    // The record's typed copies must equal the signed statement (the verifier binds
+    // them): point this copy at its own repository, keeping S1/S2 intact.
+    stmt.predicate.repository.id = repositoryId;
+    stmt.subject[0].name = `trackai:repository/${repositoryId}/commit/${stmt.subject[0].digest.gitCommit}`;
     const statementCanonical = canonicalize(stmt);
     const statementDigest = sha256Prefixed(statementCanonical);
     const recordedAt = at(base + seq * MIN);
@@ -521,6 +526,39 @@ describe('offline verifier: tampered packs exit 1', () => {
     assert.equal(checkOf(report, 'statements')?.status, 'failed');
     assert.equal(checkOf(report, 'statements')?.code, 'ATTESTA_VERIFY_RULE_VIOLATION');
   });
+
+  test('a record rewritten without re-signing its statement', async () => {
+    const w = await trustWorld();
+    // The exporter rewrites the newest pending record's repository_id, recomputes its
+    // hash and its successor's link, and re-signs the pack: the chain links verify,
+    // but the record no longer says what the signed statement says.
+    const chain = buildValidChain(A, w.k.a1);
+    const seg = segmentOf(chain, SCOPE_ALL, GEN);
+    const trust = await w.material(A);
+    const built = buildPack({ packId: PACK_1, tenantId: A, scope: SCOPE_ALL, mode: 'full', segment: { ...seg, anchors: [], batches: [] }, trust });
+    const pack = JSON.parse(built.text) as Download['pack'];
+    const recs = pack.records as Array<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const target = recs.find((r) => r.seq === 8);
+    assert.ok(target !== undefined && typeof target.canonical_record === 'string');
+    const canon = JSON.parse(target.canonical_record) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    canon.repository_id = 'ffffffff-0000-4000-8000-00000000000f';
+    target.canonical_record = canonicalize(canon);
+    target.record_hash = computeRecordHash(target.canonical_record, target.prev_hash);
+    const next = recs.find((r) => r.seq === 9);
+    assert.ok(next !== undefined);
+    next.prev_hash = target.record_hash;
+    const nextCanon = JSON.parse(next.canonical_record) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    nextCanon.prev_hash = target.record_hash;
+    next.canonical_record = canonicalize(nextCanon);
+    next.record_hash = computeRecordHash(next.canonical_record, next.prev_hash);
+    const download = { pack, signature: null as unknown as DsseEnvelope };
+    resign(download, w.k.a1);
+    const report = verifyEvidencePack(download, { pinnedRootKeyids: [w.k.root.keyid], now: NOW, anchorWindowMs: 24 * 3600_000 });
+    assert.equal(report.exit_code, 1);
+    assert.equal(checkOf(report, 'chain')?.status, 'passed');
+    assert.equal(checkOf(report, 'statements')?.status, 'failed');
+    assert.equal(checkOf(report, 'statements')?.code, 'ATTESTA_VERIFY_FIELD_MISMATCH');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -528,6 +566,20 @@ describe('offline verifier: tampered packs exit 1', () => {
 // ---------------------------------------------------------------------------
 
 describe('offline verifier: re-signed lies exit 1', () => {
+  /** Dual anchoring is all or nothing: dropping one type's rows for an anchored
+   * statement is invalid, never merely not checkable. */
+  async function withheldRowExit1(type: 'rekor' | 'tsa') {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const d = structuredClone(ctx.download);
+    d.pack.anchors = d.pack.anchors.filter((a: { seq: number; anchor_type: string }) => !(a.seq === 4 && a.anchor_type === type));
+    d.pack.manifest.counts.anchor_rows -= 1;
+    const report = verifyEvidencePack(resign(d, w.k.a1), userOpts(w, ctx));
+    assert.equal(report.exit_code, 1);
+    assert.equal(checkOf(report, 'anchors')?.status, 'failed');
+    assert.equal(checkOf(report, 'anchors')?.code, 'ATTESTA_VERIFY_ANCHOR_INVALID');
+  }
+
   test('pending shown as anchored', async () => {
     const w = await trustWorld();
     // Anchor only some statements honestly, then lie about one more.
@@ -548,6 +600,14 @@ describe('offline verifier: re-signed lies exit 1', () => {
     const report = verifyEvidencePack(resign(d, w.k.a1), { pinnedRootKeyids: [w.k.root.keyid], now: NOW });
     assert.equal(report.exit_code, 1);
     assert.equal(checkOf(report, 'anchors')?.status, 'failed');
+  });
+
+  test('an anchored claim with the TSA rows withheld exits 1', async () => {
+    await withheldRowExit1('tsa');
+  });
+
+  test('an anchored claim with the Rekor rows withheld exits 1', async () => {
+    await withheldRowExit1('rekor');
   });
 
   test('a statement left out', async () => {
@@ -719,8 +779,7 @@ describe('offline verifier: real anchors', () => {
     assert.equal(checkOf(report, 'anchors')?.code, 'ATTESTA_VERIFY_ANCHOR_INVALID');
   });
 
-  test('a TSA token from another root fails', async () => {
-    const w = await trustWorld();
+  test('a TSA token from another root fails', async () => {    const w = await trustWorld();
     const chain = buildValidChain(A, w.k.a1);
     const seg = segmentOf(chain, SCOPE_ALL, GEN);
     const inScope = seg.records.filter((r) => r.statementCanonical !== null).map((r) => r.seq);
@@ -787,6 +846,34 @@ describe('offline verifier: real anchors', () => {
     });
     assert.equal(report.exit_code, 1);
     assert.equal(checkOf(report, 'anchors')?.status, 'failed');
+  });
+
+  test('a wrong user offset fails the anchors', async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const report = verifyEvidencePack(ctx.download, userOpts(w, ctx, { rekorLogIndexOffsets: { [REKOR_TREE_ID_DEC]: 5 } }));
+    assert.equal(report.exit_code, 1);
+    assert.equal(checkOf(report, 'anchors')?.status, 'failed');
+  });
+
+  test("the pack's offsets never feed verification but warn on mismatch", async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    // A mismatched pack value is ignored without user offsets: still a pass.
+    const tampered = structuredClone(ctx.download);
+    tampered.pack.trust.rekor_log_index_offsets = { '1193050959916656506': 0 };
+    const ignored = verifyEvidencePack(resign(tampered, w.k.a1), userOpts(w, ctx));
+    assert.equal(ignored.exit_code, 0);
+    assert.equal(checkOf(ignored, 'anchors')?.status, 'passed');
+    // Matching user offsets verify cleanly.
+    const matched = verifyEvidencePack(ctx.download, userOpts(w, ctx, { rekorLogIndexOffsets: { [REKOR_TREE_ID_DEC]: 0 } }));
+    assert.equal(matched.exit_code, 0);
+    assert.equal(checkOf(matched, 'anchors')?.status, 'passed');
+    // The same mismatch against user offsets warns without failing.
+    const warned = verifyEvidencePack(resign(structuredClone(tampered), w.k.a1),
+      userOpts(w, ctx, { rekorLogIndexOffsets: { [REKOR_TREE_ID_DEC]: 0 } }));
+    assert.equal(warned.exit_code, 0);
+    assert.equal(checkOf(warned, 'anchors')?.status, 'warning');
   });
 });
 
@@ -941,6 +1028,73 @@ describe('offline verifier: persisted trust', () => {
     assert.equal(withState.exit_code, 1);
     assert.equal(checkOf(withState, 'trust_and_signature')?.status, 'failed');
     assert.equal(checkOf(withState, 'trust_and_signature')?.code, 'ATTESTA_TRUST_ROLLBACK');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Customer pins: the pin decides trust; the root pin still feeds anchor windows
+// ---------------------------------------------------------------------------
+
+describe('offline verifier: customer pins', () => {
+  function pinsOf(download: Download) {
+    const keyset = JSON.parse(Buffer.from(download.pack.trust.keyset_documents[0].payload, 'base64').toString('utf8'));
+    return keyset.keys.filter((k: { purpose: string }) => k.purpose === 'statement');
+  }
+
+  test('customer pin plus root pin checks Rekor anchors', async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const report = verifyEvidencePack(ctx.download, { ...userOpts(w, ctx), customerPins: pinsOf(ctx.download) });
+    assert.equal(report.exit_code, 0);
+    assert.equal(checkOf(report, 'trust_and_signature')?.status, 'passed');
+    assert.equal(checkOf(report, 'anchors')?.status, 'passed');
+  });
+
+  test('customer pins alone leave Rekor anchors not checkable', async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const report = verifyEvidencePack(ctx.download, { pinnedRootKeyids: [], customerPins: pinsOf(ctx.download), now: NOW,
+      rekorLogKeyPem: createPublicKey(ctx.rekor.logKey).export({ type: 'spki', format: 'pem' }).toString(),
+      tsaAnchorsPem: ctx.tsa.anchorsPem });
+    assert.equal(report.exit_code, 2);
+    assert.equal(checkOf(report, 'trust_and_signature')?.status, 'passed');
+    assert.equal(checkOf(report, 'anchors')?.status, 'not_checkable');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Environment failures: the verifier broken is never the pack broken
+// ---------------------------------------------------------------------------
+
+describe('offline verifier: environment failures', () => {
+  test('an unexpected failure reads not_checkable, never failed', async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const report = verifyEvidencePack(ctx.download, undefined as unknown as OfflineVerifyOptions);
+    assert.equal(report.exit_code, 2);
+    assert.equal(report.result, 'not_checkable');
+    assert.equal(report.verifier_error, 'unexpected verifier failure');
+    assert.ok(report.checks.every((c) => c.status === 'not_checkable' && c.code === 'ATTESTA_VERIFY_NOT_CHECKABLE'));
+  });
+
+  test('missing schema files read not_checkable with a verifier error', async () => {
+    const w = await trustWorld();
+    const ctx = await realPack(w);
+    const dir = mkdtempSync(join(tmpdir(), 'attesta-no-schemas-'));
+    __setSchemaDirForTests(dir);
+    try {
+      const report = verifyEvidencePack(ctx.download, userOpts(w, ctx));
+      assert.equal(report.exit_code, 2);
+      assert.equal(report.verifier_error, 'contract schemas unavailable');
+      assert.equal(checkOf(report, 'structure')?.status, 'not_checkable');
+      assert.equal(checkOf(report, 'statements')?.status, 'not_checkable');
+      // The pack itself still verifies: trust, chain and completeness pass.
+      assert.equal(checkOf(report, 'trust_and_signature')?.status, 'passed');
+      assert.equal(checkOf(report, 'chain')?.status, 'passed');
+      assert.equal(checkOf(report, 'completeness')?.status, 'passed');
+    } finally {
+      __setSchemaDirForTests(undefined);
+    }
   });
 });
 
