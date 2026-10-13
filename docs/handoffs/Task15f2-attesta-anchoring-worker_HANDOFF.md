@@ -8,9 +8,9 @@ Branch `task/Task15f2-attesta-anchoring-worker` (base: `main` at `9699d70`). Anc
 |---|---|---|
 | Scope | §2.1 items 1–8: migration 0018, worker, env wiring, CLI, verify report, exact codes and LOG_REJECTED, `ajv` move, F2 removal | ✅ |
 | Quality | `npm test` 663 pass (baseline 635); typecheck clean; `drizzle-kit check` clean | ✅ |
-| Integration | IT-T15f-01…04 pass in the agent sandbox (also at 600 records); IT-T15d and IT-T15c re-run clean | 🟡 founder run, blocking |
+| Integration | Founder run 2026-10-13: IT-T15f-01…04 passed, including `IT_T15F2_RECORDS=2000` (250 batches in one pass, about 7 s, verify ok with all 2000 anchored); IT-T15d and IT-T15h regression runs passed | ✅ |
 | Review | Review subagent: 1 must-fix (shard-offset keys decimal vs hex) and 4 should-fix; all fixed (see Deviations 4–7) | ✅ |
-| Cross-review | Codex | ⬜ |
+| Cross-review | Codex 2026-10-13: implementation sound; one housekeeping fix (record the founder's results), done | ✅ |
 
 ## Implemented interfaces (`apps/api/src/features/attesta/`)
 ```
@@ -52,19 +52,19 @@ SushiCorp EV-2 @ `0bd67a5`: `services/anchoring/service.py`, `core/evidence/anch
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| 🟡 | A stopped batch (LOG_REJECTED, LOG_KEY_NOT_PINNED) cannot be resumed. The tables are append-only and no operator "resume" marker exists yet | Its records stay `ANCHOR_MISSING`. Proposed: an append-only resume row plus an audited CLI, in Task15i or a small follow-up |
+| 🟡 | A stopped batch (LOG_REJECTED, LOG_KEY_NOT_PINNED) cannot be resumed yet. The tables are append-only and no operator "resume" marker exists | Its records stay `ANCHOR_MISSING`. Founder decision 2026-10-13: an append-only resume row plus an audited CLI ship in Task15i |
 | 🟡 | The plan's advisory lock does not stop two passes submitting one root (two log entries, two tokens) | Harmless: the database keeps one anchored row per record and type |
-| 🟡 | `IT-T15h-02` fails in this sandbox ("lease recovery re-ran the row"), on `main` too | Pre-existing, not from this branch; the founder's run decides |
+| ✅ | `IT-T15h-02` failed only in the agent sandbox ("lease recovery re-ran the row", on `main` too) | Resolved: clean in the founder's run 2026-10-13; a sandbox artefact, not a product fault |
 
 ## Integration test impact
-> **FOUNDER:** blocking for this merge and for A15.9. Prerequisites: PostgreSQL 16 with pgvector (`scripts/it-db.sh`). Expected: `IT-T15f2=passed` in about a minute; volume run about 2 s per 600 records.
+Founder run 2026-10-13: all four passed, together with the 2000-record volume run (250 batches, about 7 s) and the IT-T15d and IT-T15h regression runs. Command: `scripts/it-db.sh npm run verify:task15f2-anchoring-live -w apps/api` (`IT_T15F2_RECORDS` for volume).
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15f-01 | N records anchor in one pass; roots agree in SQL and TS; verify `ok`, all `anchored`; a second pass adds nothing | Blocking: merge, A15.9 | 🟡 agent-verified (20, 600) · ⬜ founder |
-| IT-T15f-02 | 6 lying-log knobs → `failed` with the right code, records byte-identical; honest pass anchors the same batch_id/root; LOG_REJECTED stops, then ANCHOR_MISSING | Blocking: merge | 🟡 · ⬜ |
-| IT-T15f-03 | Guards as API and RLS role; crash between submit and record → same root, recorded once; concurrent passes; overlapping ranges → ATA01 superseded | Blocking: merge | 🟡 · ⬜ |
-| IT-T15f-04 | Company A/B: no mixed batch; B cannot anchor A's record or batch A's seqs; both verify clean | Blocking: merge, A15.9 | 🟡 · ⬜ |
+| IT-T15f-01 | N records anchor in one pass; roots agree in SQL and TS; verify `ok`, all `anchored`; a second pass adds nothing | Blocking: merge, A15.9 (met) | ✅ founder 2026-10-13 (2000 records) |
+| IT-T15f-02 | 6 lying-log knobs → `failed` with the right code, records byte-identical; honest pass anchors the same batch_id/root; LOG_REJECTED stops, then ANCHOR_MISSING | Blocking: merge (met) | ✅ founder 2026-10-13 |
+| IT-T15f-03 | Guards as API and RLS role; crash between submit and record → same root, recorded once; concurrent passes; overlapping ranges → ATA01 superseded | Blocking: merge (met) | ✅ founder 2026-10-13 |
+| IT-T15f-04 | Company A/B: no mixed batch; B cannot anchor A's record or batch A's seqs; both verify clean | Blocking: merge, A15.9 (met) | ✅ founder 2026-10-13 |
 
 ## Integration notes
 - A15.9 / A15.10: pass `anchors` material to `verifyChain`, and keep retired anchoring public keys in `anchorKeysSpkiDer`. Report version is now 2.
