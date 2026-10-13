@@ -676,3 +676,151 @@ export const applyFleetOffboard = (machineId: string, reason: string) => (
     { method: 'POST', body: JSON.stringify({ apply: true, reason }) },
   )
 );
+
+// ---------------------------------------------------------------------------
+// Attesta (Task15k client of the frozen Task15i/Task15i2 API)
+// ---------------------------------------------------------------------------
+// Read-only attestation status plus the signed evidence-pack export behind
+// the `attesta.read` / `attesta.export` boundaries. Error wording shown in
+// the console comes from the RFC 7807 problem (`code`, `title`,
+// `request_id`); the response body text is never surfaced otherwise.
+
+export class AttestaApiError extends Error {
+  code: string;
+  status: number;
+  requestId: string | null;
+
+  constructor(message: string, code: string, status: number, requestId: string | null) {
+    super(message);
+    this.name = 'AttestaApiError';
+    this.code = code;
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+type AttestaProblem = {
+  code?: unknown;
+  title?: unknown;
+  status?: unknown;
+  request_id?: unknown;
+};
+
+async function attestaFetch<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = await getAccessToken();
+
+  if (!token) {
+    throw new Error('Not authenticated. Please log in.');
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as AttestaProblem | null;
+    const code = typeof problem?.code === 'string' && problem.code
+      ? problem.code
+      : 'ATTESTA_API_INTERNAL';
+    const title = typeof problem?.title === 'string' && problem.title
+      ? problem.title
+      : code;
+    const requestId = typeof problem?.request_id === 'string' && problem.request_id
+      ? problem.request_id
+      : response.headers.get('X-Request-ID');
+    throw new AttestaApiError(title, code, response.status, requestId);
+  }
+
+  return response.json();
+}
+
+export type AttestaAnchorStatus = 'anchored' | 'pending' | 'missing';
+
+export type AttestaStatement = {
+  statement_digest: string;
+  seq: number;
+  recorded_at: string;
+  statement_kind: string;
+  predicate_type: string;
+  repository_id: string;
+  subject_sha: string;
+  anchor_status: AttestaAnchorStatus;
+  previous?: string[];
+};
+
+export type AttestaVerifyBreak = {
+  seq: number;
+  kind: string;
+  detail_code: string;
+};
+
+export type AttestaVerifyReport = {
+  report_version: number;
+  ok: boolean;
+  chain_intact: boolean;
+  checked: number;
+  breaks: AttestaVerifyBreak[];
+  signatures: unknown;
+  anchors: {
+    status: 'checked' | 'not_checked';
+    anchored?: number;
+    pending?: number;
+    missing?: number;
+    invalid?: number;
+    not_checkable?: number;
+  };
+  warnings?: unknown;
+};
+
+export type AttestaPackJob = {
+  id: string;
+  status: 'queued' | 'running' | 'ready' | 'failed';
+  scope: { repository_id?: string | null; from: string; to: string };
+  mode: string;
+  counts?: { statements: number; anchored: number; pending: number } & Record<string, number>;
+  pack_digest?: string;
+  bytes?: number;
+  error_code?: string;
+  retryable?: boolean;
+  created_at: string;
+  finished_at?: string;
+  content_path?: string;
+};
+
+export const getAttestaSubject = (repositoryId: string, sha: string) => attestaFetch<{ statements: AttestaStatement[] }>(
+  `/api/attesta/subjects/${encodeURIComponent(repositoryId)}/${encodeURIComponent(sha)}`,
+);
+
+export const verifyAttestaChain = (range: { fromSeq?: number; toSeq?: number } = {}) => {
+  const parameters = new URLSearchParams();
+  if (range.fromSeq !== undefined) parameters.set('from_seq', String(range.fromSeq));
+  if (range.toSeq !== undefined) parameters.set('to_seq', String(range.toSeq));
+  const query = parameters.toString();
+  return attestaFetch<AttestaVerifyReport>(`/api/attesta/verify${query ? `?${query}` : ''}`);
+};
+
+export const requestEvidencePack = (
+  body: { repository_id?: string; from: string; to: string; mode?: string },
+  idempotencyKey: string,
+) => attestaFetch<{ id: string; status: AttestaPackJob['status']; replayed: boolean }>(
+  '/api/attesta/evidence-packs',
+  {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(body),
+  },
+);
+
+export const getEvidencePack = (id: string) => attestaFetch<AttestaPackJob>(
+  `/api/attesta/evidence-packs/${encodeURIComponent(id)}`,
+);
+
+export const downloadEvidencePack = (contentPath: string): Promise<Blob> => apiDownload(contentPath);
