@@ -9,8 +9,9 @@ Branch `task/Task15i2-attesta-evidence-packs` (base: `main` at `a3e9e73`). An ad
 |---|---|---|
 | Scope | Items 1–6, 8 and 9 of the spec: contract, migration 0020, builder and RP-1 signature, job and `attesta:pack` CLI, routes under `attesta.export`, real keys in `/verify`, production build resolver, the three new API codes | ✅ |
 | Quality | `npm test` 791 pass (baseline 756); typecheck clean; `drizzle-kit check` clean | ✅ |
-| Integration | IT-T15i2-01…03 passed once in the agent sandbox; the IT-T15i-01…03 regression also passed | 🟡 founder run pending |
+| Integration | IT-T15i2-01…03 and the IT-T15i-01…03 regression passed (agent sandbox and founder run 2026-10-13) | ✅ |
 | Review | Review subagent: 2 must-fix (the oracle accepted reordered or rolled-back trust documents) and 5 should-fix; all fixed except one, which is documented (Known limitations) | ✅ |
+| Cross-review | Muse 2026-10-13 (Codex unavailable): attacks A–H executed by script (forged packs vs the oracle, leaks, A/B isolation, signed values, lease races, 0020 guards, authorization, boundaries); no findings; ready to push | ✅ |
 
 ## Pack format (summary)
 `{pack, signature}`. The `pack` is RFC 8785 JSON: `manifest` (format, pack_id, tenant_id, `scope {repository_id, from, to, mode}`, `chain_range {from_seq, to_seq, prev_hash, head}`, generated_at, completeness, counts, a SHA-256 per section), `records` (the window plus one boundary record on each side), `statements` (`anchor_status` is `anchored` or `pending`), `anchors`, `anchor_batches`, `trust` (root documents, key sets from version 1, anchoring keys with their root entry, Rekor key and offsets, TSA anchors), `verification_hint` (a hint only: the user supplies the pin), `reports: []` and `verifier: null`. The `signature` is a DSSE envelope (`application/vnd.trackai.evidence-pack+json`) over `{manifest, pack_digest}`, signed with the tenant's active statement key. It is not chained. Limits: at most 50 000 records, and `to` at least 5 minutes before generated_at.
@@ -60,7 +61,7 @@ npm run attesta:pack -w apps/api -- --run-queued [--limit 20]   # recovery of qu
 
 ## Integration test impact
 - **Command:** `scripts/it-db.sh npm run verify:task15i2-evidence-packs-live -w apps/api` (about 15 s; needs PostgreSQL 16 with pgvector).
-- **Blocking:** this merge and A15.10. Status for all three: 🟡 agent sandbox 2026-10-13. **FOUNDER:** run it once.
+- **Blocking:** this merge and A15.10. Status for all three: ✅ founder run 2026-10-13 (agent-verified the same day). ~~**FOUNDER:** run it once.~~ (2026-10-13)
 
 | ID | Proves |
 |---|---|
