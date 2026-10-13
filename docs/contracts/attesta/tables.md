@@ -57,6 +57,21 @@ Per-kind `inclusion_proof` shape (fixed; added 2026-10-13 from Task15f, additive
 
 Rules: Merkle leaves are the **32 raw bytes** of each `record_hash` (RFC 6962, `merkle.ts`); only the root leaves the tenant. One row per attempt; no row means pending; a partial unique index allows one `anchored` row per record and anchor type; `anchored` requires a proof, `failed` an `error_code`. **Anchoring never changes `record_hash`** and never touches `attesta_records`. Plan (read) → submit (network, no transaction) → record (write). An unreachable log is never a pass; the Rekor log key is pinned in production; dual mode (Rekor + TSA) is all-or-nothing.
 
+## `attesta_anchor_resumes`: operator resume of a stopped batch (append-only; Task15i3)
+
+| Column | Notes |
+|---|---|
+| `id`, `tenant_id` | |
+| `batch_id` | composite FK `(tenant_id, batch_id)` → `attesta_anchor_batches` |
+| `actor` | the operator's name (1–128) |
+| `reason` | 1–256 characters, why the stop is lifted |
+| `request_id` | the CLI run's request ID, also in the `security_audit_events` row (`attesta.anchor.resume`) |
+| `created_at` | set by the guard to the database's `clock_timestamp()`, so it is later than the failure it lifts |
+
+Guard (`SECURITY DEFINER`, fixed `search_path`, ERRCODE `ATG01`): the batch's latest failed attempt (its newest failed rows) has a terminal code (`errors.md` §Anchoring), the batch is not anchored in both types for every record, and no resume row is newer than that attempt (one resume per stop). No UPDATE, DELETE or TRUNCATE. RLS on, no browser policies.
+
+**Resume rule (lead-approved 2026-10-13):** a batch is stopped only while its latest terminal failure is newer than its latest resume row. A resumed batch is retried with the normal backoff (failed attempts so far); a new terminal failure stops it again and needs a new resume. Applied by the audited CLI `attesta:anchor-resume` only (dry run by default; `--confirm=RESUME` writes the resume row and the audit row in one transaction); there is no route.
+
 ## Not in these tables
 
 No raw content, no repository URL, no file path, no email. The statement bytes hold only what the predicate schema allows.
