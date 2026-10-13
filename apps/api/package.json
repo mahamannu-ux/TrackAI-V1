@@ -57,6 +57,7 @@
     "verify:task2-attesta-trigger-live": "tsx src/features/telemetry/task2-attesta-trigger-live-verify.ts",
     "verify:task15h-builder-live": "tsx src/features/attesta/t15h-builder-live-verify.ts",
     "verify:task15f2-anchoring-live": "tsx src/features/attesta/t15f2-anchoring-live-verify.ts",
+    "verify:task15i-evidence-api-live": "tsx src/features/attesta/t15i-evidence-api-live-verify.ts",
     "attesta:build": "tsx src/features/attesta/attesta-build-cli.ts",
     "attesta:requeue": "tsx src/features/attesta/attesta-requeue-cli.ts",
     "attesta:anchor": "tsx src/features/attesta/attesta-anchor-cli.ts",
