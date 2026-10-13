@@ -24,6 +24,7 @@
 import { createPublicKey, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isProduction } from './anchor-contract';
+import type { AnchorKeyWindow } from './anchor-dual';
 import type { DsseEnvelope } from './dsse';
 import { SigningRejected, SigningUnavailable } from './signer-contract';
 import { KmsSigner, kmsCredentialsFromJson, AWS_CREDENTIAL_PREFIX, GCP_CREDENTIAL_PREFIX, type KmsProvider } from './signer-kms';
@@ -113,22 +114,30 @@ export function inventorySignerResolver(store: TrustStore, adapters: TrustAdapte
 }
 
 /**
- * SPKI DER of every key of `purpose` the latest chain-verified root lists, retired
- * and revoked included (forward-only keeps them forever): the verification material
- * for anchors (`anchorKeysSpkiDer`) and other platform artifacts. Callers rebuild it
- * per verification run (not once per process), so anchors signed before and after a
- * root import both stay checkable without a restart. No root, no pin or a chain that
- * does not verify → PlatformSignerError.
+ * Every key of `purpose` the latest chain-verified root lists, retired and revoked
+ * included (forward-only keeps them forever), each with the window in which it could
+ * sign (trust.md step 8 with bound time evidence): [not_before, not_after] and before
+ * `revoked_at` (retired, superseded) or `compromised_since` (compromised). This is
+ * the anchor verification material (`StoredAnchorKeys.anchorKeyWindows`): a Rekor
+ * anchor counts only if its log time is inside its key's window. Callers rebuild it
+ * per verification run, so anchors before and after a root import stay checkable
+ * without a restart. No root, no pin or a chain that does not verify →
+ * PlatformSignerError.
  */
-export async function platformPublicKeys(store: TrustStore, purpose: PlatformPurpose, config: TrustConfig,
-  options: ResolverOptions = {}): Promise<Buffer[]> {
+export async function platformKeyWindows(store: TrustStore, purpose: PlatformPurpose, config: TrustConfig,
+  options: ResolverOptions = {}): Promise<AnchorKeyWindow[]> {
   if (config.pinnedRootKeyids.length === 0) throw new PlatformSignerError('ATTESTA_TRUST_ROOT_KEYIDS is required');
   const roots = await store.documents(PLATFORM_SCOPE);
   if (roots.length === 0) throw new PlatformSignerError('no root document has been imported (attesta:keys import-root)');
   const failure = checkDocumentChain(config, (options.now ?? (() => new Date()))(), roots.map((d) => d.envelope));
   if (failure) throw new PlatformSignerError(`the stored root documents do not verify from the pin (${failure})`);
   const latest = parseTrustDocument(roots[roots.length - 1].envelope);
-  return [...latest.keys.values()].filter((k) => k.entry.purpose === purpose).map((k) => Buffer.from(k.entry.spki_der_b64, 'base64'));
+  return [...latest.keys.values()].filter((k) => k.entry.purpose === purpose).map((k) => ({
+    spkiDer: Buffer.from(k.entry.spki_der_b64, 'base64'),
+    notBeforeMs: k.notBefore,
+    notAfterMs: k.notAfter,
+    untilMs: k.entry.status === 'active' ? null : k.entry.revocation_reason === 'compromised' ? k.compromisedSince : k.revokedAt,
+  }));
 }
 
 /**

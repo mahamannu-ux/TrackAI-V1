@@ -10,6 +10,7 @@ import { createPublicKey, generateKeyPairSync, sign as cryptoSign, verify, type 
 import { test } from 'node:test';
 import { p256 } from '@noble/curves/nist.js';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
+import { anchorKeyWindowCovers, type AnchorKeyWindow } from './anchor-dual';
 import { AnchorConfigError, anchorFromEnv, anchorSignerFromEnv, platformAnchorKeysFromEnv, platformAnchorSignerFromEnv } from './anchor-env';
 import { SigningRejected, SigningUnavailable, signVerified, type SigningAdapter } from './signer-contract';
 import { KmsSigner, type KmsProvider } from './signer-kms';
@@ -30,7 +31,7 @@ import {
   type TrustAdapters,
   type TrustConfig,
 } from './trust-inventory';
-import { TrustConfigError, adaptersFromEnv, inventorySignerResolver, platformPublicKeys, platformSigner, publishedKeysFor, trustConfigFromEnv } from './trust-resolver';
+import { TrustConfigError, adaptersFromEnv, inventorySignerResolver, platformKeyWindows, platformSigner, publishedKeysFor, trustConfigFromEnv } from './trust-resolver';
 import { verifyChainRows } from './verify-chain';
 
 const A = 'aaaaaaaa-0000-4000-8000-00000000000a';
@@ -270,7 +271,7 @@ test('inventorySignerResolver: a rotation that crashed before publish signs noth
   await assert.rejects(inventorySignerResolver(w.store, adapters, { ...w.config, pinnedRootKeyids: [] }).resolve(A), SigningUnavailable);
 });
 
-test('anchor verification keys: every anchor key the latest root lists, so anchors before and after a rotation verify', async () => {
+test('anchor verification windows: every anchor key of the latest root with its cutoff, so old anchors verify and fresh ones by a retired or compromised key do not', async () => {
   const w = await kmsWorld(true);
   const anchor2 = newKey();
   w.kms.keys.set('ref-anchor2', anchor2);
@@ -281,21 +282,41 @@ test('anchor verification keys: every anchor key the latest root lists, so ancho
   const signer = await platformAnchorSignerFromEnv(env, deps);
   const before = Buffer.from('root-before');
   const sigBefore = await signer.sign(before);
+  const tBefore = w.now().getTime();
   // Rotation without a restart: anchor2 added, the first anchor key retired.
   w.advance(60_000);
+  const retiredAt = w.now().getTime();
   await registerKey(w.ctx, { tenantId: null, purpose: 'anchor', adapterName: 'kms-aws', credentialRef: 'aws-kms:anchor2' });
   const draft = await exportRootDraft(w.ctx, { add: [anchor2.keyid], retire: [w.k.anchor.keyid] });
   await importRoot(w.ctx, await w.sign(draft.body), 2);
   const after = Buffer.from('root-after');
   const sigAfter = await signer.sign(after);
+  w.advance(1000);
+  const tAfter = w.now().getTime();
   assert.equal(keyidOf(await signer.publicKeySpkiDer()), anchor2.keyid, 'the running signer moved to the new key');
-  // Material rebuilt now (same process) and again as after a restart: both signatures verify with it.
-  for (const keys of [await platformAnchorKeysFromEnv(env, deps), await platformPublicKeys(w.store, 'anchor', w.config, { now: w.now })]) {
-    assert.deepEqual(keys.map((k) => keyidOf(k)).sort(), [w.k.anchor.keyid, anchor2.keyid].sort());
-    const ok = (data: Buffer, sig: Buffer) => keys.some((k) => verify('sha256', data, { key: createPublicKey({ key: k, format: 'der', type: 'spki' }), dsaEncoding: 'der' }, sig));
-    assert.ok(ok(before, sigBefore) && ok(after, sigAfter));
+  const secs = (ms: number) => Math.floor(ms / 1000);
+  // Material rebuilt in the same process and as after a restart.
+  for (const windows of [await platformAnchorKeysFromEnv(env, deps), await platformKeyWindows(w.store, 'anchor', w.config, { now: w.now })]) {
+    const byKey = new Map(windows.map((x) => [keyidOf(x.spkiDer), x]));
+    assert.deepEqual([...byKey.keys()].sort(), [w.k.anchor.keyid, anchor2.keyid].sort());
+    const old = byKey.get(w.k.anchor.keyid)!;
+    const fresh = byKey.get(anchor2.keyid)!;
+    assert.equal(old.untilMs, retiredAt);
+    assert.equal(fresh.untilMs, null);
+    const signedBy = (data: Buffer, sig: Buffer, x: AnchorKeyWindow) =>
+      verify('sha256', data, { key: createPublicKey({ key: x.spkiDer, format: 'der', type: 'spki' }), dsaEncoding: 'der' }, sig);
+    assert.ok(signedBy(before, sigBefore, old) && anchorKeyWindowCovers(old, secs(tBefore)), 'pre-rotation anchor verifies');
+    assert.ok(signedBy(after, sigAfter, fresh) && anchorKeyWindowCovers(fresh, secs(tAfter)), 'post-rotation anchor verifies');
+    assert.ok(!anchorKeyWindowCovers(old, secs(tAfter)), 'the retired key cannot make a fresh anchor');
   }
-  // anchorFromEnv's production verify material is that list, not a startup snapshot of one key.
+  // Compromise moves the old key's cutoff earlier: anchors after compromised_since stop counting.
+  w.advance(60_000);
+  const since = new Date(tBefore + 500).toISOString();
+  const d3 = await exportRootDraft(w.ctx, { revoke: [w.k.anchor.keyid], reason: 'compromised', compromisedSince: since });
+  await importRoot(w.ctx, await w.sign(d3.body), 3);
+  const old3 = (await platformKeyWindows(w.store, 'anchor', w.config, { now: w.now })).find((x) => keyidOf(x.spkiDer) === w.k.anchor.keyid)!;
+  assert.equal(old3.untilMs, Date.parse(since));
+  assert.ok(anchorKeyWindowCovers(old3, secs(tBefore)) && !anchorKeyWindowCovers(old3, secs(tBefore) + 1));
   await assert.rejects(platformAnchorKeysFromEnv({ NODE_ENV: 'production' }, deps), AnchorConfigError);
-  await assert.rejects(platformPublicKeys(memoryTrustStore(), 'anchor', w.config), /no root document/);
+  await assert.rejects(platformKeyWindows(memoryTrustStore(), 'anchor', w.config), /no root document/);
 });

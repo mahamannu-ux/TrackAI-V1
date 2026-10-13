@@ -23,12 +23,12 @@ import type { KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type * as pkijs from 'pkijs';
 import { ATTESTA_PLATFORM_TENANT_ID, AnchorError, anchorSignerFromAdapter, isProduction, type AnchorSigner, type FetchLike } from './anchor-contract';
-import { DualAnchor, type StoredAnchorKeys } from './anchor-dual';
+import { DualAnchor, type AnchorKeyWindow, type StoredAnchorKeys } from './anchor-dual';
 import { RekorAnchor, loadLogPublicKey } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
 import { LocalDevSigner } from './signer-local-dev';
 import { PlatformSignerError, pgTrustStore, type TrustAdapters, type TrustConfig, type TrustDb, type TrustStore } from './trust-inventory';
-import { TrustConfigError, adaptersFromEnv, platformPublicKeys, platformSigner, trustConfigFromEnv } from './trust-resolver';
+import { TrustConfigError, adaptersFromEnv, platformKeyWindows, platformSigner, trustConfigFromEnv } from './trust-resolver';
 
 /** A configuration problem: the worker must not start. Message names variables only. */
 export class AnchorConfigError extends Error {
@@ -101,14 +101,15 @@ async function inventoryFromEnv(env: NodeJS.ProcessEnv, deps: PlatformAnchorDeps
 
 /**
  * Production verification material: every `anchor` key the latest chain-verified
- * root lists (current, retired and revoked), so anchors signed before and after a
- * rotation are both checkable. Built per call: a verifier calls it (or
- * `platformPublicKeys`) for each run rather than keeping a startup snapshot.
+ * root lists (current, retired and revoked) with its signing window, so anchors
+ * signed before and after a rotation are both checkable, and none made by a key
+ * after its retirement, revocation or compromise counts. Built per call: a verifier
+ * calls it (or `platformKeyWindows`) for each run rather than keeping a startup snapshot.
  */
-export async function platformAnchorKeysFromEnv(env: NodeJS.ProcessEnv = process.env, deps: PlatformAnchorDeps = {}): Promise<Buffer[]> {
+export async function platformAnchorKeysFromEnv(env: NodeJS.ProcessEnv = process.env, deps: PlatformAnchorDeps = {}): Promise<AnchorKeyWindow[]> {
   try {
     const { config, store } = await inventoryFromEnv(env, deps);
-    return await platformPublicKeys(store, 'anchor', config, { now: deps.now });
+    return await platformKeyWindows(store, 'anchor', config, { now: deps.now });
   } catch (err) {
     if (err instanceof AnchorConfigError) throw err;
     if (err instanceof TrustConfigError || err instanceof PlatformSignerError) throw new AnchorConfigError(err.message);
@@ -240,13 +241,11 @@ export async function anchorFromEnv(
   const tsa = new TsaAnchor({ url: tsaUrl, trustAnchorsPem: anchorsPem, fetch: opts.tsaFetch });
   return {
     anchor: new DualAnchor(rekor, tsa),
-    verify: {
-      rekorLogKey, rekorLogIndexOffsets: logIndexOffsets, tsaAnchors,
-      // Production: every anchor key the latest verified root lists (rotation keeps old anchors checkable);
-      // rebuilt on each anchorFromEnv call. Development: the one dev key.
-      anchorKeysSpkiDer: isProduction(env) && !opts.signer
-        ? await platformAnchorKeysFromEnv(env, { read, ...opts.platform })
-        : [await signer.publicKeySpkiDer()],
-    },
+    // Production: every anchor key the latest verified root lists, each bound to its signing window
+    // (rebuilt on each anchorFromEnv call). Development: the one dev key.
+    verify: isProduction(env) && !opts.signer
+      ? { rekorLogKey, rekorLogIndexOffsets: logIndexOffsets, tsaAnchors, anchorKeysSpkiDer: [],
+          anchorKeyWindows: await platformAnchorKeysFromEnv(env, { read, ...opts.platform }) }
+      : { rekorLogKey, rekorLogIndexOffsets: logIndexOffsets, tsaAnchors, anchorKeysSpkiDer: [await signer.publicKeySpkiDer()] },
   };
 }

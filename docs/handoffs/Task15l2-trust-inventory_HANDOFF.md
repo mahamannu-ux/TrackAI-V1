@@ -11,8 +11,8 @@ Branch `task/Task15l2-trust-inventory`, base `main` at `664b241`. It adds the ke
 | Service (`trust-inventory.ts`) | `registerKey` (proof of possession), activate / retire / revoke, `exportRootDraft`, `importRoot`, `publishKeyset`, `TrustStore` (pg + memory) | ✅ |
 | Resolvers (`trust-resolver.ts`) | `inventorySignerResolver`, `platformSigner`, `publishedKeysFor`, `adaptersFromEnv`, `trustConfigFromEnv`; `anchor-env` production branch | ✅ |
 | CLI | `npm run attesta:keys -w apps/api -- register\|activate\|retire\|revoke\|publish\|export-root-draft\|import-root\|list` | ✅ |
-| Tests | 33 new unit tests (724 in total); IT-T15l-01…04 pass in the sandbox (42 guard attacks) | 🟡 founder run ✅ for round 1; re-run ⬜ after the Codex fixes |
-| Review | Subagent: 2 must-fix + 7 should-fix (all but 2 should-fix fixed, `ff3c71d`). Codex round 1 "fix first": 3 fixes, all done (resolver needs the published key set, publish re-checks under lock, anchor verify keys from the root). Codex re-review ⬜ | 🟡 |
+| Tests | 34 new unit tests (725 in total); IT-T15l-01…04 pass in the sandbox (42 guard attacks) | 🟡 founder run ✅ for round 1; re-run ⬜ after the Codex fixes |
+| Review | Subagent: 2 must-fix + 7 should-fix (all but 2 should-fix fixed, `ff3c71d`). Codex round 1 "fix first": 3 fixes, all done (resolver needs the published key set, publish re-checks under lock, anchor verify keys from the root). Codex round 2 "fix first": anchor keys bound to their signing windows, fixed. Codex re-review ⬜ | 🟡 |
 
 ## Implemented interfaces
 ```ts
@@ -24,7 +24,7 @@ publishKeyset(ctx, tenantId)                  // forward-only before signing; si
 inventorySignerResolver(store, adapters, config): SignerResolver  // the builder's resolver (A15.8); only keys the latest signed key set lists
 platformSigner(store, adapters, purpose, config): { adapter, credentialId, keyid }
 publishedKeysFor(store, tenantId): { keys, rootDocuments, keysetDocuments }   // for 15i2: verifyChain keys + packs
-platformPublicKeys(store, purpose, config): Buffer[]       // every key of a purpose in the latest verified root (anchor verify material)
+platformKeyWindows(store, purpose, config): AnchorKeyWindow[]  // every key of a purpose in the latest verified root + its signing window
 pgTrustStore(db); adaptersFromEnv(env); trustConfigFromEnv(env); platformAnchorSignerFromEnv(env); platformAnchorKeysFromEnv(env)
 ```
 CLI dry run (the default): `npm run attesta:keys -w apps/api -- activate --tenant <uuid> --keyid sha256:… --replace` prints `retire … active -> retired`, `activate … registered -> active` and `apply with: --confirm=ACTIVATE --expect=2 --actor <your name>`. New environment variables: `ATTESTA_TRUST_ROOT_KEYIDS` (always required to import a root or sign with a platform key), `ATTESTA_KMS_CREDENTIALS_FILE` (references only), `ATTESTA_DEV_CREDENTIALS_FILE` (development only).
@@ -45,7 +45,7 @@ CLI dry run (the default): `npm run attesta:keys -w apps/api -- activate --tenan
 - **`credential_ref` stores the adapter credential ID** (`aws-kms:…`), which names the KMS key through `ATTESTA_KMS_CREDENTIALS_FILE`. It never appears in output.
 - **The import-root sync uses per-key `activate` / `retire` / `revoke` events plus one `import_root` event**, and the guard requires both.
 - **Subagent fixes:** `export-root-draft` adds only `--add <keyid>` keys; the anchor key is re-resolved on every call; the pin is required in development too; `retire` / `--replace` / `revoke superseded` wait until the key's records are anchored (`compromised` never waits); compare-and-set updates; publish refuses to extend a key set no `tenant_keyset` key signed; the platform tenant ID is refused as `--tenant`.
-- **Codex fixes:** (1) the resolver signs only with a key the latest verified key set lists active with the same SPKI and validity. Between `activate` and `publish` it throws `SigningUnavailable` (row stays pending with backoff) rather than returning `null`, which would fail rows terminally on every routine activation. (2) Publish locks the tenant's keys (`FOR UPDATE`) and re-checks the exact planned key state before storing. (3) Anchor verify material lists every anchor key of the latest verified root, rebuilt per call (`platformAnchorKeysFromEnv` / `platformPublicKeys`).
+- **Codex fixes:** (1) the resolver signs only with a key the latest verified key set lists active with the same SPKI and validity. Between `activate` and `publish` it throws `SigningUnavailable` (row stays pending with backoff) rather than returning `null`, which would fail rows terminally on every routine activation. (2) Publish locks the tenant's keys (`FOR UPDATE`) and re-checks the exact planned key state before storing. (3) Anchor verify material lists every anchor key of the latest verified root, rebuilt per call (`platformAnchorKeysFromEnv` / `platformKeyWindows`). Round 2 (founder-approved edit of `anchor-dual.ts`, additive): `StoredAnchorKeys.anchorKeyWindows`; when present, a Rekor anchor counts only if its `integratedTime` lies in [not_before, not_after] and before `revoked_at` (retired, superseded) or `compromised_since` (trust.md step 8). `verify-chain.ts` is unchanged (it passes the keys through).
 
 ## Known limitations
 | Status | Limitation | Impact |
@@ -59,7 +59,7 @@ CLI dry run (the default): `npm run attesta:keys -w apps/api -- activate --tenan
 IT-T15l-01…04 (`apps/api/src/features/attesta/t15l2-trust-live-verify.ts`): `scripts/it-db.sh npm run verify:task15l2-trust-live -w apps/api`. They need PostgreSQL 16 with pgvector (Docker or local binaries) and take about 30 s. They are **blocking** for this merge and for 15i2. They passed in the agent sandbox (🟡); the founder run is ⬜.
 
 ## Integration notes
-- **15i2:** `const p = await publishedKeysFor(pgTrustStore(db), tenantId)`, then pass `p.keys` to `verifyChain`. Packs carry `p.rootDocuments` and `p.keysetDocuments` (both from version 1). Anchor checks take `anchorKeysSpkiDer` from `platformPublicKeys(store, 'anchor', config)` per run. Fix the `verify-chain.test.ts` time bomb. `attesta-build-cli.ts` (not pre-approved here) still builds with `devSignerResolver`, which refuses production: its production branch becomes `inventorySignerResolver(pgTrustStore(db), await adaptersFromEnv(), trustConfigFromEnv())` (15i2 or Task14).
+- **15i2:** `const p = await publishedKeysFor(pgTrustStore(db), tenantId)`, then pass `p.keys` to `verifyChain`. Packs carry `p.rootDocuments` and `p.keysetDocuments` (both from version 1). Anchor checks pass `anchorKeyWindows: await platformKeyWindows(store, 'anchor', config)` per run (never a bare SPKI list in production). Fix the `verify-chain.test.ts` time bomb. `attesta-build-cli.ts` (not pre-approved here) still builds with `devSignerResolver`, which refuses production: its production branch becomes `inventorySignerResolver(pgTrustStore(db), await adaptersFromEnv(), trustConfigFromEnv())` (15i2 or Task14).
 - **A15.13 founder-live steps:**
   1. Create one KMS key per platform purpose and list them in `ATTESTA_KMS_CREDENTIALS_FILE` (`tenantId` = `00000000-0000-0000-0000-000000000000`).
   2. Run `register --purpose <p>` for each.
@@ -71,4 +71,4 @@ IT-T15l-01…04 (`apps/api/src/features/attesta/t15l2-trust-live-verify.ts`): `s
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Agent turns or prompts | Wall-clock | Tokens |
 |---|---|---|---|---|
-| 0.2× (prompt); 0.25× with the review round | about 0.3× | ~90 turns + subagent and Codex rounds | ~2.5 h | ~0.55M |
+| 0.2× (prompt); 0.25× with the review round | about 0.3× | ~100 turns + subagent and 2 Codex rounds | ~3 h | ~0.6M |

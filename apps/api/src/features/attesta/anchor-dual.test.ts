@@ -246,3 +246,31 @@ test('a clean revocation answer is carried into the proof', async () => {
     recordedRevocation: { status: 'clean', reason: 'ocsp_good' },
   });
 });
+
+test('Task15l2: with key windows, a Rekor anchor counts only inside its key\'s signing window (retired, compromised, expired)', async () => {
+  const { rows, keys } = await anchoredBatch(2);
+  const row = rows.find((r) => r.anchorType === 'rekor')!;
+  const t = ((row.proof.anchor as unknown as { rekor_entry: { integratedTime: number } }).rekor_entry.integratedTime) * 1000;
+  const spkiDer = keys.anchorKeysSpkiDer![0];
+  const other = createPublicKey(generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey).export({ type: 'spki', format: 'der' }) as Buffer;
+  const DAY = 86_400_000;
+  const check = (windows: NonNullable<StoredAnchorKeys['anchorKeyWindows']>) =>
+    verifyStoredAnchor(row, { ...keys, anchorKeyWindows: windows }).status;
+  const w = (o: Partial<{ notBeforeMs: number; notAfterMs: number; untilMs: number | null; spkiDer: Buffer }>) =>
+    ({ spkiDer, notBeforeMs: t - DAY, notAfterMs: t + DAY, untilMs: null, ...o });
+  assert.equal(check([w({})]), 'valid', 'active key');
+  assert.equal(check([w({ untilMs: t + 1 })]), 'valid', 'retired / revoked after the log time');
+  assert.equal(check([w({ untilMs: t })]), 'invalid', 'retired / compromised at or before the log time');
+  assert.equal(check([w({ untilMs: t - 60_000 })]), 'invalid', 'a fresh anchor by a compromised key');
+  assert.equal(check([w({ notBeforeMs: t + 1 })]), 'invalid', 'before the key\'s validity');
+  assert.equal(check([w({ notAfterMs: t - 1 })]), 'invalid', 'after the key expired');
+  assert.equal(check([w({ spkiDer: other })]), 'invalid', 'another key only');
+  assert.equal(check([w({ spkiDer: other }), w({})]), 'valid', 'the signing key among several');
+  assert.equal(check([w({ untilMs: t - 1 }), w({ spkiDer: other })]), 'invalid');
+  // Windows replace the bare list: the bare key does not rescue an out-of-window anchor.
+  assert.equal(verifyStoredAnchor(row, { ...keys, anchorKeyWindows: [w({ untilMs: t - 1 })] }).status, 'invalid');
+  assert.deepEqual(verifyStoredAnchor(row, { ...keys, anchorKeysSpkiDer: [], anchorKeyWindows: [] }), { status: 'not_checkable', code: 'ATTESTA_VERIFY_NOT_CHECKABLE' });
+  // TSA rows have no anchor key: unaffected.
+  const tsaRow = rows.find((r) => r.anchorType === 'tsa')!;
+  assert.equal(verifyStoredAnchor(tsaRow, { ...keys, anchorKeyWindows: [w({ untilMs: t - 1 })] }).status, 'valid');
+});

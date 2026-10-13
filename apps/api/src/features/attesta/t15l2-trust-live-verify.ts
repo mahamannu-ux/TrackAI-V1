@@ -185,7 +185,7 @@ async function makeWorld() {
   };
   // Verification material through the production path: every anchor key the latest verified root lists.
   const material = async (): Promise<AnchorCheckOptions> => ({
-    rekorLogKey: rekorLog, anchorKeysSpkiDer: await platformAnchorKeysFromEnv(env),
+    rekorLogKey: rekorLog, anchorKeyWindows: await platformAnchorKeysFromEnv(env),
     tsaAnchors: loadTrustAnchors(tsa.anchorsPem), now: new Date(),
   });
   const resolver = inventorySignerResolver(store, adapters, config);
