@@ -1,0 +1,67 @@
+AGENTS.md
+  s_a979ae8e6ff984::t_d5087740fc4744 194-198
+apps/api/drizzle/0021_attesta_anchor_resumes.sql
+  s_a979ae8e6ff984::t_ee2c02d3a7a282 1-128
+apps/api/drizzle/meta/0021_snapshot.json
+  s_a979ae8e6ff984::t_129991a0b71f06 1-10225
+apps/api/drizzle/meta/_journal.json
+  s_a979ae8e6ff984::t_a24f7d87366bdc 151-157
+apps/api/src/core/db/schema.ts
+  s_a979ae8e6ff984::t_f85a9ffaaab706 1997-2030,2128
+apps/api/src/features/attesta/anchor-worker.test.ts
+  s_a979ae8e6ff984::t_ae147202ca5765 34,65-69,71-78,104-105,337-383
+apps/api/src/features/attesta/anchor-worker.ts
+  s_a979ae8e6ff984::t_c2aad3f4d27715 29-36,90,455-458,460,515-517
+apps/api/src/features/attesta/attesta-anchor-resume-cli.test.ts
+  s_a979ae8e6ff984::t_6c42fe3c23ea8c 1-181
+apps/api/src/features/attesta/attesta-anchor-resume-cli.ts
+  s_a979ae8e6ff984::t_7caf22b6e851a2 1-306
+apps/api/src/features/attesta/attesta-api.test.ts
+  s_a979ae8e6ff984::t_4ee59df5165f2b 26,1015,1017,1026,1039,1044-1143
+apps/api/src/features/attesta/attesta.routes.ts
+  s_a979ae8e6ff984::t_0e19775f5e57c2 41,53,95-98
+apps/api/src/features/attesta/read-service.ts
+  s_a979ae8e6ff984::t_739084f08f183f 28-31,34,492-493,504-512,514-550,621-629
+apps/api/src/features/attesta/t15i2-evidence-packs-live-verify.ts
+  s_a979ae8e6ff984::t_432f116b230369 176-178
+apps/api/src/features/attesta/t15i3-verify-keys-resume-live-verify.ts
+  s_a979ae8e6ff984::t_dcff3385ee69e3 1-476
+apps/api/src/features/attesta/verify-chain.test.ts
+  s_a979ae8e6ff984::t_aaf04fce307c95 31,141,585-725
+apps/api/src/features/attesta/verify-chain.ts
+  s_a979ae8e6ff984::t_d6f4e3f2ad8445 31-41,74,89,130,226-236,258-261,358-359,363,377,379,383,387,389-421,448,469-470,473,475,480-483,508,538-541,573-580,589,605-606,636-643,806
+docs/contracts/attesta/api.md
+  s_a979ae8e6ff984::t_2e8d091a635252 25
+docs/contracts/attesta/errors.md
+  s_a979ae8e6ff984::t_bbaac2a9f34e2d 83,87-88
+docs/contracts/attesta/tables.md
+  s_a979ae8e6ff984::t_7ef53678a917c9 60-74
+docs/handoffs/Task15i3-attesta-verify-keys-resume_HANDOFF.md
+  s_a979ae8e6ff984::t_4da86d6982ff1d 1-79
+docs/plan/STATUS_BOARD.md
+  s_a979ae8e6ff984::t_a703fe5924341a 9,28,112-115
+docs/prompts/Task15/NEXT_CHAT_Task15k-attesta-console_PROMPT.md
+  s_a979ae8e6ff984::t_6d8cea0fff70da 1-99
+docs/prompts/Task15/NEXT_CHAT_Task15m-attesta-github-check_PROMPT.md
+  s_a979ae8e6ff984::t_116fc32e9eef93 1-84
+docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md
+  s_a979ae8e6ff984::t_819c55f5a06ae8 64-65
+scripts/pr-preflight.sh
+  s_a979ae8e6ff984::t_fddbd7151011ad 1-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "a043d476077499216036d2536b1e3206ecef0563",
+  "prompts": {},
+  "sessions": {
+    "s_a979ae8e6ff984": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_eca5d7f0dffeXSUmn7b4xX3CVp",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
