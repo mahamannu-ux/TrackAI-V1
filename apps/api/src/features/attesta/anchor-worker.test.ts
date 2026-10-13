@@ -31,7 +31,7 @@ const B = '22222222-2222-4222-8222-222222222222';
 // ---------------------------------------------------------------------------
 
 interface MemAnchor extends AnchorRowInput { batchId: string; createdAt: number }
-interface MemTenant { records: AnchorRecordRef[]; batches: BatchRowInput[]; anchors: MemAnchor[] }
+interface MemTenant { records: AnchorRecordRef[]; batches: BatchRowInput[]; anchors: MemAnchor[]; resumes?: Array<{ batchId: string; createdAt: number }> }
 
 class MemStore implements AnchorStore {
   tenantsData = new Map<string, MemTenant>();
@@ -62,8 +62,20 @@ class MemStore implements AnchorStore {
     return t.anchors.filter((a) => a.batchId === b.batchId && a.anchorType === type && a.status === 'anchored').length >= b.leafCount;
   }
 
+  /** Mirrors pgAnchorStore's rule (Task15i3): only terminal failures newer than the batch's latest resume stop it. */
+  lastResume(t: MemTenant, batchId: string): number {
+    return Math.max(-Infinity, ...(t.resumes ?? []).filter((r) => r.batchId === batchId).map((r) => r.createdAt));
+  }
+
   stopped(t: MemTenant, b: BatchRowInput): boolean {
-    return t.anchors.some((a) => a.batchId === b.batchId && a.status === 'failed' && TERMINAL.includes(a.errorCode!));
+    const since = this.lastResume(t, b.batchId);
+    return t.anchors.some((a) => a.batchId === b.batchId && a.status === 'failed' && TERMINAL.includes(a.errorCode!) && a.createdAt > since);
+  }
+
+  /** An operator resume, stamped just after the clock (clock_timestamp() in the 0021 guard). */
+  resume(tenantId: string, batchId: string): void {
+    const t = this.t(tenantId);
+    (t.resumes ??= []).push({ batchId, createdAt: this.clock.now + 1 });
   }
 
   async tenants({ tenantId, limit }: { tenantId?: string; limit?: number }) {
@@ -89,7 +101,8 @@ class MemStore implements AnchorStore {
         const failures = {} as Record<AnchorType, TypeFailures>;
         for (const type of ['rekor', 'tsa'] as const) {
           const f = t.anchors.filter((a) => a.batchId === b.batchId && a.anchorType === type && a.status === 'failed');
-          const terminal = f.filter((a) => TERMINAL.includes(a.errorCode!));
+          const since = this.lastResume(t, b.batchId);
+          const terminal = f.filter((a) => TERMINAL.includes(a.errorCode!) && a.createdAt > since);
           failures[type] = {
             count: Math.ceil(f.length / b.leafCount),
             lastAt: f.length ? new Date(Math.max(...f.map((a) => a.createdAt))).toISOString() : null,
@@ -319,6 +332,53 @@ test('a terminal code (log rejected) stops that batch for good; later batches st
   r = await w.pass();
   assert.equal(r.tenants, 0); // a stopped batch alone makes no work
   assert.equal(rowsOf(w.store, A, { batchId: anchorBatchId(A, 0, 2), status: 'failed' }).length, 3);
+});
+
+test('resume (Task15i3): a resumed batch is retried with the normal backoff and anchors; a new terminal failure stops it again', async () => {
+  const w = await world();
+  w.store.addRecords(A, 3);
+  const batchId = anchorBatchId(A, 0, 2);
+  w.rekor.failStatus = 400;
+  let r = await w.pass();
+  assert.deepEqual(r.codes, { ATTESTA_ANCHOR_LOG_REJECTED: 1 });
+  w.clock.now += 10 * ANCHOR_BACKOFF_MAX_MS;
+  r = await w.pass();
+  assert.equal(r.tenants, 0); // stopped
+  // Resumed, still rejected: retried once, then stopped again by the new terminal failure.
+  w.store.resume(A, batchId);
+  w.clock.now += 1_000;
+  r = await w.pass();
+  assert.equal(r.tenants, 1);
+  assert.equal(r.batchesFailed + r.batchesStopped >= 1, true);
+  assert.equal(r.codes.ATTESTA_ANCHOR_LOG_REJECTED, 1);
+  assert.equal(rowsOf(w.store, A, { batchId, status: 'failed' }).length, 6);
+  w.clock.now += 10 * ANCHOR_BACKOFF_MAX_MS;
+  r = await w.pass();
+  assert.equal(r.tenants, 0); // stopped again: the old resume does not cover the new stop
+  // A second resume after the new stop: the log accepts now, the batch anchors.
+  w.rekor.failStatus = null;
+  w.store.resume(A, batchId);
+  w.clock.now += 1_000;
+  r = await w.pass();
+  assert.equal(r.batchesAnchored, 1);
+  assert.equal(rowsOf(w.store, A, { batchId, status: 'anchored' }).length, 6);
+  r = await w.pass();
+  assert.equal(r.tenants, 0);
+});
+
+test('resume waits for the normal backoff of the failures so far', async () => {
+  const w = await world();
+  w.store.addRecords(A, 2);
+  w.rekor.failStatus = 400;
+  await w.pass();
+  // Resumed right away: the failure count (1) sets the backoff from its time.
+  w.store.resume(A, anchorBatchId(A, 0, 1));
+  w.rekor.failStatus = null;
+  let r = await w.pass();
+  assert.equal(r.batchesAnchored, 0);
+  w.clock.now += ANCHOR_BACKOFF_MAX_MS;
+  r = await w.pass();
+  assert.equal(r.batchesAnchored, 1);
 });
 
 test('a signer refusal retries with backoff (never terminal), so a fixed credential resumes anchoring', async () => {

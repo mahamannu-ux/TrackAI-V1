@@ -191,6 +191,11 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 20. **Canonicalization is RFC 8785 (JCS),** proven against the ported vectors; refuse integers beyond ±(2^53 − 1) and NaN instead of rounding. Node `pg` returns `bigint` as a string: convert `seq` explicitly.
 21. **Guard triggers under RLS** run as the calling role: make them `SECURITY DEFINER` with a fixed `search_path`, and block TRUNCATE as well as UPDATE and DELETE.
 
+**Gotchas for parallel sessions** (added 2026-10-13 after repeated merge conflicts):
+
+22. **Run `scripts/pr-preflight.sh <branch>` before every `gh pr merge`.** It fetches, checks the PR targets `main` (a stacked PR "merged" into another branch never reaches `main`), checks nothing is unpushed, trial-merges `origin/main` in a throwaway worktree and lists conflicts. Exit 1 means do not merge: the session's agent runs `git merge main` in its worktree (the founder has pulled `main`; worktrees share it), resolves, reruns the gates and commits `merge main`. Every final-reply bash block puts the preflight between `gh pr create` and `gh pr merge`.
+23. **Ledger lines are hot spots.** Parallel sessions collide on the same or adjacent lines, never on code. So: a session edits only its **own** lines: its own row in the Task tracker's subtask and session tables, its own integration-registry rows (inserted in ID order), its own handoff. The Task's single row on the status board (`Branch / PR`, `Next founder action`) is updated by the Task lead after each merge, not by sessions. New `package.json` scripts go in alphabetical position, not at the end. When resolving a conflict in these files, keep `main`'s lines and re-apply only the session's own lines.
+
 ---
 
 ## 10. Style [PROJECT SLOT]

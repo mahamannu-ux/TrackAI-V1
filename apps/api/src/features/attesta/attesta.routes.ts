@@ -38,6 +38,7 @@ import {
   type AnchorMaterialSource, type AttestaReadStore, type ChainVerifier, type VerifyKeySource,
 } from './read-service';
 import { pgTrustStore, type TrustDb } from './trust-inventory';
+import { trustConfigFromEnv } from './trust-resolver';
 import type { AttestaApiCode } from './http';
 
 export const VERIFY_RETRY_AFTER_SECONDS = 5;
@@ -49,7 +50,7 @@ export interface AttestaRouterDeps {
   /** Authorization of the evidence-pack routes (default requireAdminAction('attesta.export')). */
   authorizeExport?: RequestHandler;
   verifier?: ChainVerifier;
-  /** The tenant's published statement keys (default: the trust inventory, publishedKeysFor). */
+  /** The tenant's statement keys and windows (default: the newest trust-verified key set, publishedKeyWindowsFor). */
   keys?: VerifyKeySource;
   /** Evidence-pack job dependencies (default: production wiring, defaultPackJobDeps). */
   packs?: PackJobDeps;
@@ -91,10 +92,12 @@ function param(req: Request, name: string): string {
 export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
   const store = deps.store ?? pgReadStore();
   const verifier = deps.verifier ?? dbChainVerifier();
-  const keys = deps.keys ?? publishedKeySource(() => pgTrustStore(db as unknown as TrustDb));
+  const now = deps.now ?? (() => new Date());
+  // Keys and their windows from the newest trust-verified key set (Task15i3), pinned by
+  // ATTESTA_TRUST_ROOT_KEYIDS (read per call); the `keys` seam stays for tests.
+  const keys = deps.keys ?? publishedKeySource(() => pgTrustStore(db as unknown as TrustDb), () => trustConfigFromEnv(process.env), now);
   const anchors = deps.anchors ?? anchorMaterialFromEnv(process.env);
   const packs = deps.packs ?? defaultPackJobDeps(process.env, anchors);
-  const now = deps.now ?? (() => new Date());
   const log = deps.log ?? defaultLog;
   const verifying = new Set<string>();
 

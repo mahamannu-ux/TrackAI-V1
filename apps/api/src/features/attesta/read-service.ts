@@ -25,11 +25,13 @@ import { withTenant } from '../../core/db/tenant';
 import { isProduction } from './anchor-contract';
 import { anchorFromEnv, platformAnchorKeysFromEnv, type AnchorVerifyMaterial } from './anchor-env';
 import { deriveStatementColumns, parseSeq } from './ledger';
-import { publishedKeysFor } from './trust-resolver';
-import type { TrustStore } from './trust-inventory';
+import { PLATFORM_SCOPE } from './trust-contract';
+import { parseTrustDocument } from './trust-documents';
+import { checkDocumentChain, type TrustConfig, type TrustStore } from './trust-inventory';
+import { trustConfigFromEnv } from './trust-resolver';
 import {
   ANCHOR_TIME_SKEW_MS, DEFAULT_ANCHOR_WINDOW_MS, verifyChain,
-  type ChainReadExecutor, type ChainReport, type VerifyChainOptions,
+  type ChainReadExecutor, type ChainReport, type KeyWindow, type VerifyChainOptions,
 } from './verify-chain';
 
 /** The anchoring window `anchor_status` uses: the anchoring worker's and verifyChain's default (Task15f2). */
@@ -487,7 +489,8 @@ export async function subjectStatements(
 // ---------------------------------------------------------------------------
 // Verify
 
-export interface PublishedKey { keyid: string; publicKey: KeyObject }
+/** A published statement key; `window` (trust.md step 8) when it comes from a verified key set. */
+export interface PublishedKey { keyid: string; publicKey: KeyObject; window?: KeyWindow }
 
 /**
  * Where the verify route gets the tenant's published statement keys. `null` means none
@@ -498,16 +501,53 @@ export type VerifyKeySource = (tenantId: string) => Promise<PublishedKey[] | nul
 export const noPublishedKeys: VerifyKeySource = async () => null;
 
 /**
- * The production key source (Task15i2): every statement key the tenant ever had
- * (retired and revoked included, `publishedKeysFor`), so statements signed before a
- * rotation still verify. A tenant with no key yet → null (not checked, never "unknown key").
+ * The tenant's statement keys with their validity windows (Task15i3; trust.md step 8),
+ * read from the signed documents, never the inventory rows: the stored root chain
+ * and the tenant's key sets from version 1 must verify from the pin
+ * (`checkDocumentChain`: threshold, `previous` links, forward-only, signer, expiry).
+ * Then every statement key of the **newest** key set (forward-only keeps retired and
+ * revoked keys forever) becomes a window: `untilMs` = `revoked_at` (retired,
+ * superseded), `compromised_since` (compromised), null (active). No pin, no root, no
+ * key set, or a chain that does not verify → null: the report then says
+ * `signatures: not_checked` and is never `ok` (TR-1: unknown is never clean).
  */
-export function publishedKeySource(store: () => TrustStore): VerifyKeySource {
-  return async (tenantId) => {
-    const keys = (await publishedKeysFor(store(), tenantId)).keys;
-    const list = Object.entries(keys).map(([keyid, publicKey]) => ({ keyid, publicKey }));
-    return list.length === 0 ? null : list;
-  };
+export async function publishedKeyWindowsFor(store: TrustStore, tenantId: string, config: TrustConfig,
+  now: Date = new Date()): Promise<PublishedKey[] | null> {
+  if (!UUID_RE.test(tenantId)) throw new RangeError('tenantId is not a lowercase UUID');
+  if (config.pinnedRootKeyids.length === 0) return null;
+  const [roots, keysets] = await Promise.all([store.documents(PLATFORM_SCOPE), store.documents(tenantId)]);
+  if (roots.length === 0 || keysets.length === 0) return null;
+  const failure = checkDocumentChain(config, now, roots.map((d) => d.envelope),
+    { tenantId, documents: keysets.map((d) => d.envelope) });
+  if (failure) return null;
+  const newest = parseTrustDocument(keysets[keysets.length - 1].envelope);
+  if (newest.kind !== 'keyset' || newest.body.scope !== tenantId) return null;
+  const list: PublishedKey[] = [];
+  for (const k of newest.keys.values()) {
+    if (k.entry.purpose !== 'statement') continue;
+    list.push({
+      keyid: k.entry.keyid,
+      publicKey: k.key,
+      window: {
+        notBeforeMs: k.notBefore,
+        notAfterMs: k.notAfter,
+        untilMs: k.entry.status === 'active' ? null : k.entry.revocation_reason === 'compromised' ? k.compromisedSince : k.revokedAt,
+      },
+    });
+  }
+  return list.length === 0 ? null : list;
+}
+
+/**
+ * The production key source: the statement keys of the tenant's newest trust-verified
+ * key set, each with its window (`publishedKeyWindowsFor`, Task15i3). Task15i2 read the
+ * inventory rows (every key ever activated, valid at any time); the rows are not
+ * signed, so they no longer decide what /verify accepts. The pin comes from
+ * ATTESTA_TRUST_ROOT_KEYIDS, read per call.
+ */
+export function publishedKeySource(store: () => TrustStore, config: () => TrustConfig = () => trustConfigFromEnv(),
+  now: () => Date = () => new Date()): VerifyKeySource {
+  return async (tenantId) => publishedKeyWindowsFor(store(), tenantId, config(), now());
 }
 
 /** The anchor verify material, or null when anchoring is not configured. */
@@ -578,7 +618,15 @@ export async function verifyRange(deps: VerifyDeps, input: VerifyInput): Promise
     const options: VerifyChainOptions = { fromSeq };
     // No to_seq past an empty chain: verifyChain then reports the empty range itself.
     if (toSeq !== undefined) options.toSeq = toSeq;
-    if (published) options.keys = Object.fromEntries(published.map((k) => [k.keyid, k.publicKey]));
+    if (published) {
+      options.keys = Object.fromEntries(published.map((k) => [k.keyid, k.publicKey]));
+      // Windows from a verified key set (trust.md step 8); the test seam may supply keys without them.
+      const windowed = published.filter((k) => k.window !== undefined);
+      if (windowed.length > 0) {
+        options.keyWindows = Object.fromEntries(windowed.map((k) => [k.keyid, k.window as KeyWindow]));
+        options.now = deps.now();
+      }
+    }
     if (material) options.anchors = { ...material, windowMs: ANCHOR_WINDOW_MS, now: deps.now() };
     report = await deps.verifier(input.tenantId, options);
   } catch (err) {

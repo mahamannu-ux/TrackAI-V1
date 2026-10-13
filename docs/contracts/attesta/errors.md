@@ -80,8 +80,11 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_VERIFY_ENVELOPE_MISSING` | a record has no envelope |
 | `ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH` | the envelope payload is not the record's statement bytes |
 | `ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED` | no published keys were supplied, so signatures were not checked (the report is never `ok`) |
+| `ATTESTA_VERIFY_KEY_NOT_VALID_AT` | the signature verifies, but its key was not valid for this record (`trust.md` step 8): `recorded_at` outside `[not_before, not_after]`, or the key retired, revoked or past `not_after` and no verified anchor of the record inside the key's validity and before `revoked_at` (`compromised_since` for a compromised key) |  <!-- added 2026-10-13, Task15i3 -->
 
 *Added 2026-10-12 (founder decision in Task15d): one exact code per break kind of `verify-chain.ts`; earlier codes are unchanged. Task15f switches `BREAK_DETAIL_CODES` to these.*
+
+*Added 2026-10-13 (Task15i3, lead-approved): `ATTESTA_VERIFY_KEY_NOT_VALID_AT` (break kind `key_not_valid_at`). When a key's window cannot be checked (no anchor material, or only anchors the verifier cannot check), the report carries the warning `key_windows_not_checked` instead and is never `ok`.*
 
 ## Trust (A15.12)
 
