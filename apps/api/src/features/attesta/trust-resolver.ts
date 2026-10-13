@@ -30,8 +30,10 @@ import { KmsSigner, kmsCredentialsFromJson, AWS_CREDENTIAL_PREFIX, GCP_CREDENTIA
 import { LocalDevSigner, LOCAL_DEV_ADAPTER_NAME, type DevCredentialInput } from './signer-local-dev';
 import type { ResolvedSigner, SignerResolver } from './signer-resolver';
 import { PLATFORM_SCOPE } from './trust-contract';
-import { DIGEST_RE, UUID_RE } from './trust-documents';
+import { DIGEST_RE, UUID_RE, parseTrustDocument } from './trust-documents';
 import {
+  PlatformSignerError,
+  checkDocumentChain,
   pinnedAdapter,
   resolvePlatformSigner,
   type PlatformPurpose,
@@ -55,27 +57,78 @@ export interface ResolverOptions {
 
 /**
  * The builder's resolver: the tenant's one `active` statement key whose validity
- * covers now, through its adapter, pinned to the registered key. No such key → null.
- * An adapter that is not configured is a deployment fault → SigningUnavailable
- * (retryable; nothing signs meanwhile).
+ * covers now, **and** that the tenant's latest signed key set lists exactly so
+ * (active, statement, same SPKI and validity), with the root and key-set chain
+ * checked from the pin as verifiers check them. So a statement is only ever signed by
+ * a key a verifier will accept (Codex review: a crash between `activate` and
+ * `publish` must not let the builder sign statements that cannot verify).
+ * - no active key (or the key's validity does not cover now) → null
+ *   (ATTESTA_SIGNER_NO_CREDENTIAL, terminal until re-queued);
+ * - an active key not yet published, a key set that does not verify (expired after
+ *   30 days without `publish`, forged, missing) or an unconfigured adapter →
+ *   SigningUnavailable: the row stays pending with backoff and nothing signs until
+ *   `publish` runs (a transient state of every activation, so not terminal).
+ * The chain check is cached per (latest root digest, latest key-set digest).
  */
-export function inventorySignerResolver(store: TrustStore, adapters: TrustAdapters, options: ResolverOptions = {}): SignerResolver {
+export function inventorySignerResolver(store: TrustStore, adapters: TrustAdapters, config: TrustConfig,
+  options: ResolverOptions = {}): SignerResolver {
   const now = options.now ?? (() => new Date());
+  const verifiedChains = new Map<string, number>();
   return {
     async resolve(tenantId: string): Promise<ResolvedSigner | null> {
       if (typeof tenantId !== 'string' || !UUID_RE.test(tenantId)) return null;
-      const t = now().getTime();
+      const at = now();
+      const t = at.getTime();
       const active = (await store.tenantKeys(tenantId)).filter((k) =>
         k.tenantId === tenantId && k.purpose === 'statement' && k.status === 'active' &&
         Date.parse(k.notBefore) <= t && t < Date.parse(k.notAfter));
       if (active.length !== 1) return null; // none, or (impossible under the 0019 index) ambiguous: never guess
       const key = active[0];
+      const unpublished = (why: string) => new SigningUnavailable(`statement key ${key.keyid} is not usable yet: ${why}`);
+      if (config.pinnedRootKeyids.length === 0) throw unpublished('ATTESTA_TRUST_ROOT_KEYIDS is not set');
+      const roots = await store.documents(PLATFORM_SCOPE);
+      const keysets = await store.documents(tenantId);
+      if (roots.length === 0 || keysets.length === 0) throw unpublished('no key set has been published (attesta:keys publish)');
+      const latest = parseTrustDocument(keysets[keysets.length - 1].envelope);
+      const entry = latest.keys.get(key.keyid)?.entry;
+      if (!entry || entry.status !== 'active' || entry.purpose !== 'statement' || entry.spki_der_b64 !== key.spkiDer.toString('base64') ||
+          entry.not_before !== key.notBefore || entry.not_after !== key.notAfter) {
+        throw unpublished('the latest key set does not list it active (run attesta:keys publish)');
+      }
+      // Re-check the chain at most once a minute per document pair (expiry moves with time).
+      const cacheKey = `${roots[roots.length - 1].digest}|${latest.digest}`;
+      const checkedAt = verifiedChains.get(cacheKey);
+      if (checkedAt === undefined || t - checkedAt > 60_000 || t < checkedAt) {
+        const failure = checkDocumentChain(config, at, roots.map((d) => d.envelope), { tenantId, documents: keysets.map((d) => d.envelope) });
+        if (failure) throw unpublished(`the stored key sets do not verify (${failure})`);
+        if (verifiedChains.size > 1000) verifiedChains.clear();
+        verifiedChains.set(cacheKey, t);
+      }
       if (!Object.prototype.hasOwnProperty.call(adapters, key.adapterName)) {
         throw new SigningUnavailable(`signing adapter ${JSON.stringify(key.adapterName)} for key ${key.keyid} is not configured`);
       }
       return { adapter: pinnedAdapter(adapters[key.adapterName], key.credentialRef, key.spkiDer), credentialId: key.credentialRef };
     },
   };
+}
+
+/**
+ * SPKI DER of every key of `purpose` the latest chain-verified root lists, retired
+ * and revoked included (forward-only keeps them forever): the verification material
+ * for anchors (`anchorKeysSpkiDer`) and other platform artifacts. Callers rebuild it
+ * per verification run (not once per process), so anchors signed before and after a
+ * root import both stay checkable without a restart. No root, no pin or a chain that
+ * does not verify → PlatformSignerError.
+ */
+export async function platformPublicKeys(store: TrustStore, purpose: PlatformPurpose, config: TrustConfig,
+  options: ResolverOptions = {}): Promise<Buffer[]> {
+  if (config.pinnedRootKeyids.length === 0) throw new PlatformSignerError('ATTESTA_TRUST_ROOT_KEYIDS is required');
+  const roots = await store.documents(PLATFORM_SCOPE);
+  if (roots.length === 0) throw new PlatformSignerError('no root document has been imported (attesta:keys import-root)');
+  const failure = checkDocumentChain(config, (options.now ?? (() => new Date()))(), roots.map((d) => d.envelope));
+  if (failure) throw new PlatformSignerError(`the stored root documents do not verify from the pin (${failure})`);
+  const latest = parseTrustDocument(roots[roots.length - 1].envelope);
+  return [...latest.keys.values()].filter((k) => k.entry.purpose === purpose).map((k) => Buffer.from(k.entry.spki_der_b64, 'base64'));
 }
 
 /**

@@ -135,8 +135,10 @@ test('ported IT-A1b-03: two tenants keep their signers apart (no cross-use)', as
   await assert.rejects(w.reg(B, 'dev:a1-for-b'), refusedWith('ATTESTA_TRUST_INPUT_INVALID', /already registered/));
   const fresh = world();
   await assert.rejects(fresh.reg(B, 'dev:a1'), SigningRejected); // proof of possession signs as B: the credential is A's
+  await publishKeyset(w.ctx, A);
+  await publishKeyset(w.ctx, B);
   // Each tenant resolves only its own key.
-  const resolver = inventorySignerResolver(w.store, w.adapters, { now: w.now });
+  const resolver = inventorySignerResolver(w.store, w.adapters, w.ctx.config, { now: w.now });
   const ra = await resolver.resolve(A);
   const rb = await resolver.resolve(B);
   assert.equal(ra?.credentialId, 'dev:a1');
@@ -145,8 +147,6 @@ test('ported IT-A1b-03: two tenants keep their signers apart (no cross-use)', as
   // A's resolved adapter refuses B's credential name.
   await assert.rejects(ra!.adapter.sign(Buffer.from('x'), 'dev:b1', { requestId: 'r', tenantId: B }), SigningRejected);
   // A's key set never lists B's keys, and the reverse.
-  await publishKeyset(w.ctx, A);
-  await publishKeyset(w.ctx, B);
   const setA = parseTrustDocument((await w.store.documents(A))[0].envelope);
   const setB = parseTrustDocument((await w.store.documents(B))[0].envelope);
   assert.deepEqual([...setA.keys.keys()], [w.k.a1.keyid]);
@@ -174,7 +174,7 @@ test('ported A1b rotation: register, activate with --replace, publish; the old p
   assert.equal(v2.keys.get(w.k.a1.keyid)?.entry.status, 'retired');
   assert.equal(v2.keys.get(w.k.a1.keyid)?.entry.revoked_at, new Date(T0 + HOUR).toISOString());
   assert.equal(v2.keys.get(w.k.a2.keyid)?.entry.status, 'active');
-  const resolved = await inventorySignerResolver(w.store, w.adapters, { now: w.now }).resolve(A);
+  const resolved = await inventorySignerResolver(w.store, w.adapters, w.ctx.config, { now: w.now }).resolve(A);
   assert.equal(resolved?.credentialId, 'dev:a2'); // the retired key is never resolved again
   const published = await publishedKeysFor(w.store, A);
   assert.deepEqual(Object.keys(published.keys).sort(), [w.k.a1.keyid, w.k.a2.keyid].sort());
@@ -273,7 +273,7 @@ test('activation with and without --replace; expired, unknown and non-registered
   w.advance(400 * DAY);
   await assert.rejects(w.activate(A, w.k.a2.keyid, true), refusedWith(undefined, /expired/));
   // The resolver ignores the expired active key.
-  assert.equal(await inventorySignerResolver(w.store, w.adapters, { now: w.now }).resolve(A), null);
+  assert.equal(await inventorySignerResolver(w.store, w.adapters, w.ctx.config, { now: w.now }).resolve(A), null);
 });
 
 test('retire and revoke: forward only, compromised_since bounded, superseded may become compromised', async () => {
@@ -566,4 +566,31 @@ test('publish never extends a stored key set that no tenant_keyset key signed', 
   const signedBefore = w.adapter.calls.get('dev:keyset');
   await assert.rejects(publishKeyset(w.ctx, A), refusedWith('ATTESTA_TRUST_DOCUMENT_SIGNATURE_INVALID', /not signed by any tenant_keyset key/));
   assert.equal(w.adapter.calls.get('dev:keyset'), signedBefore);
+});
+
+test('publish stores nothing when the tenant keys changed while the key set was being signed (Codex review)', async () => {
+  const w = world();
+  await w.bootstrap();
+  await w.reg(A, 'dev:a1');
+  await w.activate(A, w.k.a1.keyid);
+  await publishKeyset(w.ctx, A);
+  // While the keyset key signs v2, an operator revokes a1 as compromised (committed meanwhile).
+  const inner = w.adapters['local-dev'];
+  let fired = false;
+  w.ctx.adapters = { 'local-dev': { ...inner, capabilities: () => inner.capabilities(), publicKey: (c) => inner.publicKey(c),
+    listCredentials: (t) => inner.listCredentials(t), health: () => inner.health(),
+    async sign(p, c, o) {
+      if (c === 'dev:keyset' && !fired) {
+        fired = true;
+        await applyTenantKeyCommand(w.ctx, 'revoke', { tenantId: A, keyid: w.k.a1.keyid, reason: 'compromised', compromisedSince: w.now().toISOString() }, 1);
+      }
+      return inner.sign(p, c, o);
+    } } };
+  w.advance(1000);
+  await assert.rejects(publishKeyset(w.ctx, A), refusedWith(undefined, /changed while the key set was being signed; nothing stored/));
+  assert.ok(fired);
+  assert.equal((await w.store.documents(A)).length, 1, 'the stale key set listing the compromised key as active was not stored');
+  await publishKeyset(w.ctx, A);
+  const v2 = parseTrustDocument((await w.store.documents(A))[1].envelope);
+  assert.equal(v2.keys.get(w.k.a1.keyid)?.entry.revocation_reason, 'compromised');
 });

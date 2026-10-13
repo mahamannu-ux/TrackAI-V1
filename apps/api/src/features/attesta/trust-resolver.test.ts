@@ -6,11 +6,11 @@
  * in for PostgreSQL (live: t15l2-trust-live-verify.ts).
  */
 import assert from 'node:assert/strict';
-import { createPublicKey, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto';
+import { createPublicKey, generateKeyPairSync, sign as cryptoSign, verify, type KeyObject } from 'node:crypto';
 import { test } from 'node:test';
 import { p256 } from '@noble/curves/nist.js';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
-import { AnchorConfigError, anchorFromEnv, anchorSignerFromEnv, platformAnchorSignerFromEnv } from './anchor-env';
+import { AnchorConfigError, anchorFromEnv, anchorSignerFromEnv, platformAnchorKeysFromEnv, platformAnchorSignerFromEnv } from './anchor-env';
 import { SigningRejected, SigningUnavailable, signVerified, type SigningAdapter } from './signer-contract';
 import { KmsSigner, type KmsProvider } from './signer-kms';
 import { LocalDevSigner } from './signer-local-dev';
@@ -24,12 +24,13 @@ import {
   memoryTrustStore,
   pinnedAdapter,
   planTenantKeyCommand,
+  publishKeyset,
   registerKey,
   type InventoryContext,
   type TrustAdapters,
   type TrustConfig,
 } from './trust-inventory';
-import { TrustConfigError, adaptersFromEnv, inventorySignerResolver, platformSigner, publishedKeysFor, trustConfigFromEnv } from './trust-resolver';
+import { TrustConfigError, adaptersFromEnv, inventorySignerResolver, platformPublicKeys, platformSigner, publishedKeysFor, trustConfigFromEnv } from './trust-resolver';
 import { verifyChainRows } from './verify-chain';
 
 const A = 'aaaaaaaa-0000-4000-8000-00000000000a';
@@ -95,11 +96,14 @@ async function kmsWorld(production: boolean) {
 
 test('inventorySignerResolver: null when there is no usable key; fail closed on a missing adapter', async () => {
   const w = await kmsWorld(true);
-  const resolver = inventorySignerResolver(w.store, w.adapters, { now: w.now });
+  const resolver = inventorySignerResolver(w.store, w.adapters, w.config, { now: w.now });
   assert.equal(await resolver.resolve(A), null, 'no key at all');
   await w.reg(A, 'a1');
   assert.equal(await resolver.resolve(A), null, 'registered only');
   await w.activate(A, w.k.a1.keyid);
+  // Crash window (Codex review): active but no key set published yet → not usable, retryable.
+  await assert.rejects(resolver.resolve(A), (e: unknown) => e instanceof SigningUnavailable && /no key set has been published/.test((e as Error).message));
+  await publishKeyset(w.ctx, A);
   const r = await resolver.resolve(A);
   assert.equal(r?.credentialId, 'aws-kms:a1');
   // It signs (production KMS adapter, pinned to the registered key) and signVerified accepts.
@@ -107,9 +111,9 @@ test('inventorySignerResolver: null when there is no usable key; fail closed on 
   assert.equal(keyidOf(signed.publicKeySpkiDer), w.k.a1.keyid);
   assert.equal(await resolver.resolve('not-a-uuid'), null);
   assert.equal(await resolver.resolve(B), null, 'another tenant never gets A\'s key');
-  assert.equal(await inventorySignerResolver(w.store, w.adapters, { now: () => new Date(T0 - DAY) }).resolve(A), null, 'not yet valid');
-  assert.equal(await inventorySignerResolver(w.store, w.adapters, { now: () => new Date(T0 + 400 * DAY) }).resolve(A), null, 'expired');
-  await assert.rejects(inventorySignerResolver(w.store, {}, { now: w.now }).resolve(A), SigningUnavailable);
+  assert.equal(await inventorySignerResolver(w.store, w.adapters, w.config, { now: () => new Date(T0 - DAY) }).resolve(A), null, 'not yet valid');
+  assert.equal(await inventorySignerResolver(w.store, w.adapters, w.config, { now: () => new Date(T0 + 400 * DAY) }).resolve(A), null, 'expired');
+  await assert.rejects(inventorySignerResolver(w.store, {}, w.config, { now: w.now }).resolve(A), SigningUnavailable);
   // Retired: never resolved again.
   w.advance(1000);
   await applyTenantKeyCommand(w.ctx, 'retire', { tenantId: A, keyid: w.k.a1.keyid }, 1);
@@ -120,9 +124,10 @@ test('pinned adapter: a KMS key swapped after registration cannot sign', async (
   const w = await kmsWorld(true);
   await w.reg(A, 'a1');
   await w.activate(A, w.k.a1.keyid);
+  await publishKeyset(w.ctx, A);
   // The credentials file now points the same credential at another key (with a matching pin).
   const swapped = new KmsSigner({ provider: w.kms, credentials: [{ ...kmsCredential('a1', A, w.k.b1), keyReference: 'ref-b1' }] });
-  const r = await inventorySignerResolver(w.store, { 'kms-aws': swapped }, { now: w.now }).resolve(A);
+  const r = await inventorySignerResolver(w.store, { 'kms-aws': swapped }, w.config, { now: w.now }).resolve(A);
   await assert.rejects(r!.adapter.publicKey('aws-kms:a1'), /differs from the key registered/);
   await assert.rejects(signVerified(r!.adapter, Buffer.from('s'), { credentialId: 'aws-kms:a1', tenantId: A, requestId: 'x' }), SigningRejected);
   const pinned = pinnedAdapter(w.adapters['kms-aws'], 'aws-kms:a1', w.k.a1.spki);
@@ -237,4 +242,60 @@ test('a running anchor signer follows the latest root: a revoked anchor key stop
   await importRoot(w.ctx, await w.sign(draft.body), 2);
   await assert.rejects(signer.sign(Buffer.from('root-2')), (e: unknown) => e instanceof Error && (e as { code?: string }).code === 'ATTESTA_SIGNER_REJECTED');
   await assert.rejects(signer.publicKeySpkiDer(), (e: unknown) => (e as { code?: string }).code === 'ATTESTA_SIGNER_REJECTED');
+});
+
+test('inventorySignerResolver: a rotation that crashed before publish signs nothing until the key set lists the new key', async () => {
+  const w = await kmsWorld(true);
+  const kms = w.kms;
+  const a2 = newKey();
+  kms.keys.set('ref-a2', a2);
+  const adapters = { 'kms-aws': new KmsSigner({ provider: kms, credentials: [...w.creds, kmsCredential('a2', A, a2)] }) };
+  w.ctx.adapters = adapters;
+  await w.reg(A, 'a1');
+  await w.activate(A, w.k.a1.keyid);
+  await publishKeyset(w.ctx, A);
+  const resolver = inventorySignerResolver(w.store, adapters, w.config, { now: w.now });
+  assert.equal((await resolver.resolve(A))?.credentialId, 'aws-kms:a1');
+  w.advance(1000);
+  await w.reg(A, 'a2');
+  await applyTenantKeyCommand(w.ctx, 'activate', { tenantId: A, keyid: a2.keyid, replace: true }, 2);
+  // "crash": no publish. Neither the retired key nor the unpublished new key signs.
+  await assert.rejects(resolver.resolve(A), (e: unknown) => e instanceof SigningUnavailable && /does not list it active/.test((e as Error).message));
+  await publishKeyset(w.ctx, A);
+  assert.equal((await resolver.resolve(A))?.credentialId, 'aws-kms:a2');
+  // A key set that no longer verifies (expired: no publish for 31 days) stops signing too.
+  w.advance(31 * DAY);
+  await assert.rejects(inventorySignerResolver(w.store, adapters, w.config, { now: w.now }).resolve(A), /do not verify \(ATTESTA_TRUST_DOCUMENT_EXPIRED\)/);
+  // Without a pin nothing resolves.
+  await assert.rejects(inventorySignerResolver(w.store, adapters, { ...w.config, pinnedRootKeyids: [] }).resolve(A), SigningUnavailable);
+});
+
+test('anchor verification keys: every anchor key the latest root lists, so anchors before and after a rotation verify', async () => {
+  const w = await kmsWorld(true);
+  const anchor2 = newKey();
+  w.kms.keys.set('ref-anchor2', anchor2);
+  const adapters = { 'kms-aws': new KmsSigner({ provider: w.kms, credentials: [...w.creds, kmsCredential('anchor2', ATTESTA_PLATFORM_TENANT_ID, anchor2)] }) };
+  w.ctx.adapters = adapters;
+  const env = { NODE_ENV: 'production', ATTESTA_TRUST_ROOT_KEYIDS: w.k.root.keyid };
+  const deps = { store: w.store, adapters, now: w.now };
+  const signer = await platformAnchorSignerFromEnv(env, deps);
+  const before = Buffer.from('root-before');
+  const sigBefore = await signer.sign(before);
+  // Rotation without a restart: anchor2 added, the first anchor key retired.
+  w.advance(60_000);
+  await registerKey(w.ctx, { tenantId: null, purpose: 'anchor', adapterName: 'kms-aws', credentialRef: 'aws-kms:anchor2' });
+  const draft = await exportRootDraft(w.ctx, { add: [anchor2.keyid], retire: [w.k.anchor.keyid] });
+  await importRoot(w.ctx, await w.sign(draft.body), 2);
+  const after = Buffer.from('root-after');
+  const sigAfter = await signer.sign(after);
+  assert.equal(keyidOf(await signer.publicKeySpkiDer()), anchor2.keyid, 'the running signer moved to the new key');
+  // Material rebuilt now (same process) and again as after a restart: both signatures verify with it.
+  for (const keys of [await platformAnchorKeysFromEnv(env, deps), await platformPublicKeys(w.store, 'anchor', w.config, { now: w.now })]) {
+    assert.deepEqual(keys.map((k) => keyidOf(k)).sort(), [w.k.anchor.keyid, anchor2.keyid].sort());
+    const ok = (data: Buffer, sig: Buffer) => keys.some((k) => verify('sha256', data, { key: createPublicKey({ key: k, format: 'der', type: 'spki' }), dsaEncoding: 'der' }, sig));
+    assert.ok(ok(before, sigBefore) && ok(after, sigAfter));
+  }
+  // anchorFromEnv's production verify material is that list, not a startup snapshot of one key.
+  await assert.rejects(platformAnchorKeysFromEnv({ NODE_ENV: 'production' }, deps), AnchorConfigError);
+  await assert.rejects(platformPublicKeys(memoryTrustStore(), 'anchor', w.config), /no root document/);
 });

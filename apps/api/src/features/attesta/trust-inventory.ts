@@ -134,6 +134,8 @@ export interface TrustStore {
   keyidRegistered(keyid: string): Promise<boolean>;
   insertKey(key: NewInventoryKey): Promise<InventoryKey>;
   tenantKeys(tenantId: string): Promise<InventoryKey[]>;
+  /** tenantKeys under row locks (SELECT … FOR UPDATE) until the transaction ends: key updates wait. */
+  lockTenantKeys(tenantId: string): Promise<InventoryKey[]>;
   platformKeys(): Promise<InventoryKey[]>;
   /** Compare-and-set: refused when the row's status or revocation changed since `key` was read. */
   updateKey(key: InventoryKey, change: KeyStatusChange): Promise<void>;
@@ -952,6 +954,13 @@ export async function publishKeyset(ctx: InventoryContext, tenantId: string): Pr
   if (failure) throw refuse(`the signed key set does not verify (${failure}); nothing stored`, failure);
   const doc = parseTrustDocument(envelope);
   await ctx.store.transaction(async (tx) => {
+    // Codex review: a revoke or replace that committed while this key set was being
+    // signed must not be published over. Lock the tenant's keys (key updates wait for
+    // this transaction) and require exactly the planned key state, else store nothing.
+    const current = canonicalize(publishable(await tx.lockTenantKeys(tenantId)).map(entryOf));
+    if (current !== canonicalize(plan.body.keys)) {
+      throw refuse(`the keys of tenant ${tenantId} changed while the key set was being signed; nothing stored, run publish again`);
+    }
     await tx.insertDocument({ scope: tenantId, kind: 'keyset', version: doc.body.version, digest: doc.digest, envelope });
     await tx.insertEvent({ tenantId, keyId: null, action: 'publish', actor: ctx.actor, reason: null,
       documentVersion: doc.body.version, requestId: ctx.requestId });
@@ -1027,6 +1036,10 @@ export function pgTrustStore(db: TrustDb): TrustStore {
     async tenantKeys(tenantId) {
       return (await db.execute(sql`select ${KEY_COLUMNS('t')} from attesta_tenant_keys t
         where t.tenant_id = ${tenantId}::uuid order by t.not_before, t.keyid`)).rows.map(toKey);
+    },
+    async lockTenantKeys(tenantId) {
+      return (await db.execute(sql`select ${KEY_COLUMNS('t')} from attesta_tenant_keys t
+        where t.tenant_id = ${tenantId}::uuid order by t.not_before, t.keyid for update of t`)).rows.map(toKey);
     },
     async platformKeys() {
       return (await db.execute(sql`select ${KEY_COLUMNS('p')} from attesta_platform_keys p order by p.not_before, p.keyid`)).rows.map(toKey);
@@ -1121,6 +1134,9 @@ export function memoryTrustStore(state: MemoryTrustState = { keys: [], events: [
     },
     async tenantKeys(tenantId) {
       return state.keys.filter((k) => k.tenantId === tenantId).map(withEver);
+    },
+    async lockTenantKeys(tenantId) {
+      return store.tenantKeys(tenantId);
     },
     async platformKeys() {
       return state.keys.filter((k) => k.tenantId === null).map(withEver);

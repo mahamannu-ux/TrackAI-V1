@@ -134,7 +134,7 @@ flowchart LR
 | Task15j-attesta-verifier | A15.10 | Muse | 0.08× | after 15i2 (pack format) |
 | Task15k-attesta-console | A15.11 | Muse | 0.08× | after 15i (read routes) and the lead's design note |
 | Task15l-trust-layer | A15.12 part 1: contract PR (checkpoint 2), verifier, document library, offline root tool | Claude | 0.18× (actual about 0.25× with two review rounds) | `docs/prompts/Task15/NEXT_CHAT_Task15l-trust-layer_PROMPT.md` · handoff `docs/handoffs/Task15l-trust-layer_HANDOFF.md` |
-| Task15l2-trust-inventory | A15.12 part 2: migration 0019 (four tables), resolvers, `anchor-env` production branch, online `attesta:keys` CLIs, IT-T15l-01…04 | Claude | 0.2× (actual about 0.25× with one review round) | `docs/prompts/Task15/NEXT_CHAT_Task15l2-trust-inventory_PROMPT.md` · handoff `docs/handoffs/Task15l2-trust-inventory_HANDOFF.md` |
+| Task15l2-trust-inventory | A15.12 part 2: migration 0019 (four tables), resolvers, `anchor-env` production branch, online `attesta:keys` CLIs, IT-T15l-01…04 | Claude | 0.2× (actual about 0.3× with the subagent and Codex rounds) | `docs/prompts/Task15/NEXT_CHAT_Task15l2-trust-inventory_PROMPT.md` · handoff `docs/handoffs/Task15l2-trust-inventory_HANDOFF.md` |
 | Task15m-attesta-github-check | A15.14 | Muse (after the lead's design note) | 0.05× | after 15i |
 
 ## 6. Invariants (acceptance criteria for every session; AGENTS.md §9 items 16–21)

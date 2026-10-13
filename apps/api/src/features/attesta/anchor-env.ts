@@ -27,8 +27,8 @@ import { DualAnchor, type StoredAnchorKeys } from './anchor-dual';
 import { RekorAnchor, loadLogPublicKey } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
 import { LocalDevSigner } from './signer-local-dev';
-import { PlatformSignerError, pgTrustStore, type TrustAdapters, type TrustDb, type TrustStore } from './trust-inventory';
-import { TrustConfigError, adaptersFromEnv, platformSigner, trustConfigFromEnv } from './trust-resolver';
+import { PlatformSignerError, pgTrustStore, type TrustAdapters, type TrustConfig, type TrustDb, type TrustStore } from './trust-inventory';
+import { TrustConfigError, adaptersFromEnv, platformPublicKeys, platformSigner, trustConfigFromEnv } from './trust-resolver';
 
 /** A configuration problem: the worker must not start. Message names variables only. */
 export class AnchorConfigError extends Error {
@@ -92,6 +92,30 @@ export function anchorSignerFromEnv(env: NodeJS.ProcessEnv = process.env, read: 
   return anchorSignerFromAdapter(adapter, credentialId);
 }
 
+async function inventoryFromEnv(env: NodeJS.ProcessEnv, deps: PlatformAnchorDeps): Promise<{ config: TrustConfig; store: TrustStore }> {
+  const config = trustConfigFromEnv(env);
+  if (config.pinnedRootKeyids.length === 0) throw new AnchorConfigError('ATTESTA_TRUST_ROOT_KEYIDS is required');
+  const store = deps.store ?? pgTrustStore((await import('../../core/db')).db as unknown as TrustDb);
+  return { config, store };
+}
+
+/**
+ * Production verification material: every `anchor` key the latest chain-verified
+ * root lists (current, retired and revoked), so anchors signed before and after a
+ * rotation are both checkable. Built per call: a verifier calls it (or
+ * `platformPublicKeys`) for each run rather than keeping a startup snapshot.
+ */
+export async function platformAnchorKeysFromEnv(env: NodeJS.ProcessEnv = process.env, deps: PlatformAnchorDeps = {}): Promise<Buffer[]> {
+  try {
+    const { config, store } = await inventoryFromEnv(env, deps);
+    return await platformPublicKeys(store, 'anchor', config, { now: deps.now });
+  } catch (err) {
+    if (err instanceof AnchorConfigError) throw err;
+    if (err instanceof TrustConfigError || err instanceof PlatformSignerError) throw new AnchorConfigError(err.message);
+    throw new AnchorConfigError('the platform anchor keys cannot be read from the trust inventory');
+  }
+}
+
 export interface PlatformAnchorDeps {
   read?: ReadFile;
   /** Test seams; production reads the database of DATABASE_URL and builds adapters from the environment. */
@@ -112,10 +136,8 @@ export interface PlatformAnchorDeps {
 export async function platformAnchorSignerFromEnv(env: NodeJS.ProcessEnv = process.env, deps: PlatformAnchorDeps = {}): Promise<AnchorSigner> {
   let resolve: () => Promise<AnchorSigner>;
   try {
-    const config = trustConfigFromEnv(env);
-    if (config.pinnedRootKeyids.length === 0) throw new AnchorConfigError('ATTESTA_TRUST_ROOT_KEYIDS is required');
+    const { config, store } = await inventoryFromEnv(env, deps);
     const adapters = deps.adapters ?? await adaptersFromEnv(env, { read: deps.read ?? defaultRead });
-    const store = deps.store ?? pgTrustStore((await import('../../core/db')).db as unknown as TrustDb);
     resolve = async () => {
       const signer = await platformSigner(store, adapters, 'anchor', config, { now: deps.now });
       return anchorSignerFromAdapter(signer.adapter, signer.credentialId);
@@ -218,6 +240,13 @@ export async function anchorFromEnv(
   const tsa = new TsaAnchor({ url: tsaUrl, trustAnchorsPem: anchorsPem, fetch: opts.tsaFetch });
   return {
     anchor: new DualAnchor(rekor, tsa),
-    verify: { rekorLogKey, rekorLogIndexOffsets: logIndexOffsets, anchorKeysSpkiDer: [await signer.publicKeySpkiDer()], tsaAnchors },
+    verify: {
+      rekorLogKey, rekorLogIndexOffsets: logIndexOffsets, tsaAnchors,
+      // Production: every anchor key the latest verified root lists (rotation keeps old anchors checkable);
+      // rebuilt on each anchorFromEnv call. Development: the one dev key.
+      anchorKeysSpkiDer: isProduction(env) && !opts.signer
+        ? await platformAnchorKeysFromEnv(env, { read, ...opts.platform })
+        : [await signer.publicKeySpkiDer()],
+    },
   };
 }

@@ -35,7 +35,7 @@ import { ingestMetricsBatch } from '../telemetry/service';
 import type { GitAiMetricEvent } from '../telemetry/types';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
 import { DualAnchor } from './anchor-dual';
-import { platformAnchorSignerFromEnv } from './anchor-env';
+import { platformAnchorKeysFromEnv, platformAnchorSignerFromEnv } from './anchor-env';
 import { RekorAnchor } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
 import { runAnchorPass } from './anchor-worker';
@@ -183,11 +183,12 @@ async function makeWorld() {
       new RekorAnchor({ url: 'http://rekor.test', signer, fetch: rekor.fetch, logPublicKeyPem: rekorLog.export({ type: 'spki', format: 'pem' }).toString(), production: false }),
       new TsaAnchor({ url: TSA_URL, trustAnchorsPem: tsa.anchorsPem, fetch: tsa.fetch }));
   };
-  const material = (): AnchorCheckOptions => ({
-    rekorLogKey: rekorLog, anchorKeysSpkiDer: [createPublicKey(k.anchor.pubPem).export({ type: 'spki', format: 'der' }) as Buffer],
+  // Verification material through the production path: every anchor key the latest verified root lists.
+  const material = async (): Promise<AnchorCheckOptions> => ({
+    rekorLogKey: rekorLog, anchorKeysSpkiDer: await platformAnchorKeysFromEnv(env),
     tsaAnchors: loadTrustAnchors(tsa.anchorsPem), now: new Date(),
   });
-  const resolver = inventorySignerResolver(store, adapters);
+  const resolver = inventorySignerResolver(store, adapters, config);
   /** One new statement for `t`: Task2 ingestion → builder pass (inventory resolver) → anchor pass (inventory anchor key). */
   const anchorNow = async (t: Tenant) => {
     rekor.clock = Math.floor(Date.now() / 1000);
@@ -234,11 +235,13 @@ async function it01(w: World): Promise<Rec> {
   check(pop.rows[0].status === 'registered' && /^sha256:[0-9a-f]{64}$/.test(pop.rows[0].pop_digest), 'stored as registered with its proof digest');
   check(await w.resolver.resolve(w.a.tenantId) === null, 'a registered key is not resolved');
   await w.apply('activate', '--tenant', w.a.tenantId, '--keyid', w.k.a1.keyid);
+  const window = await w.resolver.resolve(w.a.tenantId).then(() => 'resolved', (e: Error) => e.name);
+  check(window === 'SigningUnavailable', `an activated key signs nothing until it is published: ${window}`);
   await w.apply('publish', '--tenant', w.a.tenantId);
   const s1 = await w.statement(w.a);
   check(s1.keyid === w.k.a1.keyid, 'the builder signed with the inventory key');
   const published = await publishedKeysFor(store, w.a.tenantId);
-  const report = await verifyChain(db, w.a.tenantId, { keys: published.keys, anchors: w.material() });
+  const report = await verifyChain(db, w.a.tenantId, { keys: published.keys, anchors: await w.material() });
   check(report.ok && report.signatures === 'checked' && report.anchors.status === 'checked' && report.anchors.anchored === 1,
     `verifyChain: ${JSON.stringify({ breaks: report.breaks.slice(0, 3), anchors: report.anchors, signatures: report.signatures })}`);
   const v = await w.verifyStatement(w.a, s1);
@@ -263,6 +266,8 @@ async function it02(w: World, s1: Rec): Promise<{ s2: Rec }> {
   await sleep(2500); // the anchor times lie before the rotation instant
   const rot = await w.apply('activate', '--tenant', w.a.tenantId, '--keyid', w.k.a2.keyid, '--replace');
   check(/active -> retired/.test(rot.out) && /registered -> active/.test(rot.out), 'activate --replace retires the old key in the same transaction');
+  const crashWindow = await w.resolver.resolve(w.a.tenantId).then(() => 'resolved', (e: Error) => e.name);
+  check(crashWindow === 'SigningUnavailable', `between --replace and publish nothing signs: ${crashWindow}`);
   await w.apply('publish', '--tenant', w.a.tenantId);
   const resolved = await w.resolver.resolve(w.a.tenantId);
   check(resolved?.credentialId === 'dev:a2', 'the retired key is never resolved for new signing');
@@ -275,7 +280,7 @@ async function it02(w: World, s1: Rec): Promise<{ s2: Rec }> {
   check(old.status === 'verified', `old statement with its anchor time: ${old.code}`);
   check(oldNoEvidence.code === 'ATTESTA_TRUST_KEY_NOT_VALID_AT', `old statement without evidence: ${oldNoEvidence.code}`);
   check(fresh.status === 'verified', `new statement: ${fresh.code}`);
-  const report = await verifyChain(db, w.a.tenantId, { keys: (await publishedKeysFor(store, w.a.tenantId)).keys, anchors: w.material() });
+  const report = await verifyChain(db, w.a.tenantId, { keys: (await publishedKeysFor(store, w.a.tenantId)).keys, anchors: await w.material() });
   check(report.ok && report.signatures === 'checked', 'verifyChain checks both keys');
   console.log(`it02_old_with_anchor_time=${old.code} old_without=${oldNoEvidence.code} new=${fresh.code}`);
   console.log('IT-T15l-02=passed');
@@ -482,9 +487,9 @@ async function it04(w: World, s1: Rec): Promise<void> {
   await w.apply('activate', '--tenant', B, '--keyid', w.k.b1.keyid);
   const listB = await w.cli('list', '--tenant', B);
   check(listB.out.includes(w.k.b1.keyid) && !listB.out.includes(w.k.a1.keyid) && !listB.out.includes(w.k.a2.keyid), 'B lists only its own keys');
+  await w.apply('publish', '--all-tenants');
   const rb = await w.resolver.resolve(B);
   check(rb?.credentialId === 'dev:b1', 'B resolves only its own key');
-  await w.apply('publish', '--all-tenants');
   const setsA = (await w.docs(A)).map(parseTrustDocument);
   const setsB = (await w.docs(B)).map(parseTrustDocument);
   check(setsA.every((d) => !d.keys.has(w.k.b1.keyid)) && setsB.every((d) => !d.keys.has(w.k.a1.keyid) && !d.keys.has(w.k.a2.keyid)),
