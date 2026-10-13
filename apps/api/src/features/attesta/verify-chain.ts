@@ -28,6 +28,17 @@
  *     verifyStoredAnchor. Missing key material is NOT_CHECKABLE, never ok; TSA
  *     revocation `unknown` is a warning, not a break (Task15f decision 3). Report
  *     version 2 adds the `anchors` summary (version 1 had no such field).
+ *  6. Key validity windows (Task15i3; trust.md "Verification" step 8, "Consumers":
+ *     `signedAt` = recorded_at, time evidence = the record's verified anchor time).
+ *     With `keyWindows`, a record whose signature verified with a listed key also
+ *     needs recorded_at in [not_before, not_after] (and not after now + skew), and,
+ *     when the key is retired, revoked or past not_after at `now`, an anchor that
+ *     verifyStoredAnchor accepted, inside [not_before, not_after] and before
+ *     `untilMs` (revoked_at; compromised_since for a compromised key). Else the
+ *     break `key_not_valid_at`. A failed or unverified anchor is never time
+ *     evidence. Without anchor material, or with only not-checkable anchors, such
+ *     a record adds the warning `key_windows_not_checked` and the report is never
+ *     `ok` (SushiCorp TR-1: unknown is never clean, and is not reported as revoked).
  */
 import type { KeyObject } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
@@ -60,6 +71,7 @@ export type ChainBreakKind =
   | 'envelope_payload_mismatch'
   | 'signature_invalid'
   | 'key_unknown'
+  | 'key_not_valid_at'
   | 'signatures_not_checked'
   | 'merkle_proof_invalid'
   | 'anchor_invalid'
@@ -74,6 +86,7 @@ export type AttestaVerifyCode =
   | 'ATTESTA_VERIFY_NOT_CANONICAL'
   | 'ATTESTA_VERIFY_SIGNATURE_INVALID'
   | 'ATTESTA_VERIFY_KEY_UNKNOWN'
+  | 'ATTESTA_VERIFY_KEY_NOT_VALID_AT'
   | 'ATTESTA_VERIFY_NOT_CHECKABLE'
   | 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID'
   | 'ATTESTA_VERIFY_ANCHOR_MISSING'
@@ -114,6 +127,7 @@ export const BREAK_DETAIL_CODES: Readonly<Record<ChainBreakKind, AttestaVerifyCo
   envelope_payload_mismatch: 'ATTESTA_VERIFY_ENVELOPE_PAYLOAD_MISMATCH',
   signature_invalid: 'ATTESTA_VERIFY_SIGNATURE_INVALID',
   key_unknown: 'ATTESTA_VERIFY_KEY_UNKNOWN',
+  key_not_valid_at: 'ATTESTA_VERIFY_KEY_NOT_VALID_AT',
   signatures_not_checked: 'ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED',
   merkle_proof_invalid: 'ATTESTA_VERIFY_MERKLE_PROOF_INVALID',
   anchor_invalid: 'ATTESTA_VERIFY_ANCHOR_INVALID',
@@ -209,6 +223,17 @@ export interface StoredRecordAnchor {
   tsaTokenB64: string | null;
 }
 
+/**
+ * When a statement key could sign (trust.md step 8), from the trust-verified key set.
+ * `untilMs`: revoked_at for a retired or superseded key, compromised_since for a
+ * compromised one, null while the key is active.
+ */
+export interface KeyWindow {
+  notBeforeMs: number;
+  notAfterMs: number;
+  untilMs: number | null;
+}
+
 /** Anchor material: the pinned keys and trust anchors, the window and the clock. */
 export interface AnchorCheckOptions extends StoredAnchorKeys {
   windowMs?: number;
@@ -230,6 +255,10 @@ export interface VerifyRowsOptions {
   maxBreaks?: number;
   /** Check anchors with this material; without it the report says anchors were not checked. */
   anchors?: AnchorCheckOptions;
+  /** Key validity windows by keyid (Task15i3); without them signatures are checked at any time. */
+  keyWindows?: Record<string, KeyWindow>;
+  /** The verifier's clock for key windows (default: anchors.now, else the current time). */
+  now?: Date;
 }
 
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
@@ -326,11 +355,12 @@ function checkStatement(row: LedgerRow, out: Collector): void {
   }
 }
 
-function checkEnvelope(row: LedgerRow, keys: Record<string, KeyObject> | undefined, out: Collector): void {
+/** Returns the keyid whose signature verified, or null. */
+function checkEnvelope(row: LedgerRow, keys: Record<string, KeyObject> | undefined, out: Collector): string | null {
   const env = row.envelope;
   if (env === null || env === undefined) {
     out.add(row.seq, 'envelope_missing');
-    return;
+    return null;
   }
   let consistent = false;
   if (isObject(env) && typeof env.payload === 'string' && BASE64_RE.test(env.payload) &&
@@ -344,17 +374,51 @@ function checkEnvelope(row: LedgerRow, keys: Record<string, KeyObject> | undefin
   }
   if (!consistent) {
     out.add(row.seq, 'envelope_payload_mismatch');
-    return;
+    return null;
   }
-  if (!keys) return;
+  if (!keys) return null;
   const keyid = row.envelopeKeyid ?? '';
   if (!Object.prototype.hasOwnProperty.call(keys, keyid)) {
     out.add(row.seq, 'key_unknown');
-    return;
+    return null;
   }
   if (!verifyEnvelope(env as unknown as DsseEnvelope, { [keyid]: keys[keyid] }).ok) {
     out.add(row.seq, 'signature_invalid');
+    return null;
   }
+  return keyid;
+}
+
+/** What the anchor check learned about one record: its verified anchor times. */
+interface RecordAnchorFacts {
+  /** Times (ms) of anchors verifyStoredAnchor accepted and bound to this record. */
+  validTimes: number[];
+  /** Some stored anchor could not be checked with the supplied material. */
+  notCheckable: boolean;
+}
+
+/**
+ * trust.md step 8 for one record whose signature verified with `window`'s key.
+ * `signedAt` (recorded_at) alone suffices only while the key is active and `now` is
+ * inside its validity; otherwise a verified anchor inside the validity and before
+ * `untilMs` must exist. 'unknown' = the evidence could not be checked.
+ */
+function keyWindowVerdict(row: LedgerRow, w: KeyWindow, nowMs: number, facts: RecordAnchorFacts | null): 'ok' | 'broken' | 'unknown' {
+  const recorded = Date.parse(row.recordedAt);
+  if (Number.isNaN(recorded) || recorded < w.notBeforeMs || recorded > w.notAfterMs || recorded > nowMs + ANCHOR_TIME_SKEW_MS) {
+    return 'broken';
+  }
+  const usableNow = w.untilMs === null && nowMs >= w.notBeforeMs - ANCHOR_TIME_SKEW_MS && nowMs <= w.notAfterMs + ANCHOR_TIME_SKEW_MS;
+  if (usableNow) return 'ok';
+  const until = w.untilMs;
+  // No anchor can save a record stamped at or after the cut-off plus the skew: a valid anchor
+  // is never earlier than recorded_at − skew (AnchorChecker), so this is a break, not "unknown".
+  if (until !== null && recorded >= until + ANCHOR_TIME_SKEW_MS) return 'broken';
+  if (facts === null) return 'unknown';
+  // Inside the key's validity and strictly before `untilMs`.
+  const saved = facts.validTimes.some((t) => t >= w.notBeforeMs && t <= w.notAfterMs && (until === null || t < until));
+  if (saved) return 'ok';
+  return facts.notCheckable ? 'unknown' : 'broken';
 }
 
 
@@ -381,7 +445,7 @@ class AnchorChecker {
   }
 
   /** One stored row: bound to this record, then verified offline. */
-  private checkOne(row: LedgerRow, a: StoredRecordAnchor): 'valid' | 'not_checkable' | ChainBreakKind {
+  private checkOne(row: LedgerRow, a: StoredRecordAnchor): number | 'not_checkable' | ChainBreakKind {
     const b = a.batch;
     const merkle = isObject(a.proof) && isObject(a.proof.merkle) ? a.proof.merkle : null;
     if (!b || b.tenantId !== this.tenantId || a.batchId !== `${this.tenantId}:${b.seqFrom}-${b.seqTo}` ||
@@ -402,18 +466,21 @@ class AnchorChecker {
     // anchor time before recorded_at means recorded_at is not what was anchored.
     const at = anchorTimeMs(a);
     const recorded = Date.parse(row.recordedAt);
-    if (at === null || Number.isNaN(recorded) || at < recorded - ANCHOR_TIME_SKEW_MS) return 'anchor_invalid';
-    return 'valid';
+    if (at === null || Number.isNaN(at) || Number.isNaN(recorded) || at < recorded - ANCHOR_TIME_SKEW_MS) return 'anchor_invalid';
+    return at;
   }
 
-  check(row: LedgerRow, out: Collector): void {
+  check(row: LedgerRow, out: Collector): RecordAnchorFacts {
     const valid = new Set<string>();
+    const validTimes: number[] = [];
     let broken = false;
     let notCheckable = false;
     for (const a of row.anchors ?? []) {
       const r = this.checkOne(row, a);
-      if (r === 'valid') valid.add(a.anchorType);
-      else if (r === 'not_checkable') notCheckable = true;
+      if (typeof r === 'number') {
+        valid.add(a.anchorType);
+        validTimes.push(r);
+      } else if (r === 'not_checkable') notCheckable = true;
       else {
         out.add(row.seq, r);
         broken = true;
@@ -438,6 +505,7 @@ class AnchorChecker {
     }
     this.summary[status] += 1;
     this.opts.onRecord?.(row.seq, status);
+    return { validTimes, notCheckable };
   }
 }
 
@@ -467,6 +535,10 @@ export async function verifyChainRows(
   let tailHash: string | null = null;
   const lastWritten = head ? head.next_seq - 1 : null;
   const anchors = opts.anchors ? new AnchorChecker(opts.anchors, tenantId) : null;
+  const windows = opts.keyWindows;
+  const nowMs = (opts.now ?? opts.anchors?.now ?? new Date()).getTime();
+  if (windows && !Number.isFinite(nowMs)) throw new RangeError('key windows need a valid now');
+  let windowsUnknown = false;
 
   for await (const row of rows) {
     if (row.seq < fromSeq || row.seq > toSeq) {
@@ -498,8 +570,14 @@ export async function verifyChainRows(
     if (link !== null && row.prevHash !== link) out.add(row.seq, 'link_mismatch');
     checkRecordContent(row, tenantId, out);
     checkStatement(row, out);
-    checkEnvelope(row, opts.keys, out);
-    anchors?.check(row, out);
+    const signedBy = checkEnvelope(row, opts.keys, out);
+    // Anchors run first: their verified times are the key windows' time evidence.
+    const facts = anchors ? anchors.check(row, out) : null;
+    if (windows && signedBy !== null && Object.prototype.hasOwnProperty.call(windows, signedBy)) {
+      const verdict = keyWindowVerdict(row, windows[signedBy], nowMs, facts);
+      if (verdict === 'broken') out.add(row.seq, 'key_not_valid_at');
+      else if (verdict === 'unknown') windowsUnknown = true;
+    }
 
     if (lastWritten !== null && row.seq === lastWritten) tailHash = row.recordHash;
     link = row.recordHash;
@@ -508,6 +586,7 @@ export async function verifyChainRows(
   }
   if (outside > 0) warnings.push('rows_outside_range_ignored');
   if (anchors?.revocationUnknown) warnings.push('tsa_revocation_unknown');
+  if (windowsUnknown) warnings.push('key_windows_not_checked');
   if (!opts.keys && checked > 0) out.add(fromSeq, 'signatures_not_checked');
 
   if (head && lastWritten !== null) {
@@ -523,7 +602,8 @@ export async function verifyChainRows(
     tenant_id: tenantId,
     range: { from_seq: fromSeq, to_seq: toSeq },
     checked,
-    ok: out.total === 0,
+    // A key window that could not be checked is never a pass (TR-1), nor a break.
+    ok: out.total === 0 && !windowsUnknown,
     chain_intact: out.chainBreaks === 0,
     breaks: out.breaks,
     breaks_truncated: out.total > out.breaks.length,
@@ -553,6 +633,14 @@ export interface VerifyChainOptions {
   keys?: Record<string, KeyObject>;
   /** Check anchors (Task15f2); without it the report says anchors were not checked. */
   anchors?: AnchorCheckOptions;
+  /**
+   * Key validity windows by keyid (Task15i3, trust.md step 8); applied only to
+   * records whose signature verified with a listed key. Needs anchor material for
+   * keys that are no longer usable (else `key_windows_not_checked`, never ok).
+   */
+  keyWindows?: Record<string, KeyWindow>;
+  /** Clock for key windows (default: anchors.now, else the current time). */
+  now?: Date;
   pageSize?: number;
   maxBreaks?: number;
 }
@@ -715,7 +803,7 @@ async function verifySnapshot(
 
   const report = await verifyChainRows(pages(db, tenantId, fromSeq, toSeq, pageSize, options.anchors !== undefined), {
     tenantId, fromSeq, toSeq, expectedPrevHash, head, keys: options.keys, maxBreaks: options.maxBreaks,
-    anchors: options.anchors,
+    anchors: options.anchors, keyWindows: options.keyWindows, now: options.now,
   });
   const prepend = (seq: number, kind: ChainBreakKind) => {
     report.breaks.unshift({ seq, kind, detail_code: BREAK_DETAIL_CODES[kind] });

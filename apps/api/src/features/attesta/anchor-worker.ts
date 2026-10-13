@@ -26,9 +26,14 @@
  *  3. Terminal codes (`TERMINAL_ANCHOR_CODES`: LOG_KEY_NOT_PINNED, LOG_REJECTED) stop
  *     that batch for good: later batches still anchor, a stopped batch never takes a
  *     planning slot or makes its tenant a candidate on its own, and its records show
- *     as ANCHOR_MISSING in the verify report once past the window. Resuming a stopped
- *     batch needs an operator path that does not exist yet (append-only tables; see
- *     the handoff). Every other code, SIGNER_REJECTED included, retries with backoff.
+ *     as ANCHOR_MISSING in the verify report once past the window. Every other code,
+ *     SIGNER_REJECTED included, retries with backoff.
+ *  3b. Resume (Task15i3; tables.md "attesta_anchor_resumes"): a batch is stopped only
+ *     while its latest terminal failure is newer than its latest resume row (written
+ *     by the audited `attesta:anchor-resume` CLI). A resumed batch is retried with
+ *     the normal backoff; a new terminal failure stops it again. The rule lives in
+ *     the store's SQL (`stoppedBatch`, the terminal_code aggregate); planTenant is
+ *     unchanged and reads `terminalCode`.
  *  4. The batch row is written in the record step (with its first outcome), not at
  *     planning, so a crash before recording leaves nothing and the next plan re-forms
  *     the same range from the ledger.
@@ -82,7 +87,7 @@ export interface TypeFailures {
   count: number;
   /** created_at of the latest one (ms ISO), or null. */
   lastAt: string | null;
-  /** The latest terminal code among them, or null. */
+  /** The latest terminal code among them newer than the batch's latest resume, or null. */
   terminalCode: string | null;
 }
 
@@ -447,9 +452,12 @@ const anchoredCount = (type: AnchorType) => sql`(select count(*) from attesta_an
   and a.batch_id = b.batch_id and a.anchor_type = ${type} and a.status = 'anchored')`;
 /** Batch `b` lacks an anchored row for some record in some type. */
 const incompleteBatch = sql`(${anchoredCount('rekor')} < b.leaf_count or ${anchoredCount('tsa')} < b.leaf_count)`;
-/** Batch `b` has a terminal failure (stopped for good). */
+/** When batch `b` was last resumed by an operator (Task15i3), or -infinity. */
+const lastResume = sql`coalesce((select max(x.created_at) from attesta_anchor_resumes x
+  where x.tenant_id = b.tenant_id and x.batch_id = b.batch_id), '-infinity'::timestamptz)`;
+/** Batch `b` has a terminal failure newer than its latest resume (stopped until an operator resumes it). */
 const stoppedBatch = sql`exists (select 1 from attesta_anchors f where f.tenant_id = b.tenant_id and f.batch_id = b.batch_id
-  and f.status = 'failed' and f.error_code in ${terminalList})`;
+  and f.status = 'failed' and f.error_code in ${terminalList} and f.created_at > ${lastResume})`;
 
 const recordColumns = sql.raw(`r.id::text as id, r.seq::text as seq, r.record_hash,
   to_char(r.recorded_at at time zone 'UTC', ${TS_MS}) as recorded_at`);
@@ -504,7 +512,9 @@ export function pgAnchorStore(db: WorkerDatabase): AnchorStore {
           const failures = await tx.execute(sql`/* anchor:failures */
             select a.anchor_type, count(*)::int as n,
               ${sql.raw(`to_char(max(a.created_at) at time zone 'UTC', ${TS_MS})`)} as last_at,
-              (array_agg(a.error_code order by a.created_at desc) filter (where a.error_code in ${terminalList}))[1] as terminal_code
+              (array_agg(a.error_code order by a.created_at desc) filter (where a.error_code in ${terminalList}
+                and a.created_at > coalesce((select max(x.created_at) from attesta_anchor_resumes x
+                  where x.tenant_id = ${tenantId} and x.batch_id = ${batchId}), '-infinity'::timestamptz)))[1] as terminal_code
             from attesta_anchors a
             where a.tenant_id = ${tenantId} and a.batch_id = ${batchId} and a.status = 'failed'
             group by a.anchor_type`);
