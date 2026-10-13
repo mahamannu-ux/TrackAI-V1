@@ -21,6 +21,7 @@
  * rotation by threshold, and compromise bound to independent time evidence.
  */
 import type { DsseEnvelope } from './dsse';
+import { verifyTrustedImpl } from './trust-verify';
 
 // ---------------------------------------------------------------------------
 // Document format (trust.md "Documents"; trust-document-v1.schema.json)
@@ -261,10 +262,7 @@ export const TRUST_MAX_KEYSET_LIFETIME_MS = 31 * 86_400_000;
 export const TRUST_MAX_ROOT_LIFETIME_MS = 366 * 86_400_000;
 
 /**
- * Stub until the implementation lands. Fails loudly (AGENTS.md §5) so nothing can
- * mistake it for a verifier. The Task15l main PR replaces only this body with a
- * call into trust-verify.ts (the one change to this file trust.md allows).
+ * The verifier (trust-verify.ts). Until the Task15l main PR this was a stub that
+ * threw; replacing that body is the one change to this file trust.md allows.
  */
-export const verifyTrusted: VerifyTrusted = () => {
-  throw new Error('verifyTrusted is not implemented yet (Task15l trust-verify.ts)');
-};
+export const verifyTrusted: VerifyTrusted = (input) => verifyTrustedImpl(input);
