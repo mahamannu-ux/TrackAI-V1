@@ -2,7 +2,7 @@
 
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
 
-Branches `task/Task15l-trust-contract` (contract PR, 2 commits) and `task/Task15l-trust-layer` (stacked on it), base `main` at `2261ba6`. Split at checkpoint 1 (founder, 2026-10-13): this session ships the contract, the pure verifier, the document library and the offline root tool. **Task15l2** ships the inventory migration, resolvers, online CLIs and live tests (scope below). No routes, no GitAI change, no UI.
+Branches `task/Task15l-trust-contract` (contract PR, 4 commits) and `task/Task15l-trust-layer` (stacked on it), base `main` at `2261ba6`. Split at checkpoint 1 (founder, 2026-10-13): this session ships the contract, the pure verifier, the document library and the offline root tool. **Task15l2** ships the inventory migration, resolvers, online CLIs and live tests (scope below). No routes, no GitAI change, no UI.
 
 ## At a glance
 | | Item | Status |
@@ -12,13 +12,13 @@ Branches `task/Task15l-trust-contract` (contract PR, 2 commits) and `task/Task15
 | Verifier | `verifyTrusted` → `verified` / `rejected` / `unavailable` (Task9's three states); UNKNOWN never verified | ✅ |
 | Root tool | `npm run attesta:trust-root -w apps/api -- keyid|draft|sign` (offline, prints keyids and digests only) | ✅ |
 | Inventory, resolvers, online CLIs, IT-T15l-01…04 | moved to Task15l2 | n/a here |
-| Quality | 689 unit tests (31 new test groups), typecheck clean; vectors reproduce byte for byte; OpenSSL oracle | ✅ |
+| Quality | 691 unit tests (33 new test groups), typecheck clean; vectors reproduce byte for byte; OpenSSL oracle | ✅ |
 | Review | subagent round 1: 3 must-fix (rollback/fork, payload-only time evidence, old-root fork) + 5 should-fix, all fixed; round 2: 1 must-fix (key-set recovery after a `tenant_keyset` compromise) + coverage, fixed; no wrong `verified` left | ✅ · Codex round 1 "fix first": unsigned `signedAt` grandfathering, clock rollback floor, strict `timeEvidence`, root tool predecessor and forward-only checks — all fixed; re-review ⬜ |
 
 ## Implemented interfaces
 ```ts
 // trust-contract.ts (frozen): types, constants, TRUST_CODE_STATUS
-verifyTrusted({ payloadType, payload, envelope, purpose, audience, signedAt, timeEvidence?, state }): { status, code, keyid?, trusted? }
+verifyTrusted({ payloadType, payload, envelope, purpose, audience, signedAt, timeEvidence?, state }): { status, code, keyid?, trusted?, trustedTime? }
 TrustState = { pinnedRootKeyids, pinnedRootThreshold?, rootDocuments, keysetDocuments, customerPins?, lastTrusted, now, trustedTimeFloor?, clockSkewMs?, production, allowUnpinnedRoot? }
 // verdict on verified: { keyid, trusted, trustedTime } → persist into lastTrusted / trustedTimeFloor
 TimeEvidence = { kind: 'tsa_gen_time'|'rekor_integrated_time', time, binds: 'signature'|'ledger_statement', digest }
@@ -55,7 +55,7 @@ SushiCorp @ `0bd67a5` (catalog TR-1, SG-1): `core/trust/revocation.py` three sta
 | ⬜ **FOUNDER:** | A15.13 root ceremony: on an offline machine, `attesta:trust-root draft` + `sign` with the root key; create one KMS key per platform purpose | real root and platform keys |
 | 🟡 | First use without `lastTrusted` trusts what chains from the pin | enrollment and packs pin the current root; consumers persist `lastTrusted` |
 | 🟡 | `ledger_statement` evidence is the caller's assertion | only verify-chain / A15.9 may pass it, from the tenant's own anchors |
-| 🟡 | Signed `signedAt` / `issued_at` are signer claims | consumers check artifact freshness (trust.md "Consumers") |
+| 🟡 | `signedAt` is an unsigned caller claim (trusted only while the key is active and valid at `now`; otherwise bound evidence is required); a document's `issued_at` is signed but still the signer's own claim, bounded by the document lifetime | consumers check artifact freshness (trust.md "Consumers") |
 
 ## Task15l2 scope (next prompt)
 Migration 0019 after 0018: `attesta_platform_keys`, `attesta_tenant_keys` (RLS, composite tenant keys, `withTenant`), append-only `attesta_key_events` and `attesta_trust_documents` (version and `previous` guards, 0017 style), status transitions only forward with an event row. Registration needs **proof of possession** and refuses a keyid already used by another tenant or purpose (review finding 8). `inventorySignerResolver`, `platformSigner(db, adapters, purpose)` replacing `anchor-env.ts`'s production refusal, `publishedKeysFor`. CLIs `attesta:keys register|activate|retire|revoke|publish|export-root-draft|import-root` (dry-run, `--confirm`, `--expect`, one `security_audit_events` row; publish builds key sets from version 1 history). IT-T15l-01…04 as in the 15l prompt.
