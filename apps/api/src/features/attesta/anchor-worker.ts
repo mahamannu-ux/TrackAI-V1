@@ -23,9 +23,12 @@
  *  2. Batches are tenant-scoped and contiguous: a batch starts right after the
  *     tenant's last batch (the 0018 guard refuses anything else with ATA01), and a
  *     written batch is re-planned from its stored range, never re-cut.
- *  3. Terminal codes (`TERMINAL_ANCHOR_CODES`: LOG_KEY_NOT_PINNED, LOG_REJECTED,
- *     SIGNER_REJECTED) stop that batch; later batches still anchor, and the stopped
- *     batch's records show as ANCHOR_MISSING in the verify report once past the window.
+ *  3. Terminal codes (`TERMINAL_ANCHOR_CODES`: LOG_KEY_NOT_PINNED, LOG_REJECTED) stop
+ *     that batch for good: later batches still anchor, a stopped batch never takes a
+ *     planning slot or makes its tenant a candidate on its own, and its records show
+ *     as ANCHOR_MISSING in the verify report once past the window. Resuming a stopped
+ *     batch needs an operator path that does not exist yet (append-only tables; see
+ *     the handoff). Every other code, SIGNER_REJECTED included, retries with backoff.
  *  4. The batch row is written in the record step (with its first outcome), not at
  *     planning, so a crash before recording leaves nothing and the next plan re-forms
  *     the same range from the ledger.
@@ -33,6 +36,10 @@
  *     rows insert with ON CONFLICT DO NOTHING on the partial unique index; a
  *     concurrent batch for the range is `superseded` and re-planned next pass.
  *  6. Many batches per tenant per pass (`maxBatchesPerTenant`), not one per pass.
+ * The plan step's advisory try-lock only keeps two planners from reading at once; it is
+ * released before submit, so two concurrent passes can both submit one root (two log
+ * entries, two tokens). The database is the idempotency: one anchored row per record
+ * and type (partial unique index) and one batch per range (0018 guard).
  * Nothing here logs: the caller prints the pass result (codes and counts only).
  */
 import { sql, type SQL } from 'drizzle-orm';
@@ -93,7 +100,7 @@ export interface StoredBatchState {
 export interface TenantPlanInput {
   /** seq_to of the tenant's last batch, or -1. */
   lastBatchedSeq: number;
-  /** Written batches without anchored rows of both types, oldest first. */
+  /** Written batches without an anchored row per record in both types: due ones first, stopped ones last. */
   incomplete: StoredBatchState[];
   /** Records after the last batch, seq order (bounded). */
   unbatched: AnchorRecordRef[];
@@ -118,7 +125,14 @@ export interface BatchRowInput {
 }
 
 export type RecordResult =
-  | { status: 'recorded'; anchoredInserted: number; anchoredExisting: number; failedInserted: number }
+  | {
+      status: 'recorded';
+      anchoredInserted: number;
+      /** Records that got at least one new anchored row from this write. */
+      anchoredRecords: number;
+      anchoredExisting: number;
+      failedInserted: number;
+    }
   /** Another worker recorded a different batch for this range first (ATA01): re-plan. */
   | { status: 'superseded' };
 
@@ -387,8 +401,9 @@ export async function runAnchorPass(
         }
         result.alreadyAnchored += recorded.anchoredExisting;
         if (outcome.complete) {
-          result.batchesAnchored += 1;
-          result.recordsAnchored += planned.records.length;
+          // Counted from what this pass inserted: a race lost in full anchors nothing new.
+          if (recorded.anchoredInserted > 0) result.batchesAnchored += 1;
+          result.recordsAnchored += recorded.anchoredRecords;
           continue;
         }
         result.batchesFailed += 1;
@@ -428,6 +443,14 @@ function toRecordRef(r: Record<string, unknown>): AnchorRecordRef {
   };
 }
 
+const anchoredCount = (type: AnchorType) => sql`(select count(*) from attesta_anchors a where a.tenant_id = b.tenant_id
+  and a.batch_id = b.batch_id and a.anchor_type = ${type} and a.status = 'anchored')`;
+/** Batch `b` lacks an anchored row for some record in some type. */
+const incompleteBatch = sql`(${anchoredCount('rekor')} < b.leaf_count or ${anchoredCount('tsa')} < b.leaf_count)`;
+/** Batch `b` has a terminal failure (stopped for good). */
+const stoppedBatch = sql`exists (select 1 from attesta_anchors f where f.tenant_id = b.tenant_id and f.batch_id = b.batch_id
+  and f.status = 'failed' and f.error_code in ${terminalList})`;
+
 const recordColumns = sql.raw(`r.id::text as id, r.seq::text as seq, r.record_hash,
   to_char(r.recorded_at at time zone 'UTC', ${TS_MS}) as recorded_at`);
 
@@ -447,16 +470,14 @@ export function pgAnchorStore(db: WorkerDatabase): AnchorStore {
     async tenants({ tenantId, limit }) {
       const only = tenantId ? sql`and h.tenant_id = ${tenantId}` : sql``;
       const lim = limit ? sql`limit ${limit}` : sql``;
+      // Work = records after the last batch, or a written batch short of an anchored row per
+      // record in some type that no terminal code stopped (a stopped batch alone is no work).
       const r = await db.execute(sql`/* anchor:tenants */
         select h.tenant_id::text as tenant_id from chain_head h
         where h.next_seq > 0 ${only} and (
           h.next_seq > coalesce((select max(b.seq_to) + 1 from attesta_anchor_batches b where b.tenant_id = h.tenant_id), 0)
           or exists (
-            select 1 from attesta_anchor_batches b where b.tenant_id = h.tenant_id and (
-              not exists (select 1 from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
-                and a.anchor_type = 'rekor' and a.status = 'anchored')
-              or not exists (select 1 from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
-                and a.anchor_type = 'tsa' and a.status = 'anchored'))))
+            select 1 from attesta_anchor_batches b where b.tenant_id = h.tenant_id and ${incompleteBatch} and not ${stoppedBatch}))
         order by h.tenant_id ${lim}`);
       return r.rows.map((x) => str(x.tenant_id, 'tenant_id'));
     },
@@ -469,15 +490,12 @@ export function pgAnchorStore(db: WorkerDatabase): AnchorStore {
         const last = await tx.execute(sql`/* anchor:last_batch */
           select coalesce(max(seq_to), -1)::text as seq_to from attesta_anchor_batches where tenant_id = ${tenantId}`);
         const lastBatchedSeq = Number(str(last.rows[0]?.seq_to, 'last seq_to'));
+        // Stopped batches sort last, so they never crowd due retries out of the limit.
         const batches = await tx.execute(sql`/* anchor:incomplete */
           select b.batch_id, b.seq_from::text as seq_from, b.seq_to::text as seq_to, b.merkle_root, b.leaf_count
           from attesta_anchor_batches b
-          where b.tenant_id = ${tenantId} and (
-            not exists (select 1 from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
-              and a.anchor_type = 'rekor' and a.status = 'anchored')
-            or not exists (select 1 from attesta_anchors a where a.tenant_id = b.tenant_id and a.batch_id = b.batch_id
-              and a.anchor_type = 'tsa' and a.status = 'anchored'))
-          order by b.seq_from limit ${limits.incomplete}`);
+          where b.tenant_id = ${tenantId} and ${incompleteBatch}
+          order by ${stoppedBatch}, b.seq_from limit ${limits.incomplete}`);
         const incomplete: StoredBatchState[] = [];
         for (const b of batches.rows) {
           const batchId = str(b.batch_id, 'batch_id');
@@ -550,6 +568,7 @@ async function insertAnchorRows(
 ): Promise<RecordResult> {
   let anchoredInserted = 0;
   let failedInserted = 0;
+  const anchoredIds = new Set<string>();
   const anchoredTotal = rows.filter((r) => r.status === 'anchored').length;
   for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
     const chunk = rows.slice(i, i + INSERT_CHUNK);
@@ -562,11 +581,16 @@ async function insertAnchorRows(
         rekor_entry_uuid, tsa_token_b64, error_code)
       values ${sql.join(values, sql`, `)}
       on conflict (tenant_id, record_id, anchor_type) where status = 'anchored' do nothing
-      returning status`);
+      returning status, record_id::text as record_id`);
     for (const row of inserted.rows) {
-      if (row.status === 'anchored') anchoredInserted += 1;
-      else failedInserted += 1;
+      if (row.status === 'anchored') {
+        anchoredInserted += 1;
+        anchoredIds.add(String(row.record_id));
+      } else failedInserted += 1;
     }
   }
-  return { status: 'recorded', anchoredInserted, anchoredExisting: anchoredTotal - anchoredInserted, failedInserted };
+  return {
+    status: 'recorded', anchoredInserted, anchoredRecords: anchoredIds.size,
+    anchoredExisting: anchoredTotal - anchoredInserted, failedInserted,
+  };
 }

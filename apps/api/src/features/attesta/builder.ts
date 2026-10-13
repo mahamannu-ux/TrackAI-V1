@@ -434,11 +434,12 @@ async function readPrevious(tx: BuilderReadExecutor, row: AttestaSubjectRow) {
 }
 
 /**
- * Chain order inside a subject (kept after F2 was resolved on 2026-10-13: the schema
- * now lets `previous` name any kind, but the natural order commit → PR → deploy keeps
- * statements readable, and a wait costs no attempt). A pr_merged waits for pending commit_observed rows about its subject
- * and its lineage sources, and a deployed also for pending pr_merged rows. Failed
- * rows never block (they end visible; see the handoff, contract finding F2).
+ * Chain order inside a subject (kept after contract finding F2 was resolved on
+ * 2026-10-13: the schema now lets `previous` name any kind, but the natural order
+ * commit → PR → deploy keeps statements readable, and a wait costs no attempt). A
+ * pr_merged waits for pending commit_observed rows about its subject and its lineage
+ * sources, and a deployed also for pending pr_merged rows. Failed rows never block
+ * (they end visible in the outbox).
  */
 async function waitForEarlierKinds(tx: BuilderReadExecutor, row: AttestaSubjectRow, sourceShas: string[]): Promise<void> {
   if (row.kind === 'commit_observed') return;

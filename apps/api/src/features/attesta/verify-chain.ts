@@ -142,7 +142,7 @@ export interface AnchorSummary {
   anchored: number;
   /** Not anchored yet, inside the anchoring window. */
   pending: number;
-  /** Not anchored beyond the window (ANCHOR_MISSING). */
+  /** Not anchored beyond the window, or stamped ahead of the verifier's clock (ANCHOR_MISSING). */
   missing: number;
   /** With a stored anchor that does not verify or is not bound to the record. */
   invalid: number;
@@ -424,9 +424,11 @@ class AnchorChecker {
     else if (notCheckable) status = 'not_checkable';
     else if (valid.has('rekor') && valid.has('tsa')) status = 'anchored';
     else {
+      // Pending only inside the window. A recorded_at ahead of the verifier's clock (beyond
+      // the skew) is not "recent": it would stay pending forever, so it counts as missing.
       const recorded = Date.parse(row.recordedAt);
       const age = this.opts.now.getTime() - recorded;
-      status = !Number.isNaN(recorded) && age <= this.summary.window_ms ? 'pending' : 'missing';
+      status = !Number.isNaN(recorded) && age <= this.summary.window_ms && age >= -ANCHOR_TIME_SKEW_MS ? 'pending' : 'missing';
       if (status === 'missing') out.add(row.seq, 'anchor_missing');
     }
     if (status === 'not_checkable' && !this.notCheckableSeen) {

@@ -146,23 +146,33 @@ CREATE TRIGGER attesta_anchor_batches_guard
   FOR EACH ROW EXECUTE FUNCTION attesta_anchor_batches_guard();
 --> statement-breakpoint
 -- An anchor names a record of its own tenant that lies inside its batch; an anchored
--- row's proof is bound to that position (leaf_index, tree_size), to its own anchor
--- type, and to its row columns (the Rekor entry ID, or the hash of the TSA token).
+-- row's proof is bound to that position (leaf_index, tree_size), its path leads from
+-- the record's leaf to the batch root (RFC 9162 §2.1.3.2, as merkle.ts rootFromPath),
+-- and it is bound to its own anchor type and to its row columns (the Rekor entry ID,
+-- or the hash of the TSA token). So a bogus anchored row can never take the one
+-- anchored slot of a record and type.
 CREATE OR REPLACE FUNCTION attesta_anchors_guard()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   b_from bigint;
   b_to bigint;
   b_count integer;
+  b_root text;
   r_seq bigint;
+  r_hash text;
   proof jsonb;
+  node bytea;
+  sibling text;
+  fn bigint;
+  sn bigint;
 BEGIN
-  SELECT b.seq_from, b.seq_to, b.leaf_count INTO b_from, b_to, b_count
+  SELECT b.seq_from, b.seq_to, b.leaf_count, b.merkle_root INTO b_from, b_to, b_count, b_root
     FROM public.attesta_anchor_batches b WHERE b.tenant_id = NEW.tenant_id AND b.batch_id = NEW.batch_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'attesta_anchors: no batch % in this tenant', NEW.batch_id USING ERRCODE = 'ATG01';
   END IF;
-  SELECT r.seq INTO r_seq FROM public.attesta_records r WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.record_id;
+  SELECT r.seq, r.record_hash INTO r_seq, r_hash
+    FROM public.attesta_records r WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.record_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'attesta_anchors: no record % in this tenant', NEW.record_id USING ERRCODE = 'ATG01';
   END IF;
@@ -183,6 +193,34 @@ BEGIN
            to_jsonb('tsa:sha256:' || encode(sha256(decode(NEW.tsa_token_b64, 'base64')), 'hex'))) THEN
       RAISE EXCEPTION 'attesta_anchors: inclusion_proof is not bound to record seq % in batch % (%)',
         r_seq, NEW.batch_id, NEW.anchor_type USING ERRCODE = 'ATG01';
+    END IF;
+    IF jsonb_typeof(proof->'merkle'->'path') IS DISTINCT FROM 'array' THEN
+      RAISE EXCEPTION 'attesta_anchors: inclusion_proof has no Merkle path (seq %)', r_seq USING ERRCODE = 'ATG01';
+    END IF;
+    node := sha256(decode('00', 'hex') || decode(substr(r_hash, 8), 'hex'));
+    fn := r_seq - b_from;
+    sn := b_count - 1;
+    FOR sibling IN SELECT e.value FROM jsonb_array_elements_text(proof->'merkle'->'path') WITH ORDINALITY AS e(value, i) ORDER BY e.i LOOP
+      IF sn = 0 OR sibling !~ '^[0-9a-f]{64}$' THEN
+        RAISE EXCEPTION 'attesta_anchors: Merkle path is malformed or too long (seq %)', r_seq USING ERRCODE = 'ATG01';
+      END IF;
+      IF fn % 2 = 1 OR fn = sn THEN
+        node := sha256(decode('01', 'hex') || decode(sibling, 'hex') || node);
+        IF fn % 2 = 0 THEN
+          WHILE fn <> 0 AND fn % 2 = 0 LOOP
+            fn := fn / 2;
+            sn := sn / 2;
+          END LOOP;
+        END IF;
+      ELSE
+        node := sha256(decode('01', 'hex') || node || decode(sibling, 'hex'));
+      END IF;
+      fn := fn / 2;
+      sn := sn / 2;
+    END LOOP;
+    IF sn <> 0 OR 'sha256:' || encode(node, 'hex') IS DISTINCT FROM b_root THEN
+      RAISE EXCEPTION 'attesta_anchors: Merkle path does not lead from record seq % to the root of batch %', r_seq, NEW.batch_id
+        USING ERRCODE = 'ATG01';
     END IF;
   END IF;
   RETURN NEW;

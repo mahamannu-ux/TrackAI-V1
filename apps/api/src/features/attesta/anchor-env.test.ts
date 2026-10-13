@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPublicKey, randomBytes } from 'node:crypto';
-import { FakeRekor } from './testing/fake-rekor';
+import { FakeRekor, REKOR_TREE_ID_DEC } from './testing/fake-rekor';
 import { FakeTsa } from './testing/fake-tsa';
 import { AnchorConfigError, anchorFromEnv, anchorSignerFromEnv, parseLogIndexOffsets } from './anchor-env';
 import { generateDevCredential } from './signer-local-dev';
@@ -42,6 +42,16 @@ test('dev: the env builds a dual anchor that anchors with the fakes, plus matchi
   assert.equal(built.verify.rekorLogIndexOffsets, undefined);
 });
 
+test('a pinned shard offset reaches the verifier: the fake log\'s tree with offset 1 is refused, with 0 accepted', async () => {
+  const f = await fixture();
+  const opts = { read: f.read, rekorFetch: f.rekor.fetch, tsaFetch: f.tsa.fetch };
+  const wrong = await anchorFromEnv({ ...f.env, ATTESTA_REKOR_LOG_INDEX_OFFSETS: `{"${REKOR_TREE_ID_DEC}": 1}` }, opts);
+  const out = await wrong.anchor.anchor(randomBytes(32), 'b1');
+  assert.deepEqual(out.rekor, { status: 'failed', code: 'ATTESTA_ANCHOR_LOG_PROOF_INVALID', retryable: true });
+  const right = await anchorFromEnv({ ...f.env, ATTESTA_REKOR_LOG_INDEX_OFFSETS: `{"${REKOR_TREE_ID_DEC}": 0}` }, opts);
+  assert.equal((await right.anchor.anchor(randomBytes(32), 'b2')).complete, true);
+});
+
 test('production refuses to start until the Task15l platform resolver exists', async () => {
   const f = await fixture();
   assert.throws(() => anchorSignerFromEnv({ ...f.env, NODE_ENV: 'production' }, f.read),
@@ -69,8 +79,11 @@ test('missing or unreadable configuration names the variable, never its value', 
 test('log index offsets: decimal tree IDs to non-negative safe integers', () => {
   assert.equal(parseLogIndexOffsets(undefined), undefined);
   assert.equal(parseLogIndexOffsets(' '), undefined);
-  assert.deepEqual(parseLogIndexOffsets('{"1193050959916656506": 7376158}'), { '1193050959916656506': 7376158 });
-  for (const bad of ['[]', 'null', '{"x": 1}', '{"1": -1}', '{"1": 1.5}', '{"1": "2"}', '{', '{"1": 9007199254740992}']) {
+  // Keyed by the 16-hex tree ID, the form verifyRekorEntry derives from the checkpoint origin.
+  assert.deepEqual(parseLogIndexOffsets('{"1193050959916656506": 7376158}'), { '108e9186e8c5677a': 7376158 });
+  assert.deepEqual(parseLogIndexOffsets('{"1": 1}'), { '0000000000000001': 1 });
+  for (const bad of ['[]', 'null', '{"x": 1}', '{"1": -1}', '{"1": 1.5}', '{"1": "2"}', '{', '{"1": 9007199254740992}',
+    '{"18446744073709551616": 1}', '{"1": 1, "01": 2}', '{"ab": 1}']) {
     assert.throws(() => parseLogIndexOffsets(bad), AnchorConfigError, bad);
   }
 });

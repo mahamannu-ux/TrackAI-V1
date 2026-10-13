@@ -518,6 +518,11 @@ describe('anchor checks', () => {
     assert.deepEqual(anchorKinds(r), [0, 1, 2, 3].map((s) => [s, 'anchor_missing', 'ATTESTA_VERIFY_ANCHOR_MISSING']));
     assert.equal(r.ok, false);
     assert.equal(r.chain_intact, false);
+    // A record stamped ahead of the verifier's clock (beyond the skew) is never pending.
+    r = await w.verify(bare, {}, recorded - 300_001);
+    assert.equal(r.anchors.status === 'checked' && r.anchors.missing, 4);
+    r = await w.verify(bare, {}, Date.parse(w.rows[3].recordedAt) - 300_000);
+    assert.equal(r.anchors.status === 'checked' && r.anchors.pending, 4);
     const rekorOnly = w.rows.map((x) => ({ ...x, anchors: x.anchors.filter((a) => a.anchorType === 'rekor') }));
     r = await w.verify(rekorOnly, {}, recorded + 7_200_000);
     assert.equal(r.anchors.status === 'checked' && r.anchors.missing, 4);

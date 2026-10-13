@@ -86,7 +86,11 @@ export function anchorSignerFromEnv(env: NodeJS.ProcessEnv = process.env, read: 
   return anchorSignerFromAdapter(adapter, credentialId);
 }
 
-/** `{"<tree id>": <non-negative offset>}`, or undefined when unset. */
+/**
+ * `{"<decimal tree id>": <non-negative offset>}` (the tree ID as a checkpoint origin
+ * prints it, e.g. "rekor.sigstage.dev - 1193050959916656506"), or undefined when
+ * unset. Returned keyed by the 16-hex tree ID, the form verifyRekorEntry looks up.
+ */
 export function parseLogIndexOffsets(raw: string | undefined): Record<string, number> | undefined {
   if (raw === undefined || raw.trim() === '') return undefined;
   let parsed: unknown;
@@ -100,10 +104,12 @@ export function parseLogIndexOffsets(raw: string | undefined): Record<string, nu
   }
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(parsed)) {
-    if (!/^[0-9]{1,20}$/.test(k) || typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+    if (!/^[0-9]{1,20}$/.test(k) || BigInt(k) > 0xffffffffffffffffn || typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
       throw new AnchorConfigError('ATTESTA_REKOR_LOG_INDEX_OFFSETS entries must be "<decimal tree id>": <non-negative integer>');
     }
-    out[k] = v;
+    const hex = BigInt(k).toString(16).padStart(16, '0');
+    if (Object.prototype.hasOwnProperty.call(out, hex)) throw new AnchorConfigError('ATTESTA_REKOR_LOG_INDEX_OFFSETS names a tree twice');
+    out[hex] = v;
   }
   return out;
 }

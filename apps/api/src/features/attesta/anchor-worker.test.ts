@@ -21,6 +21,7 @@ import {
   type TenantPlanInput, type TypeFailures,
 } from './anchor-worker';
 
+const TERMINAL = ['ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED', 'ATTESTA_ANCHOR_LOG_REJECTED'];
 const T0 = Date.parse('2026-10-13T00:00:00.000Z');
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -58,7 +59,11 @@ class MemStore implements AnchorStore {
   }
 
   complete(t: MemTenant, b: BatchRowInput, type: AnchorType): boolean {
-    return t.anchors.some((a) => a.batchId === b.batchId && a.anchorType === type && a.status === 'anchored');
+    return t.anchors.filter((a) => a.batchId === b.batchId && a.anchorType === type && a.status === 'anchored').length >= b.leafCount;
+  }
+
+  stopped(t: MemTenant, b: BatchRowInput): boolean {
+    return t.anchors.some((a) => a.batchId === b.batchId && a.status === 'failed' && TERMINAL.includes(a.errorCode!));
   }
 
   async tenants({ tenantId, limit }: { tenantId?: string; limit?: number }) {
@@ -66,7 +71,8 @@ class MemStore implements AnchorStore {
       if (tenantId && id !== tenantId) return false;
       const t = this.t(id);
       const last = t.batches.length ? t.batches[t.batches.length - 1].seqTo : -1;
-      return t.records.length > last + 1 || t.batches.some((b) => !this.complete(t, b, 'rekor') || !this.complete(t, b, 'tsa'));
+      return t.records.length > last + 1 ||
+        t.batches.some((b) => (!this.complete(t, b, 'rekor') || !this.complete(t, b, 'tsa')) && !this.stopped(t, b));
     });
     return limit ? ids.slice(0, limit) : ids;
   }
@@ -77,13 +83,13 @@ class MemStore implements AnchorStore {
     const last = t.batches.length ? t.batches[t.batches.length - 1].seqTo : -1;
     const incomplete: StoredBatchState[] = t.batches
       .filter((b) => !this.complete(t, b, 'rekor') || !this.complete(t, b, 'tsa'))
+      .sort((x, y) => Number(this.stopped(t, x)) - Number(this.stopped(t, y)) || x.seqFrom - y.seqFrom)
       .slice(0, limits.incomplete)
       .map((b) => {
         const failures = {} as Record<AnchorType, TypeFailures>;
         for (const type of ['rekor', 'tsa'] as const) {
           const f = t.anchors.filter((a) => a.batchId === b.batchId && a.anchorType === type && a.status === 'failed');
-          const terminal = f.filter((a) => ['ATTESTA_ANCHOR_LOG_KEY_NOT_PINNED', 'ATTESTA_ANCHOR_LOG_REJECTED',
-            'ATTESTA_SIGNER_REJECTED'].includes(a.errorCode!));
+          const terminal = f.filter((a) => TERMINAL.includes(a.errorCode!));
           failures[type] = {
             count: Math.ceil(f.length / b.leafCount),
             lastAt: f.length ? new Date(Math.max(...f.map((a) => a.createdAt))).toISOString() : null,
@@ -112,6 +118,7 @@ class MemStore implements AnchorStore {
       t.batches.push({ ...batch });
     }
     let anchoredInserted = 0;
+    const anchoredIds = new Set<string>();
     let anchoredExisting = 0;
     let failedInserted = 0;
     for (const r of rows) {
@@ -122,9 +129,9 @@ class MemStore implements AnchorStore {
         continue;
       }
       t.anchors.push({ ...r, batchId: batch.batchId, createdAt: this.clock.now });
-      if (r.status === 'anchored') anchoredInserted += 1; else failedInserted += 1;
+      if (r.status === 'anchored') { anchoredInserted += 1; anchoredIds.add(r.recordId); } else failedInserted += 1;
     }
-    return { status: 'recorded', anchoredInserted, anchoredExisting, failedInserted };
+    return { status: 'recorded', anchoredInserted, anchoredRecords: anchoredIds.size, anchoredExisting, failedInserted };
   }
 }
 
@@ -305,9 +312,30 @@ test('a terminal code (log rejected) stops that batch for good; later batches st
   assert.equal(r.batchesStopped, 1);
   assert.equal(r.codes.ATTESTA_ANCHOR_LOG_REJECTED, 1);
   assert.equal(r.batchesAnchored, 1); // 3-4
+  w.store.addRecords(A, 1);
   r = await w.pass();
   assert.equal(r.batchesStopped, 1); // still visible, never retried
+  assert.equal(r.batchesAnchored, 1);
+  r = await w.pass();
+  assert.equal(r.tenants, 0); // a stopped batch alone makes no work
   assert.equal(rowsOf(w.store, A, { batchId: anchorBatchId(A, 0, 2), status: 'failed' }).length, 3);
+});
+
+test('a signer refusal retries with backoff (never terminal), so a fixed credential resumes anchoring', async () => {
+  const w = await world();
+  w.store.addRecords(A, 2);
+  const cred = generateDevCredential('dev:anchor', B); // a credential of another tenant: the signer refuses
+  const refusing = anchorSignerFromAdapter(new LocalDevSigner({ credentials: [cred], env: {} }), 'dev:anchor');
+  const bad = new DualAnchor(
+    new RekorAnchor({ url: 'http://rekor.test', signer: refusing, fetch: w.rekor.fetch, logPublicKeyPem: pem(w.rekor.logKey), production: false }),
+    new TsaAnchor({ url: TSA_URL, trustAnchorsPem: w.tsa.anchorsPem, fetch: w.tsa.fetch }),
+  );
+  let r = await w.pass({}, bad);
+  assert.deepEqual(r.codes, { ATTESTA_SIGNER_REJECTED: 1 });
+  w.clock.now += anchorBackoffMs(1);
+  r = await w.pass();
+  assert.equal(r.batchesStopped, 0);
+  assert.equal(r.batchesAnchored, 1);
   assert.equal(rowsOf(w.store, A, { batchId: anchorBatchId(A, 0, 2), status: 'anchored' }).length, 0);
 });
 
@@ -326,7 +354,8 @@ test('a lost race is success: the concurrent winner\'s anchored rows stand, noth
     assert.equal(batch.batchId, anchorBatchId(A, 0, 5));
   };
   const r = await w.pass();
-  assert.equal(r.batchesAnchored, 1);
+  assert.equal(r.batchesAnchored, 0); // the loser anchored nothing new
+  assert.equal(r.recordsAnchored, 0);
   assert.equal(r.alreadyAnchored, 12);
   assert.equal(r.tenantErrors, 0);
   assert.equal(rowsOf(w.store, A, { status: 'anchored' }).length, 12);

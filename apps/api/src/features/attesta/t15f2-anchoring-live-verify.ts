@@ -27,9 +27,9 @@ import { ATTESTA_PLATFORM_TENANT_ID, anchorSignerFromAdapter } from './anchor-co
 import { DualAnchor } from './anchor-dual';
 import { RekorAnchor } from './anchor-rekor';
 import { TsaAnchor, loadTrustAnchors } from './anchor-tsa';
-import { anchorBatchId, pgAnchorStore, planTenant, runAnchorPass, type AnchorPassOptions } from './anchor-worker';
+import { anchorBatchId, pgAnchorStore, planTenant, rowsForOutcome, runAnchorPass, type AnchorPassOptions } from './anchor-worker';
 import { chainStatement } from './ledger';
-import { merkleRoot } from './merkle';
+import { inclusionPath, merkleRoot } from './merkle';
 import { LocalDevSigner, generateDevCredential } from './signer-local-dev';
 import { FakeRekor } from './testing/fake-rekor';
 import { FakeTsa, TSA_URL } from './testing/fake-tsa';
@@ -315,11 +315,20 @@ async function guardAttacks(client: PoolClient, t: Tenant, other: Tenant, roleLa
   await attack('tsa token not the proof ref', 'ATG01', () => insertAnchor(T, fresh, second, 'tsa', 'anchored',
     rebound((p) => { p.merkle.leaf_index = 1; p.merkle.tree_size = 2; p.anchor.type = 'tsa'; p.anchor.ref = 'tsa:sha256:' + '0'.repeat(64); }),
     null, Buffer.from('token').toString('base64'), null));
-  // The same row, bound correctly, is accepted (the guard is not refusing everything).
+  // Position, size, type and ref right, but a path that does not lead to the batch root.
+  const freshLeaves = (await q(`select record_hash from attesta_records where tenant_id = $1 and seq between $2 and $3 order by seq`,
+    [T, next, next + 1])).rows.map((r) => Buffer.from(String(r.record_hash).slice(7), 'hex'));
+  const goodPath = inclusionPath(freshLeaves, 1).map((x) => x.toString('hex'));
   const tokenB64 = Buffer.from('token').toString('base64');
-  await insertAnchor(T, fresh, second, 'tsa', 'anchored',
-    rebound((p) => { p.merkle.leaf_index = 1; p.merkle.tree_size = 2; p.anchor.type = 'tsa';
-      p.anchor.ref = `tsa:sha256:${createHash('sha256').update(Buffer.from(tokenB64, 'base64')).digest('hex')}`; }), null, tokenB64, null);
+  const tsaRef = `tsa:sha256:${createHash('sha256').update(Buffer.from(tokenB64, 'base64')).digest('hex')}`;
+  const tsaProof = (path: string[]) => rebound((p) => { p.merkle = { leaf_index: 1, tree_size: 2, path }; p.anchor.type = 'tsa'; p.anchor.ref = tsaRef; });
+  await attack('path not to the batch root', 'ATG01', () => insertAnchor(T, fresh, second, 'tsa', 'anchored',
+    tsaProof(['0'.repeat(64)]), null, tokenB64, null));
+  await attack('path too long', 'ATG01', () => insertAnchor(T, fresh, second, 'tsa', 'anchored',
+    tsaProof([...goodPath, '0'.repeat(64)]), null, tokenB64, null));
+  await attack('path missing', 'ATG01', () => insertAnchor(T, fresh, second, 'tsa', 'anchored', tsaProof([]), null, tokenB64, null));
+  // The same row, bound correctly, is accepted (the guard is not refusing everything).
+  await insertAnchor(T, fresh, second, 'tsa', 'anchored', tsaProof(goodPath), null, tokenB64, null);
   return n;
 }
 
@@ -413,13 +422,33 @@ async function it03(w: World, t: Tenant, other: Tenant): Promise<void> {
   check(n === 4, 'recorded once');
   console.log('crash_between_submit_and_record=same_root_recorded_once');
 
-  // Two workers at once on one tenant: the advisory lock or the unique index keeps one anchored row per record and type.
-  const results = await Promise.all([pass(w, { tenantId: t.tenantId, maxBatch: 2 }), pass(w, { tenantId: t.tenantId, maxBatch: 2 })]);
+  // Two workers at once on one tenant, with work for both: one anchored row per record and type.
+  await chainRecords(t, 12);
+  const results = await Promise.all([1, 2].map(() => pass(w, { tenantId: t.tenantId, maxBatch: 2, maxBatchesPerTenant: 100 })));
   const dup = (await pool.query(`select count(*)::int as n from (select record_id, anchor_type from attesta_anchors
     where tenant_id = $1 and status = 'anchored' group by 1, 2 having count(*) > 1) d`, [t.tenantId])).rows[0].n;
   check(dup === 0 && results.every((x) => x.tenantErrors === 0), `concurrent passes: ${JSON.stringify(results)}`);
+  check(results.reduce((sum, x) => sum + x.recordsAnchored, 0) >= 14, 'the concurrent passes did the work');
   check((await verifyChain(db, t.tenantId, { keys: KEYS, anchors: await w.material() })).ok, 'verify clean after concurrent passes');
-  console.log(`concurrent_passes=one_row_per_record_and_type busy=${results.map((x) => x.busy).join('+')} superseded=${results.map((x) => x.superseded).join('+')}`);
+  console.log(`concurrent_passes=one_row_per_record_and_type busy=${results.map((x) => x.busy).join('+')} already=${results.map((x) => x.alreadyAnchored).join('+')}`);
+
+  // Overlapping ranges: worker 1 plans 2 records, worker 2 plans 4; both submit; worker 2
+  // records first, so worker 1's batch is no longer the next range (ATA01: superseded).
+  await chainRecords(t, 4);
+  const plan1 = planTenant(t.tenantId, (await store.loadPlan(t.tenantId, { unbatched: 10, incomplete: 10 }))!, new Date(),
+    { maxBatch: 2, partialAfterMs: 0, maxBatchesPerTenant: 1 }).work[0];
+  const plan2 = planTenant(t.tenantId, (await store.loadPlan(t.tenantId, { unbatched: 10, incomplete: 10 }))!, new Date(),
+    { maxBatch: 4, partialAfterMs: 0, maxBatchesPerTenant: 1 }).work[0];
+  check(plan1.batch.seqFrom === plan2.batch.seqFrom && plan1.batch.seqTo < plan2.batch.seqTo, 'overlapping plans');
+  const [out1, out2] = await Promise.all([w.dual().anchor(merkleRoot(plan1.leaves), plan1.batch.batchId),
+    w.dual().anchor(merkleRoot(plan2.leaves), plan2.batch.batchId)]);
+  const rec2 = await store.record(t.tenantId, plan2.batch, rowsForOutcome(plan2, out2));
+  const rec1 = await store.record(t.tenantId, plan1.batch, rowsForOutcome(plan1, out1));
+  check(rec2.status === 'recorded' && rec1.status === 'superseded', `overlap: ${rec2.status}/${rec1.status}`);
+  check((await pool.query(`select count(*)::int as n from attesta_anchor_batches where batch_id = $1`, [plan1.batch.batchId])).rows[0].n === 0,
+    'the superseded batch left nothing');
+  check((await verifyChain(db, t.tenantId, { keys: KEYS, anchors: await w.material() })).ok, 'verify clean after the overlap');
+  console.log('overlapping_ranges=second_superseded_nothing_written');
   console.log('IT-T15f-03=passed');
 }
 
