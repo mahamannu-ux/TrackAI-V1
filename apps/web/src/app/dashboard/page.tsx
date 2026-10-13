@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { AttestationCard } from './attestation-card';
 import { EvidenceWorkspace } from './evidence-workspace';
 import { FleetWorkspace } from './fleet-workspace';
 import {
@@ -147,7 +148,7 @@ function EvidenceFlow({ flow }: { flow: EvidenceFlowResponse }) {
   return <div className="space-y-4">{rendered}</div>;
 }
 
-function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: () => void; openLinked: (kind: 'session' | 'commit', id: string) => void }) {
+function DetailDrawer({ detail, close, openLinked, attestaSubject }: { detail: Detail; close: () => void; openLinked: (kind: 'session' | 'commit', id: string) => void; attestaSubject: { repositoryId: string | null; sha: string | null } | null }) {
   const [evidence, setEvidence] = useState<EvidenceFlowResponse | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
@@ -165,6 +166,7 @@ function DetailDrawer({ detail, close, openLinked }: { detail: Detail; close: ()
         {detail.kind === 'commit' && <><Metric label="Commit" value={<span className="text-sm">{data.sha?.slice(0, 12)}</span>} /><Metric label="Branch" value={data.branch ?? 'Unavailable'} /><Metric label="Final AI attribution" value={data.finalAiLines?.auditedValue ?? 0} /><Metric label="Human attribution" value={data.finalHumanLines?.auditedValue ?? 0} /><Metric label="Diff added / deleted" value={`${data.diffAddedLines ?? 0} / ${data.diffDeletedLines ?? 0}`} /><Metric label="Reworked generated LoC" value={compact(data.rework?.value ?? null)} /><Metric label="Lifecycle" value={<span className="text-sm">{data.reachability ?? 'Observed'} · {data.operationKind ?? 'commit'}</span>} /><Metric label="Unknown attribution" value={data.unknownLines ?? 0} /></>}
         {detail.kind === 'pullRequest' && <><Metric label="Commits" value={data.commits?.length ?? 0} /><Metric label="Sessions" value={data.sessions?.length ?? 0} /><Metric label="Final AI attribution" value={data.finalAiLines ?? 0} /><Metric label="Human attribution" value={data.finalHumanLines ?? 0} /></>}
       </div>
+      {detail.kind !== 'session' && <section className="mt-7"><h3 className="mb-3 font-semibold text-white">Attestation</h3>{detail.kind === 'pullRequest' && !attestaSubject?.sha ? <p className="text-sm text-slate-500">Attested when merged.</p> : <AttestationCard repositoryId={attestaSubject?.repositoryId ?? null} sha={attestaSubject?.sha ?? null} />}</section>}
       {detail.kind === 'session' && <div className={`mt-6 rounded-xl border p-4 text-sm ${data.totalAiGeneratedLoc?.status === 'recorded' ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-200' : 'border-amber-500/20 bg-amber-500/5 text-amber-200'}`}><strong>Session lifecycle:</strong> {compact(generatedAiLoc)} AI lines generated; {data.finalAiLines ?? 0} currently retained in commits. Uncommitted generation remains valuable evidence but is not final commit attribution.</div>}
       {detail.kind === 'commit' && <div className={`mt-6 rounded-xl border p-4 text-sm ${data.totalAiGeneratedLoc?.status === 'recorded' ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-200' : 'border-amber-500/20 bg-amber-500/5 text-amber-200'}`}><strong>AI Generated LoC:</strong> {compact(generatedAiLoc)}. {data.totalAiGeneratedLoc?.status === 'partial' && <>Observed partial evidence: {compact(data.totalAiGeneratedLoc?.observedValue ?? null)}. </>}{data.totalAiGeneratedLoc?.reason ?? 'Derived from eligible checkpoint evidence.'}</div>}
       {detail.kind === 'commit' && data.rework?.availability === 'recorded' && <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-200"><strong>Rework actors:</strong> {Object.entries(data.rework.byActor ?? {}).map(([actor, lines]) => `${actor} ${lines}`).join(' · ')}. Evidence: {data.rework.evidenceTypes?.join(', ') || 'Unavailable'}.</div>}
@@ -718,6 +720,23 @@ export default function DashboardPage() {
   const visibleTotals = view === 'lifecycle' && lifecycle?.totals
     ? lifecycle.totals
     : summary;
+  const attestaSubject = useMemo(() => {
+    if (!detail || detail.kind === 'session') return null;
+    if (detail.kind === 'commit') {
+      return {
+        repositoryId: commits.find((row) => row.id === detail.data.id)?.repository?.id ?? null,
+        sha: typeof detail.data.sha === 'string' ? detail.data.sha : null,
+      };
+    }
+    const pullRequestId = typeof detail.data.pullRequest?.id === 'string'
+      ? detail.data.pullRequest.id
+      : typeof detail.data.id === 'string' ? detail.data.id : null;
+    const row = pullRequestId ? pullRequests.find((item) => item.id === pullRequestId) : undefined;
+    return {
+      repositoryId: row?.repositoryId ?? null,
+      sha: row?.mergeCommitSha ?? null,
+    };
+  }, [commits, detail, pullRequests]);
 
   async function openDetail(kind: 'session' | 'commit' | 'pullRequest', id: string) {
     const data = kind === 'session' ? await getSession(id) : kind === 'commit' ? await getCommit(id) : await getPullRequestIntelligence(id);
@@ -756,6 +775,6 @@ export default function DashboardPage() {
         {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} />}
       </section>
     </main>
-    <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} />
+    <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} attestaSubject={attestaSubject} />
   </div>;
 }
