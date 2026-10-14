@@ -20,6 +20,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
+import { copyAdminAction } from '../../core/middleware/admin';
 
 export const REQUEST_ID_HEADER = 'X-Request-ID';
 export const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -114,7 +115,8 @@ export function logFailure(log: AttestaLog, res: Response, code: AttestaApiCode,
  * the client.
  */
 export function problemizeAuth(middleware: RequestHandler): RequestHandler {
-  return function attestaAuthorize(req, res, next) {
+  // The guard's action travels with the wrapper (Task16b), so the auditor sweep reads it.
+  return copyAdminAction(middleware, function attestaAuthorize(req, res, next) {
     const originalStatus = res.status.bind(res);
     const originalJson = res.json.bind(res);
     let pending = 200;
@@ -148,5 +150,5 @@ export function problemizeAuth(middleware: RequestHandler): RequestHandler {
     } catch (err) {
       done(err);
     }
-  };
+  });
 }

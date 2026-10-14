@@ -1,5 +1,7 @@
 # Audit event catalog
 
+> **Superseded as the source of truth (Task16b, 2026-10-15):** the audit contract `docs/contracts/audit/catalog.md`, generated from `apps/api/src/core/audit/catalog.ts`, now defines every action; this file is the 2026-10-14 inventory it was built from.
+
 Inventory for Task16 A16.1, written 2026-10-14 from the code on `task/Task16a-audit-inventory`.
 Every row is an `action` value written to `security_audit_events`
 (`apps/api/src/core/db/schema.ts:573`) in production code. Sites were found by

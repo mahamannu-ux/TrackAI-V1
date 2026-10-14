@@ -8,7 +8,7 @@
 // database; verified by running this file with no DATABASE_URL set).
 
 import assert from 'node:assert/strict';
-import type { Router } from 'express';
+import { Router } from 'express';
 import test from 'node:test';
 import { ADMIN_ACTIONS, adminMembershipAllows, type AdminAction } from './admin-authorization';
 import type { AdminMembershipRecord } from './admin-authorization';
@@ -16,6 +16,8 @@ import adminRouter from '../../features/admin/admin.routes';
 import { evidenceAdminRouter } from '../../features/evidence/evidence.routes';
 import { createFleetAdminRouter } from '../../features/fleet/fleet.routes';
 import { createAttestaRouter } from '../../features/attesta/attesta.routes';
+import { problemizeAuth } from '../../features/attesta/http';
+import { adminActionOf, requireAdminAction } from '../middleware/admin';
 
 // Mount points from apps/api/src/app.ts (adminRouter at /api/admin,
 // evidenceAdminRouter at /api/admin/evidence, fleetAdminRouter at
@@ -27,8 +29,9 @@ const FLEET_ADMIN_MOUNT = '/api/admin/fleet';
 const ATTESTA_MOUNT = '/api/attesta';
 
 // Every guarded route on the admin, evidence-admin and fleet routers, mapped to
-// the action its requireAdminAction guard passes (read from the route file, not
-// recoverable at runtime because requireAdminAction closes over the action).
+// the action its requireAdminAction guard passes (read from the route file). Since
+// Task16b each guard carries its action (adminActionOf), so the sweep asserts the
+// guard on the route checks exactly this action, not only that a guard exists.
 // The fleet router carries one router-level guard
 // (requireAdminAction('machine.manage') via router.use, fleet.routes.ts:125-128)
 // instead of per-route guards.
@@ -88,6 +91,15 @@ const ATTESTA_WRITE_ACTIONS: Record<string, AdminAction> = {
   'POST /api/attesta/period-reports': 'attesta.export',
 };
 
+// Attesta GET routes with a per-route guard (exportAuth, attesta.routes.ts:194) on top
+// of the router-level attesta.read guard: pinned so a swap to attesta.read is caught.
+const ATTESTA_GUARDED_READS: Record<string, AdminAction> = {
+  'GET /api/attesta/evidence-packs/:id': 'attesta.export',
+  'GET /api/attesta/evidence-packs/:id/content': 'attesta.export',
+  'GET /api/attesta/period-reports/:id': 'attesta.export',
+  'GET /api/attesta/period-reports/:id/document': 'attesta.export',
+};
+
 // Auditor-reachable non-GET routes, with the one-line reason each. Anything
 // auditor-reachable outside this map fails the sweep.
 const AUDITOR_ALLOWED_WRITES: Record<string, string> = {
@@ -121,7 +133,8 @@ const AUDITOR_MEMBERSHIP: AdminMembershipRecord = {
 interface StackedRoute {
   method: string;
   key: string;
-  layers: number;
+  /** Actions of the requireAdminAction guards on this route (adminActionOf). */
+  guardActions: AdminAction[];
 }
 
 interface StackedRouter {
@@ -129,15 +142,18 @@ interface StackedRouter {
   router: Router;
   /** 'per-route': one guard per route; 'router-level': one guard for the whole router. */
   guard: 'per-route' | 'router-level';
-  /** Router-level guard only: exact middleware layers before the first route
-    (fleet.routes.ts:128; attesta.routes.ts:119-120). This pins the guard's
-    presence and position, not which action it checks (unreadable at runtime). */
-  leadingLayers?: number;
+  /** Router-level guard only: the action of the one guard before the first route
+    (fleet.routes.ts:128 machine.manage; attesta.routes.ts:120 attesta.read). */
+  routerAction?: AdminAction;
+}
+
+function actionsOf(handles: unknown[]): AdminAction[] {
+  return handles.map(handle => adminActionOf(handle)).filter((action): action is AdminAction => action !== undefined);
 }
 
 function routesOf(router: Router, mount: string): StackedRoute[] {
   const stack = (router as unknown as { stack: Array<{
-    route?: { path: unknown; methods: Record<string, boolean>; stack: unknown[] };
+    route?: { path: unknown; methods: Record<string, boolean>; stack: Array<{ handle: unknown }> };
   }> }).stack;
   const out: StackedRoute[] = [];
   for (const layer of stack) {
@@ -152,28 +168,32 @@ function routesOf(router: Router, mount: string): StackedRoute[] {
       .filter(method => method !== '_all' && method !== 'head')
       .map(method => method.toUpperCase());
     for (const method of methods) {
-      out.push({ method, key: `${method} ${mount}${layer.route.path as string}`, layers: layer.route.stack.length });
+      out.push({
+        method,
+        key: `${method} ${mount}${layer.route.path as string}`,
+        guardActions: actionsOf(layer.route.stack.map(item => item.handle)),
+      });
     }
   }
   return out;
 }
 
-/** Non-route (middleware) layers before the first route layer: the router-level guard. */
-function leadingMiddleware(router: Router): number {
-  const stack = (router as unknown as { stack: Array<{ route?: unknown }> }).stack;
-  let count = 0;
+/** Guard actions on the middleware layers before the first route: the router-level guard. */
+function leadingGuardActions(router: Router): AdminAction[] {
+  const stack = (router as unknown as { stack: Array<{ route?: unknown; handle: unknown }> }).stack;
+  const handles: unknown[] = [];
   for (const layer of stack) {
     if (layer.route) break;
-    count += 1;
+    handles.push(layer.handle);
   }
-  return count;
+  return actionsOf(handles);
 }
 
 const SWEPT: StackedRouter[] = [
   { mount: ADMIN_MOUNT, router: adminRouter, guard: 'per-route' },
   { mount: EVIDENCE_ADMIN_MOUNT, router: evidenceAdminRouter, guard: 'per-route' },
-  { mount: FLEET_ADMIN_MOUNT, router: createFleetAdminRouter(), guard: 'router-level', leadingLayers: 1 },
-  { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level', leadingLayers: 2 },
+  { mount: FLEET_ADMIN_MOUNT, router: createFleetAdminRouter(), guard: 'router-level', routerAction: 'machine.manage' },
+  { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level', routerAction: 'attesta.read' },
 ];
 
 const STACKED: StackedRoute[] = SWEPT.flatMap(entry => routesOf(entry.router, entry.mount));
@@ -227,36 +247,97 @@ test('auditor sweep: route tables match the swept routers', () => {
   );
 });
 
-test('auditor sweep: every swept router carries its guard', () => {
-  for (const entry of SWEPT) {
-    const routes = routesOf(entry.router, entry.mount);
-    if (entry.guard === 'router-level') {
-      assert.equal(
-        leadingMiddleware(entry.router),
-        entry.leadingLayers,
-        `${entry.mount} must carry exactly its router-level guard layers before its routes (guard removed or added?)`,
-      );
+/**
+ * Every place the guard's identity can drift: a per-route guard whose action differs
+ * from ROUTE_ACTIONS / ATTESTA_WRITE_ACTIONS, a router-level guard other than the
+ * expected one, a guard on an unguarded route, or a second guard. Returns the problems.
+ */
+function guardMismatches(
+  swept: StackedRouter[],
+  routeActions: Record<string, AdminAction>,
+  attestaWrites: Record<string, AdminAction>,
+  attestaReads: Record<string, AdminAction> = {},
+): string[] {
+  const problems: string[] = [];
+  const expect = (key: string, actual: AdminAction[], expected: AdminAction[]) => {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      problems.push(`${key}: guard checks [${actual.join(', ')}], table says [${expected.join(', ')}]`);
     }
-    for (const route of routes) {
-      if (UNGUARDED_ROUTES[route.key]) {
-        assert.equal(route.layers, 1, `${route.key} is listed unguarded but carries middleware`);
+  };
+  for (const entry of swept) {
+    const leading = leadingGuardActions(entry.router);
+    expect(`${entry.mount} (router-level)`, leading, entry.routerAction ? [entry.routerAction] : []);
+    for (const route of routesOf(entry.router, entry.mount)) {
+      if (UNGUARDED_ROUTES[route.key] !== undefined) {
+        expect(route.key, route.guardActions, []);
       } else if (entry.guard === 'per-route') {
-        assert.ok(
-          route.layers >= 2,
-          `${route.key} is listed with action ${ROUTE_ACTIONS[route.key]} but has no guard layer`,
-        );
-      }
-      if (ATTESTA_WRITE_ACTIONS[route.key] !== undefined) {
-        assert.ok(
-          route.layers >= 2,
-          // exportAuth plus the handler (attesta.routes.ts:209 and :289); without
-          // exportAuth the pinned POST would fall back to the router-level
-          // attesta.read guard unnoticed.
-          `${route.key} is a pinned auditor-allowed write but carries no per-route export guard layer`,
-        );
+        expect(route.key, route.guardActions, routeActions[route.key] ? [routeActions[route.key]] : []);
+      } else if (attestaWrites[route.key] !== undefined) {
+        // exportAuth (attesta.routes.ts:194); without it the POST would fall back to
+        // the router-level attesta.read guard unnoticed.
+        expect(route.key, route.guardActions, [attestaWrites[route.key]]);
+      } else if (onAttesta(route.key)) {
+        // Attesta GETs: the router-level attesta.read guard only, or exactly the pinned
+        // per-route guard (ATTESTA_GUARDED_READS).
+        expect(route.key, route.guardActions, attestaReads[route.key] ? [attestaReads[route.key]] : []);
+      } else {
+        // Router-level routers (fleet): no per-route guard; the table must name the router's action.
+        expect(route.key, route.guardActions, []);
+        expect(`${route.key} (table)`, [routeActions[route.key]], entry.routerAction ? [entry.routerAction] : []);
       }
     }
   }
+  return problems;
+}
+
+test('auditor sweep: every guard checks exactly the tabled action', () => {
+  const problems = guardMismatches(SWEPT, ROUTE_ACTIONS, ATTESTA_WRITE_ACTIONS, ATTESTA_GUARDED_READS);
+  for (const [key, action] of Object.entries(ATTESTA_GUARDED_READS)) {
+    assert.ok(STACKED.some(route => route.key === key), `ATTESTA_GUARDED_READS entry ${key} matches no route (remove it)`);
+    assert.ok(auditorAllows(action), `${key}: ${action} must stay auditor-readable`);
+  }
+  assert.deepEqual(problems, [], `guard actions differ from the sweep tables: ${problems.join('; ')}`);
+});
+
+test('auditor sweep: swapping a route guard\'s action fails the sweep (throwaway router)', () => {
+  const ok = Router();
+  ok.post('/things', requireAdminAction('repository.manage'), (_req, res) => { res.end(); });
+  const swapped = Router();
+  swapped.post('/things', requireAdminAction('machine.manage'), (_req, res) => { res.end(); });
+  const table: Record<string, AdminAction> = { 'POST /throwaway/things': 'repository.manage' };
+  assert.deepEqual(guardMismatches([{ mount: '/throwaway', router: ok, guard: 'per-route' }], table, {}), []);
+  assert.equal(guardMismatches([{ mount: '/throwaway', router: swapped, guard: 'per-route' }], table, {}).length, 1);
+  // Router-level: the same swap through problemizeAuth (the attesta wrapper) is caught too.
+  const level = Router();
+  level.use(problemizeAuth(requireAdminAction('export.manage')));
+  level.get('/x', (_req, res) => { res.end(); });
+  const levelProblems = guardMismatches(
+    [{ mount: '/throwaway', router: level, guard: 'router-level', routerAction: 'attesta.read' }],
+    { 'GET /throwaway/x': 'attesta.read' }, {},
+  );
+  assert.deepEqual(levelProblems, ['/throwaway (router-level): guard checks [export.manage], table says [attesta.read]']);
+});
+
+test('auditor sweep: adminActionOf reads every guard\'s action, also through problemizeAuth', () => {
+  for (const action of ADMIN_ACTIONS) {
+    const guard = requireAdminAction(action);
+    assert.equal(adminActionOf(guard), action);
+    assert.equal(adminActionOf(problemizeAuth(guard)), action);
+    assert.deepEqual(Object.keys(guard), [], 'the action is not enumerable');
+    const [symbol] = Object.getOwnPropertySymbols(guard);
+    const descriptor = Object.getOwnPropertyDescriptor(guard, symbol);
+    assert.equal(descriptor?.writable, false, 'read-only');
+    assert.equal(descriptor?.configurable, false, 'cannot be redefined');
+    try {
+      (guard as unknown as Record<symbol, unknown>)[symbol] = 'x';
+    } catch {
+      // strict mode throws; sloppy mode ignores the write. Either way it does not change.
+    }
+    assert.equal(adminActionOf(guard), action, 'a write leaves the action unchanged');
+  }
+  assert.equal(adminActionOf(() => undefined), undefined);
+  assert.equal(adminActionOf(problemizeAuth((_req, _res, next) => next())), undefined);
+  assert.equal(adminActionOf('machine.manage'), undefined);
 });
 
 test('auditor sweep: every mutating route is denied to tenant_auditor, except pinned writes', () => {
