@@ -301,8 +301,8 @@ async function it01(a: Tenant, b: Tenant): Promise<void> {
     await client.query(`create role ${APP_ROLE} nologin nosuperuser nobypassrls`);
     await client.query(`grant usage, create on schema public to ${APP_ROLE}`);
     // attesta_anchors (0018) references attesta_records, so TRUNCATE … CASCADE needs it too; with
-    // the privilege the attack reaches the guards (Task15f2).
-    await client.query(`grant select, insert, update, delete, truncate on chain_head, attesta_records, attesta_envelopes, attesta_subjects, attesta_anchor_batches, attesta_anchors to ${APP_ROLE}`);
+    // the privilege the attack reaches the guards (Task15f2); attesta_period_reports (0022) too (Task15i4).
+    await client.query(`grant select, insert, update, delete, truncate on chain_head, attesta_records, attesta_envelopes, attesta_subjects, attesta_anchor_batches, attesta_anchors, attesta_period_reports to ${APP_ROLE}`);
     for (const table of ['chain_head', 'attesta_records', 'attesta_envelopes', 'attesta_subjects']) {
       await client.query(`create policy it_t15d_tenant on ${table} for all to ${APP_ROLE}
         using (tenant_id = current_setting('it_t15d.tenant')::uuid) with check (tenant_id = current_setting('it_t15d.tenant')::uuid)`);
