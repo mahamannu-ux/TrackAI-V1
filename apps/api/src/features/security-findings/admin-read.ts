@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../../core/db';
-import { securityAuditEvents, securityFindings } from '../../core/db/schema';
+import { recordAuditEvent } from '../../core/audit';
+import { securityFindings } from '../../core/db/schema';
 
 export type SecurityFindingReaderRole = 'tenant_admin' | 'tenant_auditor';
 
@@ -70,8 +71,7 @@ const databaseStore: SecurityFindingReadStore = {
         .where(eq(securityFindings.tenantId, input.tenantId))
         .orderBy(desc(securityFindings.occurredAt), desc(securityFindings.id))
         .limit(input.limit);
-      await transaction.insert(securityAuditEvents).values({
-        tenantId: input.tenantId,
+      await recordAuditEvent(transaction, input.tenantId, {
         actorType: input.actorRole,
         actorId: input.actorId,
         action: 'security_findings.read',
