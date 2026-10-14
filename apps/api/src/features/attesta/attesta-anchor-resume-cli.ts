@@ -26,6 +26,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { recordAuditEvent } from '../../core/audit';
 import { TERMINAL_ANCHOR_CODES } from './anchor-contract';
 import { parseSeq } from './ledger';
 import type { WorkerDatabase } from './worker';
@@ -275,10 +276,14 @@ export function pgResumeStore(db: WorkerDatabase): ResumeStore {
           insert into attesta_anchor_resumes (tenant_id, batch_id, actor, reason, request_id)
           values (${input.tenantId}, ${input.batchId}, ${input.actor}, ${input.reason}, ${input.requestId})
           returning ${sql.raw(`to_char(created_at at time zone 'UTC', ${TS_MS})`)} as created_at`);
-        await tx.execute(sql`/* anchor_resume:audit */
-          insert into security_audit_events (tenant_id, actor_type, actor_id, action, target_type, target_id, details)
-          values (${input.tenantId}, 'system_operator', ${input.actor}, ${RESUME_AUDIT_ACTION}, 'attesta_anchor_batch', ${input.batchId},
-            ${JSON.stringify({ request_id: input.requestId, terminal_code: input.terminalCode, records: input.records, reason: input.reason })}::jsonb)`);
+        await recordAuditEvent(tx, input.tenantId, {
+          actorType: 'system_operator',
+          actorId: input.actor,
+          action: RESUME_AUDIT_ACTION,
+          targetType: 'attesta_anchor_batch',
+          targetId: input.batchId,
+          details: { request_id: input.requestId, terminal_code: input.terminalCode, records: input.records, reason: input.reason },
+        });
         return { resumedAt: String(inserted.rows[0]?.created_at) };
       });
     },

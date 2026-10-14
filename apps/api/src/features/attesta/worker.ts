@@ -26,6 +26,7 @@
  * counts only.
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { recordAuditEvent } from '../../core/audit';
 import {
   AttestaBuilderError, buildStatement, statementValidator,
   type AttestaSubjectRow, type BuilderOptions, type BuilderReadExecutor, type BuiltStatement,
@@ -367,11 +368,14 @@ export async function requeueFailedSubjects(db: WorkerDatabase, input: RequeueIn
       // Thrown inside the transaction, so the update rolls back.
       throw new RequeueScopeChanged(input.expect, moved.rows.length);
     }
-    await tx.execute(sql`/* worker:requeue_audit */
-      insert into security_audit_events (tenant_id, actor_type, actor_id, action, target_type, target_id, details)
-      values (${input.tenantId}, 'system_operator', ${input.actorId}, 'attesta_subjects.requeued',
-        'attesta_outbox', ${input.tenantId},
-        ${JSON.stringify({ code: input.code, count: moved.rows.length })}::jsonb)`);
+    await recordAuditEvent(tx, input.tenantId, {
+      actorType: 'system_operator',
+      actorId: input.actorId,
+      action: 'attesta_subjects.requeued',
+      targetType: 'attesta_outbox',
+      targetId: input.tenantId,
+      details: { code: input.code, count: moved.rows.length },
+    });
     return moved.rows.length;
   });
   return { dryRun: false, matched, requeued };

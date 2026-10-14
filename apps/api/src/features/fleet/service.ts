@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
+import { recordAuditEvent } from '../../core/audit';
 import {
   developerMachines,
   fleetConfigurations,
@@ -8,7 +9,6 @@ import {
   machineDeliveryHealthReports,
   machineRepositoryGrants,
   repositoryEnrollments,
-  securityAuditEvents,
   tenantSecurityMonitorSettings,
 } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
@@ -261,7 +261,7 @@ export async function createFleetConfiguration(input: {
       ring: input.configuration.ring,
       snapshot,
     });
-    await tenant.insert(securityAuditEvents, {
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'fleet_configuration.created',
@@ -313,7 +313,7 @@ export async function assignFleetConfiguration(input: {
         { desiredConfigurationId: configuration.id, updatedAt: assignedAt },
       );
     }
-    await tenant.insert(securityAuditEvents, {
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'fleet_configuration.assigned',
@@ -460,7 +460,7 @@ export async function applyFleetOffboard(input: {
       { desiredConfigurationId: null, updatedAt: new Date() },
       eq(fleetMachineStates.machineId, input.machineId),
     );
-    await tenant.insert(securityAuditEvents, {
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'fleet_machine.offboarded',
