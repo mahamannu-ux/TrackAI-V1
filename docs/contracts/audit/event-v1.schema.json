@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/contracts/audit/event-v1.schema.json",
+  "title": "TrackAI audit event, version 1",
+  "description": "One security_audit_events row as the audit read API (Task16c) returns it. Every field is required and no other field is allowed. The per-action details keys, allowed actor types and target id formats are in catalog.md (generated from apps/api/src/core/audit/catalog.ts). severity and catalog_version are derived from the catalog when the row is read; they are not stored.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "action", "actor_type", "actor_id", "target_type", "target_id",
+    "details", "occurred_at", "severity", "catalog_version"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "action": {
+      "description": "A catalog action. v1 keeps today's names exactly, including their mixed separators.",
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "actor_type": {
+      "type": "string",
+      "enum": ["tenant_admin", "tenant_auditor", "tenant_user", "system_operator", "machine", "service"]
+    },
+    "actor_id": {
+      "description": "The Supabase subject for a person, the operator token for a CLI, the machine id for a machine, the service name for a service.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "target_type": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "target_id": {
+      "description": "A row id, the tenant id, or a documented compound format, per the catalog entry's target id kind.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "details": {
+      "description": "Exactly the catalog entry's keys; never raw customer content.",
+      "type": "object"
+    },
+    "occurred_at": {
+      "description": "RFC 3339, UTC.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?Z$"
+    },
+    "severity": {
+      "description": "Derived from the catalog, not stored.",
+      "type": "string",
+      "enum": ["high", "notice", "info"]
+    },
+    "catalog_version": {
+      "description": "AUDIT_CATALOG_VERSION when the row was read. Derived, not stored.",
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}
