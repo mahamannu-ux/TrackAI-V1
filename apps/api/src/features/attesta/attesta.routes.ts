@@ -11,7 +11,11 @@
  *   GET  /evidence-packs/:id                job status (evidence-pack-service.ts packStatusBody)
  *   GET  /evidence-packs/:id/content        {pack, signature} attachment, audited
  *
- * Every route needs `attesta.read`; the evidence-pack routes also `attesta.export`
+ *   POST /period-reports                    202 {id, status}; idempotent on Idempotency-Key + scope (Task15i4)
+ *   GET  /period-reports/:id                job status, report and statement digests
+ *   GET  /period-reports/:id/document       the signed report document (RFC 8785 bytes), audited
+ *
+ * Every route needs `attesta.read`; the evidence-pack and period-report routes also `attesta.export`
  * (both: tenant_admin, tenant_auditor; an auditor's job is to take evidence, and every
  * export and download is audited). Handlers are thin; queries live in read-service.ts
  * and evidence-pack-service.ts. Each route is classified in the route sweep
@@ -32,6 +36,11 @@ import {
   MAX_OPEN_PACKS, MAX_PACK_RECORDS, PackJobError, defaultPackJobDeps, downloadBody, packStatusBody, parseIdempotencyKey,
   parsePackRequest, runEvidencePack, sameRequest, type PackJob, type PackJobDeps,
 } from './evidence-pack-service';
+import {
+  MAX_OPEN_REPORTS, defaultReportJobDeps, documentBody, parseReportIdempotencyKey, parseReportRequest, reportStatusBody,
+  runPeriodReport, sameReportRequest, type ReportJob, type ReportJobDeps,
+} from './period-report-service';
+import { MAX_REPORT_STATEMENTS } from './period-report-rules';
 import {
   AttestaQueryError, anchorMaterialFromEnv, dbChainVerifier, getStatement, listStatements,
   parseDigest, parseListQuery, parseSubject, parseVerifyQuery, pgReadStore, publishedKeySource, subjectStatements, verifyRange,
@@ -56,6 +65,10 @@ export interface AttestaRouterDeps {
   packs?: PackJobDeps;
   /** Starts a created job (default: in-process after the 202, setImmediate). */
   startPack?: (tenantId: string, packId: string) => void;
+  /** Period-report job dependencies (default: production wiring, defaultReportJobDeps). */
+  reports?: ReportJobDeps;
+  /** Starts a created report job (default: in-process after the 202, setImmediate). */
+  startReport?: (tenantId: string, reportId: string) => void;
   anchors?: AnchorMaterialSource;
   now?: () => Date;
   log?: AttestaLog;
@@ -98,6 +111,7 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
   const keys = deps.keys ?? publishedKeySource(() => pgTrustStore(db as unknown as TrustDb), () => trustConfigFromEnv(process.env), now);
   const anchors = deps.anchors ?? anchorMaterialFromEnv(process.env);
   const packs = deps.packs ?? defaultPackJobDeps(process.env, anchors);
+  const reports = deps.reports ?? defaultReportJobDeps(process.env);
   const log = deps.log ?? defaultLog;
   const verifying = new Set<string>();
 
@@ -254,6 +268,80 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
       packId: job.id, details: { request_id: requestIdOf(res), ...scopeDetails(job), pack_digest: job.packDigest, counts: job.counts } });
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Disposition', `attachment; filename="trackai-evidence-pack-${job.id}.json"`);
+    res.status(200).type('application/json').send(body);
+  }));
+
+  // --- Period reports (Task15i4; period-report.md). Same job pattern and authorization as packs.
+
+  const startReport = deps.startReport ?? ((tenantId: string, reportId: string) => {
+    setImmediate(() => {
+      runPeriodReport({ ...reports, log }, tenantId, reportId).catch((err: unknown) => {
+        log(`attesta-report ATTESTA_API_INTERNAL report_id=${reportId} cause=${err instanceof Error ? err.name : 'unknown'}`);
+      });
+    });
+  });
+  const reportIdOf = (req: Request): string => {
+    const id = param(req, 'id');
+    if (!PACK_ID_RE.test(id)) throw new AttestaQueryError('report id must be a lowercase UUID');
+    return id;
+  };
+
+  router.post('/period-reports', exportAuth, handle(async (req, res, who) => {
+    if (Object.keys(query(req)).length > 0) throw new AttestaQueryError('unknown parameter');
+    const key = parseReportIdempotencyKey(req.get('Idempotency-Key'));
+    const request = parseReportRequest(req.body, now());
+    const answer = (job: ReportJob, replayed: boolean) => {
+      res.setHeader('Location', `${req.baseUrl}/period-reports/${job.id}`);
+      res.status(202).json({ id: job.id, status: job.status, replayed });
+    };
+    const audit = (job: ReportJob, replayed: boolean) => reports.store.audit({ tenantId: who.tenantId, actorId: who.actorId,
+      actorRole: who.role, action: 'attesta.report.request', reportId: job.id,
+      details: { request_id: requestIdOf(res), scope: job.scope, replayed } });
+    const replay = async (job: ReportJob) => {
+      if (!sameReportRequest(request, job.scope)) throw new ApiProblem(409, 'ATTESTA_API_CONFLICT');
+      await audit(job, true);
+      answer(job, true);
+    };
+    const existing = await reports.store.findByKey(who.tenantId, key);
+    if (existing) return replay(existing);
+    // Another tenant's repository and an unknown one are the same 400.
+    if (!(await reports.store.repositoryExists(who.tenantId, request.scope.repository_id))) {
+      throw new AttestaQueryError('repository_id is not a repository of this tenant');
+    }
+    if (await reports.store.inputCount(who.tenantId, request.scope) > MAX_REPORT_STATEMENTS) {
+      throw new AttestaQueryError('the period holds too many statements for one report');
+    }
+    if (await reports.store.openCount(who.tenantId) >= MAX_OPEN_REPORTS) {
+      throw new ApiProblem(429, 'ATTESTA_API_RATE_LIMITED', { 'Retry-After': String(VERIFY_RETRY_AFTER_SECONDS * 6) });
+    }
+    const { job, created } = await reports.store.createOrGet({
+      tenantId: who.tenantId, idempotencyKey: key, request, requestedBy: who.actorId, requestId: requestIdOf(res),
+    });
+    if (!created) return replay(job);
+    startReport(who.tenantId, job.id);
+    await audit(job, false);
+    answer(job, false);
+  }));
+
+  router.get('/period-reports/:id', exportAuth, handle(async (req, res, who) => {
+    if (Object.keys(query(req)).length > 0) throw new AttestaQueryError('unknown parameter');
+    // Another tenant's id and an unknown id take the same path (one tenant-bound query, the same 404).
+    const job = await reports.store.get(who.tenantId, reportIdOf(req));
+    if (!job) throw new ApiProblem(404, 'ATTESTA_API_NOT_FOUND');
+    sendJson(res, reportStatusBody(job, `${req.baseUrl}/period-reports`));
+  }));
+
+  router.get('/period-reports/:id/document', exportAuth, handle(async (req, res, who) => {
+    if (Object.keys(query(req)).length > 0) throw new AttestaQueryError('unknown parameter');
+    const id = reportIdOf(req);
+    const job = await reports.store.get(who.tenantId, id);
+    if (!job || job.status !== 'ready') throw new ApiProblem(404, 'ATTESTA_API_NOT_FOUND');
+    // A stored document that does not hash to its digest is a 500, never a download.
+    const body = documentBody(job, await reports.store.document(who.tenantId, id));
+    await reports.store.audit({ tenantId: who.tenantId, actorId: who.actorId, actorRole: who.role, action: 'attesta.report.download',
+      reportId: job.id, details: { request_id: requestIdOf(res), scope: job.scope, report_digest: job.reportDigest, statement_digest: job.statementDigest } });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="trackai-period-report-${job.id}.json"`);
     res.status(200).type('application/json').send(body);
   }));
 

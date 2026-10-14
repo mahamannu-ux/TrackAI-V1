@@ -7,6 +7,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalize, sha256Prefixed } from '../canonical';
 import type { LineCounts, ReportInput } from '../period-report-rules';
+import type { ReportAuditInput, ReportJob, ReportRequest, ReportSnapshot, ReportStore } from '../period-report-service';
+import { storedScopeOf } from '../period-report-service';
+
 
 const FIXTURES = join(__dirname, '../../../../../../docs/contracts/attesta/fixtures');
 const base = (kind: string) => JSON.parse(readFileSync(join(FIXTURES, `valid-${kind.replace('_', '-')}.json`), 'utf8')) as Record<string, any>;
@@ -94,4 +97,63 @@ export function reportStatement(o: ReportStatementOptions): string {
 /** A stored input at `seq`. */
 export function input(seq: number, canonical: string): ReportInput {
   return { seq, digest: sha256Prefixed(canonical), canonical };
+}
+
+// ---------------------------------------------------------------------------
+// A memory report store for the route tests (tenant-bound like the pg store).
+
+
+export class MemoryReportStore implements ReportStore {
+  jobs: ReportJob[] = [];
+  documents = new Map<string, string>();
+  audits: ReportAuditInput[] = [];
+  /** tenant → repository ids */
+  repositories = new Map<string, Set<string>>();
+  inputs = 0;
+  failAudit = false;
+  private n = 0;
+  async createOrGet(i: { tenantId: string; idempotencyKey: string; request: ReportRequest; requestedBy: string; requestId: string }) {
+    const existing = this.jobs.find((j) => j.tenantId === i.tenantId && j.idempotencyKey === i.idempotencyKey);
+    if (existing) return { job: { ...existing }, created: false };
+    this.n += 1;
+    const job: ReportJob = {
+      id: `44444444-0000-4000-8000-${String(this.n).padStart(12, '0')}`, tenantId: i.tenantId, idempotencyKey: i.idempotencyKey,
+      repositoryId: i.request.scope.repository_id, scope: storedScopeOf(i.request.scope), status: 'queued', requestedBy: i.requestedBy,
+      requestId: i.requestId, attempts: 0, reportDigest: null, statementDigest: null, recordId: null, errorCode: null,
+      createdAt: '2026-10-13T12:00:00.000Z', finishedAt: null,
+    };
+    this.jobs.push(job);
+    return { job: { ...job }, created: true };
+  }
+  async get(tenantId: string, id: string) {
+    const j = this.jobs.find((x) => x.tenantId === tenantId && x.id === id);
+    return j ? { ...j } : null;
+  }
+  async findByKey(tenantId: string, key: string) {
+    const j = this.jobs.find((x) => x.tenantId === tenantId && x.idempotencyKey === key);
+    return j ? { ...j } : null;
+  }
+  async document(tenantId: string, id: string) {
+    const j = this.jobs.find((x) => x.tenantId === tenantId && x.id === id && x.status === 'ready');
+    return j ? this.documents.get(id) ?? null : null;
+  }
+  async openCount(tenantId: string) { return this.jobs.filter((j) => j.tenantId === tenantId && (j.status === 'queued' || j.status === 'running')).length; }
+  async repositoryExists(tenantId: string, repositoryId: string) { return this.repositories.get(tenantId)?.has(repositoryId) ?? false; }
+  async inputCount() { return this.inputs; }
+  async claim() { return null; }
+  async readSnapshot(): Promise<ReportSnapshot> { throw new Error('not in the route tests'); }
+  async chainReady() { return null; }
+  async finishFailed() { return false; }
+  async runnable() { return []; }
+  async audit(i: ReportAuditInput) {
+    if (this.failAudit) throw new Error('audit down');
+    this.audits.push(i);
+  }
+  /** Marks a job ready with a document (what chainReady does in the database). */
+  markReady(id: string, document: string) {
+    const j = this.jobs.find((x) => x.id === id)!;
+    Object.assign(j, { status: 'ready', reportDigest: sha256Prefixed(document), statementDigest: 'sha256:' + 'd'.repeat(64),
+      recordId: '55555555-0000-4000-8000-000000000005', finishedAt: '2026-10-13T12:01:00.000Z' });
+    this.documents.set(id, document);
+  }
 }
