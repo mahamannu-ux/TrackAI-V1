@@ -97,8 +97,8 @@ const FIXTURES: Record<string, Fixture> = {
   'evidence_export.failed': admin(U1, { failureCode: 'export_execution_failed', reason: 'audit' }),
   'evidence.collection.enabled': consent,
   'evidence.collection.disabled': consent,
-  // Today's site writes tenant_user here (Task16c migration item; see KNOWN_TASK16C).
-  'evidence.raw.read': role('tenant_user', U1, { provider: 'opencode', eventType: 'prompt_submitted' }),
+  // The site writes req.adminRole (Task16c rule 1); the guard admits admins and auditors.
+  'evidence.raw.read': role('tenant_auditor', U1, { provider: 'opencode', eventType: 'prompt_submitted' }),
   'evidence.intention.corrected': admin(U1, { correctedFromIntentionId: U2, reason: 'wrong' }),
   'evidence.retention.purged': admin(TENANT, {
     expiredEvents: 1, expiredIntentions: 2, expiredSummaries: 0, expiredSemanticIndexes: 2,
@@ -141,14 +141,6 @@ const FIXTURES: Record<string, Fixture> = {
   }),
 };
 
-/**
- * Emitters whose row today's contract refuses: Task16c changes the emitter, never this
- * contract (README.md; handoff migration list). Each entry: action → the expected code.
- */
-const KNOWN_TASK16C: Record<string, string> = {
-  'evidence.raw.read': 'AUDIT_ACTOR_NOT_ALLOWED', // service.ts:387 hardcodes tenant_user; use req.adminRole
-};
-
 function eventFor(action: string, fixture = FIXTURES[action]): AuditEvent {
   const entry = AUDIT_CATALOG_BY_ACTION.get(action);
   assert.ok(entry, `${action} is not in the catalog`);
@@ -173,19 +165,12 @@ test('audit contract: 47 emitted actions, each validates as today\'s emitter wri
   assert.deepEqual(Object.keys(FIXTURES).sort(), emitted.map(entry => entry.action).sort(), 'one fixture per emitted action');
   for (const entry of emitted) {
     const event = eventFor(entry.action);
-    if (KNOWN_TASK16C[entry.action]) {
-      assert.equal(codeOf(() => buildAuditRow(TENANT, event)), KNOWN_TASK16C[entry.action], entry.action);
-      continue;
-    }
     const row = buildAuditRow(TENANT, event);
     assert.equal(row.tenantId, TENANT);
     assert.equal(row.action, entry.action);
     assert.equal(row.targetType, entry.targetType);
     assert.deepEqual(row.details, event.details, `${entry.action}: details pass through unchanged`);
   }
-  // The Task16c fix makes the known row valid.
-  const fixed = eventFor('evidence.raw.read', { ...FIXTURES['evidence.raw.read'], actorType: 'tenant_auditor' });
-  assert.equal(buildAuditRow(TENANT, fixed).actorType, 'tenant_auditor');
 });
 
 test('audit contract: entries are well formed', () => {
@@ -389,7 +374,6 @@ test('audit contract: an emitted row round-trips through event-v1.schema.json', 
   const ajv = new Ajv({ strict: true, allErrors: true });
   const validate = ajv.compile(schema);
   for (const entry of emitted) {
-    if (KNOWN_TASK16C[entry.action]) continue;
     const row = buildAuditRow(TENANT, eventFor(entry.action));
     const apiRow = {
       id: U2, action: row.action, actor_type: row.actorType, actor_id: row.actorId, target_type: row.targetType,
