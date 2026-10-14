@@ -2,8 +2,28 @@ import type { NextFunction, Request, Response } from 'express';
 import { adminMembershipAllows, type AdminAction } from '../security/admin-authorization';
 import { lookupAdminMembership } from '../security/admin-security-service';
 
+/**
+ * The action a guard checks, attached to the guard itself (Task16b): read-only and
+ * non-enumerable, so the auditor sweep can assert *which* action guards a route.
+ */
+const ADMIN_ACTION = Symbol('trackai.requireAdminAction.action');
+
+/** The action of a requireAdminAction guard (or a wrapper that copied it), else undefined. */
+export function adminActionOf(handler: unknown): AdminAction | undefined {
+  if (typeof handler !== 'function') return undefined;
+  return (handler as unknown as Record<symbol, AdminAction | undefined>)[ADMIN_ACTION];
+}
+
+/** Marks `handler` as checking `action` (read-only, non-enumerable). Returns the handler. */
+export function markAdminAction<T extends object>(handler: T, action: AdminAction | undefined): T {
+  if (action !== undefined) {
+    Object.defineProperty(handler, ADMIN_ACTION, { value: action, enumerable: false, writable: false, configurable: false });
+  }
+  return handler;
+}
+
 export function requireAdminAction(action: AdminAction) {
-  return async function tenantAdminMiddleware(
+  return markAdminAction(async function tenantAdminMiddleware(
     req: Request,
     res: Response,
     next: NextFunction,
@@ -25,5 +45,5 @@ export function requireAdminAction(action: AdminAction) {
     } catch {
       res.status(503).json({ error: 'Administrator authorization is temporarily unavailable' });
     }
-  };
+  }, action);
 }
