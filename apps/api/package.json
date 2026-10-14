@@ -61,6 +61,7 @@
     "verify:task15i-evidence-api-live": "tsx src/features/attesta/t15i-evidence-api-live-verify.ts",
     "verify:task15i2-evidence-packs-live": "tsx src/features/attesta/t15i2-evidence-packs-live-verify.ts",
     "verify:task15i3-verify-keys-resume-live": "tsx src/features/attesta/t15i3-verify-keys-resume-live-verify.ts",
+    "verify:task15m-github-check-founder-live": "tsx src/features/attesta/t15m-github-check-founder-live-verify.ts",
     "verify:task15m-github-check-live": "tsx src/features/attesta/t15m-github-check-live-verify.ts",
     "attesta:build": "tsx src/features/attesta/attesta-build-cli.ts",
     "attesta:github-checks": "tsx src/features/attesta/attesta-github-check-cli.ts",

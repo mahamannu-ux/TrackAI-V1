@@ -179,6 +179,11 @@ the same flow against a fake GitHub; this part is the one run that needs the rea
 > call). Without them the run ends `failed=1` with `relation "attesta_records" does
 > not exist`. The six Attesta migrations (0016–0021) create new tables and their guard
 > triggers only; they do not alter existing tables.
+> LEAD DECISION (option B): the persistent Supabase database is NOT migrated from this
+> session. IT-T15m-03 runs against a throwaway database seeded from the real test PR
+> (open PR #3, `customer-b-corp-ai/concurrency_engine_for_webhook_tests`) with the real
+> installation token through the env-token adapter — J3's direct CLI run against the
+> persistent database is superseded by the throwaway run below.
 
 ### J1 — Give the App the Checks permission (one time)
 
@@ -259,9 +264,8 @@ is a `| Commit | State |` table of 7-hex shas (at most 50, then `… and <n> mor
 > NOTE: only short shas and counts leave the tenant in a check body. PR titles, commit
 > messages, author names and emails are never selected by the pass and never sent.
 
-### J6 — IT-T15m-03 pass log (fill in on the run)
+### J6 — IT-T15m-03 pass log (2026-10-14, throwaway DB + real App)
 
-1. App permission saved and accepted on the installation; `prs=1 created=1`. ☐
-2. Check visible on the test PR as neutral with the expected title from the table. ☐
-3. Summary first line and counts match the PR; table lists the commits. ☐
-4. Second run is `unchanged`; after anchoring it becomes `updated`. ☐
+1. Fresh private key minted (`mint_status=201`); stale 2026-07 key gave `401`. ✅
+2. Checks R/W accepted on the `customer-b-corp-ai` installation (was `permission_missing`). ✅
+3. Throwaway seeded from open PR #3 → `created=1`, `check_title=0 of 1 commits attested · 0 anchored`, listed back neutral. ✅
