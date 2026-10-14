@@ -1,94 +1,166 @@
-# Attestation in the Console — Visual Walkthrough Guide (Task15k)
+# Attestation in the Console — Complete Walkthrough Guide (Task15k)
 
-For the founder validating IT-T15k-01 in the browser. All data below is synthetic.
-Open the console at `http://localhost:3000/login` (admin: `admin@task5.acceptance.invalid`
-/ `task5-acceptance-only`; auditor: `auditor@task5.acceptance.invalid` / `task6-auditor-only`).
+Covers the Task15k console: the attestation card, Verify chain, evidence-pack export.
+All data is synthetic; the acceptance database, accounts and keys are disposable.
+IT-T15k-01 passed on this setup 2026-10-14 (pass log at the end).
 
-## What attestation is (the 30-second version)
+> Markdown has no colors, so this guide uses three callouts instead:
+> `> EXPECTED` — what you should see when things work.
+> `> GOTCHA` — a trap that looks like a bug but is the system working.
+> `> NOTE` — background that saves you a question later.
 
-For every commit TrackAI observes, every merged PR and every production deployment,
-TrackAI writes one short signed **statement** (who, what, when — never code or prompts),
-links statements into one **chain** per organization, and **anchors** the chain in public
-tamper-evident logs. The console surfaces this in two honesty levels:
+## Part A — Run the console
 
-- The **attestation card** (commit / PR drawers) reports a *database fact*: "we wrote a
-  statement for this". It never claims anything was cryptographically checked.
-- **Verify chain** (Administration → Attestation) actually *checks*: signatures against
-  the organization's keys and anchors against the public logs. Only its green box is proof.
+Prerequisites: Docker, Node 20+, and this branch checked out
+(`task/Task15k-attesta-console` — main does **not** have the console or the CORS fix).
 
-## Where things live, and who sees them
+```bash
+# terminal 1: disposable database (first time only; later just `docker start`)
+docker run --name trackai-task5-uat-pg -e POSTGRES_HOST_AUTH_METHOD=trust \
+  -e POSTGRES_DB=trackai -p 127.0.0.1:55432:5432 -d pgvector/pgvector:pg16
+docker exec trackai-task5-uat-pg pg_isready -U postgres -d trackai
+DATABASE_URL='postgresql://postgres@127.0.0.1:55432/trackai' npm run db:migrate -w apps/api
 
-| Surface | Location | Admin | Auditor | Everyone else |
-|---|---|---|---|---|
-| Attestation card | Click any commit or PR → drawer, "Attestation" section after the metrics | ✅ | ✅ | ✅ (card only; drawer itself is unchanged) |
-| Verify + Export | Administration → Attestation (last item in the section nav) | ✅ | ✅ | Hidden; the API refuses anyway |
+# terminal 2: fake login server (run from anywhere with the API code)
+TASK5_EPHEMERAL_DATABASE=1 npm run serve:task5-acceptance-auth -w apps/api
 
-## 1. The attestation card
+# terminal 3: API from the WORKTREE (anchoring unset is deliberate; TASK4_EXPORT_DIR
+# is required or pack export fails; restart this process to pick up new env vars)
+cd ~/AIProjects/TrackAI-wt/Task15k-attesta-console
+DATABASE_URL='postgresql://postgres@127.0.0.1:55432/trackai' \
+MASTER_ENCRYPTION_KEY_ACTIVE_VERSION='local-v1' \
+MASTER_ENCRYPTION_KEYS_JSON='{"local-v1":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}' \
+SUPABASE_URL='http://127.0.0.1:54321' \
+FRONTEND_URL='http://localhost:3000,http://127.0.0.1:3000' \
+TASK4_EXPORT_DIR='/tmp/trackai-exports' \
+npm run dev -w apps/api
 
-| You see | What it means |
+# terminal 4: web from the WORKTREE
+cd ~/AIProjects/TrackAI-wt/Task15k-attesta-console
+NEXT_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321' \
+NEXT_PUBLIC_SUPABASE_ANON_KEY='task5-local-public-placeholder' \
+NEXT_PUBLIC_API_URL='http://127.0.0.1:8080' npm run dev -w apps/web
+# open http://localhost:3000/login
+```
+
+| Role | Email | Password | Sees |
+|---|---|---|---|
+| Administrator | `admin@task5.acceptance.invalid` | `task5-acceptance-only` | Everything, including Attestation |
+| Auditor | `auditor@task5.acceptance.invalid` | `task6-auditor-only` | Card + Attestation (needs the Task6 seed below, else "no access") |
+| Viewer | `developer@task5.acceptance.invalid` | `task5-viewer-only` | No Administration at all |
+
+## Part B — If / else troubleshooting (every incident from the first run)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `docker run` says the name is in use | Container already exists | `docker start trackai-task5-uat-pg`, carry on |
+| API fails with `Cannot find module 'canonicalize'` | Wrong directory: main checkout was never installed and lacks the branch code | Run terminals 3–4 from the worktree, never main |
+| Commits/PRs lists are empty | Fresh database, no seed data | Corpus seed, then build (Part C); auditor also needs `seed:task6-acceptance` for its membership |
+| `attesta:build` prints `claimed=0 done=0` | Old commits have no outbox rows (nothing to build) | Ingest through the real writer path first, then rebuild |
+| Verify is red `KEY_UNKNOWN` on some rows | Those statements were signed by a key that was never published | Correct behavior; re-seed with the published key for clean rows |
+| Pack POST fails red "request parameters are invalid" (400) | **To** is less than 5 minutes old | Set To ≥ 20 minutes in the past and retry |
+| Pack job fails `ATTESTA_SIGNER_NO_CREDENTIAL` | Tenant has no published statement key | Key ceremony (register → activate → publish + root import), restart the API with the trust env vars, export again (new job) |
+| Pack has `statements: 0` but the chain is non-empty | Window ends before the records (`to` older than their `recorded_at`) | Move To past the records (still 5+ min old); boundary record proves the skip was honest |
+| Transient `M_ID` runtime error / `bis_skin_checked` hydration warning | Browser-safety extension rewriting the page | Benign; restart clean or disable the extension for localhost |
+| Date picker icons invisible in dark mode | Missing `color-scheme` (fixed in `0f849cc`) | Hard-refresh the tab |
+
+## Part C — What attestation is (30 seconds)
+
+Per commit observed, PR merged and production deployment, TrackAI writes one short signed
+**statement** (who/what/when — never code or prompts), links statements into one **chain**
+per organization, and **anchors** the chain in public tamper-evident logs. Two honesty levels:
+
+- The **card** reports a database fact ("we wrote a statement"). Never proof.
+- **Verify** checks signatures against the org keys and anchors against the logs. Only its
+  green box is proof. Everything else is an explicitly-labeled lesser state.
+
+## Part D — The attestation card (commit / PR drawers)
+
+| You see | Meaning |
 |---|---|
-| Nothing (no section content) | The drawer has no repository/SHA to look up (e.g. sessions never show a card) |
-| "Checking attestation…" (grey) | Loading; resolves in under a second locally |
-| "Not attested yet" (grey) + "Attesta signs a commit after TrackAI observes it…" | No statement for this commit yet — normal for fresh or pre-attestation data |
-| "Attestation details need the administrator or auditor role." (no badge) | Your login lacks both roles |
-| "Attestation unavailable" (amber) + code | Server or network problem; the code (e.g. `ATTESTA_API_INTERNAL`) is for support |
-| One row per statement, oldest first | Kind ("Commit observed" / "Merged" / "Deployed to production" / "Period report"), date, 12 hex characters of the statement fingerprint, and an anchor badge: "Signed · anchored" (green), "Signed · anchoring pending" (amber, inside the 1-hour window), "Signed · anchor overdue" (amber, past it) |
-| "Attested when merged." | An still-open PR: there is no merge commit to attest yet |
-| Footer line | Points at Verify; a reminder that the card alone is not proof |
+| Nothing | No repository/SHA to look up (sessions never show a card) |
+| "Checking attestation…" (grey) | Loading |
+| "Not attested yet" (grey) | No statement for this commit — normal for fresh or pre-attestation data |
+| "…need the administrator or auditor role." (no badge) | Login lacks both roles |
+| "Attestation unavailable" (amber) + code | Server/network problem; code is for support |
+| Row per statement, oldest first | Kind, date, 12 hex of the fingerprint, anchor badge: "Signed · anchored" (green), "Signed · anchoring pending" (amber, < 1 h old), "Signed · anchor overdue" (amber, older) |
+| "Attested when merged." | Open PR: no merge commit exists yet |
 
-You will never see "verified", "proven" or red in this card — that is deliberate.
+> EXPECTED: the card never says "verified"/"proven" and never shows red. That is deliberate.
 
-## 2. Verify chain
+## Part E — Verify chain: where the numbers come from
 
-The chain is the organization's append-only ledger: each **record** gets the next gap-free
-**sequence number** (`seq`: 0, 1, 2, …). "From record" / "To record" are optional bounds on
-that counter — leave both empty to check everything (fine for local data; production caps
-a run at 10,000 records). Click **Verify chain**; the button disables while it runs.
+Each **record** is one link, numbered by a gap-free per-organization counter **`seq`**
+(0, 1, 2, …), allocated at chain time — never reused, never skipped (a rollback consumes
+no number, so a gap always means a missing record). "From record" / "To record" are
+optional bounds on that counter; empty means the whole chain (production caps a run at
+10,000). To map a number back to a commit, open a pack: `records[].subject_sha` sits next
+to each `seq`.
+
+> GOTCHA: the card does not show `seq`, so a break row like `#1 … ATTESTA_VERIFY_…`
+> cannot be traced to a commit without a pack. Record-number affordances are a proposed
+> UX follow-up (Part J), not in this branch.
 
 | Result box | Meaning |
 |---|---|
-| Green: "Chain verified: N records. Signatures and anchors checked." | Real proof. N records linked, signed and anchored. |
-| Amber: "Signatures checked; anchors not checked on this server." | Expected locally: no public-log keys configured, so anchors were skipped — not a pass on anchors. |
-| Amber: "Not fully checkable: N records read; some checks could not run." | Some evidence was missing (e.g. signatures never checked); listed row by row below. |
-| Red: "Verification found problems in N records." | Something is broken or forged (missing record, broken link, changed content, bad signature or anchor). Each row shows the record number, a plain-language label and the machine code. |
+| Green "Chain verified: N records. Signatures and anchors checked." | Proof. Only possible with configured keys + anchors (i.e. not this laptop). |
+| Amber "Signatures checked; anchors not checked on this server." | Signatures verify; no log configured so anchors skipped — not a pass on anchors. |
+| Amber "Not fully checkable: N records read; some checks could not run." | Evidence missing (e.g. signatures never checked); rows listed below. |
+| Red "Verification found problems in N records." (N = distinct records) | Broken link, changed content, bad/unknown signature or anchor. Rows: `#seq`, plain label, machine code. |
 
-Errors: "already running" (one verify per organization at a time — wait seconds and retry);
-"range too large or invalid" (narrow From/To to ≤ 10,000); anything else shows a code plus
-a request ID for support.
+Errors: "already running" (one verify per org — retry in seconds); "range too large or
+invalid" (narrow to ≤ 10,000); anything else carries code + request ID.
 
-## 3. Export evidence pack
+## Part F — Export evidence pack
 
-A pack is one signed file a third party (auditor, acquirer's counsel) can check offline:
-the statements in a time window, the chain around them, anchors, public keys and one
-signature saying who exported what, when. It never contains prompts, code or secrets.
+A signed file a third party checks offline: window statements, surrounding chain, anchors,
+public keys, trust documents, one signature saying who exported what, when. Never prompts,
+code or secrets. **Repository**: all or one (Repository-only mode needs one picked).
+**Mode**: Full proves completeness; Repository-only hides other repos so completeness is
+not provable. **Jobs** live in this tab only (grey → green/red, 3 s refresh); **ready**
+downloads `trackai-evidence-pack-<id>.json` plus fingerprint; the pending line is honesty,
+not an error; **failed** shows the code and, when retryable, **Try again** (same inputs,
+fresh key). `NO_CREDENTIAL` is terminal until keys exist; `UNAVAILABLE` means the export
+sink (`TASK4_EXPORT_DIR`) is unset.
 
-- **Repository**: "All repositories" or one by name.
-- **From / To**: native calendar + clock pickers (click the icons; no typing needed — if the
-  icons are invisible, hard-refresh: a recent fix restores them in dark mode). Times are sent
-  as UTC. **Set To at least a day in the past**: the server refuses windows younger than
-  5 minutes so late-arriving records cannot silently miss the pack.
-- **Mode**: Full (default — proves nothing was left out; shows other repositories' record
-  IDs/hashes, never content) vs Repository only (for outsiders; hides other repositories, so
-  completeness cannot be proven; stays disabled until you pick a repository).
-- **Jobs list** (this browser tab only — the API keeps no list): grey while queued/running
-  (auto-refreshes every 3 s), green when ready, red when failed.
-- **Ready**: Download saves `trackai-evidence-pack-<id>.json`; the fingerprint line identifies
-  the file; "`N` statements were not yet anchored; the pack says so." is honesty, not an error.
-- **Failed**: shows the code and, when retryable, a **Try again** button (same inputs, fresh key).
+> GOTCHA — dates: the picker sends your local time as UTC. **To must be ≥ 5 minutes old**
+> or the server 400s (late records must never silently miss a pack). Use 20+ minutes of
+> margin. Future dates are accepted by the picker today and refused by the server —
+> clamping `max` to now is a proposed follow-up, not in this branch.
 
-## Click-through checklist (IT-T15k-01)
+## Part G — Reading the pack JSON (annotated with the real 2026-10-14 download)
 
-1. As admin, open a commit with a statement → "Signed · anchoring pending/overdue" row.
-2. Open a commit without one → "Not attested yet". Open a merged PR → card; an open PR → "Attested when merged."
-3. Administration → Attestation → Verify chain (empty range) → amber box (locally expected).
-4. Export a Full pack over old data → ready → Download → file saves.
-5. Sign out; repeat 3–4 as auditor → identical access.
-6. Browser console (F12) shows no CORS error throughout.
+- `manifest.scope`: your window (`from/to/mode`, `repository_id: null` = all repos).
+- `manifest.chain_range`: `from_seq`/`to_seq` bound the segment (each ±1 boundary record
+  proves nothing was skipped); `prev_hash` chains backwards; `head` is set only when the
+  segment reaches the tip (`next_seq` = first free number).
+- `manifest.counts`: `records` (in segment) vs `statements` (in window) vs
+  `anchored`/`pending` (anchor state at read time). `pending: 2` + the console's "not yet
+  anchored" line is the expected local result.
+- `records[]`: the raw links in seq order — check each `prev_hash` equals the previous
+  `record_hash`. `statements[]`: the in-scope ones with `anchor_status` and signed envelopes.
+- `trust`: `root_documents` (who the org pins), `keyset_documents` (key history from v1 —
+  find your keyid `active` here), `verification_hint.pinned_root_keyids`.
+- `signature`: DSSE envelope over `{manifest, pack_digest}`, payload type
+  `.../evidence-pack+json`, signed by the active statement key. Verifier-grade checking of
+  all of the above is A15.10's offline verifier, not this walkthrough.
 
-## If everything says "Not attested yet"
+## Part H — What this laptop proves vs production (Task14 / VPC)
 
-That means the database holds commits but no statements. Verify/Export still work (empty
-chain verifies; empty packs export), but step 1 needs data: re-run the corpus seed if the
-lists are empty, then build statements with `npm run attesta:build -w apps/api --
---ephemeral-dev-key` (terminal 3's directory, `DATABASE_URL` set). New statements show
-"anchoring pending" with anchoring unconfigured — exactly the state step 1 expects.
+| Capability | This laptop (done) | Production / Task14 (still to test) |
+|---|---|---|
+| Card states, drawer wiring | ✅ proven | Same code; real data volumes |
+| Verify wording, break rows, 429/400 paths | ✅ proven | Same code |
+| Pack build/download, counts honesty | ✅ proven | Same code; 50k-record packs, sink on object storage |
+| Green "verified" + "anchored" badges | Cannot happen here (no logs/keys by design) | Real Rekor + TSA anchoring, KMS signing, scheduled builder/anchor/pack workers |
+| Key rotation/revocation effects on Verify | Walkthrough keys only | Founder ceremony with platform KMS + offline root |
+| Independent trust (clean-machine check) | — | Offline verifier (A15.10) against a pack on a clean host |
+
+## Part I — IT-T15k-01 pass log (2026-10-14, admin + auditor)
+
+1. Commit with statement → "Signed · anchoring pending"; without → "Not attested yet". ✅
+2. Merged PR → card; open PR → "Attested when merged." ✅
+3. Verify empty range → amber "Not fully checkable" (pre-ceremony); range 2–3 → amber "Signatures checked; anchors not checked"; full chain → red `KEY_UNKNOWN` on the two pre-ceremony rows (correct: their key was never published). ✅
+4. Full export → ready → download; pack verified field-by-field (Part G); pending line shown. ✅
+5. Auditor repeats 3–4 identically (export grant proven). ✅
+6. F12 clean throughout, no CORS errors. ✅
