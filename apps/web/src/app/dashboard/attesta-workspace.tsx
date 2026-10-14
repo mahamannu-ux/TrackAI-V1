@@ -235,7 +235,7 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
 
   const verdict = report ? verifyVerdict(report) : null;
 
-  return <div className="space-y-4">
+  return <div className="space-y-4 [color-scheme:dark]">
     <div>
       <h2 className="font-semibold text-white">Attestation</h2>
       <p className="mt-1 text-sm text-slate-500">Verify the signed ledger and export evidence.</p>
