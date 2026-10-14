@@ -64,6 +64,7 @@ import { publishedKeysFor } from './trust-resolver';
 import { signTrustDocument } from './trust-documents';
 import { KmsSigner } from './signer-kms';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
+import { buildReportStatement, computeReportDocument } from './period-report-rules';
 
 const SCOPE_ALL: PackScope = { repository_id: null, from: at(T0 + 2 * MIN), to: at(T0 + 8 * MIN) };
 const SCOPE_R1: PackScope = { ...SCOPE_ALL, repository_id: R1 };
@@ -1165,5 +1166,65 @@ describe('offline verifier: import-graph purity', () => {
     for (const name of ['canonical', 'trust-contract', 'trust-verify', 'trust-documents', 'anchor-dual', 'anchor-contract', 'anchor-rekor', 'anchor-tsa', 'contract-rules', 'dsse', 'merkle']) {
       assert.ok(seen.has(name), `purity walk never visited ${name}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task15i4: a period_report statement in a pack (reports: [] until the follow-up)
+// ---------------------------------------------------------------------------
+
+/** Put an honest, signed period_report at `seq` (repository R1) and re-link the chain after it. */
+function withReportAt(chain: ReturnType<typeof buildValidChain>, tenantId: string, key: Key, seq: number, recordPatch: Record<string, unknown> = {}) {
+  const scope = { repository_id: R1, from: at(REC_BASE - 60 * MIN), to: at(REC_BASE - 10 * MIN), basis: 'recorded_at' as const };
+  const document = computeReportDocument({ tenantId, scope, inputs: [] });
+  const statementCanonical = buildReportStatement({ document, chainRange: { from_seq: 0, to_seq: 3, to_record_hash: chain.records[3].recordHash },
+    asOf: at(REC_BASE + seq * MIN - 1000), builderVersion: '0.1.0+3c862ef', previous: [] }).statementCanonical;
+  const payload = Buffer.from(statementCanonical, 'utf8');
+  const sig = cryptoSign('sha256', pae(IN_TOTO_PAYLOAD_TYPE, payload), { key: key.priv, dsaEncoding: 'der' });
+  const envelope: DsseEnvelope = { payload: payload.toString('base64'), payloadType: IN_TOTO_PAYLOAD_TYPE, signatures: [{ keyid: key.keyid, sig: sig.toString('base64') }] };
+  const records = chain.records.map((r) => ({ ...r }));
+  records[seq] = { ...records[seq], repositoryId: R1, statementDigest: sha256Prefixed(statementCanonical), statementCanonical, envelope,
+    statementCanonicalAll: statementCanonical, envelopeAll: envelope };
+  let prev = seq === 0 ? GENESIS_PREV_HASH : records[seq - 1].recordHash;
+  for (let i = seq; i < records.length; i++) {
+    const f = JSON.parse(records[i].canonicalRecord);
+    const fields = i === seq
+      ? { ...f, prev_hash: prev, statement_digest: records[i].statementDigest, predicate_type: 'https://trackai.dev/attesta/period-report/v1',
+          statement_kind: null, subject_sha: null, repository_id: R1, ...recordPatch }
+      : { ...f, prev_hash: prev };
+    records[i].prevHash = prev;
+    records[i].canonicalRecord = buildCanonicalRecord(fields);
+    records[i].recordHash = computeRecordHash(records[i].canonicalRecord, prev);
+    prev = records[i].recordHash;
+  }
+  return { ...chain, records };
+}
+
+async function reportPack(w: World, recordPatch: Record<string, unknown> = {}) {
+  const chain = withReportAt(buildValidChain(A, w.k.a1), A, w.k.a1, 4, recordPatch);
+  const seg = segmentOf(chain, SCOPE_ALL, GEN);
+  const trust = packTrustFrom({ published: await publishedKeysFor(w.store, A), anchors: null, pinnedRootKeyids: w.config.pinnedRootKeyids });
+  const built = buildPack({ packId: PACK_1, tenantId: A, scope: SCOPE_ALL, mode: 'full', segment: { ...seg, anchors: [], batches: [] }, trust });
+  const signature = await signPack(built, w.resolver, A, 'req-1');
+  const download = JSON.parse(`{"pack":${built.text},"signature":${JSON.stringify(signature)}}`) as Download;
+  return verifyEvidencePack(download, { pinnedRootKeyids: [w.k.root.keyid], now: NOW, anchorWindowMs: 24 * 3600_000 });
+}
+
+describe('offline verifier: period_report statements (Task15i4)', () => {
+  test('an honest report statement passes the statements check; its figures are not checkable (exit 2)', async () => {
+    const w = await trustWorld();
+    const report = await reportPack(w);
+    assert.equal(checkOf(report, 'statements')?.status, 'passed', JSON.stringify(checkOf(report, 'statements')));
+    assert.equal(checkOf(report, 'chain')?.status, 'passed');
+    assert.equal(checkOf(report, 'reports')?.status, 'not_checkable');
+    assert.equal(checkOf(report, 'reports')?.code, 'ATTESTA_VERIFY_NOT_CHECKABLE');
+    assert.equal(report.exit_code, 2);
+  });
+
+  test('a report record whose typed copies disagree with its statement is a break', async () => {
+    const w = await trustWorld();
+    const report = await reportPack(w, { statement_kind: 'commit_observed' });
+    assert.equal(report.exit_code, 1);
+    assert.equal(checkOf(report, 'statements')?.code, 'ATTESTA_VERIFY_FIELD_MISMATCH');
   });
 });

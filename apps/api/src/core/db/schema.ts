@@ -1729,11 +1729,18 @@ export const attestaRecords = pgTable('attesta_records', {
     and ${table.prevHash} ~ '^sha256:[0-9a-f]{64}$'
     and ${table.recordHash} ~ '^sha256:[0-9a-f]{64}$'
     and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
-    and ${table.predicateType} = 'https://trackai.dev/attesta/ai-provenance/v1'
-    and ${table.statementKind} is not null
-    and ${table.statementKind} in ('commit_observed', 'pr_merged', 'deployed')
-    and ${table.subjectSha} is not null
-    and ${table.subjectSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$'
+    and (
+      (${table.predicateType} = 'https://trackai.dev/attesta/ai-provenance/v1'
+        and ${table.statementKind} is not null
+        and ${table.statementKind} in ('commit_observed', 'pr_merged', 'deployed')
+        and ${table.subjectSha} is not null
+        and ${table.subjectSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$')
+      or
+      (${table.predicateType} = 'https://trackai.dev/attesta/period-report/v1'
+        and ${table.statementKind} is null
+        and ${table.subjectSha} is null
+        and ${table.outboxSubjectId} is null)
+    )
   `),
 }));
 
@@ -2084,6 +2091,70 @@ export const attestaEvidencePacks = pgTable('attesta_evidence_packs', {
   `),
 }));
 
+/**
+ * Period-report jobs (Task15i4, A15.9 part 3; docs/contracts/attesta/period-report.md).
+ * One row per (tenant, Idempotency-Key), in the attesta_evidence_packs style: status moves
+ * only forward, identity columns never change, ready and failed rows are final, no DELETE or
+ * TRUNCATE (guards in 0022). A ready row holds the report document (RFC 8785 text), its
+ * digest and the chained period_report record, all written in the ledger transaction; the
+ * guard checks the record names this document and scope.
+ */
+export const attestaPeriodReports = pgTable('attesta_period_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  repositoryId: uuid('repository_id').notNull(),
+  /** `{repository_id, from, to}` as normalized by the service (RFC 3339 UTC, ms). */
+  scope: jsonb('scope').notNull(),
+  status: text('status').$type<'queued' | 'running' | 'ready' | 'failed'>().notNull().default('queued'),
+  requestedBy: text('requested_by').notNull(),
+  requestId: text('request_id').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  /** The exact RFC 8785 document bytes the statement's subject digest names. */
+  reportDocument: text('report_document'),
+  reportDigest: text('report_digest'),
+  recordId: uuid('record_id'),
+  statementDigest: text('statement_digest'),
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_period_reports_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantKeyUnique: unique('attesta_period_reports_tenant_idempotency_key').on(table.tenantId, table.idempotencyKey),
+  tenantRecordUnique: unique('attesta_period_reports_tenant_record_key').on(table.tenantId, table.recordId),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'attesta_period_reports_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_period_reports_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  tenantStatusIndex: index('attesta_period_reports_tenant_status_idx').on(table.tenantId, table.status),
+  shapeCheck: check('attesta_period_reports_shape_check', sql`
+    ${table.idempotencyKey} ~ '^[A-Za-z0-9._-]{8,64}$'
+    and ${table.status} in ('queued', 'running', 'ready', 'failed')
+    and length(${table.requestedBy}) between 1 and 256
+    and length(${table.requestId}) between 1 and 128
+    and ${table.attempts} >= 0
+    and jsonb_typeof(${table.scope}) = 'object'
+    and (${table.status} = 'running') = (${table.leaseUntil} is not null)
+    and (${table.status} = 'ready') = (${table.reportDocument} is not null)
+    and (${table.status} = 'ready') = (${table.reportDigest} is not null)
+    and (${table.status} = 'ready') = (${table.recordId} is not null)
+    and (${table.status} = 'ready') = (${table.statementDigest} is not null)
+    and (${table.status} = 'failed') = (${table.errorCode} is not null)
+    and (${table.status} in ('ready', 'failed')) = (${table.finishedAt} is not null)
+    and (${table.reportDigest} is null or ${table.reportDigest} ~ '^sha256:[0-9a-f]{64}$')
+    and (${table.statementDigest} is null or ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$')
+    and (${table.errorCode} is null or ${table.errorCode} ~ '^ATTESTA_[A-Z0-9_]{1,64}$')
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
@@ -2127,3 +2198,4 @@ export type AttestaSubject = typeof attestaSubjects.$inferSelect;
 export type AttestaAnchorBatch = typeof attestaAnchorBatches.$inferSelect;
 export type AttestaAnchorResume = typeof attestaAnchorResumes.$inferSelect;
 export type AttestaAnchor = typeof attestaAnchors.$inferSelect;
+export type AttestaPeriodReport = typeof attestaPeriodReports.$inferSelect;

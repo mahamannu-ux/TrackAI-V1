@@ -1,0 +1,976 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/period-report/v1/period-report-document-v1.schema.json",
+  "title": "TrackAI Attesta period report document v1",
+  "description": "FROZEN CONTRACT (Task15i4). The report document a period_report statement names: its RFC 8785 bytes hash to subject[0].digest.sha256. Per figure, the statements it summed and each statement's contribution (RP-1 {count, records}). No generation time, no chain head: the same statements give the same bytes. Rules in period-report.md (P1-P10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "tenant_id",
+    "scope",
+    "statements",
+    "figures",
+    "ratios",
+    "repo_share",
+    "completeness"
+  ],
+  "properties": {
+    "format": {
+      "const": "https://trackai.dev/attesta/period-report-document/v1"
+    },
+    "tenant_id": {
+      "$ref": "#/definitions/uuid"
+    },
+    "scope": {
+      "$ref": "#/definitions/scope"
+    },
+    "statements": {
+      "type": "array",
+      "maxItems": 50000,
+      "description": "Every ai-provenance statement of the repository with recorded_at in [from, to], seq ascending.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "digest",
+          "statement_kind"
+        ],
+        "properties": {
+          "seq": {
+            "$ref": "#/definitions/seq"
+          },
+          "digest": {
+            "$ref": "#/definitions/digest"
+          },
+          "statement_kind": {
+            "enum": [
+              "commit_observed",
+              "pr_merged",
+              "deployed"
+            ]
+          }
+        }
+      }
+    },
+    "figures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commits_observed",
+        "lines_changed",
+        "prs_merged",
+        "merged_lines",
+        "merged_ai_lines",
+        "merged_ai_lines_by_model",
+        "production_deployments"
+      ],
+      "properties": {
+        "commits_observed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "type": "integer",
+                        "const": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "lines_changed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/line_counts"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "$ref": "#/definitions/line_counts"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "prs_merged": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "type": "integer",
+                        "const": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "merged_lines": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/line_counts"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "$ref": "#/definitions/line_counts"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "merged_ai_lines": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "$ref": "#/definitions/count"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "merged_ai_lines_by_model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/model_lines"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "$ref": "#/definitions/model_lines"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        },
+        "production_deployments": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "statements_root",
+            "contributions"
+          ],
+          "properties": {
+            "availability": {
+              "enum": [
+                "recorded",
+                "partial",
+                "unavailable"
+              ]
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            },
+            "partial_reason": {
+              "enum": [
+                "only_some_sources_reported"
+              ]
+            },
+            "reason": {
+              "enum": [
+                "source_missing"
+              ]
+            },
+            "statements_root": {
+              "$ref": "#/definitions/digest"
+            },
+            "contributions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "count",
+                "records"
+              ],
+              "properties": {
+                "count": {
+                  "$ref": "#/definitions/count"
+                },
+                "records": {
+                  "type": "array",
+                  "maxItems": 50000,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "seq",
+                      "digest",
+                      "availability",
+                      "contribution"
+                    ],
+                    "properties": {
+                      "seq": {
+                        "$ref": "#/definitions/seq"
+                      },
+                      "digest": {
+                        "$ref": "#/definitions/digest"
+                      },
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      },
+                      "contribution": {
+                        "type": "integer",
+                        "const": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/availability_rules"
+            }
+          ]
+        }
+      }
+    },
+    "ratios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ai_share_of_changed_lines_bp",
+        "ai_share_of_merged_lines_bp"
+      ],
+      "properties": {
+        "ai_share_of_changed_lines_bp": {
+          "$ref": "#/definitions/ratio"
+        },
+        "ai_share_of_merged_lines_bp": {
+          "$ref": "#/definitions/ratio"
+        }
+      }
+    },
+    "repo_share": {
+      "$ref": "#/definitions/repo_share"
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commits_observed",
+        "lines_changed",
+        "prs_merged",
+        "merged_lines",
+        "merged_ai_lines",
+        "merged_ai_lines_by_model",
+        "production_deployments"
+      ],
+      "properties": {
+        "commits_observed": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "lines_changed": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "prs_merged": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "merged_lines": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "merged_ai_lines": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "merged_ai_lines_by_model": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "production_deployments": {
+          "$ref": "#/definitions/completeness_entry"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^(19|20|21)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$",
+      "description": "RFC 3339 UTC with milliseconds and Z (Date.prototype.toISOString form)."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740990
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "token": {
+      "type": "string",
+      "pattern": "^(?!.*@[^@]*\\.)[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$",
+      "description": "Bounded identifier, as in predicate-ai-provenance-v1 (tool, model, model_key)."
+    },
+    "line_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ai",
+        "human",
+        "unknown",
+        "added",
+        "deleted"
+      ],
+      "properties": {
+        "ai": {
+          "$ref": "#/definitions/count"
+        },
+        "human": {
+          "$ref": "#/definitions/count"
+        },
+        "unknown": {
+          "$ref": "#/definitions/count"
+        },
+        "added": {
+          "$ref": "#/definitions/count"
+        },
+        "deleted": {
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "model_lines": {
+      "type": "array",
+      "maxItems": 4000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "model",
+          "model_key",
+          "ai_lines"
+        ],
+        "properties": {
+          "tool": {
+            "$ref": "#/definitions/token"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/token"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_key": {
+            "$ref": "#/definitions/token"
+          },
+          "ai_lines": {
+            "$ref": "#/definitions/count"
+          }
+        }
+      }
+    },
+    "availability_rules": {
+      "description": "recorded: value only. partial: value and partial_reason. unavailable: reason only, never a value (so never a zero).",
+      "oneOf": [
+        {
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            }
+          },
+          "required": [
+            "value"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "partial_reason"
+                ]
+              },
+              {
+                "required": [
+                  "reason"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "availability": {
+              "const": "partial"
+            }
+          },
+          "required": [
+            "value",
+            "partial_reason"
+          ],
+          "not": {
+            "required": [
+              "reason"
+            ]
+          }
+        },
+        {
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "value"
+                ]
+              },
+              {
+                "required": [
+                  "partial_reason"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "completeness_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs",
+        "recorded",
+        "partial",
+        "unavailable"
+      ],
+      "properties": {
+        "inputs": {
+          "$ref": "#/definitions/count"
+        },
+        "recorded": {
+          "$ref": "#/definitions/count"
+        },
+        "partial": {
+          "$ref": "#/definitions/count"
+        },
+        "unavailable": {
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "ratio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability"
+      ],
+      "properties": {
+        "availability": {
+          "enum": [
+            "recorded",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "partial_reason": {
+          "enum": [
+            "only_some_sources_reported"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "source_missing",
+            "not_applicable"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/availability_rules"
+        }
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_id",
+        "from",
+        "to",
+        "basis"
+      ],
+      "properties": {
+        "repository_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "from": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "to": {
+          "$ref": "#/definitions/timestamp"
+        },
+        "basis": {
+          "const": "recorded_at"
+        }
+      }
+    },
+    "repo_share": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability",
+        "reason"
+      ],
+      "properties": {
+        "availability": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "const": "not_captured_yet"
+        }
+      },
+      "description": "AI share of the whole repository as of `to`: needs the repo_snapshot kind (gap G1)."
+    }
+  }
+}

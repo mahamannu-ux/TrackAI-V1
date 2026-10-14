@@ -33,6 +33,8 @@ import {
   A as PA, B as PB, MemoryPackStore, MemorySink, R1 as PACK_REPO_1, T0 as PACK_T0, buildFixtureChain, trustWorld,
 } from './testing/evidence-pack-fixtures';
 import { oracleVerifyPack } from './testing/evidence-pack-oracle';
+import { MemoryReportStore } from './testing/period-report-fixtures';
+import { MAX_OPEN_REPORTS, type ReportJobDeps } from './period-report-service';
 import type { AdminAction } from '../../core/security/admin-authorization';
 import { assertTenantBound } from './testing/builder-world';
 import { buildChain, makeStatement, shaOf } from './testing/ledger-fixtures';
@@ -209,6 +211,8 @@ interface Harness {
   packs: PackJobDeps & { store: MemoryPackStore };
   sink: MemorySink;
   started: Array<{ tenantId: string; packId: string }>;
+  reports: ReportJobDeps & { store: MemoryReportStore };
+  startedReports: Array<{ tenantId: string; reportId: string }>;
   post(path: string, body: unknown, who?: { tenant?: string; sub?: string }, headers?: Record<string, string>): Promise<Response>;
   router: Router;
   logs: string[];
@@ -240,10 +244,16 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
     trust: async () => { throw new Error('no trust in this harness'); },
   };
   const started: Harness['started'] = [];
+  const reportStore = new MemoryReportStore();
+  reportStore.repositories.set(A, new Set([REPO_A]));
+  reportStore.repositories.set(B, new Set([REPO_B]));
+  const reports: Harness['reports'] = { store: reportStore, resolver: async () => ({ resolve: async () => null }), builderVersion: () => '0.1.0+3c862ef' };
+  const startedReports: Harness['startedReports'] = [];
   const router = createAttestaRouter({
     store, authorize: fakeRequireAdmin(memberships()), authorizeExport: fakeRequireAdmin(memberships(), 'attesta.export'),
     verifier: chainVerifier(verifierCalls, store), keys: noPublishedKeys, packs,
     startPack: (tenantId, packId) => { started.push({ tenantId, packId }); },
+    reports, startReport: (tenantId, reportId) => { startedReports.push({ tenantId, reportId }); },
     anchors: async () => null, now: () => NOW, log: (l) => logs.push(l), ...over,
   });
   const app = express();
@@ -265,6 +275,7 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
     ({ ...(who.tenant ? { 'x-test-tenant': who.tenant } : {}), ...(who.sub ? { 'x-test-sub': who.sub } : {}) });
   return {
     url, store, router, logs, verifierCalls, packs: (over.packs ?? packs) as Harness['packs'], sink, started,
+    reports: (over.reports ?? reports) as Harness['reports'], startedReports,
     post: (path, body, who = { tenant: A, sub: 'auditor-a' }, headers = {}) => fetch(url + path, {
       method: 'POST', headers: { 'content-type': 'application/json', ...headersFor(who), ...headers }, body: JSON.stringify(body),
     }),
@@ -744,13 +755,17 @@ const EXPECTED_ROUTES = new Set([
   'POST /evidence-packs',
   'GET /evidence-packs/:id',
   'GET /evidence-packs/:id/content',
+  'POST /period-reports',
+  'GET /period-reports/:id',
+  'GET /period-reports/:id/document',
 ]);
 /**
  * Routes that change anything. The evidence-pack POST creates a job; it is allowed to
  * the auditor on purpose (attesta.export: taking evidence is the auditor's job), and
- * audited. /verify writes only its audit row (Task15i).
+ * audited. /verify writes only its audit row (Task15i). The period-report POST (Task15i4) is the
+ * same: attesta.export, a job, an audit row; its worker signs and chains one statement.
  */
-const EXPECTED_MUTATING = new Set<string>(['POST /evidence-packs']);
+const EXPECTED_MUTATING = new Set<string>(['POST /evidence-packs', 'POST /period-reports']);
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /** The router's non-route layers, in order: a nested router or new middleware fails the sweep. */
@@ -795,7 +810,8 @@ describe('route sweep (AU-1)', () => {
   });
 
   const call = (route: string, who: { tenant?: string; sub?: string }) => (route.startsWith('POST ')
-    ? h.post(concrete(route), { from: '2026-10-13T10:00:00Z', to: '2026-10-13T11:00:00Z' }, who, { 'Idempotency-Key': 'sweep-key-1' })
+    ? h.post(concrete(route), { ...(route.includes('period-reports') ? { repository_id: REPO_A } : {}), from: '2026-10-13T10:00:00Z', to: '2026-10-13T11:00:00Z' },
+      who, { 'Idempotency-Key': 'sweep-key-1' })
     : h.get(concrete(route), who));
 
   test('every route: 403 problem for a non-member, a revoked auditor, another tenant\'s auditor; 401; 503 when lookup fails', async () => {
@@ -810,6 +826,8 @@ describe('route sweep (AU-1)', () => {
     assert.equal(h.store.audits.length, 0, 'a refused request writes nothing');
     assert.equal(h.packs.store.jobs.length, 0, 'a refused request creates no job');
     assert.equal(h.packs.store.audits.length, 0);
+    assert.equal(h.reports.store.jobs.length, 0, 'a refused request creates no report job');
+    assert.equal(h.reports.store.audits.length, 0);
   });
 
   test('every route answers the auditor and the admin (none is admin-only)', async () => {
@@ -829,10 +847,11 @@ describe('route sweep (AU-1)', () => {
         const res = await (route.startsWith('POST ')
           ? h2.post(concrete(route), {}, { tenant: A, sub: 'auditor-a' }, { 'Idempotency-Key': 'sweep-key-2' })
           : h2.get(concrete(route), { tenant: A, sub: 'auditor-a' }));
-        if (route.includes('evidence-packs')) await expectProblem(res, 403, 'ATTESTA_API_FORBIDDEN');
+        if (route.includes('evidence-packs') || route.includes('period-reports')) await expectProblem(res, 403, 'ATTESTA_API_FORBIDDEN');
         else assert.notEqual(res.status, 403, route);
       }
       assert.equal(h2.packs.store.jobs.length, 0);
+      assert.equal(h2.reports.store.jobs.length, 0);
     } finally {
       await h2.close();
     }
@@ -1136,6 +1155,97 @@ describe('verify key windows from the verified key set (Task15i3)', () => {
     try {
       assert.equal((await h.get('/verify')).status, 200);
       assert.equal(h.verifierCalls[0].options.keyWindows, undefined);
+    } finally {
+      await h.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Period reports (Task15i4): the routes over a memory store (the job itself: period-report-service.test.ts)
+
+describe('period-report routes', () => {
+  const BODY = { repository_id: REPO_A, from: '2026-10-13T09:00:00Z', to: '2026-10-13T11:00:00Z' };
+  const AA = { tenant: A, sub: 'auditor-a' };
+  const key = (k: string) => ({ 'Idempotency-Key': k });
+
+  test('POST answers 202 with Location, starts the job and audits; GET shows it; the document is 404 until ready, then served no-store and audited', async () => {
+    const h = await harness();
+    try {
+      const res = await h.post('/period-reports', BODY, AA, { ...key('report-0001'), 'X-Request-ID': 'req-report' });
+      assert.equal(res.status, 202);
+      const body = await res.json() as { id: string; status: string; replayed: boolean };
+      assert.deepEqual([body.status, body.replayed], ['queued', false]);
+      assert.equal(res.headers.get('location'), `/api/attesta/period-reports/${body.id}`);
+      assert.deepEqual(h.startedReports, [{ tenantId: A, reportId: body.id }]);
+      assert.equal(h.reports.store.audits[0].action, 'attesta.report.request');
+      assert.deepEqual(h.reports.store.audits[0].details, { request_id: 'req-report', scope: { repository_id: REPO_A, from: '2026-10-13T09:00:00.000Z', to: '2026-10-13T11:00:00.000Z' }, replayed: false });
+      const status = await (await h.get(`/period-reports/${body.id}`, AA)).json() as Record<string, unknown>;
+      assert.deepEqual([status.status, status.document_path, status.statement_digest], ['queued', null, null]);
+      await expectProblem(await h.get(`/period-reports/${body.id}/document`, AA), 404, 'ATTESTA_API_NOT_FOUND');
+      const doc = '{"format":"x"}';
+      h.reports.store.markReady(body.id, doc);
+      const dl = await h.get(`/period-reports/${body.id}/document`, { tenant: A, sub: 'admin-a' });
+      assert.equal(dl.status, 200);
+      assert.equal(dl.headers.get('cache-control'), 'no-store');
+      assert.equal(await dl.text(), doc);
+      assert.equal(h.reports.store.audits.at(-1)?.action, 'attesta.report.download');
+      // A stored document that no longer matches its digest is a 500, never a download.
+      h.reports.store.documents.set(body.id, '{"format":"y"}');
+      await expectProblem(await h.get(`/period-reports/${body.id}/document`, AA), 500, 'ATTESTA_API_INTERNAL');
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('the same key and scope replays the job; another scope is 409; a new key is a new job', async () => {
+    const h = await harness();
+    try {
+      const first = await (await h.post('/period-reports', BODY, AA, key('report-0002'))).json() as { id: string };
+      const again = await h.post('/period-reports', { ...BODY, from: '2026-10-13T14:30:00+05:30' }, AA, key('report-0002'));
+      assert.equal(again.status, 202);
+      assert.deepEqual(await again.json(), { id: first.id, status: 'queued', replayed: true });
+      await expectProblem(await h.post('/period-reports', { ...BODY, to: '2026-10-13T10:00:00Z' }, AA, key('report-0002')), 409, 'ATTESTA_API_CONFLICT');
+      assert.equal(h.reports.store.jobs.length, 1);
+      assert.equal(h.startedReports.length, 1);
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('Company A/B: another tenant\'s id is the same 404 as an unknown one; another tenant\'s repository is refused', async () => {
+    const h = await harness();
+    try {
+      const { id } = await (await h.post('/period-reports', BODY, AA, key('report-0003'))).json() as { id: string };
+      h.reports.store.markReady(id, '{"a":1}');
+      const BB = { tenant: B, sub: 'auditor-b' };
+      for (const path of [`/period-reports/${id}`, `/period-reports/${id}/document`, '/period-reports/44444444-0000-4000-8000-0000000000ff']) {
+        await expectProblem(await h.get(path, BB), 404, 'ATTESTA_API_NOT_FOUND');
+      }
+      await expectProblem(await h.post('/period-reports', BODY, BB, key('report-0003')), 400, 'ATTESTA_API_INVALID_QUERY');
+      assert.equal(h.reports.store.jobs.filter((j) => j.tenantId === B).length, 0);
+      assert.ok(!h.reports.store.audits.some((a) => a.tenantId === B && a.reportId === id));
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('bad keys, bodies, queries and ids are 400; too many open jobs 429; too many statements 400', async () => {
+    const h = await harness();
+    try {
+      await expectProblem(await h.post('/period-reports', BODY, AA), 400, 'ATTESTA_API_INVALID_QUERY');
+      await expectProblem(await h.post('/period-reports', BODY, AA, key('short')), 400, 'ATTESTA_API_INVALID_QUERY');
+      for (const body of [{}, { ...BODY, mode: 'full' }, { from: BODY.from, to: BODY.to }, { ...BODY, to: '2026-10-13T11:58:00Z' }]) {
+        await expectProblem(await h.post('/period-reports', body, AA, key('bad-body-02')), 400, 'ATTESTA_API_INVALID_QUERY');
+      }
+      await expectProblem(await h.post('/period-reports?x=1', BODY, AA, key('bad-query-2')), 400, 'ATTESTA_API_INVALID_QUERY');
+      await expectProblem(await h.get('/period-reports/not-a-uuid', AA), 400, 'ATTESTA_API_INVALID_QUERY');
+      h.reports.store.inputs = 50_001;
+      await expectProblem(await h.post('/period-reports', BODY, AA, key('too-many-01')), 400, 'ATTESTA_API_INVALID_QUERY');
+      h.reports.store.inputs = 0;
+      for (let i = 0; i < MAX_OPEN_REPORTS; i++) assert.equal((await h.post('/period-reports', BODY, AA, key(`open-rep-${i}`))).status, 202);
+      await expectProblem(await h.post('/period-reports', BODY, AA, key('open-rep-x')), 429, 'ATTESTA_API_RATE_LIMITED');
+      assert.equal(h.reports.store.jobs.length, MAX_OPEN_REPORTS);
     } finally {
       await h.close();
     }
