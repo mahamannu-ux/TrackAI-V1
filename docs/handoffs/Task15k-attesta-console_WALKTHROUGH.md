@@ -164,3 +164,97 @@ sink (`TASK4_EXPORT_DIR`) is unset.
 4. Full export → ready → download; pack verified field-by-field (Part G); pending line shown. ✅
 5. Auditor repeats 3–4 identically (export grant proven). ✅
 6. F12 clean throughout, no CORS errors. ✅
+
+## Part J — The GitHub check on a real pull request (Task15m, IT-T15m-03)
+
+Task15m posts one check run named **TrackAI Attesta** on each pull request through
+the GitHub App the customer already installed. Phase 1 is informational: the
+conclusion is always `neutral`, so the check never blocks a merge — it only says
+how many of the PR's commits TrackAI has signed and anchored. (IT-T15m-01/02 prove
+the same flow against a fake GitHub; this part is the one run that needs the real one.)
+
+### J1 — Give the App the Checks permission (one time)
+
+1. GitHub → Settings → Developer settings → GitHub Apps → your TrackAI app → Permissions.
+2. Set **Checks: Read and write**, save.
+3. Accept the new permission on **each installation** (GitHub emails the installation
+   owner; an install that never accepts keeps answering 403).
+
+> EXPECTED: the app's permissions page lists Checks as read/write, and every
+> installation shows it too.
+> GOTCHA: saving the permission without accepting it on the installation changes
+> nothing — the CLI below reports `permission_missing`, which is exactly this state.
+
+### J2 — What the test needs
+
+- A tenant whose GitHub App installation covers the test repository's **owner**
+  (managed credentials, or the transitional env installation for that owner).
+- The repository tracked by TrackAI with `provider = 'github'`, and a test PR that is
+  either **open** (needs `head_sha`) or **merged within the last 7 days** (needs
+  `merge_commit_sha`). Read-only checks against your API database:
+
+```bash
+# tenant ids and their github repos
+psql "$DATABASE_URL" -c "select tenant_id, provider, url from scm_repositories where provider = 'github'"
+# candidate PRs for one tenant (open, or recently merged)
+psql "$DATABASE_URL" -c "select id, state, head_sha, merge_commit_sha, merged_at, updated_at from scm_pull_requests where tenant_id = '<uuid>' order by updated_at desc limit 10"
+```
+
+> NOTE: copy the tenant UUID from the first query. Nothing here writes anything.
+
+### J3 — Run the check pass
+
+```bash
+# from the Task15m worktree (main does NOT have the CLI)
+cd ~/AIProjects/TrackAI-wt/Task15m-attesta-github-check
+DATABASE_URL='<your api database>' npm run attesta:github-checks -w apps/api -- --tenant <uuid>
+```
+
+> EXPECTED: one summary line, e.g. `attesta_github_checks tenants=1 prs=2 created=2
+> updated=0 unchanged=0 skipped_no_installation=0 permission_missing=0 not_found=0
+> failed=0 skipped_url=0`. Counts only — the line never contains shas, repo names or tokens.
+
+### J4 — What to look at on the pull request
+
+Open the test PR → **Checks** tab → **TrackAI Attesta**. Conclusion is `neutral`
+(grey), never green or red. The title depends on the PR:
+
+| PR state | Title you see |
+|---|---|
+| Open, N commits observed | `"<A> of <N> commits attested · <K> anchored"` |
+| Open, no commits observed | `"No commits observed yet"` |
+| Merged, merge statement anchored | `"Merge attested · anchored"` |
+| Merged, merge statement signed, anchors pending | `"Merge attested · anchoring pending"` |
+| Merged, merge statement signed, anchor overdue | `"Merge attested · anchor overdue"` |
+| Merged, no merge statement yet | `"Merge not attested yet"` |
+
+The summary starts with `Informational: TrackAI records which commits it has signed
+and anchored. This check never blocks a merge.` followed by the five counts; the body
+is a `| Commit | State |` table of 7-hex shas (at most 50, then `… and <n> more`).
+**Details** links to the console dashboard when `TRACKAI_CONSOLE_URL` is set.
+
+> EXPECTED: re-running the CLI changes nothing (`unchanged=1`) until attestation moves;
+> after the builder/anchor passes catch up, the same run reports `updated=1` with new wording.
+> GOTCHA: the check sits on the PR's head (open) or merge commit (merged). Push a new
+> commit and the old check stays on the old sha until the next pass posts on the new head.
+
+### J5 — If / else troubleshooting (GitHub side)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `skipped_no_installation=1`, no check | No token for that owner: no installation, or the credential store unreachable | Install the app for the owner (or check the transitional env installation); rerun |
+| `permission_missing=1` | Checks permission missing, or saved but not accepted on the installation | Part J1 step 3, then rerun |
+| `not_found=1` | Repository renamed/deleted, or the sha is gone | Check the repo still exists at that URL; merged PRs older than 7 days are out of scope |
+| `failed=1` | GitHub 5xx or a network error | Rerun; the pass continues past failures, one PR never stops the rest |
+| `skipped_url=1` | Repository URL is not `github.com/<owner>/<name>` or does not parse | Fix the repository URL; `gitlab.com` hosts are correctly skipped in phase 1 |
+| Two checks, or a stale check | Normal: each sha keeps its own run; a reworded check PATCHes its own `external_id` | Look at the run on the current head/merge sha |
+
+> NOTE: only short shas and counts leave the tenant in a check body. PR titles, commit
+> messages, author names and emails are never selected by the pass and never sent.
+
+### J6 — IT-T15m-03 pass log (fill in on the run)
+
+1. App permission saved and accepted on the installation; `prs=1 created=1`. ☐
+2. Check visible on the test PR as neutral with the expected title from the table. ☐
+3. Summary first line and counts match the PR; table lists the commits. ☐
+4. Second run is `unchanged`; after anchoring it becomes `updated`. ☐
