@@ -13,9 +13,9 @@ Branch `task/Task15i4-attesta-period-report` (base: `main` at `3c862ef`). This a
 | Table | `attesta_period_reports` (job, lease, idempotency, document, digest, record FK; RLS; guards) | ✅ |
 | Routes | `POST /api/attesta/period-reports`, `GET …/{id}`, `GET …/{id}/document` under `attesta.export`, in the AU-1 sweep | ✅ |
 | Packs | Item 6 deferred (founder). The offline verifier checks a report statement in a pack against its schema and record; `reports` → not checkable (exit 2) | ✅ |
-| Quality | `npm test` 921 pass; `typecheck`, `lint` and `drizzle-kit check` clean | ✅ |
+| Quality | `npm test` 932 pass (after merging main @ 068e446); `typecheck`, `lint` and `drizzle-kit check` clean | ✅ |
 | Integration | IT-T15i4-01…03, plus regressions IT-T15d, IT-T15i2 and IT-T15i3, all pass in the agent sandbox | 🟡 ⬜ founder run |
-| Review | Review subagent: 0 must-fix, 4 should-fix (3 fixed, 1 documented), 3 minor (2 fixed or documented, 1 left to Muse) | ✅ · cross-agent ⬜ |
+| Review | Review subagent: 0 must-fix, 4 should-fix (3 fixed, 1 documented), 3 minor (2 fixed or documented, 1 left to Muse) | ✅ · cross-agent (Muse) fix first → fixed: the open-job cap now counts aged queued jobs (IT-T15i4-03 asserts 429); P10 says order is enforced at chain time |
 
 ## Implemented interfaces
 ```text
@@ -65,7 +65,7 @@ SushiCorp @ `0bd67a5`, catalog RP-1: `services/reporting/{models,signing}.py` an
 |---|---|---|---|
 | IT-T15i4-01 | Builder statements → report job → chained (kind, sha and outbox null) and anchored (Rekor + TSA) → `/verify` ok with signatures and anchors. Document P1–P10 + P9 against the database. A pack over the window lists the report; inputs chosen from the pack recompute it; offline verifier: statements passed, reports not checkable, exit 2. Routed report: regenerated document byte-identical, `previous` names the first | Blocking: merge | 🟡 agent-verified 2026-10-14 · ⬜ founder run |
 | IT-T15i4-02 | Company A/B: the same 404 for A's report and document as for an unknown id; B cannot report on A's repository; B's report sums none of A's statements | Blocking: merge | 🟡 agent-verified · ⬜ founder run |
-| IT-T15i4-03 | Auditor POST, replay, 409, request and download audits. Ten 0022 job guards refused. Eight malformed period_report records refused by the replaced chain guard, as the API role and as an RLS-bound role; chain intact afterwards | Blocking: merge | 🟡 agent-verified · ⬜ founder run |
+| IT-T15i4-03 | Auditor POST, replay, 409, request and download audits. Ten 0022 job guards refused. The open-job cap counts aged queued jobs (a fifth POST is 429). Eight malformed period_report records refused by the replaced chain guard, as the API role and as an RLS-bound role; chain intact afterwards | Blocking: merge | 🟡 agent-verified · ⬜ founder run |
 | IT-T15d, IT-T15i2, IT-T15i3 (regression) | The 0017 guards still refuse every ai-provenance attack; packs and key windows unchanged | Blocking: merge | 🟡 agent-verified 2026-10-14 · ⬜ founder run |
 
 ## Integration notes

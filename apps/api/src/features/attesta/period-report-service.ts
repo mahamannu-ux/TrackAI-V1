@@ -399,10 +399,11 @@ export function pgReportStore(db: ReportDatabase, options: { clock?: () => Date 
     },
 
     async openCount(tenantId) {
+      // Every queued job counts, however old (cross-review finding: an aged queued job must not
+      // free a slot); a stranded one stays runnable through `attesta:report --run-queued`.
       const r = await db.execute(sql`/* report:open */
         select count(*)::int as n from attesta_period_reports where tenant_id = ${tenantId}
-          and ((status = 'queued' and created_at > now() - (${REPORT_LEASE_MS}::int * interval '1 millisecond'))
-            or (status = 'running' and lease_until > now()))`);
+          and (status = 'queued' or (status = 'running' and lease_until > now()))`);
       return Number(r.rows[0]?.n ?? 0);
     },
 

@@ -502,7 +502,22 @@ async function it03(api: Api, w: World, aReportId: string): Promise<void> {
   }
   const v = await api.get('/api/attesta/verify', token(w.a, 'admin-a'));
   check(v.status === 200 && v.body.chain_intact, 'tenant A chain intact after the attacks');
-  console.log(`guards_period_reports=10_refused chain_guard_attacks=${refusedCount}_refused`);
+
+  // The open-job cap counts aged queued jobs too (cross-review finding): fill it with jobs
+  // queued 11 minutes ago, then a new key is 429 and creates nothing.
+  const openNow = Number((await pool.query(`select count(*)::int as n from attesta_period_reports where tenant_id = $1
+    and (status = 'queued' or (status = 'running' and lease_until > now()))`, [w.a.tenantId])).rows[0].n);
+  for (let i = openNow; i < 4; i++) {
+    await pool.query(`insert into attesta_period_reports (tenant_id, idempotency_key, repository_id, scope, requested_by, request_id, created_at)
+      values ($1, $2, $3, $4::jsonb, 'it-operator', 'it-aged', now() - interval '11 minutes')`,
+    [w.a.tenantId, `it-03-aged-${i}`, w.a.repos.r1.id, JSON.stringify(reportScope(w.a))]);
+  }
+  const before = Number((await pool.query(`select count(*)::int as n from attesta_period_reports where tenant_id = $1`, [w.a.tenantId])).rows[0].n);
+  const capped = await api.post('/api/attesta/period-reports', token(w.a, 'admin-a'), reportScope(w.a), { 'Idempotency-Key': 'it-03-over-cap' });
+  check(isProblem(capped, 429, 'ATTESTA_API_RATE_LIMITED'), `a fifth open job is 429 even when the others are aged: ${capped.status}`);
+  const after = Number((await pool.query(`select count(*)::int as n from attesta_period_reports where tenant_id = $1`, [w.a.tenantId])).rows[0].n);
+  check(after === before, 'the refused request created no job');
+  console.log(`guards_period_reports=10_refused chain_guard_attacks=${refusedCount}_refused open_cap_aged=429`);
   console.log('IT-T15i4-03=passed');
 }
 

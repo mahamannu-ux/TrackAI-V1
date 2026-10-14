@@ -82,7 +82,7 @@ A ratio is `unavailable`/`source_missing` when its figure is, `unavailable`/`not
 | P7 | Ratios follow from `lines_changed` and `merged_lines` |
 | P8 | The predicate's figures (without contributions), `ratios`, `repo_share` and `completeness` equal the document's |
 | P9 | With the input statements at hand (a database read, a `full` evidence pack): recomputing the document from their signed fields gives the same bytes, so no statement is left out, added, or misread |
-| P10 | `previous` lists each earlier report for the same subject name once, oldest first |
+| P10 | `previous` lists each earlier report for the same subject name once, oldest first. The order is enforced when the statement is chained (`chainStatement` requires `previous` to be the chained reports in `seq` order, under the chain lock); a stateless re-check (`checkPeriodReport`, a verifier without the chain) verifies uniqueness only |
 
 The builder refuses to sign a report that breaks P1–P10 (`ATTESTA_BUILDER_SCHEMA_INVALID` / `ATTESTA_BUILDER_RULE_VIOLATION`). P9 needs the statements, so it is checked by the builder and by a verifier holding a `full` pack; whether **every** in-window statement was given needs the chain segment (evidence-pack.md "Which records").
 
