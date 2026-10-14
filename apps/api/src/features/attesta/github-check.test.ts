@@ -442,6 +442,32 @@ test('urls: non-github hosts and bad urls are skipped_url', async () => {
   assert.equal(fake.requests.length, 1);
 });
 
+// A throwing query fails one PR, not the pass.
+
+test('pass: a throwing membership query fails one PR and posts the next', async () => {
+  const db = new FakeDb();
+  db.repos.push({ id: REPO, tenantId: A, provider: 'github', url: 'https://github.com/acme/service' });
+  db.prs.push(
+    openPr({ id: 'pr-1', headSha: sha('d'), updatedAt: '2026-10-14T11:00:00.000Z' }),
+    openPr({ id: 'pr-2', headSha: sha('e'), updatedAt: '2026-10-14T10:00:00.000Z' }),
+    openPr({ id: 'pr-3', headSha: sha('f'), updatedAt: '2026-10-14T09:00:00.000Z' }),
+  );
+  const realQuery = db.query.bind(db);
+  db.query = async (text: string, params: unknown[]) => {
+    if (text.includes('github-check members') && (params as string[])[1] === 'pr-2') {
+      throw new Error('boom');
+    }
+    return realQuery(text, params);
+  };
+  const fake = new FakeGitHub();
+  const counts = await runGithubCheckPass(db, fake.deps, { tenantId: A, now: NOW });
+  assert.deepEqual([counts.prs, counts.failed, counts.created], [3, 1, 2]);
+  assert.deepEqual(
+    fake.requests.map((r) => (r.body as CheckRunPayload).head_sha).sort(),
+    [sha('d'), sha('f')],
+  );
+});
+
 // A merged PR posts on its merge sha and reads the pr_merged record.
 
 test('merged PR: the check goes on the merge sha with the merge title', async () => {

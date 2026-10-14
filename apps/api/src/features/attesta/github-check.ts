@@ -400,18 +400,29 @@ export async function runGithubCheckPass(
     )).rows.map((r) => str(r.tenant_id)).filter((t) => t.length > 0);
   const counts: CheckPassCounts = { tenants: tenantIds.length, ...ZERO_COUNTS };
   for (const tenantId of tenantIds) {
-    const prs = await selectPullRequests(executor, tenantId, now, limit);
+    let prs: PullRequestRow[];
+    try {
+      prs = await selectPullRequests(executor, tenantId, now, limit);
+    } catch {
+      // This tenant's PRs are unknown; the next tenant still gets its pass.
+      continue;
+    }
     for (const pr of prs) {
       counts.prs += 1;
-      const split = splitRepo(pr.repoUrl);
-      const sha = pr.state === 'open' ? pr.headSha : pr.mergeCommitSha;
-      if (!split || !sha) {
-        counts.skipped_url += 1;
-        continue;
+      try {
+        const split = splitRepo(pr.repoUrl);
+        const sha = pr.state === 'open' ? pr.headSha : pr.mergeCommitSha;
+        if (!split || !sha) {
+          counts.skipped_url += 1;
+          continue;
+        }
+        const facts = await attestationFacts(executor, tenantId, pr, sha, now);
+        const payload = checkRunPayload(facts, deps.env, now);
+        counts[await postCheck(deps, tenantId, split.owner, split.repo, payload)] += 1;
+      } catch {
+        // One PR never stops the rest of the pass.
+        counts.failed += 1;
       }
-      const facts = await attestationFacts(executor, tenantId, pr, sha, now);
-      const payload = checkRunPayload(facts, deps.env, now);
-      counts[await postCheck(deps, tenantId, split.owner, split.repo, payload)] += 1;
     }
   }
   console.log(`attesta_github_check tenants=${counts.tenants} prs=${counts.prs} created=${counts.created} `

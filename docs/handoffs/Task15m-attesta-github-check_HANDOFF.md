@@ -12,7 +12,7 @@ Posts one informational **TrackAI Attesta** check run per PR through the install
 | Acceptance | check posted, neutral, exact wording; idempotent; tenant-bound; privacy | 🟡 sandbox-verified, founder runs pending |
 | Scope | §2.1 items 1–8 as specified | ✅ |
 | Quality | 891 unit tests pass (10 new), `tsc` clean, `lint` clean | ✅ |
-| Integration | IT-T15m-01/02 sandbox-passed; IT-T15m-03 founder-live | 🟡 non-blocking for merge |
+| Integration | IT-T15m-01/02 sandbox-passed; IT-T15m-03 founder-live | 🟡 blocking Task15m merge (01/02); 03 non-blocking |
 | Review | self re-read as reviewer (wording vs §2.1 item 5, body contents) | ✅ no findings beyond the noted deviation |
 
 ## Implemented interfaces
@@ -40,12 +40,12 @@ npm run attesta:github-checks -w apps/api [-- --tenant <uuid>] [--limit 200]
 Unit (`github-check.test.ts`, no network/DB): all 8 prompt groups — wording, merged/empty titles, 50-row cap, create/unchanged/update/foreign runs, status codes + pass-continues, real no-token → 0 with zero fetches, SECRET privacy strings absent (only `head_sha` is 40-hex), tenant binding, URL skips. Live: real ingestion/builder/anchor passes, fake GitHub through `deps`.
 
 ## Integration test impact
-> **FOUNDER:** non-blocking for this merge; 01–02 re-run on your machine, 03 needs the App permission first. Expected: minutes.
+> **FOUNDER:** 01–02 gate this merge (re-run on your machine); 03 needs the App permission first and gates calling the check "shipped". Expected: minutes.
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15m-01 | open PR 3 commits/2 built → created "2 of 3 · 0 anchored", unchanged, updated after anchoring | non-blocking merge; blocking "shipped" | 🟡 sandbox 2026-10-14 · ⬜ founder |
-| IT-T15m-02 | B's pass sees nothing of A; A's counts are A's only | same | 🟡 sandbox 2026-10-14 · ⬜ founder |
+| IT-T15m-01 | open PR 3 commits/2 built → created "2 of 3 · 0 anchored", unchanged, updated after anchoring | Blocking: Task15m merge | 🟡 sandbox 2026-10-14 · ⬜ founder |
+| IT-T15m-02 | B's pass sees nothing of A; A's counts are A's only | Blocking: Task15m merge | 🟡 sandbox 2026-10-14 · ⬜ founder |
 | IT-T15m-03 | real installation + test PR shows the neutral check | blocking "shipped" | ⬜ |
 
 ## Integration notes
