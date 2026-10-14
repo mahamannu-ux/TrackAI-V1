@@ -347,7 +347,11 @@ const inWindow = (tenantId: string, scope: ReportScope) => sql`tenant_id = ${ten
   and repository_id = ${scope.repository_id}::uuid and predicate_type = ${AI_PROVENANCE_TYPE}
   and recorded_at >= ${scope.from}::timestamptz and recorded_at <= ${scope.to}::timestamptz`;
 
-export function pgReportStore(db: ReportDatabase): ReportStore {
+/**
+ * `clock` is the ledger's recorded_at clock seam (chainStatement's), for live tests that
+ * need a settled report record without waiting; production uses the default.
+ */
+export function pgReportStore(db: ReportDatabase, options: { clock?: () => Date } = {}): ReportStore {
   return {
     async createOrGet({ tenantId, idempotencyKey, request, requestedBy, requestId }) {
       const inserted = await db.execute(sql`/* report:create */
@@ -454,7 +458,7 @@ export function pgReportStore(db: ReportDatabase): ReportStore {
           const chained = await chainStatement(tx as LedgerExecutor, {
             tenantId, statementCanonical: input.statementCanonical, envelope: input.envelope, credentialId: input.credentialId,
             keyid: input.keyid, signatureDer: input.signatureDer, publicKeySpkiDer: input.publicKeySpkiDer, previousSeen: input.previousSeen,
-          });
+          }, options.clock);
           if (chained.duplicate) throw internal('a fresh report statement was already chained');
           const done = await tx.execute(sql`/* report:ready */
             update attesta_period_reports
