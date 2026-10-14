@@ -82,3 +82,9 @@ None: SushiCorp has no SCM integration (catalog checked: WH-1 covers inbound web
 - **Task15h (Claude):** read Task2's tables only through their stated columns and always bind the tenant; never select a column you do not need (emails, titles, notes).
 - **Task15f2 (Claude):** persistent failures end in a visible count, never an endless retry.
 - **Task9e (Muse):** keep new code in its own files; touch shared files only where the prompt says.
+
+## Follow-up (lead review of `5ca3250`, ready to push)
+
+- If `github-check.ts` is touched again, add a `tenants_failed` counter to
+  `CheckPassCounts`, incremented when a tenant's `selectPullRequests` throws, so
+  a skipped tenant is visible in the pass log line. Not worth a round on its own.
