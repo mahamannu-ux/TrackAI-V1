@@ -251,6 +251,9 @@ test('audit contract: each error code is raised', () => {
   assert.equal(details({ reason: 'x'.repeat(1000) }), undefined, 'a 1000-character reason fits');
   assert.equal(details({ request_id: 'req-9' }), undefined, 'request_id is reserved on every action');
   assert.equal(details({ request_id: 9 }), 'AUDIT_DETAILS_INVALID', 'request_id is a string');
+  // The admin and fleet routes accept upper-case UUIDs and store them unchanged.
+  assert.equal(details({ machineId: U2.toUpperCase() }), undefined, 'upper-case uuid key');
+  assert.equal(codeOf(() => buildAuditRow(TENANT, { ...base, targetId: U1.toUpperCase() })), undefined, 'upper-case uuid target');
   const grant = eventFor('repository_grant.issued');
   assert.equal(details({ branchPatterns: Array(201).fill('main') }, grant), 'AUDIT_DETAILS_INVALID', 'oversize array');
   assert.equal(details({ branchPatterns: ['x'.repeat(513)] }, grant), 'AUDIT_DETAILS_INVALID', 'oversize item');

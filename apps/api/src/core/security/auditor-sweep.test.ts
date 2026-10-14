@@ -91,6 +91,15 @@ const ATTESTA_WRITE_ACTIONS: Record<string, AdminAction> = {
   'POST /api/attesta/period-reports': 'attesta.export',
 };
 
+// Attesta GET routes with a per-route guard (exportAuth, attesta.routes.ts:194) on top
+// of the router-level attesta.read guard: pinned so a swap to attesta.read is caught.
+const ATTESTA_GUARDED_READS: Record<string, AdminAction> = {
+  'GET /api/attesta/evidence-packs/:id': 'attesta.export',
+  'GET /api/attesta/evidence-packs/:id/content': 'attesta.export',
+  'GET /api/attesta/period-reports/:id': 'attesta.export',
+  'GET /api/attesta/period-reports/:id/document': 'attesta.export',
+};
+
 // Auditor-reachable non-GET routes, with the one-line reason each. Anything
 // auditor-reachable outside this map fails the sweep.
 const AUDITOR_ALLOWED_WRITES: Record<string, string> = {
@@ -247,6 +256,7 @@ function guardMismatches(
   swept: StackedRouter[],
   routeActions: Record<string, AdminAction>,
   attestaWrites: Record<string, AdminAction>,
+  attestaReads: Record<string, AdminAction> = {},
 ): string[] {
   const problems: string[] = [];
   const expect = (key: string, actual: AdminAction[], expected: AdminAction[]) => {
@@ -267,11 +277,9 @@ function guardMismatches(
         // the router-level attesta.read guard unnoticed.
         expect(route.key, route.guardActions, [attestaWrites[route.key]]);
       } else if (onAttesta(route.key)) {
-        // Attesta GETs: the router-level attesta.read guard, plus at most one
-        // per-route guard that must stay auditor-readable.
-        if (route.guardActions.length > 1 || route.guardActions.some(action => !auditorAllows(action))) {
-          problems.push(`${route.key}: attesta read guard [${route.guardActions.join(', ')}] is not one auditor-readable action`);
-        }
+        // Attesta GETs: the router-level attesta.read guard only, or exactly the pinned
+        // per-route guard (ATTESTA_GUARDED_READS).
+        expect(route.key, route.guardActions, attestaReads[route.key] ? [attestaReads[route.key]] : []);
       } else {
         // Router-level routers (fleet): no per-route guard; the table must name the router's action.
         expect(route.key, route.guardActions, []);
@@ -283,7 +291,11 @@ function guardMismatches(
 }
 
 test('auditor sweep: every guard checks exactly the tabled action', () => {
-  const problems = guardMismatches(SWEPT, ROUTE_ACTIONS, ATTESTA_WRITE_ACTIONS);
+  const problems = guardMismatches(SWEPT, ROUTE_ACTIONS, ATTESTA_WRITE_ACTIONS, ATTESTA_GUARDED_READS);
+  for (const [key, action] of Object.entries(ATTESTA_GUARDED_READS)) {
+    assert.ok(STACKED.some(route => route.key === key), `ATTESTA_GUARDED_READS entry ${key} matches no route (remove it)`);
+    assert.ok(auditorAllows(action), `${key}: ${action} must stay auditor-readable`);
+  }
   assert.deepEqual(problems, [], `guard actions differ from the sweep tables: ${problems.join('; ')}`);
 });
 

@@ -148,7 +148,7 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const SEQ = '(0|[1-9][0-9]{0,15})';
 const KEYID_PATTERN = /^sha256:[0-9a-f]{64}$/;
 /** attesta_anchor_batches.batch_id "<tenant_id>:<seq_from>-<seq_to>" (attesta-anchor-resume-cli.ts:34). */
-const BATCH_ID_PATTERN = new RegExp(`^${UUID}:${SEQ}-${SEQ}$`);
+const BATCH_ID_PATTERN = new RegExp(`^${UUID}:${SEQ}-${SEQ}$`, 'i');
 const BATCH_ID_NOTE = 'the anchor batch_id text "<tenant_id>:<seq_from>-<seq_to>", not the batch row uuid';
 
 type Spec = Omit<AuditCatalogEntry, 'action' | 'aliases' | 'status'> & { status?: AuditStatus };
@@ -598,7 +598,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
   ...entries(['attesta.keys.publish'], {
     owner: 'Task15', severity: 'high', actorTypes: OPERATOR,
     targetType: 'attesta_trust_document', targetIdKind: 'compound',
-    targetIdPattern: new RegExp(`^${UUID}:${SEQ}$`),
+    targetIdPattern: new RegExp(`^${UUID}:${SEQ}$`, 'i'),
     targetIdNote: 'the key set "<tenant_id>:<version>"',
     details: { requestId: r('string'), version: r('integer'), digest: r('sha256_digest'), keyids: r('string[]') },
     sources: ['features/attesta/trust-inventory.ts:967', 'features/attesta/trust-inventory.ts:1063'],

@@ -1,83 +1,69 @@
 # Task16b-audit-contract Handoff — Audit contract (A16.3)
-
 > Status: ✅ done · 🟡 partial, or waiting on a founder run · ⬜ not done. **FOUNDER:** marks a founder to-do. (AGENTS.md §11)
 
-Branch `task/Task16b-audit-contract` (base: `main` at `4a79c66`). Adds the audit contract: the v1 event schema, all 57 actions as code (47 emitted, 10 reserved), one validating emitter, and the generated `catalog.md`. Guards now carry their action, so the auditor sweep checks *which* action guards each route. It does not migrate any call site (Task16c), and adds no migration, route or web change.
+Branch `task/Task16b-audit-contract` (base: `main` at `4a79c66`). Adds the audit contract (`docs/contracts/audit/`): the v1 event schema, all 57 actions as code (47 emitted, 10 reserved), one validating emitter, and the generated `catalog.md`. Guards now carry their action, so the auditor sweep checks *which* action guards each route. No call site is migrated (that is Task16c), and there is no migration, no route change and no web change.
 
 ## At a glance
 | | Item | Status |
 |---|---|---|
-| Acceptance | Schema v1, catalog as code, `recordAuditEvent()`, generated + test-checked `catalog.md` (`docs/contracts/audit/`) | ✅ |
-| Acceptance | Sweep asserts guard identity (per route and router-level), replacing the layer counts | ✅ swap proven on a throwaway router |
-| Quality | `npm run check` (949/949 unit tests, typecheck, lint, drizzle check, web build) | ✅ |
+| Acceptance | Schema v1, catalog as code, `recordAuditEvent()`, generated and test-checked `catalog.md` | ✅ |
+| Acceptance | Sweep asserts each guard's action (per route, router-level, and the Attesta export guards), replacing the layer counts | ✅ (a swapped action is caught on a throwaway router) |
+| Quality | `npm run check`: 949 unit tests, typecheck, lint, drizzle check, web build | ✅ |
 | Integration | IT-T16b-01 (3 parts) | 🟡 agent-verified 2026-10-15 · ⬜ founder run |
-| Review | Independent review subagent; Codex cross-review | 🟡 see Deviations for fixes · cross-review pending |
+| Review | Independent subagent: 1 must-fix and 5 should-fix, all addressed (below) · Codex cross-review | ✅ · 🟡 pending |
 
 ## Implemented interfaces
 ```ts
 // apps/api/src/core/audit (index.ts)
-AUDIT_CATALOG: readonly AuditCatalogEntry[]; AUDIT_CATALOG_VERSION = 1; AUDIT_ACTOR_TYPES; AUDIT_SEVERITIES
-buildAuditRow(tenantId, event: AuditEvent): AuditRow            // pure; throws AuditContractError(code)
-recordAuditEvent(executor: { execute(sql) }, tenantId, event): Promise<void>   // inside the caller's tx
-AuditContractError.code: AUDIT_UNKNOWN_ACTION | AUDIT_RESERVED_ACTION | AUDIT_ACTOR_NOT_ALLOWED | AUDIT_TARGET_INVALID | AUDIT_DETAILS_INVALID
-// apps/api/src/core/middleware/admin.ts
-adminActionOf(handler): AdminAction | undefined; markAdminAction(handler, action)  // problemizeAuth copies it
-// npm run audit:catalog -w apps/api   ·   npm run verify:task16b-audit-live -w apps/api
+AUDIT_CATALOG; AUDIT_CATALOG_VERSION = 1; AUDIT_ACTOR_TYPES; AUDIT_SEVERITIES; AuditContractError(code)
+buildAuditRow(tenantId, event): AuditRow                                       // pure
+recordAuditEvent(executor: { execute(sql) }, tenantId, event): Promise<void>  // runs in the caller's tx
+// codes: AUDIT_UNKNOWN_ACTION | _RESERVED_ACTION | _ACTOR_NOT_ALLOWED | _TARGET_INVALID | _DETAILS_INVALID
+// core/middleware/admin.ts: adminActionOf(handler); copyAdminAction(from, to) (used by problemizeAuth)
+// npm run audit:catalog -w apps/api · npm run verify:task16b-audit-live -w apps/api
 ```
 
-## Founder-approved decisions
-1. 2026-10-15 checkpoint: severity table as proposed. Emitted actions: **27 high, 12 notice, 8 info**. Reserved: 4 high, 5 notice, 1 info.
-2. 2026-10-15: **audit reads are audited.** `audit.events.read` (info) is reserved here and emitted by Task16c. It records the limit, the returned count and the filter names, never row contents.
+## Founder-approved decisions (2026-10-15 checkpoint)
+1. The severity table was approved as proposed. Emitted actions: **27 high, 12 notice, 8 info**. Reserved actions: 4 high, 5 notice, 1 info.
+2. **Audit reads are audited.** `audit.events.read` (info) is reserved here and emitted by Task16c. It records the limit, the returned count and the filter names, never row contents.
 
 ## Ported from
-None. SushiCorp `identity_audit_events` (`db/models.py:1180` @ `0bd67a5`) has TrackAI's free-form shape and no typed catalog, so the catalog is new. AU-1 was already ported in Task16a.
+None. SushiCorp `identity_audit_events` (`db/models.py:1180` @ `0bd67a5`) has the same free-form shape as TrackAI's table and no typed catalog, so the catalog is new.
 
 ## Deviations from spec
-- Four frozen v1 keys contain a forbidden word but are not content: `contentSha256` (a digest), `failureCode`, `code` and `terminal_code` (error codes). The scan exempts them by name, with a reason each. A new key can never be exempted.
-- Extra detail types beyond the list: `sha256_digest` (`sha256:<hex>`, Attesta digests and keyids), `uuid[]`, `string_map` (GitHub `permissions`). Nested objects are declared shapes.
-- Nullable keys: today's emitters write `null`, never omit (e.g. `effectiveUntil`, `reason` on enrolment), so entries mark them required + nullable.
-- `artifact.signed` keeps the name the prompt reserves (two segments). T14.7 may rename it while it is still reserved.
-- Types live in `catalog.ts`; no extra file. `markAdminAction` is exported so `problemizeAuth` can copy the action.
+- Four frozen v1 key names contain a forbidden word but carry no content: `contentSha256` (a digest), `failureCode`, `code` and `terminal_code` (error codes). The raw-content scan exempts them by name, each with a reason. A new key can never be exempted.
+- Extra detail types: `sha256_digest`, `uuid[]` and `string_map`; nested objects are declared shapes. Keys that today's emitters write as `null` are marked required and nullable. A details object over 16 KB is refused (documented in the README).
+- UUIDs are accepted in either letter case (review must-fix): the routes accept upper case and store it unchanged. `artifact.signed` keeps the name the prompt reserves (two segments). The types live in `catalog.ts`.
 
 ## Task16c migration list
-Every site: replace the direct insert with `recordAuditEvent(<same executor or tx>, tenantId, {…same values})`. Contract-specific changes:
-1. `features/evidence/service.ts:387` `evidence.raw.read`: actor is hardcoded `tenant_user` behind the `evidence.raw.read` guard. Pass `req.adminRole` from `evidence.routes.ts:269`. **Refused today** (`AUDIT_ACTOR_NOT_ALLOWED`; pinned in `KNOWN_TASK16C`).
-2. Hardcoded `tenant_admin` behind a guard: take `req.adminRole` instead (same value today; README rule). Sites: `repository-security-service.ts:115,184,251,314,350,383,429`; `github-app-security-service.ts:114,192,227,263`; `machine-security-service.ts:74,117,158,199`; `retention-policy-service.ts:101`; `evidence-export-service.ts:367,399`; `evidence/service.ts:186,459,497,1159`; `fleet/service.ts:264,316,463`.
-3. Raw SQL: `attesta/trust-inventory.ts:1063` (`insertAudit`), `attesta/worker.ts:371`, and `attesta/attesta-anchor-resume-cli.ts:279`. For the anchor resume, keep `target_id` = batch id and `request_id`: migration 0021's trigger reads both.
-4. `attesta/evidence-pack-service.ts:793`, `period-report-service.ts:511`: keep the `ready` check before the download audit (`pack_digest`/`counts` and both report digests are required non-null).
-5. `core/security/admin-security-service.ts:107` `revokeAdminMembership` has no caller (inventory observation 4): wire it or delete it.
-6. Unchanged: `core/security/task4-wave1-live-verify.ts:217` probe row (action `created`, actor `verification`, rolled back) tests the table guard and stays a direct insert.
-7. The read API (`admin-resource-service.ts:107` and Task16c's API) adds the derived `severity` and `catalog_version` (event-v1), and flips `audit.events.read` to emitted.
+Every site replaces its direct insert with `recordAuditEvent(<same executor or tx>, tenantId, {…})`. Site-specific changes:
+1. `features/evidence/service.ts:387` (`evidence.raw.read`): the actor is hardcoded `tenant_user`. Use `req.adminRole`, passed from `evidence.routes.ts:269`. Today's value is **refused** (pinned in `KNOWN_TASK16C`).
+2. Sites that hardcode `tenant_admin` behind a guard should take `req.adminRole` instead (the value is the same today): `repository-security-service.ts:115,184,251,314,350,383,429`; `github-app-security-service.ts:114,192,227,263`; `machine-security-service.ts:74,117,158,199`; `retention-policy-service.ts:101`; `evidence-export-service.ts:367,399`; `evidence/service.ts:186,459,497,1159`; `fleet/service.ts:264,316,463`.
+3. `evidence-export-service.ts:396-409`: the failure-path audit is wrapped in `.catch(() => undefined)`, so a contract error there would be swallowed. Let it surface or log its code.
+4. Raw SQL sites: `attesta/trust-inventory.ts:1063`; `attesta/worker.ts:371`; `attesta/attesta-anchor-resume-cli.ts:279`: keep `target_id` as the batch id and `request_id`, because migration 0021's trigger reads both.
+5. Pack and report download audits (`evidence-pack-service.ts:793`, `period-report-service.ts:511`): keep the `ready` check first (digests and counts must be non-null).
+6. `admin-security-service.ts:107` (`revokeAdminMembership`) has no caller: wire it or delete it. The rolled-back probe in `task4-wave1-live-verify.ts:217` stays a direct insert. Bound at the route what the emitter would refuse but routes accept today: dates beyond year 9999 (`admin.routes.ts:86`) and branch patterns over 512 characters (`admin.routes.ts:78`).
+7. Read API (`admin-resource-service.ts:107` and the new API): add the derived `severity` and `catalog_version`, and change `audit.events.read` to emitted.
 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| 🟡 | No call site uses the emitter yet | Task16c migrates them; until then rows are unvalidated |
-| 🟡 | Reserved shapes are proposals (lease, policy bundle, artifact, monitor, triage) | The owning Task finalizes the shape before its first row (README) |
+| 🟡 | No call site uses the emitter yet; the reserved shapes (lease, policy bundle, artifact, monitor, triage) are proposals | Rows stay unvalidated until Task16c; each owning Task finalizes its shape before its first row (README) |
 
 ## Test coverage
-`audit-contract.test.ts` (11 tests), no database:
-- one fixture per emitted action, built from its `file:line`;
-- every error code, reserved actions refused, and no details value in any error message;
-- the raw-content key-name scan, `catalog.md` in sync, parity with the inventory §1 table (47), and a schema round-trip.
-
-`auditor-sweep.test.ts` (6 tests): guard identity on all four routers, a swap caught on a throwaway router (per route and through `problemizeAuth`), and `adminActionOf` for all 14 actions. Nothing mocked except a recording executor in one emitter test.
+`audit-contract.test.ts` (11 tests, no database): one fixture per emitted action, built from its `file:line`; every error code, and reserved actions refused; error messages never carry a details value; the key-name scan, `catalog.md` in sync, parity with the 47 actions in the inventory, and a schema round-trip. `auditor-sweep.test.ts` (6 tests): exact guard actions on all four routers, and `adminActionOf` for all 14 actions, including through `problemizeAuth`. The only mock is a recording executor in one emitter test.
 
 ## Integration test impact
-> **FOUNDER:** non-blocking for this merge (no caller yet); blocking for the Task16c merge. Prerequisites: Docker or local PostgreSQL 16 with pgvector. Expected: 3 ok lines plus "IT-T16b-01 passed", under a minute.
-> ```bash
-> scripts/it-db.sh npm run verify:task16b-audit-live -w apps/api
-> ```
+> **FOUNDER:** non-blocking for this merge (nothing calls the emitter yet); blocking for the Task16c merge. Needs Docker or a local PostgreSQL 16 with pgvector. Expected: three `ok` lines, then `IT-T16b-01 passed`, in under a minute: `scripts/it-db.sh npm run verify:task16b-audit-live -w apps/api`
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T16b-01 | (a) recorded in a tx, A reads it, B cannot; (b) a contract error rolls back the tx's other write; (c) the row round-trips through event-v1 | Blocking: Task16c | 🟡 agent-verified 2026-10-15 · ⬜ founder run |
+| IT-T16b-01 | (a) an event recorded in a transaction is read by Company A, not by B; (b) a contract error rolls back the transaction's other write; (c) the stored row round-trips through event-v1 | Blocking: Task16c | 🟡 agent-verified 2026-10-15 · ⬜ founder run |
 
 ## Integration notes
-- The emitter needs only `execute`, so a Drizzle db, a transaction and the narrow `WorkerDatabase`/`TrustDb` executors all work.
-- Renaming an action or a details key is a breaking change (0021 trigger, verifiers, console). Use `aliases` and bump `AUDIT_CATALOG_VERSION`.
+The emitter needs only `execute`, so a Drizzle database or transaction, `WorkerDatabase` and `TrustDb` all work as executors. Renaming an action or a details key breaks things; use `aliases` and bump the catalog version instead.
 
 ## Effort (estimate vs actual)
-| Estimate (× T6) | Actual (× T6) | Agent turns or prompts | Wall-clock |
+| Estimate (× T6) | Actual (× T6) | Agent turns | Wall-clock |
 |---|---|---|---|
-| about 0.06× | about 0.07× | ~60 turns + one review | ~1.5 h |
+| about 0.06× | about 0.07× | ~70 + one review | ~1.5 h |

@@ -14,12 +14,18 @@ export function adminActionOf(handler: unknown): AdminAction | undefined {
   return (handler as unknown as Record<symbol, AdminAction | undefined>)[ADMIN_ACTION];
 }
 
-/** Marks `handler` as checking `action` (read-only, non-enumerable). Returns the handler. */
-export function markAdminAction<T extends object>(handler: T, action: AdminAction | undefined): T {
-  if (action !== undefined) {
-    Object.defineProperty(handler, ADMIN_ACTION, { value: action, enumerable: false, writable: false, configurable: false });
-  }
+function markAdminAction<T extends object>(handler: T, action: AdminAction): T {
+  Object.defineProperty(handler, ADMIN_ACTION, { value: action, enumerable: false, writable: false, configurable: false });
   return handler;
+}
+
+/**
+ * Copies a guard's action onto a wrapper of that guard (problemizeAuth). Copy only:
+ * a handler can never be labelled with an action its wrapped guard does not check.
+ */
+export function copyAdminAction<T extends object>(from: unknown, to: T): T {
+  const action = adminActionOf(from);
+  return action === undefined ? to : markAdminAction(to, action);
 }
 
 export function requireAdminAction(action: AdminAction) {

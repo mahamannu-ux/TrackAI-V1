@@ -20,7 +20,9 @@ export interface AuditExecutor {
   execute(query: SQL): Promise<unknown>;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// Case-insensitive: the admin and fleet routes accept upper-case UUIDs (admin.routes.ts:99,
+// fleet/contract.ts:165) and PostgreSQL stores them unchanged in text columns.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const SHA256_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;

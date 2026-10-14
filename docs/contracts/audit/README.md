@@ -52,14 +52,14 @@ Each entry declares a target id kind:
 ## Details
 Every entry lists its details keys exactly as today's emitter writes them. Each key is required or optional and may be marked nullable. Its type is one of:
 - `string` (at most 512 characters) or `reason` (operator free text, at most 1000);
-- `integer`, `boolean`, `iso_timestamp` (RFC 3339 with a zone), `uuid`;
+- `integer`, `boolean`, `iso_timestamp` (RFC 3339 with a zone and a four-digit year), `uuid` (either letter case, because routes accept upper case and store it unchanged);
 - `sha256_hex` (64 hex characters) or `sha256_digest` (`sha256:` followed by 64 hex characters);
 - `string[]` or `uuid[]` (at most 200 items);
 - `enum[...]`;
 - a declared nested shape: an object of named keys, an array of such objects (`changes[]`), `counts` (an object of non-negative integers) or `string_map` (an object of strings).
 
 The emitter checks every event:
-- It refuses an unknown key, a missing required key, a wrong type, an oversize value, or details larger than 16 KB.
+- It refuses an unknown key, a missing required key, a wrong type or an oversize value. It also refuses a details object larger than 16 KB, which bounds what one row can carry. That cap is an addition beyond the original A16.3 list.
 - `request_id` (AP-1 `X-Request-ID`) is an optional key on every action. Actions that already write `requestId` keep that name.
 - **No raw content.** A unit test refuses any key name that suggests raw content: `prompt`, `response`, `content`, `payload`, `command`, `diff`, `code`, `source`, `secret`, `token`, `password`, `private_key`, `pem`, `plaintext`. It matches whole words inside the key, so `credentialFingerprint` passes and `tokenValue` fails. Four frozen v1 keys are listed as exceptions in the test, each with its reason (`contentSha256` is a digest; `failureCode`, `code` and `terminal_code` are error codes). A new key can never be added to that list.
 - The emitter never logs a details value. Its error messages name only the action and the key.
