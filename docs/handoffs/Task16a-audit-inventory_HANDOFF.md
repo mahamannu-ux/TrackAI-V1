@@ -10,9 +10,9 @@ Facts for the audit contract (A16.3) plus one safety test. No product behaviour,
 | | Item | Status |
 |---|---|---|
 | Acceptance | A16.1 catalog of every action written today + planned events | ✅ 47 actions, 36 sites, 13 observations in `docs/plan/AUDIT_EVENT_CATALOG.md` |
-| Acceptance | A16.2 sweep proving mutating admin routes deny `tenant_auditor` | ✅ 4 tests, 42 guarded + 1 unguarded route swept (8 attesta GETs walked, intentionally untabled), no hole found |
+| Acceptance | A16.2 sweep proving mutating admin routes deny `tenant_auditor` | ✅ 4 tests, 42 tabled routes (35 admin/evidence + 5 fleet + 2 attesta writes) + 1 unguarded; 8 attesta GETs walked, untabled; no hole found |
 | Scope | All three prompt items incl. test-script registration | ✅ |
-| Quality | 936/936 unit tests, typecheck, lint, drizzle check, web build | ✅ (two pre-existing Task15 flakes across full-suite runs — offline-verifier, trust-verify bounds — each passes in isolation and on full rerun; files untouched) |
+| Quality | 936/936 unit tests, typecheck, lint, drizzle check, web build | ✅ (trust-verify "600 keys parse quickly" is a wall-clock assertion that failed 3 full-suite runs in one loaded window — incl. once without the new test file — and passes in isolation and in 3 green full runs; files untouched) |
 | Integration | None needed (no DB behaviour changed; sweep is DB-free by design) | ✅ n/a |
 | Review | Self-review of full diff; cross-agent review | 🟡 self done; cross-agent pending |
 

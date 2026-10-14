@@ -129,6 +129,10 @@ interface StackedRouter {
   router: Router;
   /** 'per-route': one guard per route; 'router-level': one guard for the whole router. */
   guard: 'per-route' | 'router-level';
+  /** Router-level guard only: exact middleware layers before the first route
+    (fleet.routes.ts:128; attesta.routes.ts:119-120). This pins the guard's
+    presence and position, not which action it checks (unreadable at runtime). */
+  leadingLayers?: number;
 }
 
 function routesOf(router: Router, mount: string): StackedRoute[] {
@@ -168,8 +172,8 @@ function leadingMiddleware(router: Router): number {
 const SWEPT: StackedRouter[] = [
   { mount: ADMIN_MOUNT, router: adminRouter, guard: 'per-route' },
   { mount: EVIDENCE_ADMIN_MOUNT, router: evidenceAdminRouter, guard: 'per-route' },
-  { mount: FLEET_ADMIN_MOUNT, router: createFleetAdminRouter(), guard: 'router-level' },
-  { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level' },
+  { mount: FLEET_ADMIN_MOUNT, router: createFleetAdminRouter(), guard: 'router-level', leadingLayers: 1 },
+  { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level', leadingLayers: 2 },
 ];
 
 const STACKED: StackedRoute[] = SWEPT.flatMap(entry => routesOf(entry.router, entry.mount));
@@ -227,9 +231,10 @@ test('auditor sweep: every swept router carries its guard', () => {
   for (const entry of SWEPT) {
     const routes = routesOf(entry.router, entry.mount);
     if (entry.guard === 'router-level') {
-      assert.ok(
-        leadingMiddleware(entry.router) >= 1,
-        `${entry.mount} declares a router-level guard but no middleware precedes its routes`,
+      assert.equal(
+        leadingMiddleware(entry.router),
+        entry.leadingLayers,
+        `${entry.mount} must carry exactly its router-level guard layers before its routes (guard removed or added?)`,
       );
     }
     for (const route of routes) {
@@ -239,6 +244,15 @@ test('auditor sweep: every swept router carries its guard', () => {
         assert.ok(
           route.layers >= 2,
           `${route.key} is listed with action ${ROUTE_ACTIONS[route.key]} but has no guard layer`,
+        );
+      }
+      if (ATTESTA_WRITE_ACTIONS[route.key] !== undefined) {
+        assert.ok(
+          route.layers >= 2,
+          // exportAuth plus the handler (attesta.routes.ts:209 and :289); without
+          // exportAuth the pinned POST would fall back to the router-level
+          // attesta.read guard unnoticed.
+          `${route.key} is a pinned auditor-allowed write but carries no per-route export guard layer`,
         );
       }
     }
