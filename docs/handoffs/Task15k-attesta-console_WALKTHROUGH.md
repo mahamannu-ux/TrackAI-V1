@@ -173,6 +173,13 @@ conclusion is always `neutral`, so the check never blocks a merge — it only sa
 how many of the PR's commits TrackAI has signed and anchored. (IT-T15m-01/02 prove
 the same flow against a fake GitHub; this part is the one run that needs the real one.)
 
+> NOTE — prerequisite (found 2026-10-14): the pass reads the Attesta tables, so the
+> API database must be migrated through `0021_attesta_anchor_resumes` first, and only
+> after a verified backup (`npm run db:migrate -w apps/api`; pending the Task15 lead's
+> call). Without them the run ends `failed=1` with `relation "attesta_records" does
+> not exist`. The six Attesta migrations (0016–0021) create new tables and their guard
+> triggers only; they do not alter existing tables.
+
 ### J1 — Give the App the Checks permission (one time)
 
 1. GitHub → Settings → Developer settings → GitHub Apps → your TrackAI app → Permissions.
