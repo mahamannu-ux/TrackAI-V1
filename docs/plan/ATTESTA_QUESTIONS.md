@@ -1,6 +1,6 @@
 # Attesta: the questions customers and auditors ask
 
-*Written 2026-10-11 by the Task15 lead (Claude), working backwards from the customer and the auditor, as the founder asked; Task2's answers added by Codex on 2026-10-12 (audited against `main` at `bb617f6`). Input to `Task15c-attesta-contract` (A15.0) and to the Q&A modules T10.9 (Task10, customer/admin) and A16.13 (Task16, auditor). The question list is a living document: the founder will add questions from Task5, Task6.a and Task6.b. Symbols per AGENTS.md §11.*
+*Written 2026-10-11 by the Task15 lead (Claude), working backwards from the customer and the auditor, as the founder asked; Task2's answers added by Codex on 2026-10-12 (audited against `main` at `bb617f6`). Input to `Task15c-attesta-contract` (A15.0) and to the Q&A modules T10.9 (Task10, customer/admin) and A16.13 (Task16, auditor). The question list is a living document: the founder will add questions from Task5, Task6.a and Task6.b. Security and policy questions S1–S18 added 2026-10-14 by the Task16 lead. Symbols per AGENTS.md §11.*
 
 ## How to read this
 
@@ -37,6 +37,60 @@
 **Auditor-relevant:** Q1–Q9 and Q11–Q17 (Q10 partly). **Task10 only:** Q18–Q20.
 
 **Live query versus provable answer.** Most 🟡 items can be answered in real time by a live query over Task2's tables; those queries do not exist yet and are the bulk of T10.9's work. A live query shows what TrackAI knows *today*. An auditor needs what TrackAI knew *then*, unchanged: the auditor-flagged questions are therefore answered in A16.13 from signed Attesta statements (or a live query whose result links to the statements that back it, with a verify action). The questions marked *new capture* cannot be answered by any query until their gap is closed.
+
+## Security and policy questions (added 2026-10-14)
+
+*Added by the Task16 lead (Claude) at the founder's request, from the CISO's and the auditor's side. Facts checked against `main` at `63d8ddc` (`file:line` below). Ranked from most to least valuable: S1 is what a CISO asks first. Columns as above.*
+
+**What Task6.a stores today.** One row per finding in `security_findings` (`apps/api/src/core/db/schema.ts:474-560`). Each row is metadata only, with no command text:
+- **What and where:** machine, repository, session (a text id), rule id, version, category and severity.
+- **Which agent, which platform:** agent family, operating system.
+- **What happened:** timing (`pre_action` / `post_action`), phase (`requested` / `observed_result`), result category.
+- **Which versions:** client and rule-pack versions.
+
+Three limits shape every answer below:
+1. **Three rules only.** Database checks (`schema.ts:525-533`) allow only three rules, all in the execution category, at high/critical severity: `exec.destructive_recursive_delete`, `exec.download_pipe_shell` and `exec.reverse_shell`. The [Numbat catalog](https://github.com/perplexityai/numbat/blob/main/docs/rule-catalog.md) has 51 rules in 12 categories: secrets, exfiltration, integrity, execution, reconnaissance, privilege, lateral movement, impact, source control, tampering, persistence and sequences.
+2. **One validated route, monitor only.** The only validated route is OpenCode in a macOS terminal, observe-only (`AC-CLI-03`; AGENTS.md §9 item 11). Every finding is `effect = monitor`.
+3. **Findings are not signed on their own.** They enter Attesta only as per-commit counts inside the `ai-provenance` predicate, joined by the session text id with no key (`docs/contracts/attesta/fields.md:40`). A finding from a session that never produced a commit is not signed at all.
+
+| # | Question | Auditor | Data today | Lives in | Answered by | Notes / gap |
+|---|---|---|---|---|---|---|
+| S1 | Give me the **register of every high/critical security finding** in period P, across all repositories, and prove none was added, changed or removed afterwards. | yes | 🟡 | `finding_observed` statement per finding + **security period report** | new capture (G6) + Attesta | The CISO's first question, and the only one that can carry an incident review. Rows exist, but they are signed only when their session produced a commit. **Gap G6.** Always worded "observed", never "blocked". |
+| S2 | **Was monitoring actually on?** Which machines and repositories were covered in P, and where were the gaps (monitor off, expired, revoked, client stopped or out of date)? | yes | 🟡 | security period report (coverage figures) | new capture (G7) | "Zero findings" means nothing without coverage, so S1 and S2 are always shown together. Today `tenant_security_monitor_settings` has one mutable row per tenant (`schema.ts:291-302`, unique per tenant) and `fleet_machine_states` holds current per-machine state only (`schema.ts:385-407`). Neither keeps history. **Gap G7.** |
+| S3 | **Did anyone switch off or tamper with the guardrails** in P? Monitor turned off; agent hooks, settings or `.mcp.json` changed; reduced-approval or sandbox-bypass modes; detector state written; Git hooks bypassed; shell history cleared. | yes | ⬜ | `finding_observed` statements + audit events | new capture (G8, G9) | The Numbat rules for this (`tamper.*`, `integrity.*`, `exec.agent_runtime_bypass_flags`, `chain.permission_denied_then_runtime_bypass`) are not ported (G9). The monitor setting has **no writer in the API** (only read, in `features/security-findings/activation.ts:73`), so a change leaves no audit event (G8). |
+| S4 | Did any AI agent **read secrets or credentials**, and did data **leave the machine** afterwards? | yes | ⬜ | `finding_observed` statements | new capture (G9) | The highest real-world risk. Needs Numbat's `secrets.*`, `exfil.*` and `chain.secret_read_then_egress` rules (G9). The answer names the rule and the file class, never the secret or the command. |
+| S5 | For one finding, show the **chain**: machine → session → agent and model → repository → the commits and PRs that session produced → deployed? (blast radius) | yes (metadata only) | 🟡 | statements linked by digest | live query now (partial); Attesta after G6, G10 | Machine and repository are foreign keys (`schema.ts:511-520`). The session link to commits is a text join with no key (`fields.md:40`), so it is `partial`. **Gap G10.** Command text stays behind Task5's gated reveal only. |
+| S6 | Did code from a session that raised a high/critical finding **get merged or reach production**? | yes | 🟡 | `ai-provenance` predicate (`security_findings_observed`) + `pr_merged` / `deployed` statements | Attesta (partial now) | Answerable from statements signed today, with the `partial` session-linkage caveat. The strongest security answer Attesta gives before G6. |
+| S7 | **Which repositories were most affected**, by category and severity, and how does P compare with the previous period? | yes | ✅ (live) | security period report figures | live query now; provable after G6 | `repository_id`, `rule_category` and `rule_severity` are columns, with an index on repository and time (`schema.ts:521-522`). |
+| S8 | **Which agent or tool, and which model,** produced the most findings? | yes | 🟡 | security period report figures | live query (agent); new capture for model (G10) | `agent_family` is a column (only `opencode` today, `schema.ts:534-541`). The model is **not** on the finding; it is reachable only through the session text join to Task2's sessions. **Gap G10.** `Unknown model` stays explicit. |
+| S9 | **Which platforms** (macOS, Linux, Windows, WSL) produced the most findings, and in which categories? | yes | 🟡 | security period report figures | live query | `operating_system` is a column (`schema.ts:542-543`), but only macOS is validated (D6.2). Until D6.2 lands, Linux and Windows show as **not monitored**, never as zero. |
+| S10 | Which **rule-pack and detector versions** were in force on each machine when findings occurred, and were machines up to date? | yes | 🟡 | `finding_observed` predicate; coverage figures | live query (machines with findings); new capture for the others (G7) | `rule_version`, `rule_pack_version` and `client_version` are on every finding. A machine with no finding has only current fleet state, not history (G7). |
+| S11 | Which findings were **confirmed outcomes**, and which were only **requested** actions? | yes | ✅ | `finding_observed` predicate | live query; provable after G6 | `timing`, `phase` and `result_category` are columns (`schema.ts:544-560`). A pre-action request is not proof the action ran. Keeping these apart is what keeps the register honest (AGENTS.md rule 7). |
+| S12 | **Was anything blocked or prevented?** Under which policy version? | yes | ✅ (answer: no) | security period report (`blocked` figure) | live query now; Task6.b later | Today the honest answer is "none: monitor-only", enforced by `effect = monitor` (`schema.ts:548`). After Task6.b, decisions carry the policy version, and the figure splits into observed / warned / blocked. |
+| S13 | What **organization policy** (approved agents and models, blocked actions, required modes) was in force on each machine when a finding occurred, and did the machine hold a valid **activation lease**? | yes | ⬜ | `finding_observed` predicate (policy and lease references) | new capture (G2, G11) | Needs Task6.b policy bundles (G2) and D6.1 leases (G11). Task16b reserves the lease and bundle audit events. |
+| S14 | Which **policy exceptions or waivers** were granted, by whom, for how long, and which findings fell under them? | yes | ⬜ | audit events + predicate reference | new capture (G12) | Task6.b. Without it, an auditor cannot tell an approved exception from a gap. |
+| S15 | **Who looked at** security findings and raw evidence in P, and is that trail tamper-evident? | yes | ✅ | audit events, sealed into Attesta (A16.4) | live query now; provable after A16.4 | `security_findings.read` and `evidence.raw.read` are already audit events (`docs/contracts/audit/catalog.md` once Task16b merges). Task16e seals them. |
+| S16 | How fast were findings **triaged and remediated** (time to acknowledge, time to close), and by whom? | partly | ⬜ | audit events (triage) + live query | new capture (G13) | No triage or disposition state exists (Q11's note: remediation not tracked). A common CISO KPI. |
+| S17 | Which **machines (or teams)** generate repeated findings? | partly | 🟡 | live query, aggregated | live query | `machine_id` is a column. It stays at machine and team level by default; per-developer views follow Task5's no-surveillance rule. |
+| S18 | Which rules fire most, and which are noisy (findings later marked benign)? | no | 🟡 | live query | live query (counts); new capture for disposition (G13) | A tuning question for Task10. A false-positive rate needs G13's disposition field. |
+
+**Auditor-relevant:** S1–S15 (S16, S17 partly). **Task10 only:** S18. **Answerable with signatures before any new capture:** S6, plus S15 after A16.4. **Answerable live today:** S7, S9, S11, S12, S17, and S5, S8, S10 partly. Everything else waits on G6–G13.
+
+### A security period report: yes, as its own predicate
+
+The founder asked whether security findings get a `period_report` like Task15's code report. Yes, but **not** by extending `period-report/v1`. That predicate is frozen, scoped to one repository, and its figures are AI-line figures (`docs/contracts/attesta/period-report.md`). The same RP-1 pattern applies to a new, additive predicate type:
+
+| Part | Proposal |
+|---|---|
+| Prerequisite | **G6:** a `finding_observed` statement per finding. Task6 writes the outbox row in the `/worker/security` upload transaction. The predicate `security-finding/v1` holds the content-free finding metadata, the repository, machine and session references, the rule-pack version and the activation state. The rule is the same as Task15's: report figures come **only from signed statements**, never from live tables. |
+| Predicate type | `https://trackai.dev/attesta/security-period-report/v1` |
+| Scope | the tenant (all repositories) or one repository; `from`, `to` |
+| Figures (integers) | findings by severity, category, rule, repository, agent family, operating system, phase and result; `blocked` (0 and labelled monitor-only until Task6.b); rule-pack versions seen |
+| Coverage figures | machines expected vs monitored, and monitor-days. `unavailable` (`not_captured_yet`) until G7 |
+| Inputs | count and RFC 6962 root over the `finding_observed` digests in the period, plus the chain range, exactly as `period-report/v1` |
+| Answers | S1, S2, S7–S12; it ships in evidence packs like the code report |
+
+**Owner (lead recommendation, needs the founder):** Attesta, as a Task15 follow-up: one session for G6 and one for the report. A new predicate type changes Attesta's ledger guards, as Task15i4 did with migration 0022, and Task16 never builds its own signer (D1). A16.13 then answers the S questions from these statements. Proposed order: after Task15n, before A16.13's security answers.
 
 ## Where the Q&A module lives
 
@@ -170,3 +224,11 @@ Provider re-delivery already has a strong unique key `(tenant, provider, deliver
 | G3 | PR review and approval capture (`pull_request_review` webhook; not subscribed today, so past reviews cannot be recovered) | Q5 | Task2 (semantics), Task7 (other providers), Task4 (delivery) | before production (founder, 2026-10-12); predicate field ready now |
 | G4 | `merged_by` on pull requests (in the stored webhook, not parsed; migration + backfill) | Q6 | Task2 | before production, small |
 | G5 | Content-free rejection audit event for refused uploads (unenrolled repository or machine) | Q15 | Task4 (capture), Task16 (expose), Task15 (count in batch statement) | 1 |
+| G6 | Security findings are not signed on their own: only as per-commit counts, joined by session text (`fields.md:40`); a session with no commit leaves its findings unsigned | S1, S5, S7, S10–S12 | Task15 (new `finding_observed` kind and `security-finding/v1` predicate), Task6 (outbox row in the upload transaction) | before A16.13's security answers |
+| G7 | Monitoring coverage history: per machine and day, monitor mode, activation, client and rule-pack version, service state. Today one mutable row per tenant (`schema.ts:291-302`) and current fleet state only (`schema.ts:385-407`) | S2, S10 | Task6 + Task9 (capture), Task15 (signed) | with G6 |
+| G8 | The security-monitor setting has no API writer and no audit event; changes leave no trace (`activation.ts:73` only reads) | S3 | Task6 (writer), Task16 (event `security.monitor.changed`, reserved in Task16b) | 1 |
+| G9 | Rule coverage: 3 of Numbat's 51 rules ported, execution only (`schema.ts:525-533`); secrets, exfiltration, tampering, persistence, privilege and sequence rules missing | S3, S4 | Task6.a follow-up (contract and check-constraint change: a migration) | next Task6 wave |
+| G10 | Model and session key on a finding: the model is reachable only through a session text join, with no key to `ai_sessions` | S5, S8 | Task6 + Task2 | with G6 |
+| G11 | D6.1 activation lease issue and refuse events | S13 | Task6.b (events reserved in Task16b) | with D6.1 |
+| G12 | Policy exceptions and waivers object | S14 | Task6.b | with Task6.b |
+| G13 | Finding triage, disposition and remediation state (append-only, audited) | S16, S18 | Task6 (state), Task16 (event `security.finding.triaged`, reserved in Task16b), Task10 (UI) | 2 |
