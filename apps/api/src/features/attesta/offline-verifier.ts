@@ -211,6 +211,7 @@ export function __setSchemaDirForTests(dir: string | undefined): void {
   schemaDirOverride = dir;
   packValidator = null;
   statementValidator = null;
+  reportStatementValidator = null;
 }
 
 let packValidator: ValidateFunction | null = null;
@@ -232,6 +233,19 @@ function statementSchemaValidator(): ValidateFunction {
   ajv.addSchema(load('predicate-ai-provenance-v1.schema.json'));
   statementValidator = ajv.compile(load('statement-v1.schema.json'));
   return statementValidator;
+}
+
+/** Task15i4: a period_report statement in a pack is checked against its own frozen schema. */
+const PERIOD_REPORT_TYPE = 'https://trackai.dev/attesta/period-report/v1';
+let reportStatementValidator: ValidateFunction | null = null;
+function reportSchemaValidator(): ValidateFunction {
+  if (reportStatementValidator) return reportStatementValidator;
+  const dir = contractDir();
+  const predicate = JSON.parse(readFileSync(join(dir, 'predicate-period-report-v1.schema.json'), 'utf8')) as Record<string, unknown>;
+  const ajv = new Ajv({ strict: true, allErrors: true, strictTypes: false, strictRequired: false });
+  ajv.addSchema(predicate);
+  reportStatementValidator = ajv.compile({ $ref: `${String(predicate.$id)}#/definitions/statement` });
+  return reportStatementValidator;
 }
 
 // ---------------------------------------------------------------------------
@@ -949,6 +963,7 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
 
   // --- 5. statements (digest, envelope, canonical form, schema, rules, trusted signature)
   let statements: OfflineCheck;
+  let reportStatements = 0;
   {
     // Tamper evidence (a bad signature, a wrong key, a broken rule) is a break;
     // absent trust information (an expired or missing document) is not checkable.
@@ -983,6 +998,7 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
     let statementValidatorOk = true;
     try {
       statementSchemaValidator();
+      reportSchemaValidator();
     } catch {
       statementValidatorOk = false;
     }
@@ -1023,8 +1039,13 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         continue;
       }
       const snapshot = parseJson(text);
+      // Task15i4: a period_report statement is its own predicate type. Its schema and its
+      // record's typed copies are checked here; its figures need the report document
+      // (P1–P10), which v1 packs do not carry, so the reports check says not checkable.
+      const isReport = isObj(snapshot) && snapshot.predicateType === PERIOD_REPORT_TYPE;
+      if (isReport) reportStatements += 1;
       try {
-        if (statementSchemaValidator()(snapshot) !== true) {
+        if ((isReport ? reportSchemaValidator() : statementSchemaValidator())(snapshot) !== true) {
           bump('ATTESTA_VERIFY_SCHEMA_INVALID');
           continue;
         }
@@ -1032,14 +1053,14 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         bump('ATTESTA_VERIFY_SCHEMA_INVALID');
         continue;
       }
-      if (checkStatementRules(snapshot).length > 0) {
+      if (!isReport && checkStatementRules(snapshot).length > 0) {
         bump('ATTESTA_VERIFY_RULE_VIOLATION');
         continue;
       }
       // The record's typed copies must be what the signed statement says (the
-      // ledger's 0017 guard rule): an exporter that rewrites a record without
+      // ledger's 0017/0022 guard rule): an exporter that rewrites a record without
       // re-signing its statement is caught here, not just by the chain links.
-      if (!recordMatchesStatement(record, snapshot)) {
+      if (!(isReport ? recordMatchesReport(record, snapshot) : recordMatchesStatement(record, snapshot))) {
         bump('ATTESTA_VERIFY_FIELD_MISMATCH');
         continue;
       }
@@ -1096,7 +1117,8 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
     const value = pack !== null ? pack.reports : undefined;
     if (!Array.isArray(value)) {
       reports = { id: 'reports', status: FAILED };
-    } else if (value.length > 0) {
+    } else if (value.length > 0 || reportStatements > 0) {
+      // A period_report statement's figures cannot be recomputed without its document.
       reports = { id: 'reports', status: NOT_CHECKABLE, code: 'ATTESTA_VERIFY_NOT_CHECKABLE' };
     } else {
       reports = { id: 'reports', status: 'passed' };
@@ -1186,6 +1208,22 @@ function recordMatchesStatement(record: Obj, snapshot: unknown): boolean {
     && record.repository_id === repoId
     && record.subject_sha === sha
     && first.name === `trackai:repository/${repoId}/commit/${sha}`;
+}
+
+/** The 0022 guard rule for a period_report record: kind, sha and outbox subject null, the
+ * repository from the predicate's scope, one subject named after that scope with a sha256 digest. */
+function recordMatchesReport(record: Obj, snapshot: unknown): boolean {
+  if (!isObj(snapshot) || !Array.isArray(snapshot.subject) || snapshot.subject.length !== 1 || !isObj(snapshot.subject[0])) return false;
+  const first = snapshot.subject[0];
+  const digest = isObj(first.digest) ? first.digest : null;
+  const predicate = isObj(snapshot.predicate) ? snapshot.predicate : null;
+  const scope = predicate !== null && isObj(predicate.scope) ? predicate.scope : null;
+  if (scope === null || typeof scope.repository_id !== 'string' || typeof scope.from !== 'string' || typeof scope.to !== 'string'
+    || digest === null || Object.keys(digest).join(',') !== 'sha256' || typeof digest.sha256 !== 'string') return false;
+  return record.predicate_type === snapshot.predicateType
+    && record.statement_kind === null && record.subject_sha === null && record.outbox_subject_id === null
+    && record.repository_id === scope.repository_id
+    && first.name === `trackai:repository/${scope.repository_id}/period/${scope.from}..${scope.to}`;
 }
 
 /** Counts recomputed from the pack's own content (never the manifest's claims). */
