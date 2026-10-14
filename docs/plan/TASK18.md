@@ -8,7 +8,7 @@
 - **Lifecycle correctness at scale (Task2):** including stacked PRs, merge queues and other T2.22/E16 cases on GitHub.
 - **Evidence exploration (Task5):** prompt-to-PR and back on real histories.
 - **Security monitoring (Task6.a):** findings on real agent use, within the supported routes.
-- **Productivity metrics:** the 20-question list (`docs/plan/ATTESTA_QUESTIONS.md`) answered for the whole organization.
+- **Productivity metrics:** the 20-question list (`docs/plan/CUSTOMER_AUDITOR_QA.md`) answered for the whole organization.
 - **Attesta and audit (Task15/16):** statements, anchoring, evidence packs verified offline, audit trail of every admin action.
 - **Onboarding (Task8):** the organization is set up through the pilot flows, not by hand.
 

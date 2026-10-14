@@ -30,7 +30,7 @@ It does **not** migrate the call sites (that is Task16c, Muse), add a migration,
 
 ## 1. Read before writing
 - **Task16:** `docs/plan/TASK16.md` (§1 decisions D1–D5, A16.3, §5 decisions 3–4) and `docs/plan/AUDIT_EVENT_CATALOG.md`, the whole file: §1 rows are your input, and §4 observations 1–13 are the questions this contract answers.
-- **Questions:** `docs/plan/ATTESTA_QUESTIONS.md` "Security and policy questions" (S1–S18, gaps G6–G13): the audit events those answers need (S3, S13–S16) are the reserved entries in item 7.
+- **Questions:** `docs/plan/CUSTOMER_AUDITOR_QA.md` "Security and policy questions" (S1–S18, gaps G6–G13): the audit events those answers need (S3, S13–S16) are the reserved entries in item 7.
 - **Handoff:** `docs/handoffs/Task16a-audit-inventory_HANDOFF.md` (Known limitations: the sweep pins guard presence, not identity).
 - **Code** (paths under `apps/api/src/`):
   - `core/db/schema.ts:572-586`: `securityAuditEvents`, with free-text columns, `details` jsonb, no severity column and no request id.
@@ -92,7 +92,7 @@ It does **not** migrate the call sites (that is Task16c, Muse), add a migration,
      - `fleet.lease.issued`, `fleet.lease.refused` (D6.1);
      - `policy.bundle.published`, `policy.bundle.activated`, `policy.bundle.acknowledged` (Task6.b);
      - `artifact.signed` (T14.7);
-     - `security.monitor.changed` (Task6; the monitor setting has no API writer today, gap G8 in `docs/plan/ATTESTA_QUESTIONS.md`);
+     - `security.monitor.changed` (Task6; the monitor setting has no API writer today, gap G8 in `docs/plan/CUSTOMER_AUDITOR_QA.md`);
      - `security.finding.triaged` (Task6, gap G13).
 
      A signed Attesta statement is **not** an audit event: the ledger already records it, one per commit.

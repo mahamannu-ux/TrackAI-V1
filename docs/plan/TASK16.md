@@ -33,7 +33,7 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 | A16.10 | Database read-only role for auditor reads (AU-1 layer 4) | Claude | 0.05× | A16.6 | ⬜ |
 | A16.11 | Emitters for new sources: Attesta (key create/rotate/revoke, sign, anchor ok/failed, verify run, pack export), D6.1 lease issue, Task6.b bundle publish/activation, T14.7 artifact signing | owning Tasks | — | A16.3 | n/a here |
 | A16.12 | Founder-live auditor walkthrough (Company A/B, admin vs auditor vs developer) | founder-live | 0.02× | A16.8 | ⬜ |
-| A16.13 | Auditor Q&A: the auditor-flagged questions in `docs/plan/ATTESTA_QUESTIONS.md` answered from signed Attesta statements, each with the statements behind it, timestamps, anchors, a verify action and pack export; read-only. May reuse Task10 T10.9's queries (optional, not a prerequisite) | Claude design, Muse build | sized when the question list is complete | A16.6, A16.8, Task15 A15.9 | ⬜ |
+| A16.13 | Auditor Q&A: the auditor-flagged questions in `docs/plan/CUSTOMER_AUDITOR_QA.md` as **verifiable** answers (computed only from signed statements, each listed with time, anchor, verify action and pack export; signed period reports where a figure must be citable); read-only; built on Task19's Q&A contract (T19.2). **A16.13a** code questions (Q1, Q3, Q7–Q9, Q11, Q13, Q14, Q16); **A16.13b** security questions (S1, S6, S7, S9–S12, S15) | Claude design, Muse build | sized when Task19 T19.2 lands | a: A16.8, T19.2, Task15 A15.9; b: also Task15o/15p | ⬜ |
 
 **Total:** about 0.5× T6 before A16.13 (Claude about 0.25×, Muse about 0.25×); auditor invitations (formerly Codex, 0.1×) moved to Task8 T8.12.
 
@@ -72,6 +72,8 @@ flowchart LR
   B2 --> B12
   B8b --> B13
   T159 --> B13
+  T192[Task19 T19.2 Q&A contract] --> B13
+  T15op[Task15o/15p security statements] --> B13
 ```
 
 **Critical path:** A16.1 → A16.3 → A16.6 → A16.8 → A16.12 (sessions 16a → 16b → 16c → 16f, then the founder walkthrough). **Start at once:** A16.1 + A16.2 (one Muse session). A16.4 and A16.7 wait for Attesta.
@@ -84,10 +86,11 @@ flowchart LR
 | Task16c-audit-emitters-api | A16.5, A16.6 | Muse | 0.12× | after 16b. The prompt pre-approves every Task4, Task5 and Task6 audit call site the emitter migration touches, listed by `file:line` from `docs/plan/AUDIT_EVENT_CATALOG.md` (A16.1); the read API's tests read back events written through `recordAuditEvent()`, never rows inserted directly |
 | Task16e-audit-tamper | A16.4, A16.7, A16.10 | Claude | 0.2× | after 16c (Task15d and Task15i2 have merged) |
 | Task16f-audit-console | A16.8 | Claude design note, Muse build (one Muse session) | 0.1× | after 16c |
-| Task16h-auditor-qa | A16.13 | Claude design note, Muse build | sized later | after 16f and Task15i2 |
+| Task16h-auditor-qa | A16.13a, then A16.13b | Claude design note, Muse build | sized later | a: after 16f and Task19 T19.2; b: after Task15o/15p |
 
 ## 5. Founder decisions
 1. **2026-10-08:** D1–D5 approved as recommended.
 2. **2026-10-12:** add A16.13 Auditor Q&A, driven by the question catalogue `docs/plan/ATTESTA_QUESTIONS.md` (founder, in the Task15 lead chat).
 3. **2026-10-12:** A16.9 (auditor invitations) moves to Task8 (T8.12); SIEM delivery stays with Task11, now deferred until a customer asks (`docs/plan/TASK11.md`); Task16 applies the AP-1 API conventions to its routes and must not assume a human session (B17).
 4. **2026-10-12 (recorded 2026-10-13):** reduce Task16 session overhead. Task16c-audit-emitters and Task16d-audit-api merge into one Muse session, **Task16c-audit-emitters-api** (A16.5 + A16.6, about 0.12×, after 16b); A16.10 (auditor DB read-only role) folds into **Task16e-audit-tamper** (now A16.4 + A16.7 + A16.10, Claude, about 0.2×) and Task16g-audit-db-role is dropped; Task16f-audit-console stays one Muse session built from the lead's design note. Sessions go from eight to six; the total estimate is unchanged.
+5. **2026-10-14:** the question catalogue is renamed `docs/plan/CUSTOMER_AUDITOR_QA.md` and owned by the new **Task19** (Q&A delivery, Claude). A16.13 builds on Task19's Q&A contract (T19.2) and splits into A16.13a (code questions, after 16f) and A16.13b (security questions, after Task15's new sessions Task15o `finding_observed` and Task15p `security-period-report/v1`, which follow Task15n). Order: Task16 through A16.12 alongside Task15m/15n; then Task15o, Task15p; then A16.13b (A16.13a may start earlier). Task16b reserves `security.monitor.changed` and `security.finding.triaged`. The auditor gets verifiable and signed answers only, no "live query plus links" hybrid (lead recommendation, confirmed in Task19 §1).
