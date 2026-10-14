@@ -1,0 +1,21 @@
+apps/api/src/core/security/auditor-sweep.test.ts
+  s_1cf7357bdc9187::t_31541092c89700 132-135,175-176,234-237,249-257
+docs/plan/AUDIT_EVENT_CATALOG.md
+  s_1cf7357bdc9187::t_74a5ce11f4d52f 54,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "63d8ddcf4f2a2810035d5e05686dc6551da1c569",
+  "prompts": {},
+  "sessions": {
+    "s_1cf7357bdc9187": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f97-618d-7150-a179-ef0cdcfe91dd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
