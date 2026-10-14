@@ -36,6 +36,8 @@ import {
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
 
 export const AI_PROVENANCE_PREDICATE_TYPE = 'https://trackai.dev/attesta/ai-provenance/v1';
+/** The second predicate type (Task15i4, period-report.md): its subject is a report document. */
+export const PERIOD_REPORT_PREDICATE_TYPE = 'https://trackai.dev/attesta/period-report/v1';
 export const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 export const LEDGER_RECORD_KIND = 'statement';
 /** Largest statement the ledger accepts (bytes); signers cap lower (1 MiB local dev). */
@@ -127,9 +129,13 @@ export interface LedgerRecordFields {
 export interface StatementColumns {
   statementDigest: string;
   predicateType: string;
-  statementKind: AttestaStatementKind;
+  /** null for a period_report (tables.md). */
+  statementKind: AttestaStatementKind | null;
   repositoryId: string;
-  subjectSha: string;
+  /** null for a period_report. */
+  subjectSha: string | null;
+  /** subject[0].name: what "statements about the same subject" (previous) are keyed on. */
+  subjectName: string;
   /** predicate.previous digests, oldest first. */
   previous: string[];
 }
@@ -137,6 +143,8 @@ export interface StatementColumns {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const SHA_RE = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
+const HEX64_RE = /^[0-9a-f]{64}$/;
+const PERIOD_BOUND_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const BASE64_RE = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const CLAIMED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
 const ISO_MS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -184,9 +192,11 @@ export function parseSeq(value: unknown, label = 'seq'): number {
 }
 
 /**
- * Derive the typed columns from a statement's canonical bytes (ai-provenance v1).
- * The builder validates the full schema and S1–S12 (envelope.md step 3); the ledger
- * checks only what it stores and links on. `period_report` arrives with A15.9.
+ * Derive the typed columns from a statement's canonical bytes: ai-provenance v1, or a
+ * period_report (Task15i4; statement_kind and subject_sha null, the repository from the
+ * subject name and scope). The builders validate the full schema and their rules
+ * (envelope.md step 3; period-report.md P1–P10); the ledger checks only what it stores
+ * and links on, as the 0022 guard does.
  */
 export function deriveStatementColumns(statementCanonical: string): StatementColumns {
   if (typeof statementCanonical !== 'string' || statementCanonical.length === 0) {
@@ -211,12 +221,15 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
   if (again !== statementCanonical) throw guard('statementCanonical is not its own RFC 8785 form');
   if (!isPlainRecord(parsed)) throw guard('statement must be an object');
   if (parsed._type !== IN_TOTO_STATEMENT_TYPE) throw guard('statement _type is not in-toto Statement v1');
-  if (parsed.predicateType !== AI_PROVENANCE_PREDICATE_TYPE) throw guard('unsupported predicateType');
+  if (parsed.predicateType !== AI_PROVENANCE_PREDICATE_TYPE && parsed.predicateType !== PERIOD_REPORT_PREDICATE_TYPE) {
+    throw guard('unsupported predicateType');
+  }
   const subjects = parsed.subject;
   if (!Array.isArray(subjects) || subjects.length !== 1 || !isPlainRecord(subjects[0])) {
     throw guard('statement must have exactly one subject');
   }
   const subject = subjects[0];
+  if (parsed.predicateType === PERIOD_REPORT_PREDICATE_TYPE) return derivePeriodReportColumns(statementCanonical, subject, parsed.predicate);
   const digest = subject.digest;
   const subjectSha = isPlainRecord(digest) ? digest.gitCommit : undefined;
   if (typeof subjectSha !== 'string' || !SHA_RE.test(subjectSha)) throw guard('subject digest is not a git commit sha');
@@ -245,7 +258,46 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
     statementKind: statementKind as AttestaStatementKind,
     repositoryId,
     subjectSha,
+    subjectName: subject.name as string,
     previous,
+  };
+}
+
+function previousDigests(raw: unknown): string[] {
+  if (!Array.isArray(raw)) throw guard('predicate previous must be an array');
+  return raw.map((entry) => {
+    const d = isPlainRecord(entry) ? entry.digest : undefined;
+    if (typeof d !== 'string' || !HASH_RE.test(d)) throw guard('predicate previous holds a malformed digest');
+    return d;
+  });
+}
+
+/** period_report: one subject named after the predicate's scope, with a sha256 digest (0022 guard). */
+function derivePeriodReportColumns(statementCanonical: string, subject: Record<string, unknown>, predicate: unknown): StatementColumns {
+  if (!isPlainRecord(predicate)) throw guard('statement predicate must be an object');
+  if (predicate.statement_kind !== undefined) throw guard('a period report has no statement_kind');
+  const digest = subject.digest;
+  if (!isPlainRecord(digest) || !hasExactKeys(digest, ['sha256']) || typeof digest.sha256 !== 'string' || !HEX64_RE.test(digest.sha256)) {
+    throw guard('a period report subject digest must be {sha256}');
+  }
+  const scope = predicate.scope;
+  const repositoryId = isPlainRecord(scope) ? scope.repository_id : undefined;
+  const from = isPlainRecord(scope) ? scope.from : undefined;
+  const to = isPlainRecord(scope) ? scope.to : undefined;
+  if (typeof repositoryId !== 'string' || !UUID_RE.test(repositoryId)) throw guard('predicate scope.repository_id is not a UUID');
+  if (typeof from !== 'string' || typeof to !== 'string' || !PERIOD_BOUND_RE.test(from) || !PERIOD_BOUND_RE.test(to)) {
+    throw guard('predicate scope bounds are malformed');
+  }
+  const name = `trackai:repository/${repositoryId}/period/${from}..${to}`;
+  if (subject.name !== name) throw guard('subject name does not match the repository and period');
+  return {
+    statementDigest: sha256Prefixed(Buffer.from(statementCanonical, 'utf8')),
+    predicateType: PERIOD_REPORT_PREDICATE_TYPE,
+    statementKind: null,
+    repositoryId,
+    subjectSha: null,
+    subjectName: name,
+    previous: previousDigests(predicate.previous),
   };
 }
 
@@ -471,6 +523,8 @@ export async function chainStatement(
 ): Promise<ChainStatementResult> {
   const s = validateChainInput(input);
   const c = s.columns;
+  // A period_report never comes from the outbox (tables.md: outbox_subject_id null).
+  if (c.predicateType === PERIOD_REPORT_PREDICATE_TYPE && s.outboxClaim) throw guard('a period report has no outbox claim');
 
   // 0. The commit-time guard must run after the envelope and head are written,
   //    even if the caller set its constraints IMMEDIATE.
@@ -541,9 +595,16 @@ export async function chainStatement(
   }
 
   // 4. previous, re-read under the lock: concurrent statements about one subject always link.
-  const prevRows = await run(tx, sql`/* ledger:previous */
+  const prevRows = c.subjectSha !== null
+    ? await run(tx, sql`/* ledger:previous */
     select statement_digest from attesta_records
     where tenant_id = ${s.tenantId} and repository_id = ${c.repositoryId} and subject_sha = ${c.subjectSha}
+    order by seq`)
+    // period_report: earlier reports for the same scope (the same subject name).
+    : await run(tx, sql`/* ledger:previous_reports */
+    select statement_digest from attesta_records
+    where tenant_id = ${s.tenantId} and repository_id = ${c.repositoryId} and predicate_type = ${PERIOD_REPORT_PREDICATE_TYPE}
+      and (statement_canonical::jsonb)->'subject'->0->>'name' = ${c.subjectName}
     order by seq`);
   const current = prevRows.map((r) => String(r.statement_digest));
   const seen = s.previousSeen;

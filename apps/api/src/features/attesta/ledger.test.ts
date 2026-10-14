@@ -17,6 +17,7 @@ import {
   type LedgerExecutor,
 } from './ledger';
 import { chainInput, makeStatement, makeTestKey, shaOf, signStatement } from './testing/ledger-fixtures';
+import { buildReportStatement, computeReportDocument } from './period-report-rules';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const REPO = '22222222-2222-4222-8222-222222222222';
@@ -70,7 +71,8 @@ describe('deriveStatementColumns', () => {
     const c = deriveStatementColumns(s);
     assert.deepEqual(c, {
       statementDigest: sha256Prefixed(Buffer.from(s, 'utf8')), predicateType: 'https://trackai.dev/attesta/ai-provenance/v1',
-      statementKind: 'pr_merged', repositoryId: REPO, subjectSha: shaOf(1), previous: [prevDigest],
+      statementKind: 'pr_merged', repositoryId: REPO, subjectSha: shaOf(1),
+      subjectName: `trackai:repository/${REPO}/commit/${shaOf(1)}`, previous: [prevDigest],
     });
   });
 
@@ -304,5 +306,72 @@ describe('chainStatement (scripted executor)', () => {
     const other = fresh({ record_insert: () => Object.assign(new Error('connection lost'), { code: '08006' }) });
     const passthrough = await chainStatement(other, chainInput(TENANT, STATEMENT, KEY), clock).catch((e) => e);
     assert.ok(!(passthrough instanceof AttestaLedgerError));
+  });
+});
+
+// Task15i4: the second predicate type.
+function reportStatementFor(repositoryId: string, previous: string[] = []): string {
+  const scope = { repository_id: repositoryId, from: '2026-10-01T00:00:00.000Z', to: '2026-10-07T23:59:59.999Z', basis: 'recorded_at' as const };
+  const document = computeReportDocument({ tenantId: TENANT, scope, inputs: [] });
+  return buildReportStatement({ document, chainRange: { from_seq: 0, to_seq: -1, to_record_hash: null }, asOf: '2026-10-14T00:00:00.000Z',
+    builderVersion: '0.1.0+3c862ef', previous }).statementCanonical;
+}
+
+describe('deriveStatementColumns: period_report (Task15i4)', () => {
+  it('derives null kind and sha, the repository from the scope, and the subject name', () => {
+    const prev = sha256Prefixed('earlier');
+    const s = reportStatementFor(REPO, [prev]);
+    const c = deriveStatementColumns(s);
+    assert.deepEqual(c, {
+      statementDigest: sha256Prefixed(s), predicateType: 'https://trackai.dev/attesta/period-report/v1', statementKind: null,
+      repositoryId: REPO, subjectSha: null,
+      subjectName: `trackai:repository/${REPO}/period/2026-10-01T00:00:00.000Z..2026-10-07T23:59:59.999Z`, previous: [prev],
+    });
+  });
+
+  it('refuses a report whose subject, digest, scope or kind disagree', () => {
+    const obj = JSON.parse(reportStatementFor(REPO));
+    const sub = obj.subject[0];
+    const other = '44444444-4444-4444-8444-444444444444';
+    const variants: Array<[string, unknown]> = [
+      ['name names another repository', { ...obj, subject: [{ ...sub, name: sub.name.replace(REPO, other) }] }],
+      ['name names another period', { ...obj, subject: [{ ...sub, name: sub.name.replace('2026-10-07', '2026-10-08') }] }],
+      ['scope repository', { ...obj, predicate: { ...obj.predicate, scope: { ...obj.predicate.scope, repository_id: other } } }],
+      ['git commit digest', { ...obj, subject: [{ ...sub, digest: { gitCommit: shaOf('x') } }] }],
+      ['two digests', { ...obj, subject: [{ ...sub, digest: { ...sub.digest, sha512: 'ab' } }] }],
+      ['short digest', { ...obj, subject: [{ ...sub, digest: { sha256: 'ab' } }] }],
+      ['a statement_kind', { ...obj, predicate: { ...obj.predicate, statement_kind: 'commit_observed' } }],
+      ['malformed bound', { ...obj, predicate: { ...obj.predicate, scope: { ...obj.predicate.scope, from: 'yesterday' } } }],
+      ['previous', { ...obj, predicate: { ...obj.predicate, previous: [{ digest: 'nope' }] } }],
+    ];
+    for (const [label, value] of variants) {
+      assert.equal(code(() => deriveStatementColumns(canonicalize(value))), 'ATTESTA_LEDGER_GUARD_VIOLATION', label);
+    }
+  });
+
+  it('a report cannot carry an outbox claim', async () => {
+    const statement = reportStatementFor(REPO);
+    const input = chainInput(TENANT, statement, KEY, { outboxClaim: { subjectId: SUBJECT_ID, claimedAt: '2026-10-12T10:00:00.000Z', attempts: 1 } });
+    const tx: LedgerExecutor = { execute: async () => { throw new Error('no query may run'); } };
+    assert.equal(await asyncCode(chainStatement(tx, input)), 'ATTESTA_LEDGER_GUARD_VIOLATION');
+  });
+
+  it('chains a report with previous read by subject name, not by sha', async () => {
+    const statement = reportStatementFor(REPO);
+    const dialect = new PgDialect();
+    const seen: string[] = [];
+    const tx: LedgerExecutor = {
+      execute: async (q: SQL) => {
+        const text = dialect.sqlToQuery(q).sql;
+        const tag = /\/\* ledger:(\w+) \*\//.exec(text)?.[1] ?? 'other';
+        seen.push(tag);
+        if (tag === 'head_lock') return { rows: [{ next_seq: '0', head_hash: GENESIS_PREV_HASH }] };
+        if (tag === 'record_insert') return { rows: [{ id: '66666666-6666-4666-8666-666666666666' }] };
+        return { rows: [] };
+      },
+    };
+    const r = await chainStatement(tx, chainInput(TENANT, statement, KEY), () => new Date('2026-10-14T00:00:00.000Z'));
+    assert.equal(r.seq, 0);
+    assert.ok(seen.includes('previous_reports') && !seen.includes('previous') && !seen.includes('claim_lock'), seen.join());
   });
 });

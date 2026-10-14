@@ -9,6 +9,7 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { computeRecordHash, sha256Prefixed } from './canonical';
 import { buildCanonicalRecord, type LedgerRecordFields } from './ledger';
 import { buildChain, makeStatement, makeTestKey, signStatement } from './testing/ledger-fixtures';
+import { buildReportStatement, computeReportDocument } from './period-report-rules';
 import { createPublicKey } from 'node:crypto';
 import { FakeRekor } from './testing/fake-rekor';
 import { FakeTsa, TSA_URL } from './testing/fake-tsa';
@@ -722,5 +723,49 @@ describe('anchor checks', () => {
         keyWindows: { [w.key.keyid]: win({ untilMs: T0 - 1 }) }, anchors: { ...w.material, now: new Date(A) } });
       assert.deepEqual([...kinds(r2)], ['signature_invalid']);
     });
+  });
+});
+
+// Task15i4: a period_report record verifies like any statement; its typed columns are checked.
+describe('period_report records (Task15i4)', () => {
+  function chainWithReport() {
+    const key = makeTestKey();
+    const base = buildChain(3, { tenantId: TENANT, repositoryId: REPO, key });
+    const scope = { repository_id: REPO, from: '2026-10-12T00:00:00.000Z', to: '2026-10-12T10:00:00.002Z', basis: 'recorded_at' as const };
+    // The ledger fixtures are minimal statements (no lines); the chain check needs only a valid report.
+    const document = computeReportDocument({ tenantId: TENANT, scope, inputs: [] });
+    const statementCanonical = buildReportStatement({ document, chainRange: { from_seq: 0, to_seq: 2, to_record_hash: base.head.head_hash },
+      asOf: '2026-10-12T11:00:00.000Z', builderVersion: '0.1.0+3c862ef', previous: [] }).statementCanonical;
+    const statementDigest = sha256Prefixed(statementCanonical);
+    const recordedAt = '2026-10-12T11:00:00.000Z';
+    const canonicalRecord = buildCanonicalRecord({
+      seq: 3, prev_hash: base.head.head_hash, recorded_at: recordedAt, tenant_id: TENANT, record_kind: 'statement',
+      statement_digest: statementDigest, predicate_type: 'https://trackai.dev/attesta/period-report/v1', statement_kind: null,
+      repository_id: REPO, subject_sha: null, outbox_subject_id: null,
+    });
+    const recordHash = computeRecordHash(canonicalRecord, base.head.head_hash);
+    const signed = signStatement(statementCanonical, key);
+    const row: LedgerRow = {
+      seq: 3, tenantId: TENANT, prevHash: base.head.head_hash, recordHash, canonicalRecord, recordedAt, recordKind: 'statement',
+      statementDigest, predicateType: 'https://trackai.dev/attesta/period-report/v1', statementKind: null, repositoryId: REPO,
+      subjectSha: null, outboxSubjectId: null, statementCanonical, envelope: signed.envelope, envelopeKeyid: key.keyid,
+      envelopePayloadType: 'application/vnd.in-toto+json', envelopeSignatureB64: signed.signatureDer.toString('base64'),
+    };
+    return { key, rows: [...base.rows, row], head: { next_seq: 4, head_hash: recordHash } };
+  }
+
+  it('a chain holding a report verifies ok with the published key', async () => {
+    const c = chainWithReport();
+    const report = await verifyAll(c.rows, c.head, { keys: { [c.key.keyid]: c.key.publicKey } });
+    assert.equal(report.ok, true, JSON.stringify(report.breaks));
+    assert.equal(report.checked, 4);
+  });
+
+  it('a report row with a kind or sha column, or claiming another repository, is a field mismatch', async () => {
+    const c = chainWithReport();
+    for (const patch of [{ statementKind: 'commit_observed' }, { subjectSha: 'a'.repeat(40) }, { repositoryId: '44444444-4444-4444-8444-444444444444' }]) {
+      const report = await verifyAll(withRow(c.rows, 3, patch), c.head);
+      assert.ok(pairs(report).some(([seq, kind]) => seq === 3 && kind === 'field_mismatch'), JSON.stringify(patch));
+    }
   });
 });
