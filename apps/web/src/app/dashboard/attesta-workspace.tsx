@@ -12,6 +12,7 @@ import {
   type AttestaVerifyReport,
   type Repository,
 } from '@/lib/api';
+import { formatAttestaDate } from './attestation-card';
 
 function Badge({ children, tone = 'slate' }: {
   children: React.ReactNode; tone?: 'slate' | 'green' | 'amber' | 'rose';
@@ -25,22 +26,20 @@ function Badge({ children, tone = 'slate' }: {
   return <span className={`rounded-full px-2.5 py-1 text-xs ${styles[tone]}`}>{children}</span>;
 }
 
-function date(value: string | null | undefined): string {
-  if (!value) return 'Unavailable';
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return 'Unavailable';
-  return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
-}
-
 function verifyVerdict(report: AttestaVerifyReport): 'verified' | 'anchors_not_checked' | 'not_checkable' | 'problems' {
   if (report.ok) {
     return report.anchors.status === 'not_checked' ? 'anchors_not_checked' : 'verified';
   }
+  if (report.breaks.length === 0) return 'not_checkable';
   const uncheckable = new Set(['ATTESTA_VERIFY_SIGNATURES_NOT_CHECKED', 'ATTESTA_VERIFY_NOT_CHECKABLE']);
-  if (report.breaks.length > 0 && report.breaks.every((item) => uncheckable.has(item.detail_code))) {
+  if (report.breaks.every((item) => uncheckable.has(item.detail_code))) {
     return 'not_checkable';
   }
   return 'problems';
+}
+
+function problemRecordCount(breaks: AttestaVerifyBreak[]): number {
+  return new Set(breaks.map((item) => item.seq)).size;
 }
 
 function breakLabel(code: string): string {
@@ -68,7 +67,7 @@ function packScopeSummary(
       ?? job.scope.repository_id.slice(0, 8)
     : 'All repositories';
   const mode = job.mode === 'repository_only' ? 'Repository only' : 'Full';
-  return `${repositoryName} · ${date(job.scope.from)} → ${date(job.scope.to)} · ${mode}`;
+  return `${repositoryName} · ${formatAttestaDate(job.scope.from)} → ${formatAttestaDate(job.scope.to)} · ${mode}`;
 }
 
 function packStatusTone(status: AttestaPackJob['status']): 'slate' | 'green' | 'rose' {
@@ -104,6 +103,7 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<AttestaPackJob[]>([]);
+  const [pollErrors, setPollErrors] = useState<Record<string, string>>({});
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
@@ -141,13 +141,21 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
   }
 
   async function pollJob(id: string): Promise<void> {
+    const deadline = Date.now() + 10 * 60 * 1000;
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       if (!mountedRef.current) return;
+      if (Date.now() >= deadline) {
+        setPollErrors((current) => ({ ...current, [id]: 'Status unavailable (code ATTESTA_API_INTERNAL). Refresh the page to check again.' }));
+        return;
+      }
       let job: AttestaPackJob;
       try {
         job = await getEvidencePack(id);
-      } catch {
+      } catch (cause) {
+        if (!mountedRef.current) return;
+        const code = cause instanceof AttestaApiError ? cause.code : 'ATTESTA_API_INTERNAL';
+        setPollErrors((current) => ({ ...current, [id]: `Status unavailable (code ${code}). Refresh the page to check again.` }));
         return;
       }
       if (!mountedRef.current) return;
@@ -206,14 +214,16 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
     try {
       const blob = await downloadEvidencePack(job.content_path);
       const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `trackai-evidence-pack-${job.id}.json`;
+      document.body.appendChild(anchor);
       try {
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `trackai-evidence-pack-${job.id}.json`;
         anchor.click();
       } finally {
-        URL.revokeObjectURL(url);
+        anchor.remove();
       }
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (cause) {
       if (mountedRef.current) {
         setRequestError(cause instanceof Error ? cause.message : 'Evidence pack download failed.');
@@ -248,7 +258,7 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
       {report && verdict === 'verified' && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-200">Chain verified: {report.checked} records. Signatures and anchors checked.</div>}
       {report && verdict === 'anchors_not_checked' && <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">Signatures checked; anchors not checked on this server.</div>}
       {report && verdict === 'not_checkable' && <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">Not fully checkable: {report.checked} records read; some checks could not run.<BreakList breaks={report.breaks} /></div>}
-      {report && verdict === 'problems' && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">Verification found problems in {report.breaks.length} records.<BreakList breaks={report.breaks} /></div>}
+      {report && verdict === 'problems' && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">Verification found problems in {problemRecordCount(report.breaks)} records.<BreakList breaks={report.breaks} /></div>}
     </section>
 
     <section className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/60 p-5">
@@ -290,6 +300,7 @@ export function AttestaWorkspace({ repositories }: { repositories: Repository[] 
             <span className="text-xs text-slate-500">{packScopeSummary(job, repositories)}</span>
           </div>
           {job.counts && <div className="mt-2 text-xs text-slate-500">{job.counts.statements} statements · {job.counts.anchored} anchored · {job.counts.pending} pending</div>}
+          {pollErrors[job.id] && <div className="mt-2 text-xs text-amber-300">{pollErrors[job.id]}</div>}
           {job.status === 'ready' && <div className="mt-3 space-y-2">
             {job.pack_digest && <div className="break-all font-mono text-xs text-slate-400">{job.pack_digest}</div>}
             {job.counts && job.counts.pending > 0 && <div className="text-xs text-amber-300">{job.counts.pending} statements were not yet anchored; the pack says so.</div>}

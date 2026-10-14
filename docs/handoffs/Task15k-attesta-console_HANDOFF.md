@@ -30,7 +30,7 @@ CORS: allowed += Idempotency-Key, X-Request-ID; exposed: X-Request-ID, Content-D
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ **FOUNDER:** run IT-T15k-01 below and paste back failures only | Blocking: this merge | A15.11 stays 🟡 until then |
-| 🟡 | Pack polling stops on a poll error, leaving the last status; re-export to retry | Cosmetic; server jobs unaffected |
+| 🟡 | A pack poll that fails, or runs past 10 minutes, shows "Status unavailable (code …). Refresh the page to check again." under the job and stops; re-export to retry | Cosmetic; server jobs unaffected |
 
 ## Test coverage
 `app-cors.test.ts` (2 tests, live `fetch` against `createApp`, no mocks): preflight on `/api/attesta/evidence-packs` allows the four headers; `GET /health` exposes `X-Request-ID`. The web app has no unit tests (§10); wording lives in `kindLabel`/`anchorBadge` (card) and `verifyVerdict`/`breakLabel` (workspace).

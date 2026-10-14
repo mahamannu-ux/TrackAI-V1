@@ -12,8 +12,11 @@ function Badge({ children, tone = 'slate' }: { children: React.ReactNode; tone?:
   return <span className={`rounded-full px-2.5 py-1 text-xs ${styles[tone]}`}>{children}</span>;
 }
 
-function date(value: string | null) {
-  return value ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Unavailable';
+export function formatAttestaDate(value: string | null | undefined): string {
+  if (!value) return 'Unavailable';
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return 'Unavailable';
+  return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
 }
 
 function kindLabel(kind: string): string {
@@ -96,7 +99,7 @@ export function AttestationCard({ repositoryId, sha }: { repositoryId: string | 
       const anchor = anchorBadge(statement.anchor_status);
       return <div key={statement.statement_digest} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm">
         <span className="font-medium text-slate-200">{kindLabel(statement.statement_kind)}</span>
-        <span className="text-xs text-slate-500">{date(statement.recorded_at)}</span>
+        <span className="text-xs text-slate-500">{formatAttestaDate(statement.recorded_at)}</span>
         <span className="font-mono text-xs text-violet-300">{shortDigest(statement.statement_digest)}</span>
         <Badge tone={anchor.tone}>{anchor.label}</Badge>
       </div>;
