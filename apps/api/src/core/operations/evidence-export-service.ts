@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
 import { and, count, desc, eq, gte, lt } from 'drizzle-orm';
 import { db } from '../db';
+import { AuditContractError, recordAuditEvent } from '../audit';
 import {
   aiCodeLifecycleEvents,
   aiModelLifecycleEvents,
   evidenceArchiveEntries,
   evidenceExportJobs,
   providerEventDeliveries,
-  securityAuditEvents,
   telemetryCorrections,
   telemetryMetricEvents,
 } from '../db/schema';
@@ -364,8 +364,7 @@ export async function createTenantEvidenceExport(input: CreateEvidenceExportInpu
         eq(evidenceExportJobs.status, 'running'),
       )).returning();
       if (!updated) throw new Error('Export job changed during completion');
-      await transaction.insert(securityAuditEvents).values({
-        tenantId: input.tenantId,
+      await recordAuditEvent(transaction, input.tenantId, {
         actorType: 'tenant_admin',
         actorId: input.actorId,
         action: 'evidence_export.completed',
@@ -396,8 +395,7 @@ export async function createTenantEvidenceExport(input: CreateEvidenceExportInpu
         eq(evidenceExportJobs.id, job.id),
         eq(evidenceExportJobs.status, 'running'),
       ));
-      await transaction.insert(securityAuditEvents).values({
-        tenantId: input.tenantId,
+      await recordAuditEvent(transaction, input.tenantId, {
         actorType: 'tenant_admin',
         actorId: input.actorId,
         action: 'evidence_export.failed',
@@ -405,7 +403,11 @@ export async function createTenantEvidenceExport(input: CreateEvidenceExportInpu
         targetId: job.id,
         details: { failureCode, reason },
       });
-    }).catch(() => undefined);
+    }).catch((error) => {
+      // Database errors stay swallowed (today's behaviour); a contract error is a
+      // code bug and must surface instead of being mistaken for a failed export.
+      if (error instanceof AuditContractError) throw error;
+    });
     throw new Error(`Evidence export failed (${failureCode})`);
   }
 }

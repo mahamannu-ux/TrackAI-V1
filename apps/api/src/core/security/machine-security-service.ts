@@ -1,10 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
+import { recordAuditEvent } from '../audit';
 import {
   developerMachines,
   machineCredentials,
   machineRepositoryGrants,
-  securityAuditEvents,
 } from '../db/schema';
 import { createMachineCredential } from './machine-credential';
 import type { StoredManagedMachineCredential } from './managed-machine-auth';
@@ -71,8 +71,7 @@ export async function registerDeveloperMachine(input: RegisterMachineInput) {
       displayName: input.displayName,
       platform: input.platform,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'machine.registered',
@@ -114,8 +113,7 @@ export async function issueMachineCredential(input: IssueMachineCredentialInput)
       expiresAt: input.expiresAt,
       rotatedFromCredentialId: input.rotatedFromCredentialId,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: input.rotatedFromCredentialId ? 'machine_credential.rotated' : 'machine_credential.issued',
@@ -155,8 +153,7 @@ export async function revokeMachineCredential(
       eq(machineCredentials.status, 'active'),
     )).returning({ id: machineCredentials.id, machineId: machineCredentials.machineId, keyId: machineCredentials.keyId });
     if (!credential) throw new Error('Active machine credential was not found');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'machine_credential.revoked',
@@ -196,8 +193,7 @@ export async function revokeDeveloperMachine(
       eq(machineRepositoryGrants.machineId, machineId),
       eq(machineRepositoryGrants.status, 'active'),
     )).returning({ id: machineRepositoryGrants.id });
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'machine.revoked',

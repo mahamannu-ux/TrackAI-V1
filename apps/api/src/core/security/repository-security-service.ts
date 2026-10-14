@@ -1,12 +1,12 @@
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../db';
+import { recordAuditEvent } from '../audit';
 import {
   developerMachines,
   machineRepositoryGrants,
   repositoryBackfillAuthorizations,
   repositoryEnrollments,
   scmRepositories,
-  securityAuditEvents,
 } from '../db/schema';
 import { normalizeRepositoryBranchPatterns, repositoryGrantAllows } from './repository-grant';
 import { validateBackfillAuthorizationWindow } from './admin-lifecycle-policy';
@@ -112,8 +112,7 @@ export async function enrollRepository(input: EnrollRepositoryInput) {
         reason: input.reason,
       }).returning();
     if (!enrollment) throw new Error('Repository enrollment state changed during update');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: existing ? 'repository.reenrolled' : 'repository.enrolled',
@@ -181,8 +180,7 @@ export async function authorizeRepositoryBackfill(input: AuthorizeRepositoryBack
       authorizedBy: input.actorId,
       reason,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'repository_backfill.authorized',
@@ -248,8 +246,7 @@ export async function grantMachineRepository(input: GrantRepositoryInput) {
       grantedBy: input.actorId,
       reason: input.reason,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'repository_grant.issued',
@@ -311,8 +308,7 @@ export async function replaceMachineRepositoryGrantBranchScope(
       grantedBy: input.actorId,
       reason,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'repository_grant.branch_scope_replaced',
@@ -347,8 +343,7 @@ export async function revokeMachineRepositoryGrant(
       eq(machineRepositoryGrants.status, 'active'),
     )).returning({ id: machineRepositoryGrants.id, machineId: machineRepositoryGrants.machineId });
     if (!grant) throw new Error('Active machine repository grant was not found');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'repository_grant.revoked',
@@ -380,8 +375,7 @@ export async function revokeRepositoryBackfillAuthorization(
       evidenceFamily: repositoryBackfillAuthorizations.evidenceFamily,
     });
     if (!authorization) throw new Error('Active backfill authorization was not found');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'repository_backfill.revoked',
@@ -426,8 +420,7 @@ export async function revokeRepositoryEnrollment(
       eq(repositoryBackfillAuthorizations.enrollmentId, enrollmentId),
       eq(repositoryBackfillAuthorizations.status, 'active'),
     ));
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'repository.revoked',

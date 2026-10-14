@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../db';
+import { recordAuditEvent } from '../audit';
 import {
   githubAppCredentialVersions,
   githubAppInstallations,
-  securityAuditEvents,
 } from '../db/schema';
 import {
   githubAppCredentialMetadata,
@@ -111,8 +111,7 @@ export async function createGitHubAppInstallation(input: CreateGitHubAppInstalla
       effectiveFrom: now,
       createdAt: now,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'github_app.installation_created',
@@ -189,8 +188,7 @@ export async function rotateGitHubAppCredential(input: RotateGitHubAppCredential
       createdBy: input.actorId,
       createdAt: now,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: 'github_app.credential_rotated',
@@ -224,8 +222,7 @@ export async function finishGitHubAppCredentialRotation(
       eq(githubAppCredentialVersions.status, 'retiring'),
     )).returning({ id: githubAppCredentialVersions.id });
     if (retired.length === 0) throw new Error('Retiring GitHub App credential was not found');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'github_app.rotation_finished',
@@ -260,8 +257,7 @@ export async function revokeGitHubAppInstallation(
       eq(githubAppCredentialVersions.installationId, installationId),
       inArray(githubAppCredentialVersions.status, ['active', 'retiring']),
     ));
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'github_app.installation_revoked',
