@@ -68,6 +68,7 @@
     "attesta:trust-root": "tsx src/features/attesta/attesta-trust-root-cli.ts",
     "attesta:keys": "tsx src/features/attesta/attesta-keys-cli.ts",
     "attesta:pack": "tsx src/features/attesta/attesta-pack-cli.ts",
+    "attesta:report": "tsx src/features/attesta/attesta-report-cli.ts",
     "attesta:anchor-resume": "tsx src/features/attesta/attesta-anchor-resume-cli.ts",
     "attesta:verify-pack": "tsx src/features/attesta/attesta-verify-pack-cli.ts",
     "seed:task6-acceptance": "tsx src/features/security-findings/task6-acceptance-seed.ts",

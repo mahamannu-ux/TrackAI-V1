@@ -10,7 +10,7 @@ import { sha256Prefixed } from './canonical';
 import { AttestaLedgerError, validateChainInput } from './ledger';
 import { checkPeriodReport, type ReportInput, type ReportScope } from './period-report-rules';
 import {
-  documentBody, parseReportRequest, parseStoredReportScope, reportStatusBody, runPeriodReport, sameReportRequest,
+  documentBody, parseReportRequest, runQueuedReports, parseStoredReportScope, reportStatusBody, runPeriodReport, sameReportRequest,
   type ChainReportInput, type ReportJob, type ReportJobDeps, type ReportSnapshot, type ReportStore,
 } from './period-report-service';
 import { AttestaQueryError } from './read-service';
@@ -79,7 +79,7 @@ class MemoryStore implements ReportStore {
     Object.assign(this.job, { status: 'failed', errorCode: code });
     return true;
   }
-  async runnable() { return []; }
+  async runnable(): Promise<Array<{ tenantId: string; id: string }>> { return []; }
   async audit() {}
 }
 
@@ -129,6 +129,13 @@ describe('T15i4 period-report job', () => {
       inputs: [{ ...INPUTS[0], canonical: INPUTS[0].canonical.replace('"ai":3', '"ai":4') }], previous: [] });
     assert.equal(await runPeriodReport(deps(store), T, ID), 'failed');
     assert.equal(store.job.errorCode, 'ATTESTA_BUILDER_RULE_VIOLATION', 'a statement that does not hash to its digest');
+  });
+
+  test('recovery runs each queued or stranded job once', async () => {
+    const store = new MemoryStore();
+    store.runnable = async () => [{ tenantId: T, id: ID }];
+    assert.deepEqual(await runQueuedReports(deps(store)), [{ id: ID, result: 'ready' }]);
+    assert.deepEqual(await runQueuedReports(deps(store)), [{ id: ID, result: 'not_claimed' }]);
   });
 
   test('a stored document that does not match its digest is never served', () => {

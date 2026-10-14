@@ -282,6 +282,19 @@ export async function runPeriodReport(deps: ReportJobDeps, tenantId: string, rep
   }
 }
 
+/**
+ * Recovery (review finding): run up to `limit` jobs that are queued, or running past their
+ * lease (a restarted API process), once each. The API starts each job itself after its 202;
+ * `npm run attesta:report -w apps/api -- --run-queued` (attesta-report-cli.ts) picks up the rest.
+ */
+export async function runQueuedReports(deps: ReportJobDeps, limit = 20): Promise<Array<{ id: string; result: ReportRunResult }>> {
+  const out: Array<{ id: string; result: ReportRunResult }> = [];
+  for (const job of await deps.store.runnable(limit)) {
+    out.push({ id: job.id, result: await runPeriodReport(deps, job.tenantId, job.id) });
+  }
+  return out;
+}
+
 /** The status body of GET /period-reports/{id}. */
 export function reportStatusBody(job: ReportJob, basePath = '/api/attesta/period-reports') {
   return {

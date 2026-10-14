@@ -313,10 +313,20 @@ async function it01(api: Api, w: World): Promise<string> {
   const content = (await api.get(pack.content_path, admin)).body;
   const reportInPack = content.pack.statements.find((s: { statement_digest: string }) => s.statement_digest === status.statement_digest);
   check(reportInPack !== undefined, 'the pack lists the report statement');
-  const packInputs: ReportInput[] = content.pack.statements
-    .filter((s: { statement_canonical: string }) => JSON.parse(s.statement_canonical).predicateType !== PERIOD_REPORT)
-    .filter((s: { seq: number }) => inputs.some((i) => i.seq === s.seq))
-    .map((s: { seq: number; statement_digest: string; statement_canonical: string }) => ({ seq: s.seq, digest: s.statement_digest, canonical: s.statement_canonical }));
+  // The report's inputs chosen from the pack alone (review finding: never from the database
+  // query the service shares): the hashed records of the repository's ai-provenance
+  // statements with recorded_at in [from, to], then their statements by seq.
+  const inWindow = content.pack.records
+    .filter((r: { canonical_record?: string }) => typeof r.canonical_record === 'string')
+    .map((r: { canonical_record: string }) => JSON.parse(r.canonical_record))
+    .filter((f: any) => f.predicate_type === 'https://trackai.dev/attesta/ai-provenance/v1' && f.repository_id === scope.repository_id
+      && f.recorded_at >= scope.from && f.recorded_at <= scope.to);
+  const packInputs: ReportInput[] = inWindow.map((f: { seq: number }) => {
+    const s = content.pack.statements.find((x: { seq: number }) => x.seq === f.seq);
+    check(s !== undefined, `the pack carries the statement at seq ${f.seq}`);
+    return { seq: s.seq, digest: s.statement_digest, canonical: s.statement_canonical };
+  });
+  check(packInputs.length === 3, `three inputs chosen from the pack: ${packInputs.length}`);
   check(checkPeriodReport({ statement: JSON.parse(reportInPack.statement_canonical), documentText: doc.text, tenantId: w.a.tenantId, inputs: packInputs }).length === 0,
     'the figures recompute from the pack\'s own statements');
   const oracle = oracleVerifyPack(content, [w.k.root.keyid]);

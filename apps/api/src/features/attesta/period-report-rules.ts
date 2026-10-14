@@ -494,6 +494,8 @@ export function checkPeriodReport(input: CheckPeriodReportInput): ReportRuleId[]
     || p.inputs.statements_root !== digestsRoot(d.statements.map((s) => s.digest))) broken.add('P3');
   if (p.chain_range.to_seq >= 0 && d.statements.some((s) => s.seq < p.chain_range.from_seq || s.seq > p.chain_range.to_seq)) broken.add('P3');
   if (p.chain_range.to_seq < p.chain_range.from_seq - 1 || (p.chain_range.to_seq === -1) !== (p.chain_range.to_record_hash === null)) broken.add('P3');
+  // An empty chain (to_seq −1) holds no statement and starts at seq 0 (review finding).
+  if (p.chain_range.to_seq === -1 && (d.statements.length > 0 || p.chain_range.from_seq !== 0)) broken.add('P3');
 
   const kindBySeq = new Map(d.statements.map((s) => [s.seq, s]));
   for (const name of FIGURES) {

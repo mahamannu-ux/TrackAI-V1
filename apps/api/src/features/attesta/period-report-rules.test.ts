@@ -281,6 +281,15 @@ describe('T15i4 period report: tampering is detected', () => {
     assert.deepEqual(check(JSON.parse(r.statementCanonical), canonicalize(doc)), ['P_SCHEMA']);
   });
 
+  test('an empty chain range cannot list statements (review finding)', () => {
+    const doc = computeReportDocument({ tenantId: T, scope: SCOPE, inputs: exampleInputs() });
+    assert.throws(() => buildReportStatement({ document: doc, chainRange: { from_seq: 0, to_seq: -1, to_record_hash: null }, asOf: AS_OF,
+      builderVersion: VERSION, previous: [] }), PeriodReportError);
+    const empty = computeReportDocument({ tenantId: T, scope: SCOPE, inputs: [] });
+    assert.throws(() => buildReportStatement({ document: empty, chainRange: { from_seq: 3, to_seq: -1, to_record_hash: null }, asOf: AS_OF,
+      builderVersion: VERSION, previous: [] }), PeriodReportError);
+  });
+
   test('previous lists each earlier report once', () => {
     const d = sha256Prefixed('earlier');
     assert.throws(() => built(exampleInputs(), [d, d]), PeriodReportError);

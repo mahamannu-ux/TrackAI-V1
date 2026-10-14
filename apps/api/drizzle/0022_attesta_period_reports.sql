@@ -207,6 +207,14 @@ BEGIN
   IF NEW.scope->'repository_id' IS DISTINCT FROM to_jsonb(NEW.repository_id::text) THEN
     RAISE EXCEPTION 'attesta_period_reports: scope names another repository' USING ERRCODE = 'ATG01';
   END IF;
+  -- Exactly {repository_id, from, to}, the bounds RFC 3339 UTC with milliseconds (the service's form).
+  IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(NEW.scope) AS k) IS DISTINCT FROM ARRAY['from', 'repository_id', 'to']::text[]
+     OR jsonb_typeof(NEW.scope->'from') IS DISTINCT FROM 'string' OR jsonb_typeof(NEW.scope->'to') IS DISTINCT FROM 'string'
+     OR (NEW.scope->>'from') !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+     OR (NEW.scope->>'to') !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+     OR (NEW.scope->>'from') > (NEW.scope->>'to') THEN
+    RAISE EXCEPTION 'attesta_period_reports: scope must be {repository_id, from, to} with ms UTC bounds, from <= to' USING ERRCODE = 'ATG01';
+  END IF;
   RETURN NEW;
 END;
 $$;
