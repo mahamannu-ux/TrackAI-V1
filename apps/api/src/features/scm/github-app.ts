@@ -123,6 +123,79 @@ async function githubGet<T>(path: string, tenantId: string, owner: string): Prom
   return response.json() as Promise<T>;
 }
 
+/**
+ * Task15m (A15.14): the one GitHub write helper. Same headers as `githubGet`
+ * plus `Content-Type: application/json`; the token always comes from
+ * `installationToken(tenantId, owner)` (never public, never
+ * `GITHUB_ALLOW_PUBLIC_READ`). No token — none installed, the credential store
+ * unreachable, minting failed — returns `{ status: 0, data: null }` without any
+ * request, so the check pass records `skipped_no_installation` and continues.
+ * Never throws on a 4xx/5xx: it returns the status with `data: null`. Only an
+ * actual network failure of the API call returns `{ status: -1, data: null }`.
+ */
+export async function githubWrite<T>(
+  method: 'POST' | 'PATCH', path: string, body: unknown, tenantId: string, owner: string,
+): Promise<{ status: number; data: T | null }> {
+  let token: string | null;
+  try {
+    token = await installationToken(tenantId, owner);
+  } catch {
+    return { status: 0, data: null };
+  }
+  if (!token) return { status: 0, data: null };
+  let response: Response;
+  try {
+    response = await fetch(`https://api.github.com${path}`, {
+      method,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'TrackAI',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { status: -1, data: null };
+  }
+  if (!response.ok) return { status: response.status, data: null };
+  return { status: response.status, data: await response.json() as T };
+}
+
+/**
+ * Task15m (A15.14): the read half of the check pass's no-throw contract, for
+ * the list call. `githubGet` above keeps its throwing contract; this helper
+ * returns the status with `data: null` on a 4xx/5xx (and `{ status: 0 }` with
+ * no request when there is no token, `{ status: -1 }` on a network error).
+ */
+export async function githubGetStatus<T>(
+  path: string, tenantId: string, owner: string,
+): Promise<{ status: number; data: T | null }> {
+  let token: string | null;
+  try {
+    token = await installationToken(tenantId, owner);
+  } catch {
+    return { status: 0, data: null };
+  }
+  if (!token) return { status: 0, data: null };
+  let response: Response;
+  try {
+    response = await fetch(`https://api.github.com${path}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'TrackAI',
+      },
+    });
+  } catch {
+    return { status: -1, data: null };
+  }
+  if (!response.ok) return { status: response.status, data: null };
+  return { status: response.status, data: await response.json() as T };
+}
+
 export async function listPullRequestCommits(
   tenantId: string,
   owner: string,
