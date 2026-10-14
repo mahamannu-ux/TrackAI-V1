@@ -2,14 +2,17 @@
 
 Inventory for Task16 A16.1, written 2026-10-14 from the code on `task/Task16a-audit-inventory`.
 Every row is an `action` value written to `security_audit_events`
-(`apps/api/src/core/db/schema.ts:573`) in production code. Live-verify and test scripts
-are listed separately; nothing here is fixed, only recorded (A16.3/A16.5 decide).
+(`apps/api/src/core/db/schema.ts:573`) in production code. Sites were found by
+grepping both `securityAuditEvents` (Drizzle inserts) and `security_audit_events`
+(raw SQL; the Task15 trust-inventory, worker and anchor-resume paths).
+Live-verify and test scripts are listed separately; nothing here is fixed, only
+recorded (A16.3/A16.5 decide).
 
 Conventions: `actorType`/`targetType` are free-text columns (no enum in the schema).
 `details` lists key names only, never values. "Raw?" is whether raw customer content
 (prompts, responses, tool payloads, file bytes, private keys) could ever reach `details`.
 
-## 1. Events written today (40 distinct actions, 33 insert sites)
+## 1. Events written today (47 distinct actions, 36 insert sites)
 
 | Action | Source | Emitting file:line (every call site) | actorType | targetType | details keys | Triggered by | Raw? |
 |---|---|---|---|---|---|---|---|
@@ -48,6 +51,11 @@ Conventions: `actorType`/`targetType` are free-text columns (no enum in the sche
 | `attesta.export.download` | Task15 | `features/attesta/evidence-pack-service.ts:793` (same hook, via `attesta.routes.ts:267`) | `tenant_admin` or `tenant_auditor` | `attesta_evidence_pack` | request_id, scope, mode, pack_digest, counts | `GET /api/attesta/evidence-packs/:id/content` | no |
 | `attesta.report.request` | Task15 | `features/attesta/period-report-service.ts:511` (report-store audit hook, via `attesta.routes.ts:297`) | `tenant_admin` or `tenant_auditor` | `attesta_period_report` | request_id, scope, replayed | `POST /api/attesta/period-reports` (request and idempotent replay) | no |
 | `attesta.report.download` | Task15 | `features/attesta/period-report-service.ts:511` (same hook, via `attesta.routes.ts:341`) | `tenant_admin` or `tenant_auditor` | `attesta_period_report` | request_id, scope, report_digest, statement_digest | `GET /api/attesta/period-reports/:id/document` | no |
+| `attesta.keys.register` | Task15 | `features/attesta/trust-inventory.ts:480` (`registerTenantKey`, via `insertAudit` at :1063) | `system_operator` (hardcoded in `insertAudit`) | `attesta_tenant_key` | keyid, status, requestId | CLI `attesta:keys` | no |
+| `attesta.keys.activate` / `attesta.keys.retire` / `attesta.keys.revoke` | Task15 | `features/attesta/trust-inventory.ts:626` (`applyTenantKeyCommand`, one row per command via the `` `attesta.keys.${command}` `` template, via `insertAudit` at :1063) | `system_operator` (hardcoded in `insertAudit`) | `attesta_tenant_key` | requestId, changes[keyid, from, to, revocationReason, compromisedSince] | CLI `attesta:keys` (activate with `--replace` also retires the active key in the same command) | no |
+| `attesta.keys.publish` | Task15 | `features/attesta/trust-inventory.ts:967` (`publishTenantKeyset`, via `insertAudit` at :1063) | `system_operator` (hardcoded in `insertAudit`) | `attesta_trust_document` | requestId, version, digest, keyids | CLI `attesta:keys` | no |
+| `attesta_subjects.requeued` | Task15 | `features/attesta/worker.ts:371` (`requeueFailedSubjects`) | `system_operator` | `attesta_outbox` (targetId is the tenant id — see Observations) | code, count | CLI `attesta:requeue` (confirm mode; dry-run writes nothing) | no |
+| `attesta.anchor.resume` | Task15 | `features/attesta/attesta-anchor-resume-cli.ts:279` (action constant `RESUME_AUDIT_ACTION` at :37) | `system_operator` | `attesta_anchor_batch` | request_id, terminal_code, records, reason | CLI `attesta:anchor-resume` | no |
 
 Raw-content check: no production call site puts raw prompts, responses, tool payloads,
 file bytes or private keys into `details`. The closest calls are safe by construction:
@@ -67,6 +75,10 @@ They must not be mistaken for product emitters.
 | `bootstrap:task4-wave4-admin` (`features/admin/task4-wave4-admin-bootstrap.ts:68`) | writes | `admin_membership.granted` / `admin_membership.reactivated` |
 | `repair:task4-wave4-admin-placeholder` (`features/admin/task4-wave4-admin-placeholder-repair.ts:54`) | writes | `admin_membership.revoked` |
 | `reconcile:task4-wave5-pending` (`features/operations/task4-wave5-pending-reconcile.ts:27`) | writes (apply mode; dry-run first) | `telemetry_normalization.reconciled` |
+| `attesta:keys` (`features/attesta/attesta-keys-cli.ts`) | writes | `attesta.keys.register` / `activate` / `retire` / `revoke` / `publish` |
+| `attesta:requeue` (`features/attesta/attesta-requeue-cli.ts:29`) | writes (confirm mode; dry-run writes nothing) | `attesta_subjects.requeued` |
+| `attesta:anchor-resume` (`features/attesta/attesta-anchor-resume-cli.ts:279`) | writes | `attesta.anchor.resume` |
+| `verify:task4-wave1-live` (`core/security/task4-wave1-live-verify.ts:217`) | writes a rolled-back probe row, then UPDATE/DELETE rejection probes | probe action `created` (actorType `verification`, rolled back; never committed) |
 | `verify:task4-wave5-export-live` (calls `createTenantEvidenceExport`) | writes | `evidence_export.completed` / `evidence_export.failed` |
 | `verify:task5-*-live` corpus/graph/opencode/analytics/semantic/retention (call `setEvidenceConsent`, `correctIntention`, `purgeExpiredEvidence`, `readRawEvidence`) | write | `evidence.collection.enabled/disabled`, `evidence.intention.corrected`, `evidence.retention.purged`, `evidence.raw.read` |
 | `verify:task9-fleet-live` (calls fleet service) | writes | `fleet_configuration.created` / `fleet_configuration.assigned`, `fleet_machine.offboarded` |
@@ -76,7 +88,7 @@ They must not be mistaken for product emitters.
 
 | Planned event | Status today |
 |---|---|
-| Attesta key create / rotate / revoke | missing; no key-lifecycle audit writes exist |
+| Attesta key create / rotate / revoke | exists as `attesta.keys.register` / `activate` + `retire` (a rotate is activate with `--replace`, retiring the active key in the same command) / `revoke`, plus `attesta.keys.publish` (Task15 CLI `attesta:keys`, §1) |
 | Attesta statement signed | missing |
 | Attesta anchor succeeded / failed | missing |
 | Attesta verification run | exists as `attesta.verify` (Task15, §1) |
@@ -98,3 +110,5 @@ They must not be mistaken for product emitters.
 9. Naming is inconsistent: `repository.*` vs `repository_grant.*` vs `repository_backfill.*` (dot vs underscore separators), `machine_credential.*` vs `machine.*`, `evidence.collection.*` vs `evidence.retention.purged` vs `evidence_export.*`. A16.3 owns the v1 naming decision.
 10. Missing actor/target gaps: `purgeExpiredEvidence` (`service.ts:497`) and `enqueueSemanticReindex` (`service.ts:1159`) target the bare `tenant` with counts-only details — fine for scope, but there is no per-record linkage for purged evidence.
 11. `admin_membership.granted`/`reactivated` details (`admin-security-service.ts:80`) store the subject (a Supabase UUID) in cleartext alongside the role; consistent with the membership row itself, but A16.3 should confirm subject handling under the no-raw-content rule.
+12. `details` key casing is mixed: camelCase `requestId` in the `attesta.keys.*` events (`trust-inventory.ts:481/628/968`) vs snake_case `request_id` in every other attesta event (`read-service.ts:407`, the pack/report route calls, `attesta-anchor-resume-cli.ts:281`). A16.3 owns the v1 casing decision.
+13. `attesta_subjects.requeued` (`worker.ts:371`) targets `attesta_outbox` with the tenant id as targetId — the same collection-as-target pattern as `security_findings.read` (2), not a row id.
