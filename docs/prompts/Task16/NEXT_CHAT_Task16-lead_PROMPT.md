@@ -16,14 +16,14 @@ Follow **`docs/agents/TASK_LEAD_PROCEDURE.md`** from Phase 3 (`TASK16.md` replac
 ## 1. Sessions and hand-offs
 - One session per chat, in `TASK16.md` §4 order; the lead writes each prompt from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md`.
 - Muse prompts on the founder's request, every decision made, as **"Paste to Muse:"** blocks.
-- `Task4-auditor-invitations` goes to Codex (Task4 owner) after `Task16b-audit-contract` merges.
+- Auditor invitations moved to Task8 T8.12 (founder, 2026-10-12); Task16 supplies only the audit contract and the invitation events.
 - Port from SushiCorp @ `0bd67a5`: AU-1 (auditor layers, route sweep, DB role), ID-2 (invitations), UI-1 (auditor sees no write controls), RP-1 (signed export via Attesta).
 
 ## 2. Boundaries
 Never touch `docs/contracts/` except a new `docs/contracts/audit/`, merged migrations, the semantics of existing events (rename only through the catalog with aliases), raw-content access (Task5's reveal stays the only path, and its audit stays mandatory). Audit events never contain raw prompts, code, secrets or credential material.
 
 ## 3. Estimate
-About 0.6× T6 overall; Claude about 0.25×.
+About 0.5× T6 overall before A16.13 (`TASK16.md` §2); Claude about 0.25×.
 
 ## 4. Lessons so far
 Facts not taken from the code cost review rounds: cite `file:line`. Port SushiCorp's tests before its code.
