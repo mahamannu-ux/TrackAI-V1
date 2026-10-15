@@ -79,6 +79,7 @@ features/telemetry/task2-lifecycle-read.ts: loadContext, lifecycleForTenant, lif
 | 🟡 | no answerer is registered: every answer is `unavailable` / `answer_not_built` | Task19b/19c/19d, A16.13 |
 | 🟡 | the drill-down answers 501 | Task19b |
 | 🟡 | team mapping, Q14 chain function, Q18 cost units: open issues in `TASK19.md` §3.1 | lead assigns owners |
+| 🟡 | `envelope.ts` reads `docs/contracts/qa/answer-v1.schema.json` at run time (as Attesta's `builder.ts:883`); `apps/api/Dockerfile` copies only `src/`, so in that image `/answer` would be 503 | fix with Attesta's, when the API image is next touched (Task9) |
 
 ## Test coverage
 - `qa-contract.test.ts` (13):
@@ -109,7 +110,7 @@ features/telemetry/task2-lifecycle-read.ts: loadContext, lifecycleForTenant, lif
 - **Bumping the registry:** after editing `registry.ts`, run `npm run qa:registry -w apps/api`, bump `QA_REGISTRY_VERSION`, and record the digest the test prints.
 
 ## Review
-- Independent review subagent: see the session's final reply. Fixes were committed or explained.
+- Independent review subagent: must-fix (live-verify script uncommitted) committed; should-fix done: breakdown keys refuse paths and emails (repository and machine keys are ids), labels refuse `@`, `previous` must end 1 ms before the period; the Docker image is a known limitation.
 - Codex cross-review: pending, and it includes the Task2 move commit on its own.
 
 ## Effort (estimate vs actual)

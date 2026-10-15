@@ -63,6 +63,19 @@ function periodOk(from: string, to: string): boolean {
   return Number.isFinite(f) && Number.isFinite(t) && f <= t && t - f <= MAX_PERIOD_MS;
 }
 
+const UUID_KEY_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * A bucket key never carries a path or an email (no person, no raw content):
+ * repository and machine buckets are row ids (or `unknown`); model and tool keys may
+ * contain `/` or `@` (vendor model names); every other key refuses `/`, `\` and `@`.
+ */
+function bucketKeyOk(dimension: string, key: string): boolean {
+  if (dimension === 'repository' || dimension === 'machine') return key === 'unknown' || UUID_KEY_RE.test(key);
+  if (dimension === 'model' || dimension === 'tool') return true;
+  return !/[/\\@]/.test(key);
+}
+
 /** Registry rules for one figure list: keys unique, breakdowns allowed, honest reasons. */
 function checkFigures(figures: QaFigure[], allowed: readonly string[], breakdown: string | null, at: string): EnvelopeCheck {
   const keys = new Set<string>();
@@ -72,6 +85,7 @@ function checkFigures(figures: QaFigure[], allowed: readonly string[], breakdown
     if (figure.availability !== 'recorded' && figure.reasons.length === 0) return fail(`${at}/${i}/reasons (empty)`);
     for (const [j, item] of (figure.breakdown ?? []).entries()) {
       if (!allowed.includes(item.dimension)) return fail(`${at}/${i}/breakdown/${j}/dimension (not offered)`);
+      if (!bucketKeyOk(item.dimension, item.key)) return fail(`${at}/${i}/breakdown/${j}/key (shape)`);
       if (breakdown !== null && item.dimension !== breakdown) return fail(`${at}/${i}/breakdown/${j}/dimension (not requested)`);
     }
   }
@@ -117,7 +131,7 @@ export function checkEnvelope(value: unknown, expected?: EnvelopeExpectation): E
     const length = Date.parse(envelope.scope.to) - Date.parse(envelope.scope.from);
     if (!periodOk(previous.from, previous.to)
       || Date.parse(previous.to) - Date.parse(previous.from) !== length
-      || Date.parse(previous.to) > Date.parse(envelope.scope.from)) {
+      || Date.parse(previous.to) !== Date.parse(envelope.scope.from) - 1) {
       return fail('/previous (period)');
     }
   }

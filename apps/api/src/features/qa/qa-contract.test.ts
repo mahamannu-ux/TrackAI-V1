@@ -236,6 +236,13 @@ test('qa envelope: registry rules', () => {
   assert.equal(mutate((e) => { e.previous = structuredClone(s7.previous); delete e.previous.figures[0].evidence; }).path, '/previous (compare_previous)');
   assert.equal(mutate((e) => { e.previous.figures[0].key = 'other'; }, s7).path, '/previous/figures (keys differ)');
   assert.equal(mutate((e) => { e.previous.from = '2026-04-01T00:00:00.000Z'; }, s7).path, '/previous (period)');
+  // previous must end 1 ms before the period starts (no gap).
+  assert.equal(mutate((e) => { e.previous.from = '2026-03-30T00:00:00.000Z'; e.previous.to = '2026-06-29T23:59:59.999Z'; }, s7).path, '/previous (period)');
+  // Bucket keys: repository and machine are ids; no path or email elsewhere; model keys may hold '/'.
+  assert.equal(mutate((e) => { e.figures[0].breakdown[0].key = 'src/payments/charge.ts'; e.figures[0].breakdown[0].dimension = 'severity'; }, s7).path, '/figures/0/breakdown/0/key (shape)');
+  assert.equal(mutate((e) => { e.figures[0].breakdown[0].key = 'dev@example.com'; }, s7).path, '/figures/0/breakdown/0/key (shape)');
+  assert.equal(mutate((e) => { e.figures[0].breakdown[0].key = 'openrouter/anthropic/claude'; }).ok, true);
+  assert.equal(mutate((e) => { e.drilldown[0].label = 'dev@example.com'; }).ok, false);
   // Security answers must carry monitor_only_observed.
   assert.equal(mutate((e) => { e.wording = []; }, s7).path, '/wording (missing monitor_only_observed)');
   // Against the request: question, kind, scope and the requested breakdown.
