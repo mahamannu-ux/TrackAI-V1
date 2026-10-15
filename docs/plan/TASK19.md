@@ -166,7 +166,7 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 
 | # | Session | Subtasks | Agent | Estimate | Starts when | Main files | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.08× (if it passes 0.11×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount | ⬜ prompt ready |
+| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.08× (if it passes 0.11×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount; a pure move of three Task2 lifecycle read functions out of `read.routes.ts` (Codex reviews) | ⬜ prompt ready |
 | 2 | `Task19b-qa-live-code` | T19.3: Q3, Q9, Q13, Q14, Q10, Q19, Q1 (changed lines), Q11, Q18, Q20 | Muse | about 0.1× | Task19a merged | `features/qa/` answer modules for code questions | ⬜ prompt after Task19a |
 | 3 | `Task19c-qa-live-security` | T19.4: S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view | Muse | about 0.08× | Task19b merged (one Muse session at a time) | `features/qa/` answer modules for security questions | ⬜ |
 | 4 | `Task19d-qa-line-walk` | Q2 (point-in-time line attribution: ranges plus lineage walk) | Codex or Muse, decided in T19.1 | sized in T19.1 | Task19a merged | `features/qa/` | ⬜ |
