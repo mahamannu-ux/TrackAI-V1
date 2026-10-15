@@ -341,7 +341,9 @@ function checkStatement(row: LedgerRow, out: Collector): void {
   try {
     const c = deriveStatementColumns(row.statementCanonical);
     if (c.predicateType !== row.predicateType || c.statementKind !== row.statementKind ||
-        c.repositoryId !== row.repositoryId || c.subjectSha !== row.subjectSha) {
+        c.repositoryId !== row.repositoryId || c.subjectSha !== row.subjectSha ||
+        // An audit seal names its tenant (Task16e; the 0023 guard rule).
+        (c.tenantScope !== undefined && c.tenantScope !== row.tenantId)) {
       out.add(row.seq, 'field_mismatch');
     }
   } catch (err) {

@@ -55,13 +55,13 @@ One row per seal, written only in the ledger transaction that chains it (no job 
 
 ## The verify report (`GET /api/audit/verify?from&to`)
 
-For every seal overlapping `[from, to)` (both RFC 3339; at most 31 days apart): recompute each sealed row's digest from the current table and the `rows_root`, check the `previous` links and windows, and run Attesta's chain, signature and anchor check (the functions behind `/api/attesta/verify`) over the seal records' `seq` range.
+For every seal overlapping `[from, to)` (both RFC 3339; at most 31 days apart, at most 1 000 seals and 500 000 rows, else 400 "narrow from/to"): recompute each sealed row's digest from the current table and the `rows_root`, check the `previous` links and windows, and run Attesta's chain, signature and anchor check (`verifyRange`, the function behind `/api/attesta/verify`) on **each seal record's own `seq`** (its link to its predecessor, hash, statement, signature, anchors). A row dated before the tenant's first seal is in no window, so it was inserted after sealing: it is reported as `unsealed_row_in_sealed_window` against the first seal. An `audit_seal` ledger record in the window with no seal row (a removed seal) is `broken_previous`.
 
 ```text
 { ok, from, to, seals_checked,
   breaks: [{kind, seal, row_id?}],        kind: missing_row | changed_row | unsealed_row_in_sealed_window
                                                 | broken_previous | statement_problem
-                                          seal: the seal_digest (null for a break of the chain range itself)
+                                          seal: the seal_digest the break belongs to
   breaks_truncated,
   unsealed_tail: {from, count},           rows at or after the last seal's `to`: "not sealed yet", never "verified"
   chain: {ok, checked} }

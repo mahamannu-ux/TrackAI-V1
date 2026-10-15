@@ -28,6 +28,8 @@ const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}
 export const MAX_VERIFY_DAYS = 31;
 export const MAX_VERIFY_SEALS = 1000;
 export const MAX_REPORT_BREAKS = 1000;
+/** Rows one report loads (sealed rows plus late inserts); a wider window is refused. */
+export const MAX_VERIFY_ROWS = 500_000;
 
 export interface AuditVerifyQuery { from: string; to: string }
 
@@ -78,6 +80,8 @@ export interface VerifySnapshot {
   tail: { from: string | null; count: number };
   /** Seal digests named by audit_seal ledger records in the window that have no seal row (a removed seal). */
   orphans: string[];
+  /** Rows dated before the tenant's first seal (in no window, never sealable), with that seal's digest. */
+  beforeFirst?: { seal: string; rowIds: string[] } | null;
 }
 
 /**
@@ -107,6 +111,10 @@ export function assembleVerifyReport(q: AuditVerifyQuery, snap: VerifySnapshot, 
   }
   breaks.push(...checkSealLinks(snap.seals, snap.predecessor));
   for (const digest of snap.orphans) breaks.push({ kind: 'broken_previous', seal: digest });
+  // A row back-dated before the first seal's `from` is in no window: it was inserted after sealing.
+  for (const rowId of snap.beforeFirst?.rowIds ?? []) {
+    breaks.push({ kind: 'unsealed_row_in_sealed_window', seal: snap.beforeFirst?.seal ?? null, row_id: rowId });
+  }
   return {
     ok: breaks.length === 0 && chain.ok,
     from: q.from,
@@ -134,6 +142,10 @@ export async function readVerifySnapshot(database: SealDatabase, tenantId: strin
         and s.window_from::timestamptz < ${q.to}::timestamptz and s.window_to::timestamptz > ${q.from}::timestamptz
       order by s.window_from limit ${MAX_VERIFY_SEALS + 1}`)).rows;
     if (sealRows.length > MAX_VERIFY_SEALS) throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many seals for one report');
+    // Bounded memory (review finding): narrow the range when the sealed rows exceed the budget.
+    if (sealRows.reduce((n, r) => n + Number(r.row_count), 0) > MAX_VERIFY_ROWS / 2) {
+      throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many sealed rows for one report; narrow from/to');
+    }
     const seals: VerifySeal[] = sealRows.map((r) => ({
       tenantId, windowFrom: str(r.window_from), windowTo: str(r.window_to), rowCount: Number(r.row_count),
       previousDigest: strOrNull(r.previous_digest), sealDocument: str(r.seal_document), sealDigest: str(r.seal_digest),
@@ -151,6 +163,19 @@ export async function readVerifySnapshot(database: SealDatabase, tenantId: strin
     for (const s of seals) {
       // Twice the seal bound: late inserts beyond that are still reported (as many as fit).
       rowsBySeal.set(s.sealDigest, await readAuditRows(tx, tenantId, s.windowFrom, s.windowTo, 2 * MAX_SEAL_ROWS));
+      if ([...rowsBySeal.values()].reduce((n, r) => n + r.length, 0) > MAX_VERIFY_ROWS) {
+        throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many rows for one report; narrow from/to');
+      }
+    }
+    const firstSeal = (await tx.execute(sql`/* audit-verify:first */
+      select window_from, seal_digest from attesta_audit_seals where tenant_id = ${tenantId}::uuid and previous_digest is null`)).rows[0];
+    let beforeFirst: VerifySnapshot['beforeFirst'] = null;
+    if (firstSeal) {
+      const early = (await tx.execute(sql`/* audit-verify:before_first */
+        select id::text as id from security_audit_events
+        where tenant_id = ${tenantId}::uuid and occurred_at < ${str(firstSeal.window_from)}::timestamptz
+        order by occurred_at, id limit ${MAX_REPORT_BREAKS}`)).rows;
+      if (early.length > 0) beforeFirst = { seal: str(firstSeal.seal_digest), rowIds: early.map((r) => str(r.id)) };
     }
     const last = (await tx.execute(sql`/* audit-verify:last */
       select window_to from attesta_audit_seals where tenant_id = ${tenantId}::uuid order by window_to desc limit 1`)).rows[0];
@@ -175,7 +200,7 @@ export async function readVerifySnapshot(database: SealDatabase, tenantId: strin
         return null;
       }
     }).filter((d): d is string => d !== null);
-    return { seals, predecessor, rowsBySeal, tail: { from: strOrNull(tail.first), count: Number(tail.n ?? 0) }, orphans };
+    return { seals, predecessor, rowsBySeal, tail: { from: strOrNull(tail.first), count: Number(tail.n ?? 0) }, orphans, beforeFirst };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 

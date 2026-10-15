@@ -220,7 +220,9 @@ export function planSealWindow(input: SealPlanInput): SealPlan | null {
   if (from === null || from >= input.cutoff) return null;
   const rows = input.rows.filter((r) => r.occurred_at >= from && r.occurred_at < input.cutoff);
   if (input.last) {
-    const due = (rows.length > 0 && input.last.ageMs >= SEAL_MIN_INTERVAL_MS) || input.last.ageMs >= SEAL_EMPTY_INTERVAL_MS;
+    // A backlog beyond one seal is always due (review finding): the hour rule is for a quiet trail.
+    const due = rows.length > MAX_SEAL_ROWS
+      || (rows.length > 0 && input.last.ageMs >= SEAL_MIN_INTERVAL_MS) || input.last.ageMs >= SEAL_EMPTY_INTERVAL_MS;
     if (!due) return null;
   } else if (rows.length === 0) {
     return null;
@@ -401,11 +403,24 @@ export async function sealTenant(deps: SealPassDeps, tenantId: string, options: 
   }
 }
 
-/** One sealing pass over every tenant with audit rows (the worker loop and the CLI). */
+/** Seals per tenant in one pass: a backlog of full chunks is sealed back to back. */
+export const MAX_SEALS_PER_PASS = 20;
+
+/**
+ * One sealing pass over every tenant with audit rows (the worker loop and the CLI). A tenant
+ * is sealed repeatedly while a seal is due (a backlog), up to MAX_SEALS_PER_PASS; a dry run
+ * plans one window per tenant.
+ */
 export async function runAuditSealPass(deps: SealPassDeps, options: { dryRun?: boolean; tenantIds?: string[] } = {}): Promise<SealResult[]> {
   const tenants = options.tenantIds ?? await deps.store.tenantsWithAuditRows();
   const out: SealResult[] = [];
-  for (const tenantId of tenants) out.push(await sealTenant(deps, tenantId, options));
+  for (const tenantId of tenants) {
+    for (let i = 0; i < MAX_SEALS_PER_PASS; i += 1) {
+      const r = await sealTenant(deps, tenantId, options);
+      if (r.outcome !== 'not_due' || i === 0) out.push(r);
+      if (r.outcome !== 'sealed') break;
+    }
+  }
   return out;
 }
 

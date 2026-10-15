@@ -98,6 +98,7 @@
     "finalize:task4-wave4-machine-keyring-rotation": "tsx src/features/admin/task4-wave4-machine-keyring-finalize.ts",
     "install:task4-wave4-client-policy": "tsx src/features/admin/task4-wave4-client-policy-install.ts",
     "audit:catalog": "tsx src/core/audit/generate-catalog.ts",
+    "audit:export": "tsx src/features/audit/audit-export-cli.ts",
     "authorize:task4-wave3-backfill": "tsx src/features/telemetry/task4-wave3-backfill-authorize.ts",
     "serve:task4-wave3-client-fault": "tsx src/features/telemetry/task4-wave3-client-fault-server.ts",
     "setup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-setup.ts",

@@ -104,6 +104,9 @@ test('T16e seal: the cadence plans first, hourly, daily-empty and chunked window
   const chunk = planSealWindow({ cutoff, last: null, earliest: many[0].occurred_at, rows: many });
   assert.equal(chunk?.window.to, many[MAX_SEAL_ROWS].occurred_at);
   assert.equal(chunk?.rows.length, MAX_SEAL_ROWS - 2, 'the three rows sharing the boundary instant wait for the next seal');
+  // A backlog beyond one seal is due at once, even right after the previous chunk.
+  const next = planSealWindow({ cutoff, last: { windowTo: many[0].occurred_at, digest: last.digest, ageMs: 1 }, earliest: null, rows: many });
+  assert.equal(next?.window.to, many[MAX_SEAL_ROWS].occurred_at, 'a full backlog is sealed back to back');
 });
 
 test('T16e verify: every break kind is found from in-memory fixtures', () => {
@@ -142,6 +145,10 @@ test('T16e verify: every break kind is found from in-memory fixtures', () => {
   const orphaned = assembleVerifyReport(q, { seals: [s1], predecessor: null, rowsBySeal: new Map([[s1.sealDigest, rows]]),
     tail: { from: null, count: 0 }, orphans: [seal2.digest] }, { ok: true, checked: 1, problems: new Set() });
   assert.deepEqual(orphaned.breaks, [{ kind: 'broken_previous', seal: seal2.digest }]);
+  // A row back-dated before the first seal is in no window: reported against the first seal.
+  const early = assembleVerifyReport(q, { seals: [s1], predecessor: null, rowsBySeal: new Map([[s1.sealDigest, rows]]),
+    tail: { from: null, count: 0 }, orphans: [], beforeFirst: { seal: s1.sealDigest, rowIds: [id(77)] } }, { ok: true, checked: 1, problems: new Set() });
+  assert.deepEqual(early.breaks, [{ kind: 'unsealed_row_in_sealed_window', seal: s1.sealDigest, row_id: id(77) }]);
   // A rewritten document, a statement that names another digest, a chain problem.
   const rewritten = assembleVerifyReport(q, { seals: [{ ...s1, sealDocument: seal2.text }], predecessor: null,
     rowsBySeal: new Map(), tail: { from: null, count: 0 }, orphans: [] }, { ok: true, checked: 1, problems: new Set() });
