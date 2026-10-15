@@ -1,0 +1,19 @@
+docs/contracts/audit/catalog.md
+  s_af0b0c77a09136::t_7c35d0647ffb42 5,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "f4a6c031298ad298d89711146bc8f782b3f9126c",
+  "prompts": {},
+  "sessions": {
+    "s_af0b0c77a09136": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec409a5d0ffeO95cJ62qNytXvA",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
