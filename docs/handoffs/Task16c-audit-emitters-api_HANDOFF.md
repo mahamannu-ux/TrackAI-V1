@@ -30,6 +30,10 @@ Branch `task/Task16c-audit-emitters-api` (base: `main` at `d8d9101`). All 37 aud
 ## Integration notes
 Emitter needs only `execute`, so Drizzle tx/db, `WorkerDatabase`/`TrustDb` all work; atomicity unchanged everywhere (anchor resume keeps batch + `request_id` in one tx for the 0021 trigger). `AUDIT_CATALOG_VERSION` stays 1.
 
+## Regression status (2026-10-15, founder runs)
+- `verify:task4-machine-lifecycle-live`: ✅ founder-passed (`audit_lifecycle=complete`). Needs the two canonical tenant rows inserted first (no migration or seed creates them; same `tsx -e` insert as IT-T16c-01's seed).
+- `verify:task4-wave4-github-live`: ⬜ blocked, pre-existing and identical on main: needs the vanished Task4 fixtures (tenants with `scm_org_identifier`, real App installations, network). It is read-only (`database_changes=none`) and invokes no migrated write. Substitute proven in sandbox: `createGitHubAppInstallation` + `revokeGitHubAppInstallation` through the emitter on a throwaway DB, both audit rows present with exact values.
+
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Wall-clock |
 |---|---|---|
