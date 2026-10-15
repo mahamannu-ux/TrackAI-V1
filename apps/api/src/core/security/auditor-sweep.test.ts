@@ -85,6 +85,11 @@ const ROUTE_ACTIONS: Record<string, AdminAction> = {
   'GET /api/audit/events': 'audit.read',
   'GET /api/audit/events/:id': 'audit.read',
   'GET /api/audit/catalog': 'audit.read',
+  // Task16e (A16.4, A16.7): the seal verify report and the signed export.
+  'GET /api/audit/verify': 'audit.read',
+  'POST /api/audit/exports': 'audit.read',
+  'GET /api/audit/exports/:id': 'audit.read',
+  'GET /api/audit/exports/:id/content': 'audit.read',
 };
 
 // Non-GET attesta routes mapped to their effective per-route action (read from
@@ -111,6 +116,7 @@ const ATTESTA_GUARDED_READS: Record<string, AdminAction> = {
 const AUDITOR_ALLOWED_WRITES: Record<string, string> = {
   'POST /api/attesta/evidence-packs': 'creates an audited export job; changes no evidence.',
   'POST /api/attesta/period-reports': 'creates an audited export job; changes no evidence.',
+  'POST /api/audit/exports': 'creates an audited export job; changes no audit row.',
 };
 
 // GET routes whose guard action stays admin-only, with the one-line reason each.
@@ -352,7 +358,8 @@ test('auditor sweep: every mutating route is denied to tenant_auditor, except pi
   for (const route of STACKED) {
     if (route.method === 'GET' || UNGUARDED_ROUTES[route.key]) continue;
     if (AUDITOR_ALLOWED_WRITES[route.key] !== undefined) {
-      const action = ATTESTA_WRITE_ACTIONS[route.key];
+      // Attesta writes carry a per-route guard; the audit router's guard is router-level (ROUTE_ACTIONS).
+      const action = ATTESTA_WRITE_ACTIONS[route.key] ?? ROUTE_ACTIONS[route.key];
       assert.ok(
         (ADMIN_ACTIONS as readonly string[]).includes(action),
         `${route.key} maps to unknown action ${String(action)}`,

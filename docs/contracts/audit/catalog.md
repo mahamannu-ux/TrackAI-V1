@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/core/audit/catalog.ts by `npm run audit:catalog -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Catalog version 1. 48 emitted actions (27 high, 12 notice, 9 info) and 9 reserved.
+Catalog version 2. 52 emitted actions (27 high, 12 notice, 13 info) and 9 reserved.
 Rules: `README.md` in this folder. Every action also accepts an optional `request_id: string` (AP-1).
 Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[]` at most 200 items, `counts` an object of non-negative integers, `string_map` an object of strings, `sha256_digest` is `sha256:<64 hex>`.
 
@@ -58,6 +58,10 @@ Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[
 | `attesta_subjects.requeued` | Task15 | notice | system_operator | `attesta_outbox` | tenant (the tenant id) | `code: string`<br>`count: integer` | emitted |
 | `attesta.anchor.resume` | Task15 | notice | system_operator | `attesta_anchor_batch` | compound: the anchor batch_id text "<tenant_id>:<seq_from>-<seq_to>", not the batch row uuid `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(0\|[1-9][0-9]{0,15})-(0\|[1-9][0-9]{0,15})$` | `request_id: string`<br>`terminal_code: string`<br>`records: integer`<br>`reason: reason` | emitted |
 | `audit.events.read` | Task16c | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `limit: integer`<br>`returned: integer`<br>`filters: string[]` | emitted |
+| `audit.trail.sealed` | Task16e | info | service, system_operator | `attesta_audit_seal` | row (uuid) | `window_from: iso_timestamp`<br>`window_to: iso_timestamp`<br>`count: integer`<br>`seal_digest: sha256_digest`<br>`request_id: string` | emitted |
+| `audit.trail.verified` | Task16e | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `from: iso_timestamp`<br>`to: iso_timestamp`<br>`ok: boolean`<br>`seals_checked: integer`<br>`break_count: integer`<br>`request_id: string` | emitted |
+| `audit.export.requested` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`replayed: boolean`<br>`request_id: string` | emitted |
+| `audit.export.downloaded` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`export_digest: sha256_digest`<br>`counts: counts`<br>`request_id: string` | emitted |
 
 ## Reserved (refused until the owning Task flips them to emitted)
 

@@ -239,7 +239,8 @@ export interface StatementRow {
   recordedAt: string;
   statementKind: string | null;
   predicateType: string;
-  repositoryId: string;
+  /** null for an audit_seal statement (Task16e). */
+  repositoryId: string | null;
   subjectSha: string | null;
   rekorAnchored: boolean;
   tsaAnchored: boolean;
@@ -317,7 +318,7 @@ function toStatementRow(r: Record<string, unknown>): StatementRow {
     recordedAt: str(r.recorded_at),
     statementKind: strOrNull(r.statement_kind),
     predicateType: str(r.predicate_type),
-    repositoryId: str(r.repository_id),
+    repositoryId: strOrNull(r.repository_id),
     subjectSha: strOrNull(r.subject_sha),
     rekorAnchored: r.rekor_anchored === true,
     tsaAnchored: r.tsa_anchored === true,
@@ -427,7 +428,8 @@ export interface StatementItem {
   recorded_at: string;
   statement_kind: string | null;
   predicate_type: string;
-  repository_id: string;
+  /** null for an audit_seal statement (Task16e, api.md). */
+  repository_id: string | null;
   subject_sha: string | null;
   /** A database fact (anchor rows exist), not a verification; see anchorStatusOf. */
   anchor_status: ListAnchorStatus;

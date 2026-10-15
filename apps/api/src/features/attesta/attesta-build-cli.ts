@@ -26,6 +26,7 @@ import { devSignerResolver, type SignerResolver } from './signer-resolver';
 import { pgTrustStore, type TrustDb } from './trust-inventory';
 import { adaptersFromEnv, inventorySignerResolver, trustConfigFromEnv } from './trust-resolver';
 import { runBuilderPass } from './worker';
+import { pgSealStore, runAuditSealPass, type SealDatabase } from './audit-seal-service';
 
 export function parseArgs(argv: string[]): Map<string, string> {
   const out = new Map<string, string>();
@@ -114,6 +115,14 @@ async function main(): Promise<void> {
     const r = await runBuilderPass(db, resolver, options);
     const codes = Object.entries(r.codes).sort().map(([code, n]) => `${code}:${n}`).join(',') || 'none';
     console.log(`attesta_build_pass recovered=${r.recovered} recovered_failed=${r.recoveredFailed} claimed=${r.claimed} done=${r.done} duplicates=${r.duplicates} retried=${r.retried} failed=${r.failed} claim_lost=${r.claimLost} left_claimed=${r.leftClaimed} codes=${codes}`);
+    if (loop) {
+      // Task16e (A16.4): the loop also seals each tenant's audit trail when a seal is due.
+      const seals = await runAuditSealPass({ store: pgSealStore(db as unknown as SealDatabase), resolver,
+        builderVersion: options.builderVersion, actor: { type: 'service', id: 'attesta-worker' } });
+      const sealed = seals.filter((x) => x.outcome === 'sealed').length;
+      const failed = seals.filter((x) => x.outcome === 'failed').length;
+      console.log(`attesta_audit_seal_pass tenants=${seals.length} sealed=${sealed} failed=${failed}`);
+    }
     if (loop && !stop) await new Promise((resolve) => setTimeout(resolve, sleepMs));
   } while (loop && !stop);
 }

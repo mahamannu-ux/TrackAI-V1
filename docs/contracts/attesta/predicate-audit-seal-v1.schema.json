@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/audit-seal/v1/predicate-audit-seal-v1.schema.json",
+  "title": "TrackAI Attesta audit_seal predicate v1",
+  "description": "FROZEN CONTRACT (Task16e, A16.4). Predicate https://trackai.dev/attesta/audit-seal/v1. The whole in-toto Statement is #/definitions/statement. Cross-field rules are in audit-seal.md (AS1-AS6).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tenant_id",
+    "window",
+    "count",
+    "rows_root",
+    "catalog_version",
+    "previous_seal",
+    "builder",
+    "as_of",
+    "previous"
+  ],
+  "properties": {
+    "tenant_id": {
+      "$ref": "#/definitions/uuid"
+    },
+    "window": {
+      "$ref": "#/definitions/window"
+    },
+    "count": {
+      "$ref": "#/definitions/count"
+    },
+    "rows_root": {
+      "$ref": "#/definitions/digest"
+    },
+    "catalog_version": {
+      "$ref": "#/definitions/catalog_version"
+    },
+    "previous_seal": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "builder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "trackai-audit-sealer"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{7,40}$"
+        }
+      }
+    },
+    "as_of": {
+      "type": "string",
+      "pattern": "^(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "previous": {
+      "type": "array",
+      "maxItems": 0
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "micro_timestamp": {
+      "type": "string",
+      "pattern": "^(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$",
+      "description": "The exact occurred_at text of the audit read API: RFC 3339 UTC with six fractional digits."
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "description": "Half-open [from, to), compared with occurred_at; from < to.",
+      "properties": {
+        "from": {
+          "$ref": "#/definitions/micro_timestamp"
+        },
+        "to": {
+          "$ref": "#/definitions/micro_timestamp"
+        }
+      }
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50000
+    },
+    "catalog_version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "_type",
+        "subject",
+        "predicateType",
+        "predicate"
+      ],
+      "properties": {
+        "_type": {
+          "const": "https://in-toto.io/Statement/v1"
+        },
+        "subject": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "digest"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^trackai:tenant/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/audit/(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z\\.\\.(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+              },
+              "digest": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sha256"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "predicateType": {
+          "const": "https://trackai.dev/attesta/audit-seal/v1"
+        },
+        "predicate": {
+          "$ref": "#"
+        }
+      }
+    }
+  }
+}
