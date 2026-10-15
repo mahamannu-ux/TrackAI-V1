@@ -1,0 +1,21 @@
+apps/api/drizzle/meta/0024_snapshot.json
+  s_bce39b77e959d5::t_54f857120e6d0e 1-10817
+apps/api/drizzle/meta/_journal.json
+  s_bce39b77e959d5::t_961c1b1d6e5433 172-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "62356abed055dc816fea82d66a925fb810aa5a40",
+  "prompts": {},
+  "sessions": {
+    "s_bce39b77e959d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13fba-382e-7540-a499-65229d856077",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
