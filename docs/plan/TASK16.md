@@ -25,8 +25,8 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 | A16.2 | Auditor guard sweep: a test proving every mutating admin route is denied to `tenant_auditor` (route table vs action allow-list), ported from SushiCorp AU-1 | Muse | 0.03× | — (now) | 🟡 sweep written 2026-10-14 (Task16a, awaiting review) |
 | A16.3 | Audit contract: event schema v1 (names, required fields, severity, no raw content), one `recordAuditEvent()` emitter, catalog as code | Claude | 0.05× | A16.1 | 🟡 contract, emitter and guard-identity sweep written 2026-10-15 (Task16b, awaiting review; `docs/contracts/audit/`) |
 | A16.4 | Tamper evidence: audit events sealed into the Attesta ledger (or chained with it), verify report | Claude | 0.1× | A16.3, Task15 A15.3 | ⬜ |
-| A16.5 | Migrate existing emitters to `recordAuditEvent()` (Task4, Task5, Task6 call sites) | Muse | 0.06× | A16.3 | ⬜ |
-| A16.6 | Audit read API: filter by actor, action, resource, time; keyset paging; `no-store`; auditor-reachable | Muse | 0.06× | A16.3 | ⬜ |
+| A16.5 | Migrate existing emitters to `recordAuditEvent()` (Task4, Task5, Task6 call sites) | Muse | 0.06× | A16.3 | 🟡 37 sites migrated 2026-10-15 (Task16c, awaiting review; only-writer test) |
+| A16.6 | Audit read API: filter by actor, action, resource, time; keyset paging; `no-store`; auditor-reachable | Muse | 0.06× | A16.3 | 🟡 read API written 2026-10-15 (Task16c, awaiting review; IT-T16c-01 agent-verified, founder run blocks merge) |
 | A16.7 | Signed audit export (evidence pack, Attesta RP-1 pattern) | Claude | 0.05× | A16.6, Task15 A15.9 | ⬜ |
 | A16.8 | Auditor console area separate from Administration: search, detail, export, verify card; no write controls (UI-1 rules) | Claude design, Muse build | 0.1× | A16.6 | ⬜ |
 | A16.9 | ~~Auditor invitations and expiry; membership-based tenant selection~~ moved to Task8 as T8.12 (founder 2026-10-12) | Task8 | — | A16.3 | n/a here |
@@ -83,7 +83,7 @@ flowchart LR
 |---|---|---|---|---|
 | Task16a-audit-inventory | A16.1, A16.2 | Muse | 0.06× | `docs/prompts/Task16/NEXT_CHAT_Task16a-audit-inventory_PROMPT.md` |
 | Task16b-audit-contract | A16.3 | Claude | 0.05× (+0.01× guard-identity sweep); actual about 0.07× | `docs/prompts/Task16/NEXT_CHAT_Task16b-audit-contract_PROMPT.md`; handoff `docs/handoffs/Task16b-audit-contract_HANDOFF.md` (founder 2026-10-15: audit reads are audited, `audit.events.read` reserved) |
-| Task16c-audit-emitters-api | A16.5, A16.6 | Muse | 0.12× | after 16b. Prompt: `docs/prompts/Task16/NEXT_CHAT_Task16c-audit-emitters-api_PROMPT.md` (every Task4/5/6/9/15 call site pre-approved by `file:line`; tests read back events written through `recordAuditEvent()`) |
+| Task16c-audit-emitters-api | A16.5, A16.6 | Muse | 0.12×; actual about 0.13× | after 16b. Prompt: `docs/prompts/Task16/NEXT_CHAT_Task16c-audit-emitters-api_PROMPT.md` (every Task4/5/6/9/15 call site pre-approved by `file:line`; tests read back events written through `recordAuditEvent()`); handoff `docs/handoffs/Task16c-audit-emitters-api_HANDOFF.md` |
 | Task16e-audit-tamper | A16.4, A16.7, A16.10 | Claude | 0.2× | after 16c (Task15d and Task15i2 have merged) |
 | Task16f-audit-console | A16.8 | Claude design note, Muse build (one Muse session) | 0.1× | after 16c |
 | Task16h-auditor-qa | A16.13a, then A16.13b | Claude design note, Muse build | sized later | a: after 16f and Task19 T19.2; b: after Task15o/15p |
