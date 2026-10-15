@@ -19,6 +19,7 @@ export async function withAuditReader<T, TExecutor extends AuditReaderExecutor>(
   fn: (tx: TExecutor) => Promise<T>,
 ): Promise<T> {
   await tx.execute(sql`select set_config('trackai.tenant_id', ${tenantId}, true)`);
+  // Deploy: GRANT trackai_audit_reader TO <api runtime role>; without it audit reads fail closed (503).
   await tx.execute(sql.raw('set local role trackai_audit_reader'));
   try {
     return await fn(tx);
