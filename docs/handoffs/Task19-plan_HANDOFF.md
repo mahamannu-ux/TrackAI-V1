@@ -16,7 +16,7 @@ This session records the founder's decisions on Task19 and adds the running-stat
 | Gap dispatch | §6.2: ten gap sessions in the §4 order, each with owner, estimate and the rows it moves | ✅ |
 | Prompt | `docs/prompts/Task19/NEXT_CHAT_Task19a-qa-matrix-contract_PROMPT.md` (T19.1 + T19.2, Claude, about 0.09×) | ✅ |
 | Ownership | AGENTS.md §4 gains the Task19 row (`features/qa/`, `docs/contracts/qa/`, the Questions page) | ✅ |
-| Ledgers | Status board: Task19 row, remaining-plan rows 7i–7i3; `CUSTOMER_AUDITOR_QA.md`: the hybrid is dropped (D2) | ✅ |
+| Ledgers | Status board: Task19 row, remaining-plan rows 7i–7i4; `CUSTOMER_AUDITOR_QA.md`: the hybrid is dropped (D2) | ✅ |
 | Review | Cross-agent review of this plan | ⬜ |
 
 ## Implemented interfaces
