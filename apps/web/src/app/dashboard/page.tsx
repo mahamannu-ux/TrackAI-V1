@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { AttestaWorkspace } from './attesta-workspace';
 import { AttestationCard } from './attestation-card';
 import { AuditWorkspace } from './audit-workspace';
 import { EvidenceWorkspace } from './evidence-workspace';
@@ -192,7 +191,7 @@ type AdminResources = {
   exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'attestation';
+type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
@@ -203,7 +202,6 @@ const adminNavigation: Array<{ id: AdminSection; label: string; description: str
   { id: 'github', label: 'GitHub App', description: 'Connected organizations' },
   { id: 'operations', label: 'Operations', description: 'Evidence health and retention' },
   { id: 'findings', label: 'Security findings', description: 'Monitor-only observations' },
-  { id: 'attestation', label: 'Attestation', description: 'Verify the signed ledger and export evidence' },
 ];
 
 function isTask4VerificationRepository(repository: Repository): boolean {
@@ -625,8 +623,7 @@ function AdminPanel({ context, resources, loading, error, onChanged, onOpenAudit
         {!securityFindings && securityFindingsLoading && <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-400">Loading security findings…</div>}
         {securityFindings && <TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{securityFindings.findings.length ? securityFindings.findings.map(finding => { const repository = resources.repositories?.repositories.find(row => row.id === finding.repositoryId); return <tr key={finding.id}><td className="px-5 py-4 text-slate-500">{date(finding.occurredAt)}</td><td className="px-5 py-4"><div className="font-medium text-white">{finding.ruleId.replace('trackai.exec.', '').replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">Version {finding.ruleVersion} · {finding.phase.replace('_', ' ')}</div></td><td className="px-5 py-4"><Badge tone={finding.ruleSeverity === 'critical' ? 'amber' : 'violet'}>{finding.ruleSeverity}</Badge></td><td className="px-5 py-4 text-slate-400">{repository?.name ?? finding.repositoryId.slice(0, 8)}</td><td className="px-5 py-4 text-slate-400">{finding.operatingSystem}</td><td className="px-5 py-4"><Badge tone="slate">Monitor only</Badge></td></tr>; }) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No monitor findings have been received for this tenant.</td></tr>}</TableShell>}
       </section>}
-      {adminSection === 'attestation' && <section className="space-y-4"><AttestaWorkspace repositories={repositories} /></section>}
-    </>}
+      </>}
   </div>;
 }
 
@@ -775,7 +772,7 @@ export default function DashboardPage() {
         {view === 'contributors' && <TableShell headers={['Contributor', 'Email', 'Repository', 'Machine']}>
           {contributors.filter((row) => matches([row.name, row.email])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4 text-slate-400">{row.email ?? 'Not provided by GitHub'}</td><td className="px-5 py-4">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-500">{row.machineId ?? '—'}</td></tr>)}</TableShell>}
         {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} onOpenAudit={() => setView('audit')} repositories={repositories} />}
-        {view === 'audit' && adminContext?.membership?.status === 'active' && <AuditWorkspace role={adminContext.membership.role} />}
+        {view === 'audit' && adminContext?.membership?.status === 'active' && <AuditWorkspace role={adminContext.membership.role} repositories={repositories} />}
       </section>
     </main>
     <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} attestaSubject={attestaSubject} />
