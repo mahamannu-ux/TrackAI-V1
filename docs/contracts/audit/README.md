@@ -29,6 +29,8 @@ Rows still live in `security_audit_events`. This contract adds no column and no 
 
 `machine` and `service` exist because the API must not assume a person is acting (B17), and for D6.1 activation leases.
 
+Where an action's guard denies auditors (the auditor sweep proves it) and its catalog entry allows only `tenant_admin`, that is the only value `req.adminRole` can hold, so the service writes it directly.
+
 ## Severity
 Severity is derived from the catalog, not stored.
 

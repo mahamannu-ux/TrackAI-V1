@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/core/audit/catalog.ts by `npm run audit:catalog -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Catalog version 1. 47 emitted actions (27 high, 12 notice, 8 info) and 10 reserved.
+Catalog version 1. 48 emitted actions (27 high, 12 notice, 9 info) and 9 reserved.
 Rules: `README.md` in this folder. Every action also accepts an optional `request_id: string` (AP-1).
 Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[]` at most 200 items, `counts` an object of non-negative integers, `string_map` an object of strings, `sha256_digest` is `sha256:<64 hex>`.
 
@@ -57,12 +57,12 @@ Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[
 | `attesta.keys.publish` | Task15 | high | system_operator | `attesta_trust_document` | compound: the key set "<tenant_id>:<version>" `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(0\|[1-9][0-9]{0,15})$` | `requestId: string`<br>`version: integer`<br>`digest: sha256_digest`<br>`keyids: string[]` | emitted |
 | `attesta_subjects.requeued` | Task15 | notice | system_operator | `attesta_outbox` | tenant (the tenant id) | `code: string`<br>`count: integer` | emitted |
 | `attesta.anchor.resume` | Task15 | notice | system_operator | `attesta_anchor_batch` | compound: the anchor batch_id text "<tenant_id>:<seq_from>-<seq_to>", not the batch row uuid `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(0\|[1-9][0-9]{0,15})-(0\|[1-9][0-9]{0,15})$` | `request_id: string`<br>`terminal_code: string`<br>`records: integer`<br>`reason: reason` | emitted |
+| `audit.events.read` | Task16c | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `limit: integer`<br>`returned: integer`<br>`filters: string[]` | emitted |
 
 ## Reserved (refused until the owning Task flips them to emitted)
 
 | Action | Owner | Severity | Actor types | Target type | Target id | Details keys (`?` optional) | Status |
 |---|---|---|---|---|---|---|---|
-| `audit.events.read` | Task16c | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `limit: integer`<br>`returned: integer`<br>`filters: string[]` | reserved |
 | `attesta.anchor.failed` | Task15 | notice | service | `attesta_anchor_batch` | compound: the anchor batch_id text "<tenant_id>:<seq_from>-<seq_to>", not the batch row uuid `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(0\|[1-9][0-9]{0,15})-(0\|[1-9][0-9]{0,15})$` | `outcome: string`<br>`terminal: boolean`<br>`records: integer` | reserved |
 | `fleet.lease.issued` | D6.1 | high | machine, service | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`expires_at: iso_timestamp`<br>`policy_version?: integer` | reserved |
 | `fleet.lease.refused` | D6.1 | notice | machine, service | `developer_machine` | row (uuid) | `refusal: string` | reserved |
