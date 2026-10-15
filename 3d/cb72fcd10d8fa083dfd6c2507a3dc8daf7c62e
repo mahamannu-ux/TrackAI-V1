@@ -1,0 +1,19 @@
+apps/api/src/features/attesta/offline-verifier.ts
+  s_beaa455abdce90::t_727d00a3442214 273-274,300-301,1171-1172,1188-1189,1202-1203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "3dcb72fcd10d8fa083dfd6c2507a3dc8daf7c62e",
+  "prompts": {},
+  "sessions": {
+    "s_beaa455abdce90": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec1997b6affe7fZU23DDuYQX7Q",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
