@@ -60,6 +60,15 @@ function safeFailureCode(error: unknown): string {
     : 'export_execution_failed';
 }
 
+/**
+ * The export failure path swallows database errors (today's behaviour) but a
+ * contract error is a code bug and must surface instead of being mistaken for
+ * a failed export. Exported for unit tests.
+ */
+export function rethrowExportFailureAuditError(error: unknown): void {
+  if (error instanceof AuditContractError) throw error;
+}
+
 export async function planTenantEvidenceExport(input: EvidenceExportScope) {
   const evaluatedAt = input.evaluatedAt ?? new Date();
   validateExportWindow({
@@ -407,7 +416,7 @@ export async function createTenantEvidenceExport(input: CreateEvidenceExportInpu
     }).catch((error) => {
       // Database errors stay swallowed (today's behaviour); a contract error is a
       // code bug and must surface instead of being mistaken for a failed export.
-      if (error instanceof AuditContractError) throw error;
+      rethrowExportFailureAuditError(error);
     });
     throw new Error(`Evidence export failed (${failureCode})`);
   }
