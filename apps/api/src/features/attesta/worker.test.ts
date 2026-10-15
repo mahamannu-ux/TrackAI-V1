@@ -43,6 +43,12 @@ class FakeDb implements WorkerDatabase {
   async execute(query: SQL) {
     const { sql: text, params } = dialect.sqlToQuery(query);
     const tag = /\/\* worker:(\w+) \*\//.exec(text)?.[1];
+    // Task16c: the requeue audit goes through recordAuditEvent() (untagged), binding
+    // the same tenant, actor, action and details JSON the raw insert bound.
+    if (tag === undefined && text.includes('insert into security_audit_events')) {
+      this.audits.push({ params });
+      return { rows: [] };
+    }
     const byId = () => [...this.rows.values()].find((r) => params.includes(r.id));
     switch (tag) {
       case 'recover_fail': return { rows: this.recoverFail.map((id) => ({ id })) };

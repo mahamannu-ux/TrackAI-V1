@@ -20,8 +20,7 @@
 import type { KeyObject } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import { db } from '../../core/db';
-import { securityAuditEvents } from '../../core/db/schema';
-import { withTenant } from '../../core/db/tenant';
+import { recordAuditEvent } from '../../core/audit';
 import { isProduction } from './anchor-contract';
 import { anchorFromEnv, platformAnchorKeysFromEnv, type AnchorVerifyMaterial } from './anchor-env';
 import { deriveStatementColumns, parseSeq } from './ledger';
@@ -404,7 +403,7 @@ export function pgReadStore(executor: ReadExecutor = db): AttestaReadStore {
     },
 
     async recordVerifyAudit(input) {
-      await withTenant(db, input.tenantId).insert(securityAuditEvents, {
+      await recordAuditEvent(db, input.tenantId, {
         actorType: input.actorRole,
         actorId: input.actorId,
         action: 'attesta.verify',

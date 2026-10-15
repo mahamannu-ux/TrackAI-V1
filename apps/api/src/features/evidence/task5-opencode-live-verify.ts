@@ -225,6 +225,9 @@ async function main() {
       || rawAudits.some(row => row.actorId === `${marker}-ordinary-user`)) {
       throw new Error('raw_read_audit_failed');
     }
+    if (!rawAudits.some(row => row.actorId === auditorId && row.actorType === 'tenant_auditor')) {
+      throw new Error('raw_read_audit_actor_type_failed');
+    }
 
     activeStage = 'consent_denial';
     await setEvidenceConsent({ tenantId: tenant.id, actorId, enabled: false });

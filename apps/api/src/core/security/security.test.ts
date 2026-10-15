@@ -42,6 +42,8 @@ import {
   restoreTask4ExportEnvelope,
 } from '../operations/task4-export-format';
 import { LocalFileEvidenceExportSink } from '../operations/evidence-export-sink';
+import { rethrowExportFailureAuditError } from '../operations/evidence-export-service';
+import { AuditContractError } from '../audit/catalog';
 import {
   MAX_CLIENT_DELIVERY_HEALTH_COUNT,
   validateClientDeliveryHealthReport,
@@ -933,4 +935,14 @@ test('GitHub App permission contract rejects write access and missing reads', ()
     contents: 'write', pull_requests: 'read',
   }), false);
   assert.equal(githubAppPermissionsAreReadOnly({ contents: 'read' }), false);
+});
+
+test('evidence export failure path rethrows audit contract errors but swallows database errors', () => {
+  // Task16c rule 3: the export failure transaction's .catch must never swallow a
+  // contract error (a code bug), while database errors stay swallowed.
+  const contract = new AuditContractError(
+    'AUDIT_DETAILS_INVALID', 'evidence_export.failed: key reason has the wrong type or size');
+  assert.throws(() => rethrowExportFailureAuditError(contract), (error: unknown) => error === contract);
+  assert.equal(rethrowExportFailureAuditError(new Error('connection refused')), undefined);
+  assert.equal(rethrowExportFailureAuditError('boom'), undefined);
 });

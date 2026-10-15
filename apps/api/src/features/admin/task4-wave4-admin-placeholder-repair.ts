@@ -2,7 +2,8 @@ import 'dotenv/config';
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, pool } from '../../core/db';
-import { securityAuditEvents, ssoTenants, tenantAdminMemberships } from '../../core/db/schema';
+import { recordAuditEvent } from '../../core/audit';
+import { ssoTenants, tenantAdminMemberships } from '../../core/db/schema';
 
 const knownPlaceholders = [
   'PASTE-THE-COMPLETE-JWT-SUBJECT-HERE',
@@ -51,8 +52,7 @@ async function main(): Promise<void> {
         eq(tenantAdminMemberships.status, 'active'),
       )).returning({ id: tenantAdminMemberships.id });
       if (!revoked) throw new Error('Placeholder membership state changed during repair');
-      await transaction.insert(securityAuditEvents).values({
-        tenantId: row.tenantId,
+      await recordAuditEvent(transaction, row.tenantId, {
         actorType: 'system_operator',
         actorId: 'task4-placeholder-repair',
         action: 'admin_membership.revoked',

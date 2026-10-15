@@ -16,6 +16,7 @@ import telemetryReadRouter from './features/telemetry/read.routes';
 import { authenticateJWT } from './core/middleware/auth';
 import { authenticateMachine } from './core/middleware/machine-auth';
 import { tenantMiddleware } from './core/middleware/tenant';
+import { auditRouter } from './features/audit/audit.routes';
 
 type CreateAppOptions = {
   machineAuthentication?: RequestHandler;
@@ -72,6 +73,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // All /api/* routes require a valid Supabase JWT and tenant resolution.
   app.use('/api', authenticateJWT, tenantMiddleware);
   app.use('/api/attesta', attestaRouter);
+  app.use('/api/audit', auditRouter);
   app.use('/api', telemetryReadRouter);
   app.use('/api/evidence', evidenceReadRouter);
   app.use('/api/admin', adminRouter);

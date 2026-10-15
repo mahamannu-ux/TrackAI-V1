@@ -1,7 +1,7 @@
 import { and, desc, eq, max } from 'drizzle-orm';
 import { db } from '../db';
+import { recordAuditEvent } from '../audit';
 import {
-  securityAuditEvents,
   tenantRetentionPolicies,
 } from '../db/schema';
 import {
@@ -98,8 +98,7 @@ export async function replaceTenantRetentionPolicy(input: ReplaceTenantRetention
       reason,
       effectiveFrom: now,
     }).returning();
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: current ? 'retention_policy.replaced' : 'retention_policy.created',

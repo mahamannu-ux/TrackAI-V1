@@ -32,6 +32,7 @@
  */
 import { createPublicKey, randomBytes, randomUUID, verify, type KeyObject } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
+import { recordAuditEvent } from '../../core/audit';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
 import { canonicalize, sha256Prefixed } from './canonical';
 import { pae, type DsseEnvelope } from './dsse';
@@ -1060,8 +1061,14 @@ export function pgTrustStore(db: TrustDb): TrustStore {
         values (${e.tenantId}::uuid, ${e.keyId}::uuid, ${e.action}, ${e.actor}, ${e.reason}, ${e.documentVersion}, ${e.requestId})`);
     },
     async insertAudit(a) {
-      await db.execute(sql`insert into security_audit_events (tenant_id, actor_type, actor_id, action, target_type, target_id, details)
-        values (${a.tenantId}::uuid, 'system_operator', ${a.actorId}, ${a.action}, ${a.targetType}, ${a.targetId}, ${JSON.stringify(a.details)}::jsonb)`);
+      await recordAuditEvent(db, a.tenantId, {
+        actorType: 'system_operator',
+        actorId: a.actorId,
+        action: a.action,
+        targetType: a.targetType,
+        targetId: a.targetId,
+        details: a.details,
+      });
     },
     async documents(scope) {
       return (await db.execute(sql`select scope, kind, version, digest, envelope from attesta_trust_documents

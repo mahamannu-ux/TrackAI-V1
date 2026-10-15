@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { withTenant } from '../../core/db/tenant';
+import { recordAuditEvent } from '../../core/audit';
 import {
   aiCommitSessions,
   aiCodeLifecycleEvents,
@@ -19,7 +20,6 @@ import {
   scmCommitFiles,
   scmCommits,
   scmRepositories,
-  securityAuditEvents,
   tenantEvidenceSettings,
 } from '../../core/db/schema';
 import { decryptEnvelope, encryptEnvelope, type EncryptedValue } from '../../core/security/envelope-encryption';
@@ -183,8 +183,7 @@ export async function setEvidenceConsent(input: {
       },
     }).returning();
     if (!settings) throw new Error('Evidence consent update failed');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: 'tenant_admin',
       actorId: input.actorId,
       action: input.enabled ? 'evidence.collection.enabled' : 'evidence.collection.disabled',
@@ -376,6 +375,7 @@ export async function readRawEvidence(input: {
   tenantId: string;
   eventId: string;
   actorId: string;
+  actorRole: 'tenant_admin' | 'tenant_auditor';
 }) {
   const tenantDb = withTenant(db, input.tenantId);
   const [event] = await tenantDb.select(evidenceEvents, eq(evidenceEvents.id, input.eventId));
@@ -383,8 +383,8 @@ export async function readRawEvidence(input: {
   const [content] = await tenantDb.select(evidenceEventContents, eq(evidenceEventContents.eventId, event.id));
   if (!content || content.expiresAt <= new Date()) return { event, content: null, availability: 'expired' as const };
   const value = openEnvelope<unknown>(content.encryptedValue, input.tenantId, 'evidence-event', event.id);
-  await tenantDb.insert(securityAuditEvents, {
-    actorType: 'tenant_user', actorId: input.actorId,
+  await recordAuditEvent(db, input.tenantId, {
+    actorType: input.actorRole, actorId: input.actorId,
     action: 'evidence.raw.read', targetType: 'evidence_event', targetId: event.id,
     details: { provider: event.provider, eventType: event.eventType },
   });
@@ -456,7 +456,7 @@ export async function correctIntention(input: {
     relationship: 'describes', evidenceState: 'corrected', confidence: 100,
     basis: 'tenant_admin_correction', correctedFromLinkId: null,
   });
-  await tenantDb.insert(securityAuditEvents, {
+  await recordAuditEvent(db, input.tenantId, {
     actorType: 'tenant_admin', actorId: input.actorId,
     action: 'evidence.intention.corrected', targetType: 'evidence_intention', targetId: corrected.id,
     details: { correctedFromIntentionId: original.id, reason },
@@ -494,7 +494,7 @@ export async function purgeExpiredEvidence(tenantId: string, actorId: string, no
     evidenceSummaries,
     lte(evidenceSummaries.expiresAt, now),
   );
-  await tenantDb.insert(securityAuditEvents, {
+  await recordAuditEvent(db, tenantId, {
     actorType: 'tenant_admin', actorId,
     action: 'evidence.retention.purged', targetType: 'tenant', targetId: tenantId,
     details: {
@@ -1156,7 +1156,7 @@ export async function enqueueSemanticReindex(input: {
       }, eq(evidenceIntentions.id, intention.id));
     }
   }
-  await tenantDb.insert(securityAuditEvents, {
+  await recordAuditEvent(db, input.tenantId, {
     actorType: 'tenant_admin', actorId: input.actorId,
     action: 'evidence.semantic.reindex_enqueued', targetType: 'tenant', targetId: input.tenantId,
     details: { model: SEMANTIC_MODEL, modelRevision: configuredSemanticRevision(), enqueued },

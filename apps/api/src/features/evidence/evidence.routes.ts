@@ -271,8 +271,10 @@ evidenceReadRouter.get(
     const tenantId = tenant(req, res); if (!tenantId) return;
     const actorId = req.user?.sub;
     if (!actorId) { res.status(401).json({ error: 'Authenticated user is required' }); return; }
+    const actorRole = req.adminRole;
+    if (!actorRole) { res.status(403).json({ error: 'Forbidden: Tenant administrator permission is required' }); return; }
     try {
-      const result = await readRawEvidence({ tenantId, eventId: String(req.params.id), actorId });
+      const result = await readRawEvidence({ tenantId, eventId: String(req.params.id), actorId, actorRole });
       if (!result) { res.status(404).json({ error: 'Evidence event was not found' }); return; }
       res.setHeader('Cache-Control', 'no-store');
       res.json(result);

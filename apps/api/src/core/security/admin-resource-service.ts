@@ -1,5 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db';
+import { AUDIT_CATALOG_BY_ACTION, AUDIT_CATALOG_VERSION } from '../audit/catalog';
+import { recordAuditEvent } from '../audit/record';
 import {
   developerMachines,
   machineCredentials,
@@ -101,17 +103,45 @@ export async function listAdminBackfillAuthorizations(tenantId: string) {
     .orderBy(desc(repositoryBackfillAuthorizations.createdAt));
 }
 
-export async function listSecurityAuditEvents(tenantId: string, requestedLimit: number) {
-  const limit = Math.min(200, Math.max(1, Math.trunc(requestedLimit)));
-  return db.select({
-    id: securityAuditEvents.id,
-    actorType: securityAuditEvents.actorType,
-    actorId: securityAuditEvents.actorId,
-    action: securityAuditEvents.action,
-    targetType: securityAuditEvents.targetType,
-    targetId: securityAuditEvents.targetId,
-    details: securityAuditEvents.details,
-    occurredAt: securityAuditEvents.occurredAt,
-  }).from(securityAuditEvents).where(eq(securityAuditEvents.tenantId, tenantId))
-    .orderBy(desc(securityAuditEvents.occurredAt)).limit(limit);
+/**
+ * The legacy admin audit list (Task16c, A16.6 item 11): its path, query and
+ * camelCase shape stay, each row gains `severity` and `catalogVersion`, and the
+ * call writes one `audit.events.read` event in the same transaction it reads in
+ * (select first, so the read's own event is never in its own result; a failed
+ * audit write fails the call with no rows).
+ */
+export async function listSecurityAuditEvents(input: {
+  tenantId: string;
+  actorId: string;
+  actorRole: 'tenant_admin' | 'tenant_auditor';
+  requestedLimit: number;
+}) {
+  const limit = Math.min(200, Math.max(1, Math.trunc(input.requestedLimit)));
+  return db.transaction(async transaction => {
+    const rows = await transaction.select({
+      id: securityAuditEvents.id,
+      actorType: securityAuditEvents.actorType,
+      actorId: securityAuditEvents.actorId,
+      action: securityAuditEvents.action,
+      targetType: securityAuditEvents.targetType,
+      targetId: securityAuditEvents.targetId,
+      details: securityAuditEvents.details,
+      occurredAt: securityAuditEvents.occurredAt,
+    }).from(securityAuditEvents).where(eq(securityAuditEvents.tenantId, input.tenantId))
+      .orderBy(desc(securityAuditEvents.occurredAt)).limit(limit);
+    const events = rows.map(row => ({
+      ...row,
+      severity: AUDIT_CATALOG_BY_ACTION.get(row.action)?.severity ?? 'high',
+      catalogVersion: AUDIT_CATALOG_VERSION,
+    }));
+    await recordAuditEvent(transaction, input.tenantId, {
+      action: 'audit.events.read',
+      actorType: input.actorRole,
+      actorId: input.actorId,
+      targetType: 'security_audit_events',
+      targetId: input.tenantId,
+      details: { limit, returned: events.length, filters: ['limit'] },
+    });
+    return events;
+  });
 }

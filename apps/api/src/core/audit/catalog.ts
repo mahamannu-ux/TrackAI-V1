@@ -624,11 +624,16 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
   // The owning Task may still change a reserved entry's shape before its first row
   // (no row means no meaning to keep); after that, additive changes only.
   ...entries(['audit.events.read'], {
-    status: 'reserved', owner: 'Task16c', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    status: 'emitted', owner: 'Task16c', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
     targetType: 'security_audit_events', targetIdKind: 'tenant',
     // The filter summary is the names of the filters used, never their values or any row.
     details: { limit: r('integer'), returned: r('integer'), filters: r('string[]') },
-    sources: ['docs/plan/TASK16.md A16.6 (founder 2026-10-15: audit reads are audited)'],
+    sources: [
+      'features/audit/audit.routes.ts:82',
+      'features/audit/read-service.ts:370',
+      'features/audit/read-service.ts:402',
+      'core/security/admin-resource-service.ts:137',
+    ],
   }),
   ...entries(['attesta.anchor.failed'], {
     status: 'reserved', owner: 'Task15', severity: 'notice', actorTypes: ['service'],

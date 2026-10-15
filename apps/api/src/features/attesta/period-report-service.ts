@@ -20,8 +20,7 @@
  */
 import { sql, type SQL } from 'drizzle-orm';
 import { db as coreDb } from '../../core/db';
-import { securityAuditEvents } from '../../core/db/schema';
-import { withTenant } from '../../core/db/tenant';
+import { recordAuditEvent } from '../../core/audit';
 import { canonicalize, sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
 import { AttestaLedgerError, chainStatement, mapLedgerDatabaseError, parseSeq, type LedgerExecutor } from './ledger';
@@ -508,7 +507,7 @@ export function pgReportStore(db: ReportDatabase, options: { clock?: () => Date 
     },
 
     async audit(input) {
-      await withTenant(coreDb, input.tenantId).insert(securityAuditEvents, {
+      await recordAuditEvent(coreDb, input.tenantId, {
         actorType: input.actorRole,
         actorId: input.actorId,
         action: input.action,

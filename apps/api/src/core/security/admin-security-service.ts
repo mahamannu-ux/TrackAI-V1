@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { securityAuditEvents, tenantAdminMemberships } from '../db/schema';
+import { recordAuditEvent } from '../audit';
+import { tenantAdminMemberships } from '../db/schema';
 import type { AdminMembershipRecord } from './admin-authorization';
 
 export interface AdminMembershipDetails extends AdminMembershipRecord {
@@ -70,8 +71,7 @@ export async function grantAdminMembership(input: GrantAdminMembershipInput) {
         grantedAt: now,
       }).returning();
     if (!membership) throw new Error('Administrator membership state changed during update');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId: input.tenantId,
+    await recordAuditEvent(transaction, input.tenantId, {
       actorType: input.actorType,
       actorId: input.actorId,
       action: existing ? 'admin_membership.reactivated' : 'admin_membership.granted',
@@ -104,8 +104,7 @@ export async function revokeAdminMembership(
       role: tenantAdminMemberships.role,
     });
     if (!membership) throw new Error('Active administrator membership was not found');
-    await transaction.insert(securityAuditEvents).values({
-      tenantId,
+    await recordAuditEvent(transaction, tenantId, {
       actorType: 'tenant_admin',
       actorId,
       action: 'admin_membership.revoked',

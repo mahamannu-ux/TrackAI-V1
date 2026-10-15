@@ -75,22 +75,32 @@ function stringRecord(value: unknown, name: string): Record<string, string> {
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
-function stringArray(value: unknown, name: string): string[] {
+/** Exported for unit tests: the route answers 400 through badRequest for every throw below. */
+export function stringArray(value: unknown, name: string): string[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 64 || value.some(item => typeof item !== 'string')) {
+  // The audit emitter refuses strings over 512 characters; refuse them here as a
+  // 400, not a 500 from the emitter.
+  if (!Array.isArray(value) || value.length > 64
+    || value.some(item => typeof item !== 'string' || item.length > 512)) {
     throw new Error(`${name} must be a string array`);
   }
   return value;
 }
 
-function dateValue(value: unknown, name: string): Date {
+/** Exported for unit tests: the route answers 400 through badRequest for every throw below. */
+export function dateValue(value: unknown, name: string): Date {
   if (typeof value !== 'string') throw new Error(`${name} is required`);
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) throw new Error(`${name} is invalid`);
+  // The audit emitter refuses years outside 1–9999; refuse them here as a 400,
+  // not a 500 from the emitter.
+  const year = parsed.getUTCFullYear();
+  if (year < 1 || year > 9999) throw new Error(`${name} is invalid`);
   return parsed;
 }
 
-function optionalDateValue(value: unknown, name: string): Date | undefined {
+/** Exported for unit tests (see stringArray). */
+export function optionalDateValue(value: unknown, name: string): Date | undefined {
   return value === undefined || value === null || value === '' ? undefined : dateValue(value, name);
 }
 
@@ -160,16 +170,49 @@ router.get('/backfill-authorizations', requireBackfillAdmin, async (req, res) =>
   }
 });
 
-router.get('/audit', requireAuditRead, async (req, res) => {
-  try {
-    const { tenantId } = requestIdentity(req);
+/**
+ * The legacy admin audit list (Task16c item 11): path, query and camelCase shape
+ * unchanged. Fail-closed like the new audit API: only the identity error is a
+ * 400; any read or audit-write failure answers 503 with a generic body and no rows.
+ * The list function is a seam for unit tests (production passes the default).
+ */
+export function createAdminAuditHandler(
+  list: (input: {
+    tenantId: string;
+    actorId: string;
+    actorRole: 'tenant_admin' | 'tenant_auditor';
+    requestedLimit: number;
+  }) => Promise<unknown> = listSecurityAuditEvents,
+) {
+  return async (req: Request, res: Response): Promise<void> => {
+    let identity: { tenantId: string; actorId: string };
+    try {
+      identity = requestIdentity(req);
+    } catch (error) {
+      badRequest(res, error);
+      return;
+    }
+    const actorRole = req.adminRole;
+    if (!actorRole) {
+      res.status(403).json({ error: 'Forbidden: Tenant administrator permission is required' });
+      return;
+    }
     const requested = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
     const limit = Number.isFinite(requested) ? requested : 100;
-    res.json({ events: await listSecurityAuditEvents(tenantId, limit) });
-  } catch (error) {
-    badRequest(res, error);
-  }
-});
+    try {
+      res.json({
+        events: await list({
+          tenantId: identity.tenantId, actorId: identity.actorId, actorRole, requestedLimit: limit,
+        }),
+      });
+    } catch {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'Audit trail is temporarily unavailable' });
+    }
+  };
+}
+
+router.get('/audit', requireAuditRead, createAdminAuditHandler());
 
 const readSecurityFindings = createSecurityFindingAdminReadHandler();
 router.get('/security-findings', requireSecurityFindingRead, (req, res) => (

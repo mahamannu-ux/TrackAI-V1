@@ -2,7 +2,8 @@ import 'dotenv/config';
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
-import { securityAuditEvents, ssoTenants } from '../../core/db/schema';
+import { recordAuditEvent } from '../../core/audit';
+import { ssoTenants } from '../../core/db/schema';
 import { reconcilePendingMetricEvents } from '../telemetry/service';
 
 async function main(): Promise<void> {
@@ -24,8 +25,7 @@ async function main(): Promise<void> {
     limit: 100,
   });
   if (apply) {
-    await db.insert(securityAuditEvents).values({
-      tenantId: tenant.id,
+    await recordAuditEvent(db, tenant.id, {
       actorType: 'system_operator',
       actorId: 'task4-wave5-pending-reconciler',
       action: 'telemetry_normalization.reconciled',
