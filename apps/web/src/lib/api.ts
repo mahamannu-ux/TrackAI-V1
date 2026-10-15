@@ -295,11 +295,6 @@ export type AdminGitHubResources = { installations: Array<{
   status: 'active' | 'revoked'; revokedAt: string | null; createdAt: string; updatedAt: string;
 }> };
 
-export type AdminAuditResources = { events: Array<{
-  id: string; actorType: string; actorId: string; action: string; targetType: string;
-  targetId: string; details: Record<string, unknown>; occurredAt: string;
-}> };
-
 export type AdminSecurityFindingResources = { findings: Array<{
   id: string; machineId: string; repositoryId: string; findingId: string;
   ruleId: 'trackai.exec.destructive_recursive_delete' | 'trackai.exec.download_pipe_shell' | 'trackai.exec.reverse_shell';
@@ -440,7 +435,6 @@ export const getAdminMachines = () => apiFetch<AdminMachineResources>('/api/admi
 export const getAdminRepositoryPolicies = () => apiFetch<AdminRepositoryResources>('/api/admin/repository-policies');
 export const getAdminBackfillAuthorizations = () => apiFetch<AdminBackfillResources>('/api/admin/backfill-authorizations');
 export const getAdminGitHubInstallations = () => apiFetch<AdminGitHubResources>('/api/admin/github-app/installations');
-export const getAdminAudit = (limit = 100) => apiFetch<AdminAuditResources>(`/api/admin/audit?limit=${limit}`);
 export const getAdminSecurityFindings = (limit = 100) => (
   apiFetch<AdminSecurityFindingResources>(`/api/admin/security-findings?limit=${limit}`)
 );
@@ -824,3 +818,133 @@ export const getEvidencePack = (id: string) => attestaFetch<AttestaPackJob>(
 );
 
 export const downloadEvidencePack = (contentPath: string): Promise<Blob> => apiDownload(contentPath);
+
+// ---------------------------------------------------------------------------
+// Audit (Task16f console client of the Task16c read API)
+// ---------------------------------------------------------------------------
+// Read-only trail search behind the `audit.read` boundary (admins and
+// auditors). Every list request writes one `audit.events.read` row, so the
+// console sends a request only on Search and on Load more, never per
+// keystroke. Error wording comes from the RFC 7807 problem (`code`,
+// `title`, `request_id`); the response body text is never surfaced otherwise.
+
+export class AuditApiError extends Error {
+  code: string;
+  status: number;
+  requestId: string | null;
+
+  constructor(message: string, code: string, status: number, requestId: string | null) {
+    super(message);
+    this.name = 'AuditApiError';
+    this.code = code;
+    this.status = status;
+    this.requestId = requestId;
+  }
+}
+
+type AuditProblem = {
+  code?: unknown;
+  title?: unknown;
+  status?: unknown;
+  request_id?: unknown;
+};
+
+async function auditFetch<T>(
+  endpoint: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = await getAccessToken();
+
+  if (!token) {
+    throw new Error('Not authenticated. Please log in.');
+  }
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as AuditProblem | null;
+    const code = typeof problem?.code === 'string' && problem.code
+      ? problem.code
+      : 'AUDIT_API_UNAVAILABLE';
+    const title = typeof problem?.title === 'string' && problem.title
+      ? problem.title
+      : code;
+    const requestId = typeof problem?.request_id === 'string' && problem.request_id
+      ? problem.request_id
+      : response.headers.get('X-Request-ID');
+    throw new AuditApiError(title, code, response.status, requestId);
+  }
+
+  return response.json();
+}
+
+/** One audit row as docs/contracts/audit/event-v1.schema.json describes it. */
+export type AuditEvent = {
+  id: string;
+  action: string;
+  actor_type: string;
+  actor_id: string;
+  target_type: string;
+  target_id: string;
+  details: Record<string, unknown>;
+  occurred_at: string;
+  severity: 'high' | 'notice' | 'info';
+  catalog_version: number;
+};
+
+export type AuditCatalogAction = {
+  action: string;
+  owner: string;
+  severity: 'high' | 'notice' | 'info';
+  status: 'emitted' | 'reserved';
+  actor_types: string[];
+  target_type: string;
+};
+
+export type AuditCatalog = {
+  catalog_version: number;
+  actions: AuditCatalogAction[];
+};
+
+export type AuditEventPage = {
+  events: AuditEvent[];
+  next_cursor: string | null;
+  catalog_version: number;
+};
+
+export type AuditFilters = {
+  actions: string[];
+  severity?: 'high' | 'notice' | 'info';
+  actorType?: string;
+  actorId?: string;
+  targetType?: string;
+  targetId?: string;
+  from?: string;
+  to?: string;
+};
+
+export const getAuditCatalog = () => auditFetch<AuditCatalog>('/api/audit/catalog');
+
+export const listAuditEvents = (filters: AuditFilters, cursor?: string) => {
+  const parameters = new URLSearchParams();
+  for (const action of filters.actions) {
+    if (action !== '') parameters.append('action', action);
+  }
+  if (filters.severity) parameters.set('severity', filters.severity);
+  if (filters.actorType) parameters.set('actor_type', filters.actorType);
+  if (filters.actorId) parameters.set('actor_id', filters.actorId);
+  if (filters.targetType) parameters.set('target_type', filters.targetType);
+  if (filters.targetId) parameters.set('target_id', filters.targetId);
+  if (filters.from) parameters.set('from', filters.from);
+  if (filters.to) parameters.set('to', filters.to);
+  if (cursor) parameters.set('cursor', cursor);
+  const query = parameters.toString();
+  return auditFetch<AuditEventPage>(`/api/audit/events${query ? `?${query}` : ''}`);
+};
