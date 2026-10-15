@@ -38,6 +38,8 @@ import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
 export const AI_PROVENANCE_PREDICATE_TYPE = 'https://trackai.dev/attesta/ai-provenance/v1';
 /** The second predicate type (Task15i4, period-report.md): its subject is a report document. */
 export const PERIOD_REPORT_PREDICATE_TYPE = 'https://trackai.dev/attesta/period-report/v1';
+/** The third predicate type (Task16e, audit-seal.md): its subject is a tenant's audit window, no repository. */
+export const AUDIT_SEAL_PREDICATE_TYPE = 'https://trackai.dev/attesta/audit-seal/v1';
 export const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 export const LEDGER_RECORD_KIND = 'statement';
 /** Largest statement the ledger accepts (bytes); signers cap lower (1 MiB local dev). */
@@ -120,7 +122,8 @@ export interface LedgerRecordFields {
   statement_digest: string;
   predicate_type: string;
   statement_kind: AttestaStatementKind | null;
-  repository_id: string;
+  /** null for an audit_seal (Task16e). */
+  repository_id: string | null;
   subject_sha: string | null;
   outbox_subject_id: string | null;
 }
@@ -131,13 +134,16 @@ export interface StatementColumns {
   predicateType: string;
   /** null for a period_report (tables.md). */
   statementKind: AttestaStatementKind | null;
-  repositoryId: string;
-  /** null for a period_report. */
+  /** null for an audit_seal (Task16e): its subject is a tenant's audit window. */
+  repositoryId: string | null;
+  /** null for a period_report and an audit_seal. */
   subjectSha: string | null;
   /** subject[0].name: what "statements about the same subject" (previous) are keyed on. */
   subjectName: string;
   /** predicate.previous digests, oldest first. */
   previous: string[];
+  /** audit_seal only: the tenant the predicate names (must be the chaining tenant). */
+  tenantScope?: string;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -145,6 +151,7 @@ const HASH_RE = /^sha256:[0-9a-f]{64}$/;
 const SHA_RE = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const HEX64_RE = /^[0-9a-f]{64}$/;
 const PERIOD_BOUND_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const AUDIT_BOUND_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 const BASE64_RE = /^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const CLAIMED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
 const ISO_MS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -221,7 +228,8 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
   if (again !== statementCanonical) throw guard('statementCanonical is not its own RFC 8785 form');
   if (!isPlainRecord(parsed)) throw guard('statement must be an object');
   if (parsed._type !== IN_TOTO_STATEMENT_TYPE) throw guard('statement _type is not in-toto Statement v1');
-  if (parsed.predicateType !== AI_PROVENANCE_PREDICATE_TYPE && parsed.predicateType !== PERIOD_REPORT_PREDICATE_TYPE) {
+  if (parsed.predicateType !== AI_PROVENANCE_PREDICATE_TYPE && parsed.predicateType !== PERIOD_REPORT_PREDICATE_TYPE
+    && parsed.predicateType !== AUDIT_SEAL_PREDICATE_TYPE) {
     throw guard('unsupported predicateType');
   }
   const subjects = parsed.subject;
@@ -230,6 +238,7 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
   }
   const subject = subjects[0];
   if (parsed.predicateType === PERIOD_REPORT_PREDICATE_TYPE) return derivePeriodReportColumns(statementCanonical, subject, parsed.predicate);
+  if (parsed.predicateType === AUDIT_SEAL_PREDICATE_TYPE) return deriveAuditSealColumns(statementCanonical, subject, parsed.predicate);
   const digest = subject.digest;
   const subjectSha = isPlainRecord(digest) ? digest.gitCommit : undefined;
   if (typeof subjectSha !== 'string' || !SHA_RE.test(subjectSha)) throw guard('subject digest is not a git commit sha');
@@ -298,6 +307,40 @@ function derivePeriodReportColumns(statementCanonical: string, subject: Record<s
     subjectSha: null,
     subjectName: name,
     previous: previousDigests(predicate.previous),
+  };
+}
+
+/**
+ * audit_seal (Task16e): one subject named after the predicate's tenant and window, with a
+ * sha256 digest (0023 guard). `tenantScope` is the predicate's tenant; chainStatement
+ * requires it to be the chaining tenant.
+ */
+function deriveAuditSealColumns(statementCanonical: string, subject: Record<string, unknown>, predicate: unknown): StatementColumns {
+  if (!isPlainRecord(predicate)) throw guard('statement predicate must be an object');
+  if (predicate.statement_kind !== undefined) throw guard('an audit seal has no statement_kind');
+  const digest = subject.digest;
+  if (!isPlainRecord(digest) || !hasExactKeys(digest, ['sha256']) || typeof digest.sha256 !== 'string' || !HEX64_RE.test(digest.sha256)) {
+    throw guard('an audit seal subject digest must be {sha256}');
+  }
+  const tenantId = predicate.tenant_id;
+  const window = predicate.window;
+  const from = isPlainRecord(window) ? window.from : undefined;
+  const to = isPlainRecord(window) ? window.to : undefined;
+  if (typeof tenantId !== 'string' || !UUID_RE.test(tenantId)) throw guard('predicate tenant_id is not a UUID');
+  if (typeof from !== 'string' || typeof to !== 'string' || !AUDIT_BOUND_RE.test(from) || !AUDIT_BOUND_RE.test(to) || from >= to) {
+    throw guard('predicate window bounds are malformed');
+  }
+  const name = `trackai:tenant/${tenantId}/audit/${from}..${to}`;
+  if (subject.name !== name) throw guard('subject name does not match the tenant and window');
+  return {
+    statementDigest: sha256Prefixed(Buffer.from(statementCanonical, 'utf8')),
+    predicateType: AUDIT_SEAL_PREDICATE_TYPE,
+    statementKind: null,
+    repositoryId: null,
+    subjectSha: null,
+    subjectName: name,
+    previous: previousDigests(predicate.previous),
+    tenantScope: tenantId,
   };
 }
 
@@ -525,6 +568,10 @@ export async function chainStatement(
   const c = s.columns;
   // A period_report never comes from the outbox (tables.md: outbox_subject_id null).
   if (c.predicateType === PERIOD_REPORT_PREDICATE_TYPE && s.outboxClaim) throw guard('a period report has no outbox claim');
+  if (c.predicateType === AUDIT_SEAL_PREDICATE_TYPE) {
+    if (s.outboxClaim) throw guard('an audit seal has no outbox claim');
+    if (c.tenantScope !== s.tenantId) throw guard('an audit seal names another tenant');
+  }
 
   // 0. The commit-time guard must run after the envelope and head are written,
   //    even if the caller set its constraints IMMEDIATE.
@@ -601,9 +648,15 @@ export async function chainStatement(
     where tenant_id = ${s.tenantId} and repository_id = ${c.repositoryId} and subject_sha = ${c.subjectSha}
     order by seq`)
     // period_report: earlier reports for the same scope (the same subject name).
-    : await run(tx, sql`/* ledger:previous_reports */
+    : c.predicateType === PERIOD_REPORT_PREDICATE_TYPE ? await run(tx, sql`/* ledger:previous_reports */
     select statement_digest from attesta_records
     where tenant_id = ${s.tenantId} and repository_id = ${c.repositoryId} and predicate_type = ${PERIOD_REPORT_PREDICATE_TYPE}
+      and (statement_canonical::jsonb)->'subject'->0->>'name' = ${c.subjectName}
+    order by seq`)
+    // audit_seal (Task16e): earlier seals of the same window (never any: a window is sealed once).
+    : await run(tx, sql`/* ledger:previous_seals */
+    select statement_digest from attesta_records
+    where tenant_id = ${s.tenantId} and repository_id is null and predicate_type = ${AUDIT_SEAL_PREDICATE_TYPE}
       and (statement_canonical::jsonb)->'subject'->0->>'name' = ${c.subjectName}
     order by seq`);
   const current = prevRows.map((r) => String(r.statement_digest));

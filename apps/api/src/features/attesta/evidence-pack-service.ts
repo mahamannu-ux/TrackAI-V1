@@ -156,7 +156,8 @@ export interface SegmentRecord {
   canonicalRecord: string;
   /** Millisecond ISO, as in canonical_record. */
   recordedAt: string;
-  repositoryId: string;
+  /** null for an audit_seal record (Task16e): in scope only of a whole-tenant pack. */
+  repositoryId: string | null;
   statementDigest: string;
   /** Present for in-scope records only (the store reads statements for the scope alone). */
   statementCanonical: string | null;
@@ -215,7 +216,7 @@ export function inWindow(recordedAt: string, scope: PackScope): boolean {
   return recordedAt >= scope.from && recordedAt <= scope.to;
 }
 
-export function inScope(r: { recordedAt: string; repositoryId: string }, scope: PackScope): boolean {
+export function inScope(r: { recordedAt: string; repositoryId: string | null }, scope: PackScope): boolean {
   return inWindow(r.recordedAt, scope) && (scope.repository_id === null || r.repositoryId === scope.repository_id);
 }
 
@@ -264,6 +265,45 @@ export interface BuiltPack {
 }
 
 const internal = (why: string) => new PackJobError('ATTESTA_API_INTERNAL', `evidence pack: ${why}`);
+
+// Section entry builders, exported for the signed audit export (Task16e, A16.7), which carries
+// the same shapes for its seal records only. No behaviour change for packs.
+
+/** A `records` entry with its hashed bytes. */
+export function packRecordEntry(r: Pick<SegmentRecord, 'seq' | 'prevHash' | 'recordHash' | 'canonicalRecord'>): Record<string, unknown> {
+  return { seq: r.seq, prev_hash: r.prevHash, record_hash: r.recordHash, canonical_record: r.canonicalRecord };
+}
+
+/** `anchored` when the record has an anchored row of both types, else `pending`. */
+export function packAnchorStatus(anchors: readonly SegmentAnchor[]): 'anchored' | 'pending' {
+  const types = new Set(anchors.map((a) => a.anchorType));
+  return types.has('rekor') && types.has('tsa') ? 'anchored' : 'pending';
+}
+
+/** A `statements` entry. */
+export function packStatementEntry(r: Pick<SegmentRecord, 'seq' | 'statementDigest' | 'statementCanonical' | 'envelope'>,
+  status: 'anchored' | 'pending'): Record<string, unknown> {
+  return { seq: r.seq, statement_digest: r.statementDigest, statement_canonical: r.statementCanonical, envelope: r.envelope, anchor_status: status };
+}
+
+/** The `anchors` section: sorted by (seq, anchor_type). */
+export function packAnchorEntries(anchors: readonly SegmentAnchor[]): Array<Record<string, unknown> & { batch_id: string }> {
+  return [...anchors]
+    .sort((x, y) => x.seq - y.seq || (x.anchorType < y.anchorType ? -1 : x.anchorType > y.anchorType ? 1 : 0))
+    .map((a) => ({
+      seq: a.seq, anchor_type: a.anchorType, batch_id: a.batchId, inclusion_proof: a.inclusionProof,
+      rekor_entry_uuid: a.rekorEntryUuid, tsa_token_b64: a.tsaTokenB64,
+    }));
+}
+
+/** The `anchor_batches` section: the batches the anchors name, by seq_from. */
+export function packBatchEntries(batches: readonly SegmentBatch[], named: ReadonlySet<string>): Array<Record<string, unknown>> {
+  return batches
+    .filter((b) => named.has(b.batchId))
+    .sort((x, y) => x.seqFrom - y.seqFrom)
+    .map((b) => ({ batch_id: b.batchId, seq_from: b.seqFrom, seq_to: b.seqTo, leaf_count: b.leafCount, merkle_root: b.merkleRoot }));
+}
+
 const sectionDigest = (value: unknown) => sha256Prefixed(canonicalize(value));
 
 /**
@@ -298,7 +338,7 @@ export function buildPack(input: BuildPackInput): BuiltPack {
     prev = r.recordHash;
     const scoped = inScope(r, scope);
     if (scoped || mode === 'full') {
-      records.push({ seq: r.seq, prev_hash: r.prevHash, record_hash: r.recordHash, canonical_record: r.canonicalRecord });
+      records.push(packRecordEntry(r));
     } else {
       records.push({ seq: r.seq, prev_hash: r.prevHash, record_hash: r.recordHash });
       redacted += 1;
@@ -306,31 +346,18 @@ export function buildPack(input: BuildPackInput): BuiltPack {
     if (!scoped) return;
     if (r.statementCanonical === null || r.envelope === null || r.envelope === undefined) throw internal('an in-scope statement is missing');
     if (sha256Prefixed(r.statementCanonical) !== r.statementDigest) throw internal('a statement does not hash to its record');
-    const types = new Set((anchorsBySeq.get(r.seq) ?? []).map((a) => a.anchorType));
-    const status = types.has('rekor') && types.has('tsa') ? 'anchored' : 'pending';
+    const status = packAnchorStatus(anchorsBySeq.get(r.seq) ?? []);
     if (status === 'anchored') anchored += 1;
     inScopeSeqs.add(r.seq);
-    statements.push({
-      seq: r.seq, statement_digest: r.statementDigest, statement_canonical: r.statementCanonical,
-      envelope: r.envelope, anchor_status: status,
-    });
+    statements.push(packStatementEntry(r, status));
   });
   if (seg.head !== null && (seg.head.next_seq !== seg.toSeq + 1 || (seg.records.length > 0 && seg.head.head_hash !== prev))) {
     throw internal('the head does not match the segment');
   }
 
-  const anchors = [...seg.anchors]
-    .filter((a) => inScopeSeqs.has(a.seq))
-    .sort((x, y) => x.seq - y.seq || (x.anchorType < y.anchorType ? -1 : x.anchorType > y.anchorType ? 1 : 0))
-    .map((a) => ({
-      seq: a.seq, anchor_type: a.anchorType, batch_id: a.batchId, inclusion_proof: a.inclusionProof,
-      rekor_entry_uuid: a.rekorEntryUuid, tsa_token_b64: a.tsaTokenB64,
-    }));
+  const anchors = packAnchorEntries(seg.anchors.filter((a) => inScopeSeqs.has(a.seq)));
   const named = new Set(anchors.map((a) => a.batch_id));
-  const batches = seg.batches
-    .filter((b) => named.has(b.batchId))
-    .sort((x, y) => x.seqFrom - y.seqFrom)
-    .map((b) => ({ batch_id: b.batchId, seq_from: b.seqFrom, seq_to: b.seqTo, leaf_count: b.leafCount, merkle_root: b.merkleRoot }));
+  const batches = packBatchEntries(seg.batches, named);
   if (batches.length !== named.size) throw internal('an anchor names a batch that was not read');
 
   const verificationHint = { pinned_root_keyids: [...input.trust.pinnedRootKeyids] };
@@ -742,7 +769,7 @@ export function pgPackStore(db: PackDatabase): PackStore {
           head: b.reachesHead && b.headHash !== null ? { next_seq: b.nextSeq, head_hash: b.headHash } : null,
           records: rows.map((r) => ({
             seq: parseSeq(r.seq), prevHash: str(r.prev_hash), recordHash: str(r.record_hash), canonicalRecord: str(r.canonical_record),
-            recordedAt: str(r.recorded_at), repositoryId: str(r.repository_id), statementDigest: str(r.statement_digest),
+            recordedAt: str(r.recorded_at), repositoryId: strOrNull(r.repository_id), statementDigest: str(r.statement_digest),
             statementCanonical: strOrNull(r.statement_canonical), envelope: r.envelope ?? null,
           })),
           anchors: anchors.map((a) => ({

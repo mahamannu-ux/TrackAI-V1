@@ -199,7 +199,8 @@ export interface LedgerRow {
   statementDigest: string;
   predicateType: string;
   statementKind: string | null;
-  repositoryId: string;
+  /** null for an audit_seal record (Task16e). */
+  repositoryId: string | null;
   subjectSha: string | null;
   outboxSubjectId: string | null;
   statementCanonical: string;
@@ -660,7 +661,7 @@ function toRow(r: Record<string, unknown>): LedgerRow {
     statementDigest: str(r.statement_digest),
     predicateType: str(r.predicate_type),
     statementKind: strOrNull(r.statement_kind),
-    repositoryId: str(r.repository_id),
+    repositoryId: strOrNull(r.repository_id),
     subjectSha: strOrNull(r.subject_sha),
     outboxSubjectId: strOrNull(r.outbox_subject_id),
     statementCanonical: str(r.statement_canonical),

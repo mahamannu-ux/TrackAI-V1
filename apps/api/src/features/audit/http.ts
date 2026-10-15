@@ -27,7 +27,11 @@ export type AuditApiCode =
   | 'AUDIT_FILTER_INVALID'
   | 'AUDIT_CURSOR_INVALID'
   | 'AUDIT_EVENT_NOT_FOUND'
-  | 'AUDIT_API_UNAVAILABLE';
+  | 'AUDIT_API_UNAVAILABLE'
+  // Task16e (additive): the signed export routes (docs/contracts/audit/export.md).
+  | 'AUDIT_EXPORT_NOT_FOUND'
+  | 'AUDIT_EXPORT_CONFLICT'
+  | 'AUDIT_RATE_LIMITED';
 
 const STATUSES: Readonly<Record<AuditApiCode, number>> = {
   AUDIT_API_UNAUTHENTICATED: 401,
@@ -36,6 +40,9 @@ const STATUSES: Readonly<Record<AuditApiCode, number>> = {
   AUDIT_CURSOR_INVALID: 400,
   AUDIT_EVENT_NOT_FOUND: 404,
   AUDIT_API_UNAVAILABLE: 503,
+  AUDIT_EXPORT_NOT_FOUND: 404,
+  AUDIT_EXPORT_CONFLICT: 409,
+  AUDIT_RATE_LIMITED: 429,
 };
 
 const TITLES: Readonly<Record<AuditApiCode, string>> = {
@@ -45,6 +52,9 @@ const TITLES: Readonly<Record<AuditApiCode, string>> = {
   AUDIT_CURSOR_INVALID: 'The page cursor is invalid',
   AUDIT_EVENT_NOT_FOUND: 'Not found',
   AUDIT_API_UNAVAILABLE: 'The service is temporarily unavailable',
+  AUDIT_EXPORT_NOT_FOUND: 'Not found',
+  AUDIT_EXPORT_CONFLICT: 'The Idempotency-Key was used for another request',
+  AUDIT_RATE_LIMITED: 'Too many open export jobs',
 };
 
 export interface Problem {
