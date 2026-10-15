@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dateValue, optionalDateValue, stringArray } from './admin.routes';
+import { createAdminAuditHandler, dateValue, optionalDateValue, stringArray } from './admin.routes';
 
 function messageOf(fn: () => unknown): string {
   try {
@@ -53,4 +53,39 @@ test('admin routes: stringArray refuses items over 512 characters', () => {
     messageOf(() => stringArray(new Array(65).fill('main'), 'branchPatterns')),
     'branchPatterns must be a string array',
   );
+});
+
+test('admin routes: legacy audit list fails closed when the read or audit write throws', async () => {
+  const headers: Record<string, string> = {};
+  let statusCode = 200;
+  let body: unknown;
+  const res = {
+    setHeader: (name: string, value: string) => { headers[name.toLowerCase()] = value; },
+    status: (code: number) => { statusCode = code; return res; },
+    json: (payload: unknown) => { body = payload; return res; },
+  };
+  const req = (over: Record<string, unknown> = {}) => ({
+    tenantId: 'tenant-a', user: { sub: 'admin-a' }, adminRole: 'tenant_admin', query: {}, ...over,
+  });
+  // A failing audit write (or read) answers 503 with the generic body and no rows.
+  const failing = createAdminAuditHandler(async () => { throw new Error('audit unavailable'); });
+  await failing(req() as never, res as never);
+  assert.equal(statusCode, 503);
+  assert.deepEqual(body, { error: 'Audit trail is temporarily unavailable' });
+  assert.equal(headers['cache-control'], 'no-store');
+  // Only the identity error stays a 400; the list function never runs.
+  let listed = false;
+  const idle = createAdminAuditHandler(async () => { listed = true; return []; });
+  statusCode = 200; body = undefined;
+  await idle(req({ tenantId: undefined }) as never, res as never);
+  assert.equal(statusCode, 400);
+  assert.deepEqual(body, { error: 'Administrator identity is unavailable' });
+  assert.equal(listed, false);
+  // Success keeps the camelCase shape.
+  const rows = [{ id: 'r1', actorType: 'tenant_admin' }];
+  const ok = createAdminAuditHandler(async () => rows);
+  statusCode = 200; body = undefined;
+  await ok(req() as never, res as never);
+  assert.equal(statusCode, 200);
+  assert.deepEqual(body, { events: rows });
 });

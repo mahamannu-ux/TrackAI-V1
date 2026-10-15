@@ -170,9 +170,28 @@ router.get('/backfill-authorizations', requireBackfillAdmin, async (req, res) =>
   }
 });
 
-router.get('/audit', requireAuditRead, async (req, res) => {
-  try {
-    const { tenantId, actorId } = requestIdentity(req);
+/**
+ * The legacy admin audit list (Task16c item 11): path, query and camelCase shape
+ * unchanged. Fail-closed like the new audit API: only the identity error is a
+ * 400; any read or audit-write failure answers 503 with a generic body and no rows.
+ * The list function is a seam for unit tests (production passes the default).
+ */
+export function createAdminAuditHandler(
+  list: (input: {
+    tenantId: string;
+    actorId: string;
+    actorRole: 'tenant_admin' | 'tenant_auditor';
+    requestedLimit: number;
+  }) => Promise<unknown> = listSecurityAuditEvents,
+) {
+  return async (req: Request, res: Response): Promise<void> => {
+    let identity: { tenantId: string; actorId: string };
+    try {
+      identity = requestIdentity(req);
+    } catch (error) {
+      badRequest(res, error);
+      return;
+    }
     const actorRole = req.adminRole;
     if (!actorRole) {
       res.status(403).json({ error: 'Forbidden: Tenant administrator permission is required' });
@@ -180,11 +199,20 @@ router.get('/audit', requireAuditRead, async (req, res) => {
     }
     const requested = typeof req.query.limit === 'string' ? Number(req.query.limit) : 100;
     const limit = Number.isFinite(requested) ? requested : 100;
-    res.json({ events: await listSecurityAuditEvents({ tenantId, actorId, actorRole, requestedLimit: limit }) });
-  } catch (error) {
-    badRequest(res, error);
-  }
-});
+    try {
+      res.json({
+        events: await list({
+          tenantId: identity.tenantId, actorId: identity.actorId, actorRole, requestedLimit: limit,
+        }),
+      });
+    } catch {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'Audit trail is temporarily unavailable' });
+    }
+  };
+}
+
+router.get('/audit', requireAuditRead, createAdminAuditHandler());
 
 const readSecurityFindings = createSecurityFindingAdminReadHandler();
 router.get('/security-findings', requireSecurityFindingRead, (req, res) => (

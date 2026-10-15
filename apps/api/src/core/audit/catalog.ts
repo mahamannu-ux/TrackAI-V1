@@ -628,7 +628,12 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     targetType: 'security_audit_events', targetIdKind: 'tenant',
     // The filter summary is the names of the filters used, never their values or any row.
     details: { limit: r('integer'), returned: r('integer'), filters: r('string[]') },
-    sources: ['features/audit/audit.routes.ts:82', 'features/audit/read-service.ts:368'],
+    sources: [
+      'features/audit/audit.routes.ts:82',
+      'features/audit/read-service.ts:370',
+      'features/audit/read-service.ts:402',
+      'core/security/admin-resource-service.ts:137',
+    ],
   }),
   ...entries(['attesta.anchor.failed'], {
     status: 'reserved', owner: 'Task15', severity: 'notice', actorTypes: ['service'],
