@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AuditApiError,
   getAuditCatalog,
@@ -101,6 +101,128 @@ function describeError(cause: unknown): { message: string; requestId: string | n
   return { message: cause instanceof Error ? cause.message : 'Audit search failed.', requestId: null, code: null };
 }
 
+function DetailValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
+  if (value === null || value === undefined) {
+    return <span className="text-slate-500">none</span>;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-slate-500">none</span>;
+    if (value.every(item => item === null || typeof item !== 'object')) {
+      return <span>{value.map(item => item === null ? 'none' : String(item)).join(', ')}</span>;
+    }
+    return (
+      <div className="space-y-2">
+        {value.map((item, index) => (
+          <div key={index} className="border-l border-slate-800 pl-3">
+            <DetailValue value={item} depth={depth + 1} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return <span className="text-slate-500">none</span>;
+    return (
+      <dl className={`space-y-1.5 ${depth > 0 ? 'border-l border-slate-800 pl-3' : ''}`}>
+        {entries.map(([key, nested]) => (
+          <div key={key}>
+            <dt className="font-mono text-xs text-slate-500">{key}</dt>
+            <dd className="mt-0.5 text-sm text-slate-200"><DetailValue value={nested} depth={depth + 1} /></dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+  return <span>{String(value)}</span>;
+}
+
+function EventDrawer({ event, owner, onClose }: {
+  event: AuditEvent; owner: string; onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  function copyEventId(): void {
+    setCopied(false);
+    setCopyFailed(false);
+    void navigator.clipboard.writeText(event.id).then(
+      () => setCopied(true),
+      () => setCopyFailed(true),
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/60" onClick={onClose}>
+      <aside
+        role="dialog"
+        aria-label={`Audit event ${event.action}`}
+        className="h-full w-full max-w-xl overflow-y-auto border-l border-slate-800 bg-slate-950 p-7 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-mono text-sm text-violet-300">{event.action}</div>
+            <div className="mt-2 flex items-center gap-2">
+              <Badge tone={severityTone(event.severity)}>{event.severity}</Badge>
+              <span className="text-xs text-slate-500">Recorded by {owner}</span>
+            </div>
+          </div>
+          <button ref={closeRef} onClick={onClose} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300">Close</button>
+        </div>
+
+        <dl className="mt-6 space-y-4">
+          <div>
+            <dt className="text-xs uppercase tracking-wider text-slate-500">When</dt>
+            <dd className="mt-1 text-sm text-slate-200">{localTime(event.occurred_at)} <span className="text-xs text-slate-500">({event.occurred_at})</span></dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-wider text-slate-500">Who</dt>
+            <dd className="mt-1 text-sm text-slate-200">{actorLabel(event.actor_type)} <span className="break-all font-mono text-xs text-slate-400">{event.actor_id}</span></dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase tracking-wider text-slate-500">What it acted on</dt>
+            <dd className="mt-1 text-sm text-slate-200">{event.target_type} <span className="break-all font-mono text-xs text-slate-400">{event.target_id}</span></dd>
+          </div>
+        </dl>
+
+        <section className="mt-6">
+          <h3 className="text-xs uppercase tracking-wider text-slate-500">Details</h3>
+          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+            <DetailValue value={event.details} />
+          </div>
+        </section>
+
+        <details className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40 text-sm">
+          <summary className="cursor-pointer px-4 py-3 text-slate-400 hover:text-white">Technical view</summary>
+          <pre className="overflow-auto whitespace-pre-wrap border-t border-slate-800 p-4 font-mono text-xs text-slate-300">{JSON.stringify(event, null, 2)}</pre>
+        </details>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button onClick={copyEventId} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300">
+            {copied ? 'Copied' : 'Copy event id'}
+          </button>
+          {copyFailed && <span className="text-xs text-amber-300">Browser clipboard access failed; select the id manually.</span>}
+        </div>
+
+        <div className="mt-6 border-t border-slate-800 pt-4 text-xs text-slate-600">Catalog version {event.catalog_version}</div>
+      </aside>
+    </div>
+  );
+}
+
 export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_auditor' }) {
   const [catalog, setCatalog] = useState<AuditCatalog | null>(null);
   const [catalogError, setCatalogError] = useState(false);
@@ -114,6 +236,8 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<{ message: string; requestId: string | null } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AuditEvent | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
 
   const emittedByOwner = useMemo(() => {
     if (!catalog) return [];
@@ -208,6 +332,12 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
       if (current.actions.length >= MAX_ACTIONS) return current;
       return { ...current, actions: [...current.actions, action] };
     });
+  }
+
+  function closeSelected(): void {
+    const id = selected?.id;
+    setSelected(null);
+    if (id) rowRefs.current.get(id)?.focus();
   }
 
   useEffect(() => {
@@ -355,7 +485,17 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {events.map(event => (
-                  <tr key={event.id}>
+                  <tr
+                    key={event.id}
+                    ref={row => {
+                      if (row) rowRefs.current.set(event.id, row);
+                      else rowRefs.current.delete(event.id);
+                    }}
+                    tabIndex={0}
+                    onClick={() => setSelected(event)}
+                    onKeyDown={e => { if (e.key === 'Enter') setSelected(event); }}
+                    className="cursor-pointer hover:bg-slate-800/40"
+                  >
                     <td className="px-5 py-4 text-slate-400" title={event.occurred_at}>{localTime(event.occurred_at)}</td>
                     <td className="px-5 py-4"><Badge tone={severityTone(event.severity)}>{event.severity}</Badge></td>
                     <td className="px-5 py-4 font-mono text-xs text-white">{event.action}</td>
@@ -372,6 +512,13 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
           {cursor && <button onClick={() => void loadMore()} disabled={loadingMore} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 disabled:opacity-50">{loadingMore ? 'Loading…' : 'Load more'}</button>}
         </div>
       </div>
+    )}
+    {selected && (
+      <EventDrawer
+        event={selected}
+        owner={catalog?.actions.find(entry => entry.action === selected.action)?.owner ?? 'Unknown'}
+        onClose={closeSelected}
+      />
     )}
   </div>;
 }
