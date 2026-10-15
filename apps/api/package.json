@@ -67,6 +67,7 @@
     "verify:task16b-audit-live": "tsx src/core/audit/task16b-audit-live-verify.ts",
     "verify:task16c-audit-live": "tsx src/features/audit/task16c-audit-api-live-verify.ts",
     "verify:task16e-audit-tamper-live": "tsx src/features/audit/task16e-audit-tamper-live-verify.ts",
+    "verify:task16e2-audit-db-role-live": "tsx src/features/audit/task16e2-audit-db-role-live-verify.ts",
     "attesta:audit-seal": "tsx src/features/attesta/attesta-audit-seal-cli.ts",
     "attesta:build": "tsx src/features/attesta/attesta-build-cli.ts",
     "attesta:github-checks": "tsx src/features/attesta/attesta-github-check-cli.ts",
@@ -105,7 +106,7 @@
     "setup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-setup.ts",
     "cleanup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-cleanup.ts",
     "test:fleet": "node --import tsx --test src/features/fleet/fleet.test.ts",
-    "test": "node --import tsx --test src/app-cors.test.ts src/features/telemetry/telemetry.test.ts src/features/evidence/evidence.test.ts src/features/security-findings/security-findings.test.ts src/features/fleet/fleet.test.ts src/core/security/security.test.ts src/core/security/auditor-sweep.test.ts src/core/audit/audit-contract.test.ts src/core/audit/only-writer.test.ts src/core/db/tenant.test.ts src/core/app.test.ts src/features/attesta/*.test.ts src/features/audit/audit-api.test.ts src/features/audit/offline-export-verifier.test.ts src/features/admin/admin.routes.test.ts"
+    "test": "node --import tsx --test src/app-cors.test.ts src/features/telemetry/telemetry.test.ts src/features/evidence/evidence.test.ts src/features/security-findings/security-findings.test.ts src/features/fleet/fleet.test.ts src/core/security/security.test.ts src/core/security/auditor-sweep.test.ts src/core/audit/audit-contract.test.ts src/core/audit/only-writer.test.ts src/core/db/audit-reader.test.ts src/core/db/tenant.test.ts src/core/app.test.ts src/features/attesta/*.test.ts src/features/audit/audit-api.test.ts src/features/audit/offline-export-verifier.test.ts src/features/admin/admin.routes.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "3.1141.0",

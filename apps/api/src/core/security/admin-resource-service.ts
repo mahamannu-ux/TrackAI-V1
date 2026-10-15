@@ -1,5 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db';
+import { withAuditReader } from '../db/audit-reader';
 import { AUDIT_CATALOG_BY_ACTION, AUDIT_CATALOG_VERSION } from '../audit/catalog';
 import { recordAuditEvent } from '../audit/record';
 import {
@@ -118,17 +119,17 @@ export async function listSecurityAuditEvents(input: {
 }) {
   const limit = Math.min(200, Math.max(1, Math.trunc(input.requestedLimit)));
   return db.transaction(async transaction => {
-    const rows = await transaction.select({
-      id: securityAuditEvents.id,
-      actorType: securityAuditEvents.actorType,
-      actorId: securityAuditEvents.actorId,
-      action: securityAuditEvents.action,
-      targetType: securityAuditEvents.targetType,
-      targetId: securityAuditEvents.targetId,
-      details: securityAuditEvents.details,
-      occurredAt: securityAuditEvents.occurredAt,
-    }).from(securityAuditEvents).where(eq(securityAuditEvents.tenantId, input.tenantId))
-      .orderBy(desc(securityAuditEvents.occurredAt)).limit(limit);
+    const rows = await withAuditReader(transaction, input.tenantId, reader => reader.select({
+        id: securityAuditEvents.id,
+        actorType: securityAuditEvents.actorType,
+        actorId: securityAuditEvents.actorId,
+        action: securityAuditEvents.action,
+        targetType: securityAuditEvents.targetType,
+        targetId: securityAuditEvents.targetId,
+        details: securityAuditEvents.details,
+        occurredAt: securityAuditEvents.occurredAt,
+      }).from(securityAuditEvents).where(eq(securityAuditEvents.tenantId, input.tenantId))
+        .orderBy(desc(securityAuditEvents.occurredAt)).limit(limit));
     const events = rows.map(row => ({
       ...row,
       severity: AUDIT_CATALOG_BY_ACTION.get(row.action)?.severity ?? 'high',

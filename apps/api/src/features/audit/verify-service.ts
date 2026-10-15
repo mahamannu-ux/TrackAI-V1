@@ -14,6 +14,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../../core/db';
+import { withAuditReader } from '../../core/db/audit-reader';
 import { recordAuditEvent } from '../../core/audit/record';
 import {
   MAX_SEAL_ROWS, OCCURRED_AT_US, checkSealLinks, checkSealRows, parseSealDocument, readAuditRows,
@@ -133,66 +134,82 @@ const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : nu
 /** The snapshot read: one repeatable-read, read-only transaction. */
 export async function readVerifySnapshot(database: SealDatabase, tenantId: string, q: AuditVerifyQuery): Promise<VerifySnapshot> {
   return database.transaction(async (tx) => {
-    const sealRows = (await tx.execute(sql`/* audit-verify:seals */
+    const auditSnapshot = await withAuditReader(tx, tenantId, async reader => {
+      const sealRows = (await reader.execute(sql`/* audit-verify:seals */
       select s.window_from, s.window_to, s.row_count, s.previous_digest, s.seal_document, s.seal_digest,
-             s.statement_digest, r.seq::text as seq, r.statement_canonical, r.statement_digest as record_statement_digest
+             s.statement_digest, s.record_id::text as record_id
       from attesta_audit_seals s
-      left join attesta_records r on r.tenant_id = s.tenant_id and r.id = s.record_id
       where s.tenant_id = ${tenantId}::uuid
         and s.window_from::timestamptz < ${q.to}::timestamptz and s.window_to::timestamptz > ${q.from}::timestamptz
       order by s.window_from limit ${MAX_VERIFY_SEALS + 1}`)).rows;
-    if (sealRows.length > MAX_VERIFY_SEALS) throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many seals for one report');
-    // Bounded memory (review finding): narrow the range when the sealed rows exceed the budget.
-    if (sealRows.reduce((n, r) => n + Number(r.row_count), 0) > MAX_VERIFY_ROWS / 2) {
-      throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many sealed rows for one report; narrow from/to');
-    }
-    const seals: VerifySeal[] = sealRows.map((r) => ({
-      tenantId, windowFrom: str(r.window_from), windowTo: str(r.window_to), rowCount: Number(r.row_count),
-      previousDigest: strOrNull(r.previous_digest), sealDocument: str(r.seal_document), sealDigest: str(r.seal_digest),
-      statementDigest: str(r.statement_digest), seq: typeof r.seq === 'string' ? Number(r.seq) : null,
-      statementCanonical: strOrNull(r.statement_canonical), recordStatementDigest: strOrNull(r.record_statement_digest),
-    }));
-    let predecessor: VerifySnapshot['predecessor'] = null;
-    const first = seals[0];
-    if (first && first.previousDigest !== null) {
-      const p = (await tx.execute(sql`/* audit-verify:predecessor */
-        select window_to, seal_digest from attesta_audit_seals where tenant_id = ${tenantId}::uuid and seal_digest = ${first.previousDigest}`)).rows[0];
-      predecessor = p ? { windowTo: str(p.window_to), sealDigest: str(p.seal_digest) } : undefined;
-    }
-    const rowsBySeal = new Map<string, Awaited<ReturnType<typeof readAuditRows>>>();
-    for (const s of seals) {
-      // Twice the seal bound: late inserts beyond that are still reported (as many as fit).
-      rowsBySeal.set(s.sealDigest, await readAuditRows(tx, tenantId, s.windowFrom, s.windowTo, 2 * MAX_SEAL_ROWS));
-      if ([...rowsBySeal.values()].reduce((n, r) => n + r.length, 0) > MAX_VERIFY_ROWS) {
-        throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many rows for one report; narrow from/to');
+      if (sealRows.length > MAX_VERIFY_SEALS) throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many seals for one report');
+      // Bounded memory (review finding): narrow the range when the sealed rows exceed the budget.
+      if (sealRows.reduce((n, r) => n + Number(r.row_count), 0) > MAX_VERIFY_ROWS / 2) {
+        throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many sealed rows for one report; narrow from/to');
       }
-    }
-    const firstSeal = (await tx.execute(sql`/* audit-verify:first */
-      select window_from, seal_digest from attesta_audit_seals where tenant_id = ${tenantId}::uuid and previous_digest is null`)).rows[0];
-    let beforeFirst: VerifySnapshot['beforeFirst'] = null;
-    if (firstSeal) {
-      const early = (await tx.execute(sql`/* audit-verify:before_first */
-        select id::text as id from security_audit_events
-        where tenant_id = ${tenantId}::uuid and occurred_at < ${str(firstSeal.window_from)}::timestamptz
-        order by occurred_at, id limit ${MAX_REPORT_BREAKS}`)).rows;
-      if (early.length > 0) beforeFirst = { seal: str(firstSeal.seal_digest), rowIds: early.map((r) => str(r.id)) };
-    }
-    const last = (await tx.execute(sql`/* audit-verify:last */
-      select window_to from attesta_audit_seals where tenant_id = ${tenantId}::uuid order by window_to desc limit 1`)).rows[0];
-    const tailFrom = last ? str(last.window_to) : null;
-    const tail = (await tx.execute(tailFrom === null
-      ? sql`/* audit-verify:tail */ select count(*)::int as n, min(${OCCURRED_AT_US}) as first from security_audit_events where tenant_id = ${tenantId}::uuid`
-      : sql`/* audit-verify:tail */ select count(*)::int as n, ${tailFrom}::text as first from security_audit_events
-          where tenant_id = ${tenantId}::uuid and occurred_at >= ${tailFrom}::timestamptz`)).rows[0] ?? {};
-    // A seal row removed behind the guards leaves its chained statement: find those in the window.
-    const orphanRows = (await tx.execute(sql`/* audit-verify:orphans */
+      const windows = sealRows.map((r) => ({
+        tenantId, windowFrom: str(r.window_from), windowTo: str(r.window_to), rowCount: Number(r.row_count),
+        previousDigest: strOrNull(r.previous_digest), sealDocument: str(r.seal_document), sealDigest: str(r.seal_digest),
+        statementDigest: str(r.statement_digest), recordId: str(r.record_id),
+      }));
+      let predecessor: VerifySnapshot['predecessor'] = null;
+      const first = windows[0];
+      if (first && first.previousDigest !== null) {
+        const p = (await reader.execute(sql`/* audit-verify:predecessor */
+          select window_to, seal_digest from attesta_audit_seals where tenant_id = ${tenantId}::uuid and seal_digest = ${first.previousDigest}`)).rows[0];
+        predecessor = p ? { windowTo: str(p.window_to), sealDigest: str(p.seal_digest) } : undefined;
+      }
+      const rowsBySeal = new Map<string, Awaited<ReturnType<typeof readAuditRows>>>();
+      for (const s of windows) {
+        // Twice the seal bound: late inserts beyond that are still reported (as many as fit).
+        rowsBySeal.set(s.sealDigest, await readAuditRows(reader, tenantId, s.windowFrom, s.windowTo, 2 * MAX_SEAL_ROWS));
+        if ([...rowsBySeal.values()].reduce((n, r) => n + r.length, 0) > MAX_VERIFY_ROWS) {
+          throw new AuditQueryError('AUDIT_FILTER_INVALID', 'too many rows for one report; narrow from/to');
+        }
+      }
+      const firstSeal = (await reader.execute(sql`/* audit-verify:first */
+        select window_from, seal_digest from attesta_audit_seals where tenant_id = ${tenantId}::uuid and previous_digest is null`)).rows[0];
+      let beforeFirst: VerifySnapshot['beforeFirst'] = null;
+      if (firstSeal) {
+        const early = (await reader.execute(sql`/* audit-verify:before_first */
+          select id::text as id from security_audit_events
+          where tenant_id = ${tenantId}::uuid and occurred_at < ${str(firstSeal.window_from)}::timestamptz
+          order by occurred_at, id limit ${MAX_REPORT_BREAKS}`)).rows;
+        if (early.length > 0) beforeFirst = { seal: str(firstSeal.seal_digest), rowIds: early.map((r) => str(r.id)) };
+      }
+      const last = (await reader.execute(sql`/* audit-verify:last */
+        select window_to from attesta_audit_seals where tenant_id = ${tenantId}::uuid order by window_to desc limit 1`)).rows[0];
+      const tailFrom = last ? str(last.window_to) : null;
+      const tail = (await reader.execute(tailFrom === null
+        ? sql`/* audit-verify:tail */ select count(*)::int as n, min(${OCCURRED_AT_US}) as first from security_audit_events where tenant_id = ${tenantId}::uuid`
+        : sql`/* audit-verify:tail */ select count(*)::int as n, ${tailFrom}::text as first from security_audit_events
+            where tenant_id = ${tenantId}::uuid and occurred_at >= ${tailFrom}::timestamptz`)).rows[0] ?? {};
+      return { windows, predecessor, rowsBySeal, beforeFirst, tailFrom: strOrNull(tail.first), tailCount: Number(tail.n ?? 0) };
+    });
+
+    // Ledger rows and anchors deliberately remain on the API role; only the two audit tables
+    // are granted to trackai_audit_reader.
+    const recordIds = auditSnapshot.windows.map((s) => s.recordId);
+    const recordRows = recordIds.length === 0 ? [] : (await tx.execute(sql`/* audit-verify:records */
+      select id::text as id, seq::text as seq, statement_canonical, statement_digest
+      from attesta_records where tenant_id = ${tenantId}::uuid
+        and id in (${sql.join(recordIds.map((id) => sql`${id}::uuid`), sql.raw(', '))})`)).rows;
+    const records = new Map(recordRows.map((r) => [str(r.id), r]));
+    const seals: VerifySeal[] = auditSnapshot.windows.map((s) => {
+      const r = records.get(s.recordId);
+      return { ...s, seq: typeof r?.seq === 'string' ? Number(r.seq) : null,
+        statementCanonical: strOrNull(r?.statement_canonical), recordStatementDigest: strOrNull(r?.statement_digest) };
+    });
+
+    // A seal row removed behind the guards leaves its chained statement. Read the ledger on
+    // the API role, then ask the audit role which record ids still have seal rows.
+    const orphanCandidates = (await tx.execute(sql`/* audit-verify:orphan_candidates */
       select r.statement_canonical from attesta_records r
       where r.tenant_id = ${tenantId}::uuid and r.predicate_type = ${AUDIT_SEAL_PREDICATE_TYPE}
-        and not exists (select 1 from attesta_audit_seals s where s.tenant_id = r.tenant_id and s.record_id = r.id)
         and ((r.statement_canonical::jsonb)->'predicate'->'window'->>'from')::timestamptz < ${q.to}::timestamptz
         and ((r.statement_canonical::jsonb)->'predicate'->'window'->>'to')::timestamptz > ${q.from}::timestamptz
-      order by r.seq limit ${MAX_REPORT_BREAKS}`)).rows;
-    const orphans = orphanRows.map((r) => {
+      order by r.seq limit ${MAX_VERIFY_SEALS + MAX_REPORT_BREAKS}`)).rows;
+    const candidateDigests = orphanCandidates.map((r) => {
       try {
         const st = JSON.parse(str(r.statement_canonical)) as { subject: Array<{ digest: { sha256: string } }> };
         return `sha256:${st.subject[0].digest.sha256}`;
@@ -200,7 +217,16 @@ export async function readVerifySnapshot(database: SealDatabase, tenantId: strin
         return null;
       }
     }).filter((d): d is string => d !== null);
-    return { seals, predecessor, rowsBySeal, tail: { from: strOrNull(tail.first), count: Number(tail.n ?? 0) }, orphans, beforeFirst };
+    const existing = candidateDigests.length === 0 ? new Set<string>() : await withAuditReader(tx, tenantId, async reader => {
+      const rows = (await reader.execute(sql`/* audit-verify:existing_seals */
+        select seal_digest from attesta_audit_seals
+        where tenant_id = ${tenantId}::uuid
+          and seal_digest in (${sql.join(candidateDigests.map((digest) => sql`${digest}`), sql.raw(', '))})`)).rows;
+      return new Set(rows.map((r) => str(r.seal_digest)));
+    });
+    const orphans = candidateDigests.filter((digest) => !existing.has(digest)).slice(0, MAX_REPORT_BREAKS);
+    return { seals, predecessor: auditSnapshot.predecessor, rowsBySeal: auditSnapshot.rowsBySeal,
+      tail: { from: auditSnapshot.tailFrom, count: auditSnapshot.tailCount }, orphans, beforeFirst: auditSnapshot.beforeFirst };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 

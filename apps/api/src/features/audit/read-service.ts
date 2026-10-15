@@ -24,6 +24,7 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, gte, inArray, lt, notInArray, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
+import { withAuditReader } from '../../core/db/audit-reader';
 import { securityAuditEvents } from '../../core/db/schema';
 import {
   AUDIT_ACTOR_TYPES,
@@ -377,7 +378,8 @@ async function selectPage(
 export const pgAuditStore: AuditReadStore = {
   async listAndAudit(input) {
     return db.transaction(async tx => {
-      const rows = await selectPage(tx, input.tenantId, input);
+      const rows = await withAuditReader(tx, input.tenantId,
+        reader => selectPage(reader, input.tenantId, input));
       const page = rows.slice(0, input.limit);
       const events = page.map(toAuditEventV1);
       const last = page[page.length - 1];
@@ -398,23 +400,23 @@ export const pgAuditStore: AuditReadStore = {
 
   async getAndAudit(input) {
     return db.transaction(async tx => {
-      const [row] = await tx.select({
-        id: securityAuditEvents.id,
-        tenantId: securityAuditEvents.tenantId,
-        actorType: securityAuditEvents.actorType,
-        actorId: securityAuditEvents.actorId,
-        action: securityAuditEvents.action,
-        targetType: securityAuditEvents.targetType,
-        targetId: securityAuditEvents.targetId,
-        details: securityAuditEvents.details,
-        occurredAt: OCCURRED_AT_TEXT,
-      }).from(securityAuditEvents)
-        .where(and(
-          // Tenant isolation is the first condition of every query.
-          eq(securityAuditEvents.tenantId, input.tenantId),
-          eq(securityAuditEvents.id, input.id),
-        ))
-        .limit(1);
+      const [row] = await withAuditReader(tx, input.tenantId, reader => reader.select({
+          id: securityAuditEvents.id,
+          tenantId: securityAuditEvents.tenantId,
+          actorType: securityAuditEvents.actorType,
+          actorId: securityAuditEvents.actorId,
+          action: securityAuditEvents.action,
+          targetType: securityAuditEvents.targetType,
+          targetId: securityAuditEvents.targetId,
+          details: securityAuditEvents.details,
+          occurredAt: OCCURRED_AT_TEXT,
+        }).from(securityAuditEvents)
+          .where(and(
+            // Tenant isolation remains the first condition; RLS is the backstop.
+            eq(securityAuditEvents.tenantId, input.tenantId),
+            eq(securityAuditEvents.id, input.id),
+          ))
+          .limit(1));
       const event = row ? toAuditEventV1({ ...row, details: row.details as unknown }) : null;
       await recordAuditEvent(tx, input.tenantId, {
         action: 'audit.events.read',
