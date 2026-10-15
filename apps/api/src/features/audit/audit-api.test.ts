@@ -343,7 +343,7 @@ describe('audit read API: exclude_action', () => {
       assert.deepEqual(await ids('/events?exclude_action=machine.registered&exclude_action=evidence_export.failed'), [a1]);
       assert.deepEqual(await ids('/events?exclude_action=attesta.anchor.failed'), [a1, a2, a3]);
       const last = store.audits[store.audits.length - 1];
-      assert.ok(last.details.filters.includes('exclude_action'));
+      assert.deepEqual((last.details.filters as string[]).includes('exclude_action'), true);
       for (const path of [
         '/events?exclude_action=no.such.action',
         `/events?${Array.from({ length: 21 }, () => 'exclude_action=machine.registered').join('&')}`,
