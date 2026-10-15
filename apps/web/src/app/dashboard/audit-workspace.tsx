@@ -77,6 +77,7 @@ const EMPTY_FORM: FormState = {
 function toFilters(form: FormState): AuditFilters {
   return {
     actions: [...form.actions],
+    excludeActions: [],
     ...(form.severity ? { severity: form.severity } : {}),
     ...(form.actorType ? { actorType: form.actorType } : {}),
     ...(form.actorId.trim() ? { actorId: form.actorId.trim() } : {}),
@@ -228,7 +229,7 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
   const [catalogError, setCatalogError] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
-  const [applied, setApplied] = useState<AuditFilters>({ actions: [] });
+  const [applied, setApplied] = useState<AuditFilters>({ actions: [], excludeActions: [] });
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [catalogVersion, setCatalogVersion] = useState<number | null>(null);
@@ -319,7 +320,7 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
   function reset(): void {
     setForm(EMPTY_FORM);
     setFormError(null);
-    const filters: AuditFilters = { actions: [] };
+    const filters: AuditFilters = { actions: [], excludeActions: [] };
     setApplied(filters);
     void search(filters);
   }
@@ -346,7 +347,7 @@ export function AuditWorkspace({ role }: { role: 'tenant_admin' | 'tenant_audito
       result => { if (active) setCatalog(result); },
       () => { if (active) setCatalogError(true); },
     );
-    void search({ actions: [] });
+    void search({ actions: [], excludeActions: [] });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
