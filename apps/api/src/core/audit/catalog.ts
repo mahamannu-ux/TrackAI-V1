@@ -646,7 +646,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       seal_digest: r('sha256_digest'),
       request_id: r('string'),
     },
-    sources: ['features/attesta/audit-seal-service.ts:1'],
+    sources: ['features/attesta/audit-seal-service.ts:500'],
   }),
   ...entries(['audit.trail.verified'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
@@ -659,13 +659,13 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       break_count: r('integer'),
       request_id: r('string'),
     },
-    sources: ['features/audit/verify-service.ts:1'],
+    sources: ['features/audit/verify-service.ts:220'],
   }),
   ...entries(['audit.export.requested'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
     targetType: 'audit_export', targetIdKind: 'row',
     details: { scope_from: r('iso_timestamp'), scope_to: r('iso_timestamp'), replayed: r('boolean'), request_id: r('string') },
-    sources: ['features/audit/export-service.ts:1'],
+    sources: ['features/audit/audit.routes.ts:222', 'features/audit/export-service.ts:539'],
   }),
   ...entries(['audit.export.downloaded'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
@@ -677,7 +677,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       counts: r('counts'),
       request_id: r('string'),
     },
-    sources: ['features/audit/export-service.ts:1'],
+    sources: ['features/audit/audit.routes.ts:262', 'features/audit/export-service.ts:539'],
   }),
   ...entries(['attesta.anchor.failed'], {
     status: 'reserved', owner: 'Task15', severity: 'notice', actorTypes: ['service'],

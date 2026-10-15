@@ -66,6 +66,8 @@
     "verify:task15m-github-check-live": "tsx src/features/attesta/t15m-github-check-live-verify.ts",
     "verify:task16b-audit-live": "tsx src/core/audit/task16b-audit-live-verify.ts",
     "verify:task16c-audit-live": "tsx src/features/audit/task16c-audit-api-live-verify.ts",
+    "verify:task16e-audit-tamper-live": "tsx src/features/audit/task16e-audit-tamper-live-verify.ts",
+    "attesta:audit-seal": "tsx src/features/attesta/attesta-audit-seal-cli.ts",
     "attesta:build": "tsx src/features/attesta/attesta-build-cli.ts",
     "attesta:github-checks": "tsx src/features/attesta/attesta-github-check-cli.ts",
     "attesta:requeue": "tsx src/features/attesta/attesta-requeue-cli.ts",

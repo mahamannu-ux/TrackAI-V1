@@ -29,6 +29,7 @@ import jwt from 'jsonwebtoken';
 import { db, pool } from '../../core/db';
 import { encryptEnvelope } from '../../core/security/envelope-encryption';
 import { registerDeveloperMachine } from '../../core/security/machine-security-service';
+import { AUDIT_CATALOG_VERSION } from '../../core/audit/catalog';
 import { recordAuditEvent } from '../../core/audit/record';
 import { aiSessions, evidenceEventContents, evidenceEvents } from '../../core/db/schema';
 import { readRawEvidence } from '../evidence/service';
@@ -146,7 +147,7 @@ async function main(): Promise<void> {
     const schema = JSON.parse(readFileSync(resolve(__dirname, '../../../../../docs/contracts/audit/event-v1.schema.json'), 'utf8'));
     const validate = new Ajv({ strict: true, allErrors: true }).compile(schema);
     check(validate(events[0]), `(a) the listed event matches event-v1`);
-    check(events[0].severity === 'notice' && events[0].catalog_version === 1, '(a) derived severity and catalog_version');
+    check(events[0].severity === 'notice' && events[0].catalog_version === AUDIT_CATALOG_VERSION, '(a) derived severity and catalog_version');
     console.log('IT-T16c-01a ok: migrated mutation row listed, valid against event-v1');
 
     // (b) 120 rows in one transaction share one occurred_at; limit=50 pages each id once.
