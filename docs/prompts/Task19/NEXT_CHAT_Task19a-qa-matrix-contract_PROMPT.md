@@ -1,7 +1,7 @@
 # Handoff prompt: Task19a-qa-matrix-contract (delivery matrix confirmed against the code; the Q&A contract), Claude
 
 > **Founder setup (Claude: skip to "You are…"):**
-> 1. Merge the `docs/Task19-plan` PR (this prompt). Then `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only`.
+> 1. Merge the `docs/Task19-plan` PR (this prompt), after `scripts/pr-preflight.sh docs/Task19-plan` says ok. Then `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only`.
 > 2. **Claude:** open a new chat in the TrackAI Claude project, link it to this Mac, and paste everything below the line.
 > 3. Checkpoint: after T19.1 and the contract draft (step 2.2) it sends you a short summary and one question; answer in plain words.
 > 4. When it finishes, paste its review request to **Codex**. Codex owns Task2, and this session moves three Task2 functions and adds an admin action. Push only after "ready to push".
@@ -24,7 +24,7 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
 ## 0. Before anything else
 1. Read `AGENTS.md` in full (§1 rules 1, 6–9; §4, including the new Task19 row; §5; §7; §9 items 3, 22–23; §10 AP-1; §12.4) and `CLAUDE.md`.
 2. Send the founder one request for folder access: `~/AIProjects`, plus `~/dev/agent-kit` read-only. Ask once for delete permission on `~/AIProjects`. Clone `main` from a bundle, run `npm ci` and `npm test` once, and install `postgresql-16-pgvector` for `scripts/it-db.sh`.
-3. Estimate in one line against T6. The plan says **about 0.08×**: T19.1 about 0.02×, the contract about 0.06×, plus about 0.01× for the Task2 move (item 9). Above 0.11×, propose moving the routes (items 5–6) to a follow-up session and say so at the checkpoint.
+3. Estimate in one line against T6. The plan says **about 0.09×**: T19.1 about 0.02×, the contract about 0.06×, and about 0.01× for the Task2 move (item 9). Above 0.12×, propose moving the routes (items 5–6) to a follow-up session and say so at the checkpoint.
 
 ## 1. Read before writing
 - **Task19:** `docs/plan/TASK19.md` in full: §1 decisions D1–D5 (approved 2026-10-15), §3 matrix and its status rules, §4–§6.
@@ -60,7 +60,9 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
 - **Catalog:** AP-1 and RP-1 in `~/dev/agent-kit/reuse/COMPONENT_CATALOG.md`; CF-1's "generated and test-checked reference" pattern, as Task16b used it for `docs/contracts/audit/catalog.md`.
 
 ## 2. Scope
-### 2.1 Lead decisions
+### 2.1 Approved decisions
+The founder approved D1–D5 (`TASK19.md` §1). Item 7 follows from D2, item 9 needs §7 item 3, and the rest are the lead's decisions within that scope.
+
 **T19.1: the matrix, confirmed**
 
 1. **For each of the 38 rows:**
@@ -82,7 +84,8 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
      - `kinds`: the subset of `live` / `verifiable` / `signed` the matrix offers, each with its builder (`T19.3`, `T19.4`, `A16.13a`, `A16.13b`, `Task15i4`, `Task15p`);
      - `gaps`: G ids;
      - `scopes`: which of `tenant` / `repository` / `pull_request` / `commit` the question accepts;
-     - `dimensions`: allowed breakdowns (`model`, `tool`, `repository`, `agent_family`, `operating_system`, `rule_category`, `severity`, `team`);
+     - `dimensions`: allowed breakdowns (`model`, `tool`, `repository`, `agent_family`, `operating_system`, `rule`, `rule_category`, `severity`, `machine`, `team`);
+     - `compare_previous`: true where the question compares with the previous period (S7, Q20). The envelope then carries a second figure set under `previous` with the same keys.
      - `wording`: required caveat codes.
    - `QA_GAPS`: G1–G13 with the owner and the questions each affects.
    - **No dimension or scope ever names a person** (`developer`, `contributor`, `author`, `committer`, `user`). A unit test refuses them: Task5's no-surveillance rule, and Q20/S17 stay at team, repository or machine level.
@@ -96,6 +99,7 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
      - `vendor_does_not_report` (Q18), `never_written` (Churned);
      - `partial_linkage` (session text join, G10);
      - `answer_not_built`, `phase_2`.
+   - `previous` (optional, only for `compare_previous` questions): `{from, to, figures[]}` for the previous period of the same length.
    - `figures[]`: each figure has `key`, `availability`, `reasons[]` and a `value`. The value is one of:
      - `{type: count, count}`;
      - `{type: ratio, numerator, denominator}`, so no floats ever (shares are computed for display only);
@@ -109,6 +113,9 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
      **A unit test proves an unavailable figure never serializes as `0`.**
    - `wording[]`: closed caveat codes the UI must render. Every security question carries `monitor_only_observed` (never "blocked" or "prevented"). Others: `unknown_model_explicit`, `merged_not_deployed_proxy`, `churned_unavailable`, `session_link_partial`, `requested_not_confirmed` (S11), `metadata_only`.
    - `drilldown`: the next scopes to open (`repository` / `pull_request` / `commit` / `file` / `session` / `finding` / `statement`, with id and label). Never a person.
+     - A `file` carries the file row's id only, never its path.
+     - A `session` carries its id only.
+     - A label never carries a path, a session's text or raw content.
    - `signed_evidence` (live only, optional): a filter for `GET /api/attesta/statements` that shows the statements behind the same scope ("see the signed evidence"). It is a link, never the statements: the hybrid is dropped (D2).
    - `signed` (signed only): `{statement_digest, predicate_type}`.
    - **Fixtures** (`docs/contracts/qa/fixtures/`): one valid envelope per kind × availability, plus invalid ones (a `0` for an unavailable figure, a float, a person dimension). The schema tests use them, and A16.13 builds against them.
@@ -126,6 +133,7 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
      - `QA_KIND_NOT_OFFERED` 400 (the question has no such kind);
      - `QA_KIND_NOT_ALLOWED` 403 (item 7);
      - `QA_SCOPE_INVALID` 400 (bad id, `from` > `to`, more than 366 days);
+     - `QA_SCOPE_NOT_FOUND` 404 (below);
      - `QA_ANSWER_INVALID` 503, `QA_UNAVAILABLE` 503.
 
      A repository or PR id of another tenant gets the same 404 `QA_SCOPE_NOT_FOUND` as an unknown id, never 403.
@@ -140,9 +148,10 @@ It answers **no** question itself: Task19b/19c (Muse) and Task16 A16.13 plug ans
    - `answer-v1.schema.json`.
    - `questions.md`: **generated** by `npm run qa:registry -w apps/api` from `registry.ts`, with a unit test that fails when it is stale.
    - `fixtures/`.
-9. **Task2 move, pure.** If T19.1 confirms the live answers need them, move `loadContext`, `lifecycleForTenant` and `lifecycleForModel` (`read.routes.ts:84`, `:464`, `:636`) and their private helpers **unchanged** into a new Task2 file, `features/telemetry/task2-lifecycle-read.ts`, exported, and import them back in `read.routes.ts`.
+9. **Task2 move, pure** (an exception to D3 that the founder approves in `TASK19.md` §7 item 3; if that item is missing, skip this move and describe the need at the checkpoint). If T19.1 confirms the live answers need them, move `loadContext`, `lifecycleForTenant` and `lifecycleForModel` (`read.routes.ts:84`, `:464`, `:636`) and their private helpers **unchanged** into a new Task2 file, `features/telemetry/task2-lifecycle-read.ts`, exported, and import them back in `read.routes.ts`.
    - No behaviour change; Task2's existing tests stay green unmodified.
    - Codex (Task2's owner) reviews it as part of the cross-review.
+   - Later `features/qa/` answerers may import only `task2-lifecycle-read.ts` and `features/telemetry/lifecycle.ts` from Task2 (the AGENTS.md §7 boundary exception). This session imports nothing from them.
    - If the move is not a pure cut-and-paste (a helper that closes over route state, say), stop and describe it at the checkpoint instead.
 10. **Tracker:** at close-out, set T19.1 and T19.2 in `TASK19.md` §2 and your §6.1 row. Leave §3's live and auditor symbols as they are (no answer ships here), and leave the status board's Task19 row to the lead.
 

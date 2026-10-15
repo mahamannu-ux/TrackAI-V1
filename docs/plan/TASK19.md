@@ -30,8 +30,8 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 |---|---|---|---|---|---|
 | T19.1 | Confirm the delivery matrix (§3) against the code, with `file:line`: which rows Task2's dashboards already half-answer; final owner per gap | Claude | 0.02× | — | ⬜ |
 | T19.2 | **Q&A contract:** question registry as code (id, rank, audience, kinds of answer, availability rules, gaps); one answer envelope (value, availability, kind `live`/`verifiable`/`signed`, backing statement digests, `as_of`); `/api/qa/*` routes under AP-1, admin and auditor guards; frozen under `docs/contracts/qa/` | Claude | 0.06× | T19.1 | ⬜ |
-| T19.3 | Live answers, code rows with data today (Q3, Q9, Q13, Q14, Q10, Q19, Q1's changed-lines share, Q11) | Muse | 0.08× | T19.2 | ⬜ |
-| T19.4 | Live answers, security rows with data today (S7, S9, S11, S12, S17; S5, S8, S10 partly) | Muse | 0.06× | T19.2 | ⬜ |
+| T19.3 | Live answers, code rows with data today (Q3, Q9, Q13, Q14, Q10, Q19, Q1's changed-lines share, Q11, Q18, Q20) | Muse | 0.08× | T19.2 | ⬜ |
+| T19.4 | Live answers, security rows with data today (S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view) | Muse | 0.06× | T19.2 | ⬜ |
 | T19.5 | Admin **Questions** screen (ex-T10.9): question list by rank, charts, drill-down, `Unavailable` states, no-surveillance defaults, "see the signed evidence" | Claude design, Muse build | 0.1× | T19.3, Task10 design system (or UI-1 rules until it exists) | ⬜ |
 | T19.6 | **Gap dispatch:** a prompt per gap for its owning Task, then review and close. See §4 | lead (prompts); owners build | per gap | T19.1 | ⬜ |
 | T19.7 | **Task6 strategy:** the §5 position refined with Codex. Includes the founder acceptance walkthrough of Task6.a (7 steps, `CUSTOMER_AUDITOR_QA.md`; it runs as gate 6 of Task15n, `docs/prompts/Task15/NEXT_CHAT_Task15n-attesta-live-gates_PROMPT.md`), rule wave 2 selection, and the Task6.b MVP scope | Claude + Codex + founder-live | 0.03× | — | ⬜ |
@@ -79,13 +79,13 @@ Columns:
   - **Capture** follows "Data today" in `CUSTOMER_AUDITOR_QA.md`. Q7, Q8 and Q16 stay 🟡 until Task15n proves Attesta on real KMS, Rekor and TSA.
   - **Live** turns ✅ when the admin answer ships through the Q&A contract (T19.3–T19.5).
   - **Auditor** turns ✅ when the verifiable or signed answer ships (A16.13, Task15 reports).
-  - A row is answered when no symbol is ⬜ and every applicable one is ✅. The lead updates the symbols after each merge, together with the matching row in `CUSTOMER_AUDITOR_QA.md`.
+  - A row is answered when every applicable symbol is ✅ (at least one applies); a row with all three n/a, today only Q17, is out of scope and not counted. The lead updates the symbols after each merge, together with the matching row in `CUSTOMER_AUDITOR_QA.md`.
   - S15 is answered outside the Q&A contract today (Task16c's audit read API and Audit view; Task16e's sealed, signed export), so it is 🟡 until it joins the contract (T19.4, A16.13b). T19.1 confirms every symbol against the code.
 - **Capture:** what must be stored first (gap → owner), or "stored".
 - **Live:** the admin answer (T19.3–T19.5).
 - **Auditor:** the verifiable or signed answer (A16.13; reports in Task15).
 
-**Running total (2026-10-15):** 0 of 38 rows answered. Capture: 11 ✅, 19 🟡, 7 ⬜, 1 n/a.
+**Running total (2026-10-15):** 0 of 37 rows answered (Q17 is phase 2 and not counted). Capture: 10 ✅, 20 🟡, 7 ⬜, 1 n/a.
 
 | Rank | Q | Status (capture · live · auditor) | Capture | Live | Auditor | Next step |
 |---|---|---|---|---|---|---|
@@ -100,7 +100,7 @@ Columns:
 | 9 | Q9 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
 | 10 | Q14 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
 | 11 | Q12 | 🟡 ⬜ ⬜ | partly; org policy G2 → Task6.b | T19.3 (partly) | partly, then after G2 | Task6.b MVP |
-| 12 | Q2 | ✅ ⬜ ⬜ | stored; hard query (ranges plus lineage walk) | T19.3b (own session) | later (file paths are hashed in the predicate) | size in T19.1 |
+| 12 | Q2 | 🟡 ⬜ ⬜ | stored; hard query (ranges plus lineage walk) | `Task19d-qa-line-walk` | later (file paths are hashed in the predicate) | size in T19.1 |
 | 13 | Q6 | 🟡 ⬜ ⬜ | committer stored; merger G4 → Task2 | after G4 | after G4 (predicate v1.x) | G4 prompt (small) |
 | 14 | Q8 | 🟡 n/a ⬜ | stored + Attesta | n/a | A16.13a | — |
 | 15 | Q15 | ⬜ ⬜ ⬜ | G5 → Task4 (capture), Task16 (expose) | after G5 | after G5 (count in a batch statement) | G5 prompt |
@@ -166,7 +166,7 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 
 | # | Session | Subtasks | Agent | Estimate | Starts when | Main files | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.08× (if it passes 0.11×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount; a pure move of three Task2 lifecycle read functions out of `read.routes.ts` (Codex reviews) | ⬜ prompt ready |
+| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.09× (if it passes 0.12×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount; a pure move of three Task2 lifecycle read functions out of `read.routes.ts` (Codex reviews) | ⬜ prompt ready |
 | 2 | `Task19b-qa-live-code` | T19.3: Q3, Q9, Q13, Q14, Q10, Q19, Q1 (changed lines), Q11, Q18, Q20 | Muse | about 0.1× | Task19a merged | `features/qa/` answer modules for code questions | ⬜ prompt after Task19a |
 | 3 | `Task19c-qa-live-security` | T19.4: S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view | Muse | about 0.08× | Task19b merged (one Muse session at a time) | `features/qa/` answer modules for security questions | ⬜ |
 | 4 | `Task19d-qa-line-walk` | Q2 (point-in-time line attribution: ranges plus lineage walk) | Codex or Muse, decided in T19.1 | sized in T19.1 | Task19a merged | `features/qa/` | ⬜ |
@@ -174,7 +174,7 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 | — | Lead work | T19.6 prompts and reviews, T19.7, T19.8 | Claude (lead chat) | about 0.05× | ongoing | prompts, this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 plan written |
 | — | Founder walkthrough | T19.9 | founder-live | about 0.02× | Task19e merged; A16.13a merged | — | ⬜ |
 
-**Total:** about 0.45× T6 for Task19's own work, against the 0.4× plan. The difference is the Muse factor and Q2, which is not sized yet.
+**Total:** about 0.46× T6 for Task19's own work, against the 0.4× plan, mostly from the Muse factor. It excludes Q2 (`Task19d`), which T19.1 sizes.
 
 **Critical path:** Task19a → Task19b → Task19c → Task19e → T19.9. Two things can start at once: Task19a, and the Task6.a acceptance walkthrough (Task15n gate 6). Task16's A16.13a can start as soon as Task19a merges.
 
@@ -200,3 +200,4 @@ G8, G10 and G7 may run as one Codex wave if Codex prefers (§5). They come befor
 ## 7. Founder decisions
 1. **2026-10-14:** Task19 created, led by Claude: turn every question in `CUSTOMER_AUDITOR_QA.md` into an answerable one, hunting down groundwork gaps and finishing work (queries, UI, signing), managing the Q&A interface through reviews with the owning Tasks, and overseeing the Task6.a/6.b strategy.
 2. **2026-10-15:** D1–D5 approved as recommended. The founder runs T19.1 and T19.2 as one Claude session (`Task19a-qa-matrix-contract`). The delivery matrix gets a running-status column (capture · live · auditor).
+3. **2026-10-15 (pending the founder's yes on the plan PR):** exception to D3 for one pure move. Task19a moves `loadContext`, `lifecycleForTenant` and `lifecycleForModel` unchanged out of Task2's `read.routes.ts` into a new Task2 file, `features/telemetry/task2-lifecycle-read.ts`, so live answers reuse Task2's semantics. Codex reviews it as Task2's owner. `features/qa/` may import that file and `lifecycle.ts`.

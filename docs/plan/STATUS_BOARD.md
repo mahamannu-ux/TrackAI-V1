@@ -62,9 +62,10 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7g | Task9g-windows-conformance: Windows x64 CI floor plus best-effort native/Intune gates | Codex | about 0.35× | | corrected implementation sessions and Task9f merged; host/tenant if available | written after macOS conformance |
 | 7h | Task17-lead: GitAI upstream sync (Codex leads; Claude product review; Muse ports) | Codex + Claude + Muse | (primer decides) | | Task9 done | to write from `docs/agents/TASK_LEAD_PROCEDURE.md` |
 | 7i | Task19-lead: Q&A delivery (matrix, Q&A contract, live answers, gap dispatch, Task6 strategy) | Claude + Muse | about 0.4× (own work) | | §1 approved 2026-10-15; sessions in `docs/plan/TASK19.md` §6 | `docs/prompts/Task19/NEXT_CHAT_Task19-lead_PROMPT.md` |
-| 7i1 | Task19a-qa-matrix-contract: T19.1 matrix confirmed against the code; T19.2 question registry, answer envelope, `/api/qa/*`, `docs/contracts/qa/` | Claude | about 0.08× | | plan PR merged | `docs/prompts/Task19/NEXT_CHAT_Task19a-qa-matrix-contract_PROMPT.md` |
+| 7i1 | Task19a-qa-matrix-contract: T19.1 matrix confirmed against the code; T19.2 question registry, answer envelope, `/api/qa/*`, `docs/contracts/qa/` | Claude | about 0.09× | | plan PR merged | `docs/prompts/Task19/NEXT_CHAT_Task19a-qa-matrix-contract_PROMPT.md` |
 | 7i2 | Task19b-qa-live-code (T19.3), then Task19c-qa-live-security (T19.4) | Muse | about 0.1× + 0.08× | | Task19a merged | written after Task19a |
-| 7i3 | Task19d-qa-line-walk (Q2) and Task19e-qa-questions-screen (T19.5) | Codex or Muse; Claude design + Muse | sized in T19.1; about 0.12× | | Task19b/19c merged | written later |
+| 7i3 | Task19d-qa-line-walk (Q2) | Codex or Muse (T19.1 decides) | sized in T19.1 | | Task19a merged | written after Task19a |
+| 7i4 | Task19e-qa-questions-screen (T19.5) | Claude design + Muse | about 0.12× | | Task19b and Task19c merged | written later |
 | 7i | Task2-lab-regression: Lifecycle Lab regression check after Task9 and Task17 | Codex | about 0.1× | | Task17 done | to write |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
 
