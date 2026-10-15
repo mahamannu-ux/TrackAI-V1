@@ -1,0 +1,19 @@
+apps/web/src/app/dashboard/page.tsx
+  s_beaa455abdce90::t_3c7dec9e813a9d 8,33,45,213,215,554,755,759-760,777-778
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "38829b3602a4723d0e07527286557316e48a650c",
+  "prompts": {},
+  "sessions": {
+    "s_beaa455abdce90": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ec1997b6affe7fZU23DDuYQX7Q",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
