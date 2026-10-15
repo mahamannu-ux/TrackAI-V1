@@ -62,6 +62,7 @@ You are **<agent>**, building **<name>** for **TrackAI**, an AI code provenance,
 - `docs/plan/STATUS_BOARD.md`: the status board row, the integration test registry rows, the remaining-plan actual.
 - Clean tree. Do **not** push, open a PR or merge.
 - **Final reply** in the AGENTS.md §12.4 shape: the effort line; one bash block (<tests, integration runs>, then under `# after the cross-agent review` the push, `gh pr create --base main --head task/<name> … --repo mahamannu-ux/TrackAI-V1`, `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only && scripts/pr-preflight.sh task/<name>`, and `gh pr merge task/<name> --merge --repo mahamannu-ux/TrackAI-V1` only after the preflight says ok (AGENTS.md §9 items 22–23)); then the review request in a `text` block.
+- **Founder steps are numbered (founder, 2026-10-15):** every list of steps for the founder (setup, integration runs, browser walkthroughs, live gates) is a numbered list, and every bash block numbers its sections with `# 1.`, `# 2.` comments, in run order, with the expected result after each, so the founder can say "step 4 failed".
 - **Ledger lines (AGENTS.md §9 item 23):** edit only your own rows in the tracker and the registry; leave the status board's Task row to the lead; add `package.json` scripts in alphabetical position.
 
 ## Lessons so far
