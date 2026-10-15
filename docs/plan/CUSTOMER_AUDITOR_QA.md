@@ -238,7 +238,7 @@ Provider re-delivery already has a strong unique key `(tenant, provider, deliver
 | ID | Gap | Questions | Likely owner | Phase |
 |---|---|---|---|---|
 | G1 | Repo/path line-count snapshot (denominator for "% AI as of a date") | Q1 | Task2 + GitAI | 1 if cheap, else 2 |
-| G2 | Organization AI-usage policy (approved tools and models) | Q4, Q12 | Task6.b | later; reference `unavailable` until then |
+| G2 | Organization AI-usage policy (approved tools and models) | Q4, Q12, S13 | Task6.b | later; reference `unavailable` until then |
 | G3 | PR review and approval capture (`pull_request_review` webhook; not subscribed today, so past reviews cannot be recovered) | Q5 | Task2 (semantics), Task7 (other providers), Task4 (delivery) | before production (founder, 2026-10-12); predicate field ready now |
 | G4 | `merged_by` on pull requests (in the stored webhook, not parsed; migration + backfill) | Q6 | Task2 | before production, small |
 | G5 | Content-free rejection audit event for refused uploads (unenrolled repository or machine) | Q15 | Task4 (capture), Task16 (expose), Task15 (count in batch statement) | 1 |
