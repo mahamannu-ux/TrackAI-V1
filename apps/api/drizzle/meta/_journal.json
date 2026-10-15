@@ -169,6 +169,13 @@
       "when": 1792048989567,
       "tag": "0023_attesta_audit_seals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792070951461,
+      "tag": "0024_audit_db_role",
+      "breakpoints": true
     }
   ]
 }
