@@ -8,6 +8,7 @@ import {
   evidenceArchiveEntries,
   evidenceExportJobs,
   providerEventDeliveries,
+  securityAuditEvents,
   telemetryCorrections,
   telemetryMetricEvents,
 } from '../db/schema';

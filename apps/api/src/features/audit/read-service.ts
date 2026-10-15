@@ -75,6 +75,7 @@ export interface AuditEventV1 {
 /** A stored row: the table's columns with `occurred_at` as the exact stored text. */
 export interface AuditStoredRow {
   id: string;
+  tenantId: string;
   actorType: string;
   actorId: string;
   action: string;
@@ -340,6 +341,7 @@ async function selectPage(
 ): Promise<AuditStoredRow[]> {
   const rows = await tx.select({
     id: securityAuditEvents.id,
+    tenantId: securityAuditEvents.tenantId,
     actorType: securityAuditEvents.actorType,
     actorId: securityAuditEvents.actorId,
     action: securityAuditEvents.action,
@@ -381,6 +383,7 @@ export const pgAuditStore: AuditReadStore = {
     return db.transaction(async tx => {
       const [row] = await tx.select({
         id: securityAuditEvents.id,
+        tenantId: securityAuditEvents.tenantId,
         actorType: securityAuditEvents.actorType,
         actorId: securityAuditEvents.actorId,
         action: securityAuditEvents.action,
