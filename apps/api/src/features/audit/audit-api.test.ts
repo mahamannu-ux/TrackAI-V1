@@ -74,6 +74,7 @@ class MemoryAuditStore implements AuditReadStore {
     const q = input.listQuery;
     let rows = this.sorted(input.tenantId)
       .filter(row => q.actions === null || q.actions.includes(row.action))
+      .filter(row => q.excludedActions === null || !q.excludedActions.includes(row.action))
       .filter(row => q.actorType === null || row.actorType === q.actorType)
       .filter(row => q.actorId === null || row.actorId === q.actorId)
       .filter(row => q.targetType === null || row.targetType === q.targetType)
@@ -322,6 +323,70 @@ describe('audit read API: list filters', () => {
       const res = await t.get('/events?action=attesta.anchor.failed', ADMIN);
       assert.equal(res.status, 200);
       assert.deepEqual(((await res.json()) as { events: AuditEventV1[] }).events, []);
+    } finally { await t.close(); }
+  });
+});
+
+describe('audit read API: exclude_action', () => {
+  test('excluded actions are missing, and the filter name is audited', async () => {
+    const store = new MemoryAuditStore();
+    seed(store);
+    const t = await harness({}, store);
+    try {
+      const ids = async (path: string): Promise<string[]> => {
+        const res = await t.get(path, ADMIN);
+        assert.equal(res.status, 200, path);
+        return ((await res.json()) as { events: AuditEventV1[] }).events.map(e => e.id);
+      };
+      const { a1, a2, a3 } = { a1: store.rows[0].id, a2: store.rows[1].id, a3: store.rows[2].id };
+      assert.deepEqual(await ids('/events?exclude_action=machine.registered'), [a1, a3]);
+      assert.deepEqual(await ids('/events?exclude_action=machine.registered&exclude_action=evidence_export.failed'), [a1]);
+      assert.deepEqual(await ids('/events?exclude_action=attesta.anchor.failed'), [a1, a2, a3]);
+      const last = store.audits[store.audits.length - 1];
+      assert.deepEqual((last.details.filters as string[]).includes('exclude_action'), true);
+      for (const path of [
+        '/events?exclude_action=no.such.action',
+        `/events?${Array.from({ length: 21 }, () => 'exclude_action=machine.registered').join('&')}`,
+      ]) {
+        const res = await t.get(path, ADMIN);
+        assert.equal(res.status, 400, path);
+        assert.equal(problem(await res.json()).code, 'AUDIT_FILTER_INVALID');
+      }
+    } finally { await t.close(); }
+  });
+
+  test('a cursor binds the exclusion: reuse without it is 400, with it pages on', async () => {
+    const store = new MemoryAuditStore();
+    seed(store);
+    const t = await harness({}, store);
+    try {
+      const first = await t.get('/events?limit=1&exclude_action=machine.registered', ADMIN);
+      assert.equal(first.status, 200);
+      const body = await first.json() as { events: AuditEventV1[]; next_cursor: string };
+      assert.deepEqual(body.events.map(e => e.id), [store.rows[0].id]);
+      const dropped = await t.get(`/events?limit=1&cursor=${encodeURIComponent(body.next_cursor)}`, ADMIN);
+      assert.equal(dropped.status, 400);
+      assert.equal(problem(await dropped.json()).code, 'AUDIT_CURSOR_INVALID');
+      const next = await t.get(
+        `/events?limit=1&exclude_action=machine.registered&cursor=${encodeURIComponent(body.next_cursor)}`, ADMIN);
+      assert.equal(next.status, 200);
+      assert.deepEqual(((await next.json()) as { events: AuditEventV1[] }).events.map(e => e.id), [store.rows[2].id]);
+    } finally { await t.close(); }
+  });
+
+  test('an action that is both included and excluded is refused', async () => {
+    const store = new MemoryAuditStore();
+    seed(store);
+    const t = await harness({}, store);
+    try {
+      for (const path of [
+        '/events?action=machine.registered&exclude_action=machine.registered',
+        '/events?action=machine.registered&action=evidence_export.failed&exclude_action=evidence_export.failed',
+      ]) {
+        const res = await t.get(path, ADMIN);
+        assert.equal(res.status, 400, path);
+        assert.equal(problem(await res.json()).code, 'AUDIT_FILTER_INVALID');
+      }
     } finally { await t.close(); }
   });
 });

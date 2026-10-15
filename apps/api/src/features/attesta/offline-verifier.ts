@@ -270,7 +270,8 @@ function sealSchemaValidator(): ValidateFunction {
  * checkpoint prints them, each naming one tree). Applied to the USER's offsets only:
  * the pack's value is attacker-controlled and never feeds verification.
  */
-function decimalOffsetsToHex(raw: unknown): { offsets?: Record<string, number>; bad: boolean } {
+/** Task16f2: reused by the offline audit-export verifier (no behaviour change). */
+export function decimalOffsetsToHex(raw: unknown): { offsets?: Record<string, number>; bad: boolean } {
   if (raw === null || raw === undefined) return { bad: false };
   if (!isObj(raw)) return { bad: true };
   const out: Record<string, number> = {};
@@ -296,7 +297,8 @@ function decimalOffsetsToHex(raw: unknown): { offsets?: Record<string, number>; 
  * Undefined when no root was accepted (then Rekor rows are not checkable, never valid:
  * the pack's own key list is attacker-controlled).
  */
-function anchorWindowsFor(roots: DsseEnvelope[], digest: string): AnchorKeyWindow[] | undefined {
+/** Task16f2: reused by the offline audit-export verifier (no behaviour change). */
+export function anchorWindowsFor(roots: DsseEnvelope[], digest: string): AnchorKeyWindow[] | undefined {
   const match = roots.find((d) => {
     if (!isObj(d) || typeof d.payload !== 'string') return false;
     const raw = decodeB64(d.payload);
@@ -1166,7 +1168,8 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
 }
 
 /** The anchor's claimed time in ms (a claim until its row verifies). */
-function anchorClaimTimeMs(a: Obj): number | null {
+/** Task16f2: reused by the offline audit-export verifier (no behaviour change). */
+export function anchorClaimTimeMs(a: Obj): number | null {
   const proof = isObj(a.inclusion_proof) ? a.inclusion_proof : null;
   const anchor = proof !== null && isObj(proof.anchor) ? proof.anchor : null;
   if (anchor === null) return null;
@@ -1182,7 +1185,8 @@ function anchorClaimTimeMs(a: Obj): number | null {
 }
 
 /** Verified Rekor time as ISO (the row already verified; the entry's time is bound to it). */
-function rekorTimeIso(proof: Obj): string | null {
+/** Task16f2: reused by the offline audit-export verifier (no behaviour change). */
+export function rekorTimeIso(proof: Obj): string | null {
   const anchor = isObj(proof.anchor) ? proof.anchor : null;
   const entry = anchor !== null && isObj(anchor.rekor_entry) ? anchor.rekor_entry : null;
   const t = entry !== null ? entry.integratedTime : undefined;
@@ -1195,7 +1199,8 @@ function rekorTimeIso(proof: Obj): string | null {
 }
 
 /** Verified TSA gen_time (the row already verified; the proof's time equals the token's). */
-function tsaTimeIso(proof: Obj): string | null {
+/** Task16f2: reused by the offline audit-export verifier (no behaviour change). */
+export function tsaTimeIso(proof: Obj): string | null {
   const anchor = isObj(proof.anchor) ? proof.anchor : null;
   const t = anchor !== null ? anchor.gen_time : undefined;
   if (typeof t !== 'string' || parseTimestamp(t) === null) return null;

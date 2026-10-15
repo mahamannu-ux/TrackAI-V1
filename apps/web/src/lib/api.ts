@@ -921,6 +921,7 @@ export type AuditEventPage = {
 
 export type AuditFilters = {
   actions: string[];
+  excludeActions: string[];
   severity?: 'high' | 'notice' | 'info';
   actorType?: string;
   actorId?: string;
@@ -937,6 +938,9 @@ export const listAuditEvents = (filters: AuditFilters, cursor?: string) => {
   for (const action of filters.actions) {
     if (action !== '') parameters.append('action', action);
   }
+  for (const action of filters.excludeActions) {
+    if (action !== '') parameters.append('exclude_action', action);
+  }
   if (filters.severity) parameters.set('severity', filters.severity);
   if (filters.actorType) parameters.set('actor_type', filters.actorType);
   if (filters.actorId) parameters.set('actor_id', filters.actorId);
@@ -948,3 +952,57 @@ export const listAuditEvents = (filters: AuditFilters, cursor?: string) => {
   const query = parameters.toString();
   return auditFetch<AuditEventPage>(`/api/audit/events${query ? `?${query}` : ''}`);
 };
+
+export type AuditVerifyBreak = {
+  kind: 'missing_row' | 'changed_row' | 'unsealed_row_in_sealed_window' | 'broken_previous' | 'statement_problem';
+  seal: string | null;
+  row_id?: string;
+};
+
+export type AuditVerifyReport = {
+  ok: boolean;
+  from: string;
+  to: string;
+  seals_checked: number;
+  breaks: AuditVerifyBreak[];
+  breaks_truncated: boolean;
+  unsealed_tail: { from: string | null; count: number };
+  chain: { ok: boolean; checked: number };
+};
+
+export const verifyAuditTrail = (range: { from: string; to: string }) => {
+  const parameters = new URLSearchParams({ from: range.from, to: range.to });
+  return auditFetch<AuditVerifyReport>(`/api/audit/verify?${parameters.toString()}`);
+};
+
+export type AuditExportJob = {
+  id: string;
+  status: 'queued' | 'running' | 'ready' | 'failed';
+  scope: { from: string; to: string };
+  counts: { events: number; seals: number; sealed_events: number; unsealed_events: number; anchored: number; pending: number } | null;
+  export_digest: string | null;
+  bytes: number | null;
+  error_code: string | null;
+  retryable: boolean | null;
+  created_at: string;
+  finished_at: string | null;
+  content_path: string | null;
+};
+
+export const requestAuditExport = (
+  body: { from: string; to: string },
+  idempotencyKey: string,
+) => auditFetch<{ id: string; status: AuditExportJob['status']; replayed: boolean }>(
+  '/api/audit/exports',
+  {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(body),
+  },
+);
+
+export const getAuditExport = (id: string) => auditFetch<AuditExportJob>(
+  `/api/audit/exports/${encodeURIComponent(id)}`,
+);
+
+export const downloadAuditExport = (contentPath: string): Promise<Blob> => apiDownload(contentPath);

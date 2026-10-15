@@ -22,7 +22,7 @@
  * Every query binds `tenant_id` first. Times are read as text with microseconds.
  */
 import { createHash } from 'node:crypto';
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, notInArray, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { securityAuditEvents } from '../../core/db/schema';
 import {
@@ -108,6 +108,7 @@ export function toAuditEventV1(row: AuditStoredRow): AuditEventV1 {
 /** The resolved list query: values for the store, names for the audit event. */
 export interface AuditListQuery {
   actions: string[] | null;
+  excludedActions: string[] | null;
   actorType: string | null;
   actorId: string | null;
   targetType: string | null;
@@ -164,7 +165,7 @@ export function parseAuditListQuery(query: Record<string, unknown>): {
   cursor: AuditCursor | null;
   filterHash: string;
 } {
-  const allowed = new Set(['action', 'severity', 'actor_type', 'actor_id', 'target_type', 'target_id', 'from', 'to', 'limit', 'cursor']);
+  const allowed = new Set(['action', 'exclude_action', 'severity', 'actor_type', 'actor_id', 'target_type', 'target_id', 'from', 'to', 'limit', 'cursor']);
   for (const name of Object.keys(query)) {
     if (!allowed.has(name)) badFilter(`unknown parameter ${name}`);
   }
@@ -186,6 +187,20 @@ export function parseAuditListQuery(query: Record<string, unknown>): {
     }
     actions = [...new Set(items as string[])].sort();
     filterNames.push('action');
+  }
+  let excludedActions: string[] | null = null;
+  if (query.exclude_action !== undefined) {
+    const items = asArray(query.exclude_action);
+    if (items.length === 0 || items.length > MAX_ACTIONS
+      || items.some(item => typeof item !== 'string' || !ALL_ACTIONS.has(item))) {
+      badFilter('exclude_action is invalid');
+    }
+    excludedActions = [...new Set(items as string[])].sort();
+    filterNames.push('exclude_action');
+  }
+  if (actions !== null && excludedActions !== null
+    && actions.some(action => (excludedActions as string[]).includes(action))) {
+    badFilter('action and exclude_action overlap');
   }
   if (query.severity !== undefined) {
     const raw = single('severity');
@@ -242,7 +257,7 @@ export function parseAuditListQuery(query: Record<string, unknown>): {
 
   const limit = parseLimit(query.limit);
   const canonical = JSON.stringify({
-    actions, actor_type: actorType, actor_id: actorId,
+    actions, exclude_action: excludedActions, actor_type: actorType, actor_id: actorId,
     target_type: targetType, target_id: targetId, from, to,
   });
   const filterHash = createHash('sha256').update(canonical, 'utf8').digest('hex').slice(0, 16);
@@ -268,7 +283,7 @@ export function parseAuditListQuery(query: Record<string, unknown>): {
     if (f !== filterHash) badCursor('cursor binds other filters');
     cursor = { o, i };
   }
-  return { listQuery: { actions, actorType, actorId, targetType, targetId, from, to, filterNames, canonical }, limit, cursor, filterHash };
+  return { listQuery: { actions, excludedActions, actorType, actorId, targetType, targetId, from, to, filterNames, canonical }, limit, cursor, filterHash };
 }
 
 /** Encodes a page cursor over the exact stored `occurred_at` text and the row id. */
@@ -315,6 +330,8 @@ function listConditions(listQuery: AuditListQuery, tenantId: string, cursor: Aud
   return [
     // Tenant isolation is the first condition of every query.
     eq(securityAuditEvents.tenantId, tenantId),
+    // Exclusions run right after the tenant condition, before the inclusions.
+    ...(listQuery.excludedActions !== null ? [notInArray(securityAuditEvents.action, listQuery.excludedActions)] : []),
     ...(listQuery.actions !== null ? [inArray(securityAuditEvents.action, listQuery.actions)] : []),
     ...(listQuery.actorType !== null ? [eq(securityAuditEvents.actorType, listQuery.actorType)] : []),
     ...(listQuery.actorId !== null ? [eq(securityAuditEvents.actorId, listQuery.actorId)] : []),
