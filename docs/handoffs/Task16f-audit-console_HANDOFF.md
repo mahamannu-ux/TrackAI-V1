@@ -38,3 +38,6 @@ Needs seeded audit rows (any admin action, or Task16c's verify). Ported UI-1 rul
 
 ## Effort
 Estimate 0.1× T6, actual about 0.1×. No API question arose; commit-per-chunk ordering kept each commit green.
+
+## Founder walkthrough note (for the Task16 lead)
+8g root-caused live: a page refresh writes no `audit.events.read` row (verified in psql); the row the founder saw came from opening the Audit view afterwards, whose auto-search records itself. Founder concern: read-receipt rows flood the trail and the volume overwhelms the view; asks for at least a setting to hide `audit.events.read` for now, and a broader data/volume/UX simplification as a new Task. Recommendation: keep recording every read (dropping them weakens the tamper-evident guarantee an auditor relies on) but default-filter `audit.events.read` in the console behind a visible toggle, no data loss. Lead decision needed before Task16f2.
