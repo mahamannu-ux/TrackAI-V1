@@ -19,7 +19,15 @@ None from the design. UI-1 "URL is the state" deferred to Task10 (no per-view ro
 Web has no unit tests (none added). `npm run lint`, `typecheck`, `check` (web build) green in sandbox.
 
 ## Integration test impact — IT-T16f-01 (founder-live browser, blocking this merge; ⬜ pending)
-Start web+API (`npm run dev -w apps/web`, API existing dev command), log in.
+Setup (all synthetic; same stack as the Task15k walkthrough). Run from this worktree; `DB` = `postgresql://postgres@127.0.0.1:55432/trackai`; `KEYS` = the disposable pair `MASTER_ENCRYPTION_KEY_ACTIVE_VERSION=local-v1 MASTER_ENCRYPTION_KEYS_JSON='{"local-v1":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="}'` (never outside this DB):
+- Disposable DB (once): `docker run --name trackai-task5-uat-pg -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=trackai -p 127.0.0.1:55432:5432 -d pgvector/pgvector:pg16` (later: `docker start trackai-task5-uat-pg`); then `DATABASE_URL=$DB npm run db:migrate -w apps/api`.
+- Seed tenant + admin membership: `DATABASE_URL=$DB $KEYS TASK5_EPHEMERAL_DATABASE=1 TASK5_ACCEPTANCE_PERSIST=1 npm run verify:task5-corpus-live -w apps/api`.
+- Seed auditor membership: `DATABASE_URL=$DB TASK6_EPHEMERAL_DATABASE=1 npm run seed:task6-acceptance -w apps/api`.
+- Fake login server: `TASK5_EPHEMERAL_DATABASE=1 npm run serve:task5-acceptance-auth -w apps/api` (port 54321; this is what the web Supabase vars point at — no real Supabase, no `.env.local` needed).
+- API: `DATABASE_URL=$DB $KEYS SUPABASE_URL=http://127.0.0.1:54321 FRONTEND_URL='http://localhost:3000,http://127.0.0.1:3000' npm run dev -w apps/api` (port 8080).
+- Web: `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=task5-local-public-placeholder NEXT_PUBLIC_API_URL=http://127.0.0.1:8080 npm run dev -w apps/web`; open `http://localhost:3000/login`.
+- Logins: admin `admin@task5.acceptance.invalid` / `task5-acceptance-only`; auditor `auditor@task5.acceptance.invalid` / `task6-auditor-only`; developer `developer@task5.acceptance.invalid` / `task5-viewer-only`.
+- Seeds write no audit rows, so first as admin register a machine in Administration (an audited action), then search in Audit.
 1. Auditor: Audit view shows auditor banner, no write control; Search lists events; filter by severity and by action; Load more appends; row opens drawer with plain-words details; Escape closes.
 2. Admin: same with admin banner; Administration has no Security audit section; overview has the Audit trail link.
 3. Developer (no membership): no Audit nav item.
