@@ -101,6 +101,7 @@ Ownership is by **concern and file**, not by whole directory: several directorie
 | Organization policy engine | Task6 Policy (deferred) | none yet |
 | Route and surface coverage | Task13 | `AGENT_COVERAGE.md`; adapters mostly in GitAI |
 | Signed provenance attestation | Task15 Attesta | named in its first prompt |
+| Customer and auditor Q&A: question registry, answer envelope, `/api/qa/*`, admin live answers, the Questions screen | Task19 | `features/qa/`, `docs/contracts/qa/` (from Task19a), `apps/web/src/app/dashboard/questions-workspace.tsx` (from Task19e) |
 | Task7–Task12, Task14 | see `ROUGH_ROADMAP.md` | none yet |
 | **Mixed Task2/Task4** (shared: changed only when the prompt pre-approves it) | Task2 + Task4 | `features/telemetry/{service,ingest.routes,repository-url,types}.ts`, `features/scm/{scm.routes,parser,github-app}.ts` |
 | **Shared platform** (changed only when the prompt pre-approves it) | — | `core/db/` (connection entry point `index.ts`, `schema.ts`, `tenant.ts`), `apps/api/src/index.ts`, `apps/web/src/app/dashboard/page.tsx`, `apps/web/src/lib/` |
