@@ -17,6 +17,7 @@ import { authenticateJWT } from './core/middleware/auth';
 import { authenticateMachine } from './core/middleware/machine-auth';
 import { tenantMiddleware } from './core/middleware/tenant';
 import { auditRouter } from './features/audit/audit.routes';
+import { qaRouter } from './features/qa/qa.routes';
 
 type CreateAppOptions = {
   machineAuthentication?: RequestHandler;
@@ -74,6 +75,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use('/api', authenticateJWT, tenantMiddleware);
   app.use('/api/attesta', attestaRouter);
   app.use('/api/audit', auditRouter);
+  app.use('/api/qa', qaRouter);
   app.use('/api', telemetryReadRouter);
   app.use('/api/evidence', evidenceReadRouter);
   app.use('/api/admin', adminRouter);

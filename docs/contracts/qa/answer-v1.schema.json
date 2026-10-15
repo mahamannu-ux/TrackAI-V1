@@ -230,14 +230,35 @@
         }
       },
       "then": {
-        "required": [
-          "signed"
-        ],
         "not": {
           "required": [
             "signed_evidence"
           ]
         }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "kind",
+          "availability"
+        ],
+        "properties": {
+          "kind": {
+            "const": "signed"
+          },
+          "availability": {
+            "enum": [
+              "recorded",
+              "partial"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "signed"
+        ]
       }
     },
     {
