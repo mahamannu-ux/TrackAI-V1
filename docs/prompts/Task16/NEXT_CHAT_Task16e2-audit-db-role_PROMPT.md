@@ -1,23 +1,23 @@
-# Handoff prompt: Task16e2-audit-db-role (auditor reads under a read-only, tenant-bound database role), Codex
+# Handoff prompt: Task16e2-audit-db-role (auditor reads under a read-only, tenant-bound database role), Muse (or Codex)
 
 > **Founder setup (Codex: skip to "You are…"):**
 > 1. Task16e (PR #66) and this prompt's docs PR are merged. `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only`.
-> 2. **Codex:** start a new thread in **Worktree** mode in the TrackAI project and paste everything below the line. It can run alongside Muse's Task16f2: the only shared file is `features/audit/read-service.ts`, and the two touch different functions. The second to merge reruns `scripts/pr-preflight.sh`.
+> 2. **Muse (founder choice, after Task16f2 merges; it may reuse the same worktree):** in OpenCode run `git fetch origin && git switch -c task/Task16e2-audit-db-role origin/main && npm ci`, then paste everything below the line. (Codex works too: a new Worktree-mode thread.)
 > 3. When it finishes, paste its review request to the **lead Claude chat** (tenant isolation, so security-critical). Push only after "ready to push".
 
 ---
 
-You are **Codex**, building **Task16e2-audit-db-role** (Task16 A16.10, SushiCorp AU-1 layer 4) for **TrackAI**.
+You are **Muse** (or Codex), building **Task16e2-audit-db-role** (Task16 A16.10, SushiCorp AU-1 layer 4) for **TrackAI**.
 
 Auditor reads of the audit trail today run as the API's database role, which bypasses RLS (AGENTS.md §9 item 3). Tenant isolation rests on the application's `tenant_id` predicate alone. This session adds a database backstop: on the auditor read path, the database itself refuses any write and returns only the configured tenant's rows.
 
 The design was settled in the Task16e handoff ("Known limitations", row A16.10) and is final below. **Every decision is made.**
 
-- **Worktree:** your Codex worktree under `~/AIProjects/TrackAI-wt/`, branch `task/Task16e2-audit-db-role`. **Handoff:** `docs/handoffs/Task16e2-audit-db-role_HANDOFF.md`.
+- **Worktree:** your worktree under `~/AIProjects/TrackAI-wt/` (Muse may reuse the Task16f worktree), branch `task/Task16e2-audit-db-role`. **Handoff:** `docs/handoffs/Task16e2-audit-db-role_HANDOFF.md`.
 
 ## 0. Before anything else
 1. Read `AGENTS.md` in full (§1, §4, §7, §9 items 3, 4, 21–23, §12.4).
-2. Check where you are: `pwd` must be under `~/AIProjects/TrackAI-wt/`. Run `git switch -c task/Task16e2-audit-db-role` if needed. Set the identity for this worktree only.
+2. Check where you are: `pwd` must be under `~/AIProjects/TrackAI-wt/`. The branch must be `task/Task16e2-audit-db-role`, branched from the latest `origin/main`. Set the identity for this worktree only.
 3. Run `npm test` once. Estimate in one line against T6. The plan says **about 0.05×**.
 
 ## 1. Read
@@ -68,7 +68,7 @@ Never touch: merged migrations, `docs/contracts/`, the web app, and any route's 
 - (c) After `withAuditReader` returns, the same transaction writes the audit row, and the role is reset (`select current_user` is the API role).
 - (d) IT-T16c-01 and IT-T16e-01/02 still pass. Name their commands as regressions.
 
-Run once in your sandbox. `npm test`, `npm run lint`, `npm run typecheck`, `npm run check` and `drizzle-kit check` must be clean. Do one independent review (`/review` or a fresh thread) before the handoff.
+Run once in your sandbox. `npm test`, `npm run lint`, `npm run typecheck`, `npm run check` and `drizzle-kit check` must be clean. Re-read your full diff as a reviewer before the handoff. Number every founder step list and every bash block section (`# 1.`, `# 2.`).
 
 ## 5. Close-out
 - Handoff under 40 lines, with the IT block, the Supabase note and Effort.
