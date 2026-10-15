@@ -416,9 +416,9 @@ function AuditEvidenceSection({ active }: { active: boolean }) {
         {verifyError && <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200"><div>{verifyError.message}</div>{verifyError.requestId && <div className="mt-1 text-xs text-rose-200/70">Reference: {verifyError.requestId}</div>}</div>}
         {report && (
           <div className="space-y-3">
-            {report.ok && report.chain.ok && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-200">All sealed events match their seals.</div>}
-            {report.ok && !report.chain.ok && <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">Seals match, but signatures or anchors could not be checked.</div>}
-            {!report.ok && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">Problems found.</div>}
+            {report.breaks.length === 0 && report.chain.ok && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-200">All sealed events match their seals.</div>}
+            {report.breaks.length === 0 && !report.chain.ok && <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">Seals match, but signatures or anchors could not be checked.</div>}
+            {report.breaks.length > 0 && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">Problems found.</div>}
             <div className="text-sm text-slate-300">Seals checked: {report.seals_checked} · {report.unsealed_tail.count > 0
               ? `${report.unsealed_tail.count} events not sealed yet.`
               : 'No unsealed events in this window.'}</div>
