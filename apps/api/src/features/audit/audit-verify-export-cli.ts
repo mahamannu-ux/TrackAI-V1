@@ -1,10 +1,10 @@
 /**
  * `npm run audit:verify-export -w apps/api -- --export <download.json>
  *   (--root-keyid sha256:… … | --customer-pin <file>)
- *   [--rekor-log-key <pem>] [--tsa-anchors <pem>] [--json]`
+ *   [--rekor-log-key <pem>] [--tsa-anchors <pem>] [--rekor-log-index-offsets <json>] [--json]`
  *
  * Offline audit-export check (Task16f2, A16.7 finishing work): an auditor runs
- * this on a laptop with no TrackAI account and no network. It reads the file,
+ * this on a laptop with no TrackAI account and no network. It reads the files,
  * calls the pure `verifyAuditExport`, prints a short human summary (one line
  * per check) or the JSON report, and exits with the report's exit code (0 all
  * checked and passed, 1 a break, 2 something not checkable, for example a
@@ -16,8 +16,9 @@
  * windows, so customer-pinned exports can still check anchors.
  *
  * Mirrors features/attesta/attesta-verify-pack-cli.ts (Task15j, A15.10), minus
- * its `--state` and `--rekor-log-index-offsets` flags (no persisted trust and
- * no sharded trees here: every Rekor row verifies with offset 0).
+ * its `--state` flag (no persisted trust here). `--rekor-log-index-offsets`
+ * is parsed exactly as the pack CLI parses it: rekor.sigstage.dev shards its
+ * tree, so a sharded log needs its pinned offsets or genuine rows read invalid.
  */
 import { readFileSync } from 'node:fs';
 import { verifyAuditExport, type AuditExportReport } from './offline-export-verifier';
@@ -48,6 +49,7 @@ interface ParsedArgs {
   customerPin?: string;
   rekorLogKey?: string;
   tsaAnchors?: string;
+  rekorLogIndexOffsets?: string;
   json: boolean;
 }
 
@@ -90,6 +92,11 @@ function parseCliArgs(argv: string[]): ParsedArgs {
         out.tsaAnchors = value('tsa-anchors');
         break;
       }
+      case 'rekor-log-index-offsets': {
+        if (out.rekorLogIndexOffsets !== undefined) throw new Error('--rekor-log-index-offsets given twice');
+        out.rekorLogIndexOffsets = value('rekor-log-index-offsets');
+        break;
+      }
       case 'json': {
         if (inline !== null) throw new Error('--json takes no value');
         out.json = true;
@@ -114,6 +121,26 @@ function readJsonFile(io: VerifyExportIo, path: string, what: string): unknown {
   } catch {
     throw new Error(`${what} ${JSON.stringify(path)} is not valid JSON`);
   }
+}
+
+/** Pinned Rekor shard offsets from a JSON file (`{"<decimal tree id>": <offset>}`). */
+function readOffsetsFile(io: VerifyExportIo, path: string): Record<string, number> {
+  const raw = readJsonFile(io, path, 'rekor log index offsets file');
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error(`rekor log index offsets file ${JSON.stringify(path)} must be an object of "<decimal tree id>": <offset>`);
+  }
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    let treeOk = /^[0-9]{1,20}$/.test(k);
+    try {
+      treeOk = treeOk && BigInt(k) <= 0xffffffffffffffffn;
+    } catch {
+      treeOk = false;
+    }
+    if (!treeOk || typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+      throw new Error(`rekor log index offsets file ${JSON.stringify(path)} must be an object of "<decimal tree id>": <non-negative integer>`);
+    }
+  }
+  return raw as Record<string, number>;
 }
 
 function printHuman(io: VerifyExportIo, report: AuditExportReport): void {
@@ -189,6 +216,15 @@ export async function main(argv: string[], io: VerifyExportIo = defaultIo()): Pr
   } catch {
     return 2;
   }
+  let rekorLogIndexOffsets: Record<string, number> | undefined;
+  if (args.rekorLogIndexOffsets !== undefined) {
+    try {
+      rekorLogIndexOffsets = readOffsetsFile(io, args.rekorLogIndexOffsets);
+    } catch (err) {
+      io.err(`audit:verify-export: ${err instanceof Error ? err.message : 'the offsets file cannot be read'}`);
+      return 2;
+    }
+  }
   // Fail early with a clear message when the auditor's own files do not parse.
   try {
     if (rekorLogKeyPem !== undefined) loadLogPublicKey(rekorLogKeyPem);
@@ -207,6 +243,7 @@ export async function main(argv: string[], io: VerifyExportIo = defaultIo()): Pr
     ...(customerPins !== undefined ? { customerPins } : {}),
     ...(rekorLogKeyPem !== undefined ? { rekorLogKeyPem } : {}),
     ...(tsaAnchorsPem !== undefined ? { tsaAnchorsPem } : {}),
+    ...(rekorLogIndexOffsets !== undefined ? { rekorLogIndexOffsets } : {}),
     now: io.now().toISOString(),
   });
   if (args.json) {

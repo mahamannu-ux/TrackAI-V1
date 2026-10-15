@@ -18,6 +18,7 @@ import {
   signExport,
   type ExportSnapshot,
 } from './export-service';
+import { main as verifyExportMain, type VerifyExportIo } from './audit-verify-export-cli';
 import { verifyAuditExport } from './offline-export-verifier';
 import {
   auditRowDigest,
@@ -32,7 +33,7 @@ import { devSignerResolver } from '../attesta/signer-resolver';
 import { KEYSET_TYPE, TRUST_ROOT_TYPE, type KeyPurpose, type TrustDocumentBody, type TrustKeyEntry } from '../attesta/trust-contract';
 import { signTrustDocument, type DocumentSigner } from '../attesta/trust-documents';
 import { packAnchorEntries, packBatchEntries } from '../attesta/evidence-pack-service';
-import { FakeRekor } from '../attesta/testing/fake-rekor';
+import { FakeRekor, REKOR_TREE_ID_DEC } from '../attesta/testing/fake-rekor';
 import { FakeTsa, TSA_URL } from '../attesta/testing/fake-tsa';
 import { inclusionPath, merkleRoot, proofToJson } from '../attesta/merkle';
 import { anchorSignerFromAdapter } from '../attesta/anchor-contract';
@@ -419,4 +420,42 @@ test('T16f2 offline export: pending anchors read not checkable, never a break', 
 test('T16f2 offline export: the row digest vector still holds for export events', () => {
   const r = row(1, '2026-10-15T06:00:00.000000Z');
   assert.equal(auditRowDigest(r), auditRowDigest({ ...r, details: { request_id: 'r1' } }));
+});
+
+test('T16f2 CLI: --rekor-log-index-offsets reaches the verifier', async () => {
+  const ctx = await anchorSetup();
+  const { download } = await buildFixture(ctx);
+  const files: Record<string, string> = {
+    'export.json': JSON.stringify(download),
+    'rekor.pem': ctx.rekorLogKeyPem,
+    'tsa.pem': ctx.tsaAnchorsPem,
+    'offsets-wrong.json': JSON.stringify({ [REKOR_TREE_ID_DEC]: 5 }),
+  };
+  const run = async (argv: string[]): Promise<{ code: number; out: string[]; err: string[] }> => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await verifyExportMain(argv, {
+      readFile: (p) => {
+        const text = files[p];
+        if (text === undefined) throw Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' });
+        return text;
+      },
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      now: () => new Date(NOW),
+    } satisfies VerifyExportIo);
+    return { code, out, err };
+  };
+  const base = ['--export', 'export.json', '--root-keyid', R.keyid,
+    '--rekor-log-key', 'rekor.pem', '--tsa-anchors', 'tsa.pem'];
+  const clean = await run(base);
+  assert.equal(clean.code, 0);
+  assert.ok(clean.out.some((l) => l === 'result: exit 0'));
+  // A wrong offset for the log's tree fails the anchors: the flag feeds verification.
+  const wrong = await run([...base, '--rekor-log-index-offsets', 'offsets-wrong.json']);
+  assert.equal(wrong.code, 1);
+  // An unreadable offsets file is exit 2 with a clear message.
+  const missing = await run([...base, '--rekor-log-index-offsets', 'no-such.json']);
+  assert.equal(missing.code, 2);
+  assert.ok(missing.err.join('\n').includes('rekor log index offsets file'));
 });

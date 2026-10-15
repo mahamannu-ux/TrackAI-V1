@@ -12,7 +12,7 @@ Audit view now has Trail / Tamper evidence and export / Attestation tabs; read r
 
 ## Deviations (one needs the lead)
 - Breaks table shows the truncated seal digest, not the seal's window: `GET /verify` breaks carry `{kind, seal, row_id?}` — no window. QUESTION FOR THE LEAD: (a) accept digest display (identifies the seal exactly, full on hover); (b) add `window` to break objects (additive, small API change + contract note). Recommendation: (a) now, (b) only if auditors ask. I proceeded on (a) rather than stopping because no information is lost.
-- `attesta:verify-pack`'s `--state`/`--rekor-log-index-offsets` not mirrored (no persisted trust / no sharded trees here).
+- CLI mirrors `attesta:verify-pack` (minus `--state`; plus `--rekor-log-index-offsets`, parsed exactly as the pack CLI parses it — rekor.sigstage.dev shards, so a sharded log needs pinned offsets; covered by a CLI test: clean exit 0, wrong offset exit 1, missing file exit 2).
 
 ## Known limitations
 - Pending anchors → exit 2, never a break (export.md). Unsealed events reported only. The offline file cannot show a seal row removed with guards off (export.md Limit — pair with an evidence pack).
@@ -20,7 +20,7 @@ Audit view now has Trail / Tamper evidence and export / Attestation tabs; read r
 
 ## Test coverage
 - `audit-api.test.ts`: exclusion filters, cursor binding, overlap refused (+3).
-- `offline-export-verifier.test.ts` (+13): in-memory export (test root/keyset/statement keys, FakeRekor+FakeTsa anchors): pass, unsealed reported, wrong payload type, changed manifest, section digest, rows_root, broken previous, statement swap, event changed/missing/added, pending → exit 2.
+- `offline-export-verifier.test.ts` (+14): in-memory export (test root/keyset/statement keys, FakeRekor+FakeTsa anchors): pass, unsealed reported, wrong payload type, changed manifest, section digest, rows_root, broken previous, statement swap, event changed/missing/added, pending → exit 2, plus the CLI offsets test (clean 0, wrong offset 1, missing file 2).
 
 ## Integration test impact
 - IT-T16f2-01 (founder browser, blocking merge; ⬜): Task16f stack; run `npm run attesta:audit-seal -w apps/api -- --confirm` after audit events exist. (1) auditor: Trail hides read receipts until toggle; (2) Check green + "not sealed yet" count; (3) Request export → ready → Download saves file; (4) Attestation tab as before, Administration has no Attestation; (5) admin same; (6) developer no Audit view.
