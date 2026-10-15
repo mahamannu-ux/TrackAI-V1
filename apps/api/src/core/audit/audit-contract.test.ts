@@ -143,6 +143,21 @@ const FIXTURES: Record<string, Fixture> = {
   'audit.events.read': role('tenant_auditor', TENANT, {
     limit: 50, returned: 7, filters: ['action', 'from'], request_id: 'req-16c',
   }),
+  // Task16e (A16.4, A16.7): seals, the verify report and the signed export.
+  'audit.trail.sealed': { actorType: 'service', actorId: 'attesta-worker', targetId: U1, details: {
+    window_from: '2026-10-15T06:00:00.000000Z', window_to: '2026-10-15T07:00:00.123456Z', count: 3,
+    seal_digest: `sha256:${'a'.repeat(64)}`, request_id: 'attesta-audit-seal:t:1',
+  } },
+  'audit.trail.verified': role('tenant_auditor', TENANT, {
+    from: '2026-10-01T00:00:00Z', to: '2026-10-15T00:00:00Z', ok: true, seals_checked: 12, break_count: 0, request_id: 'req-16e',
+  }),
+  'audit.export.requested': role('tenant_admin', U1, {
+    scope_from: '2026-01-01T00:00:00.000Z', scope_to: '2026-10-01T00:00:00.000Z', replayed: false, request_id: 'req-16e',
+  }),
+  'audit.export.downloaded': role('tenant_auditor', U1, {
+    scope_from: '2026-01-01T00:00:00.000Z', scope_to: '2026-10-01T00:00:00.000Z', export_digest: `sha256:${'b'.repeat(64)}`,
+    counts: { events: 10, seals: 2, sealed_events: 9, unsealed_events: 1, anchored: 2, pending: 0 }, request_id: 'req-16e',
+  }),
 };
 
 function eventFor(action: string, fixture = FIXTURES[action]): AuditEvent {
@@ -164,8 +179,8 @@ function codeOf(fn: () => unknown): string | undefined {
 const emitted = AUDIT_CATALOG.filter(entry => entry.status === 'emitted');
 const reserved = AUDIT_CATALOG.filter(entry => entry.status === 'reserved');
 
-test('audit contract: 48 emitted actions, each validates as today\'s emitter writes it', () => {
-  assert.equal(emitted.length, 48);
+test('audit contract: 52 emitted actions, each validates as today\'s emitter writes it', () => {
+  assert.equal(emitted.length, 52);
   assert.deepEqual(Object.keys(FIXTURES).sort(), emitted.map(entry => entry.action).sort(), 'one fixture per emitted action');
   for (const entry of emitted) {
     const event = eventFor(entry.action);
@@ -180,7 +195,7 @@ test('audit contract: 48 emitted actions, each validates as today\'s emitter wri
 test('audit contract: entries are well formed', () => {
   const names = AUDIT_CATALOG.flatMap(entry => [entry.action, ...entry.aliases]);
   assert.equal(new Set(names).size, names.length, 'actions and aliases are unique');
-  assert.equal(AUDIT_CATALOG_VERSION, 1);
+  assert.equal(AUDIT_CATALOG_VERSION, 2);
   for (const entry of AUDIT_CATALOG) {
     assert.ok(entry.actorTypes.length > 0, entry.action);
     assert.ok(entry.sources.length > 0, `${entry.action} cites its source`);
@@ -203,9 +218,9 @@ test('audit contract: entries are well formed', () => {
   }
 });
 
-test('audit contract: severities match the founder-approved table (2026-10-15), plus Task16c audit.events.read', () => {
+test('audit contract: severities match the founder-approved table (2026-10-15), plus Task16c audit.events.read and the four Task16e actions', () => {
   const by = (severity: string) => emitted.filter(entry => entry.severity === severity).length;
-  assert.deepEqual([by('high'), by('notice'), by('info')], [27, 12, 9]);
+  assert.deepEqual([by('high'), by('notice'), by('info')], [27, 12, 13]);
 });
 
 test('audit contract: each error code is raised', () => {
@@ -374,7 +389,9 @@ test('audit contract: every action in the Task16a inventory is in the catalog, a
   assert.equal(inventory.size, 47, 'the inventory lists 47 actions');
   // audit.events.read was reserved in Task16b (never in the 16a inventory) and is
   // emitted by Task16c, so the catalog holds the inventory plus this one action.
-  assert.deepEqual([...inventory, 'audit.events.read'].sort(), emitted.map(entry => entry.action).sort());
+  // Task16e adds four more (audit seals, the verify report and the signed export).
+  const task16e = ['audit.trail.sealed', 'audit.trail.verified', 'audit.export.requested', 'audit.export.downloaded'];
+  assert.deepEqual([...inventory, 'audit.events.read', ...task16e].sort(), emitted.map(entry => entry.action).sort());
 });
 
 test('audit contract: an emitted row round-trips through event-v1.schema.json', () => {

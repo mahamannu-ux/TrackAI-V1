@@ -131,7 +131,7 @@ export class AuditContractError extends Error {
 // The catalog
 
 /** Goes up when an entry is added or an alias recorded; never for a change of an existing row's meaning. */
-export const AUDIT_CATALOG_VERSION = 1;
+export const AUDIT_CATALOG_VERSION = 2;
 
 const r = (type: AuditDetailType): AuditDetailKey => ({ type, required: true, nullable: false });
 /** Required, may be null: today's emitter writes `null` rather than omitting the key. */
@@ -634,6 +634,50 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       'features/audit/read-service.ts:402',
       'core/security/admin-resource-service.ts:137',
     ],
+  }),
+  // --- Task16e (A16.4, A16.7): audit seals, the verify report and the signed export ---
+  ...entries(['audit.trail.sealed'], {
+    owner: 'Task16e', severity: 'info', actorTypes: ['service', 'system_operator'],
+    targetType: 'attesta_audit_seal', targetIdKind: 'row',
+    details: {
+      window_from: r('iso_timestamp'),
+      window_to: r('iso_timestamp'),
+      count: r('integer'),
+      seal_digest: r('sha256_digest'),
+      request_id: r('string'),
+    },
+    sources: ['features/attesta/audit-seal-service.ts:1'],
+  }),
+  ...entries(['audit.trail.verified'], {
+    owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    targetType: 'security_audit_events', targetIdKind: 'tenant',
+    details: {
+      from: r('iso_timestamp'),
+      to: r('iso_timestamp'),
+      ok: r('boolean'),
+      seals_checked: r('integer'),
+      break_count: r('integer'),
+      request_id: r('string'),
+    },
+    sources: ['features/audit/verify-service.ts:1'],
+  }),
+  ...entries(['audit.export.requested'], {
+    owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    targetType: 'audit_export', targetIdKind: 'row',
+    details: { scope_from: r('iso_timestamp'), scope_to: r('iso_timestamp'), replayed: r('boolean'), request_id: r('string') },
+    sources: ['features/audit/export-service.ts:1'],
+  }),
+  ...entries(['audit.export.downloaded'], {
+    owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    targetType: 'audit_export', targetIdKind: 'row',
+    details: {
+      scope_from: r('iso_timestamp'),
+      scope_to: r('iso_timestamp'),
+      export_digest: r('sha256_digest'),
+      counts: r('counts'),
+      request_id: r('string'),
+    },
+    sources: ['features/audit/export-service.ts:1'],
   }),
   ...entries(['attesta.anchor.failed'], {
     status: 'reserved', owner: 'Task15', severity: 'notice', actorTypes: ['service'],

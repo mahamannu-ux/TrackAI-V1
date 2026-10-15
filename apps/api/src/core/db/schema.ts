@@ -1698,7 +1698,8 @@ export const attestaRecords = pgTable('attesta_records', {
   statementDigest: text('statement_digest').notNull(),
   predicateType: text('predicate_type').notNull(),
   statementKind: text('statement_kind').$type<'commit_observed' | 'pr_merged' | 'deployed'>(),
-  repositoryId: uuid('repository_id').notNull(),
+  /** null only for an audit_seal (Task16e, migration 0023): its subject is a tenant's audit window. */
+  repositoryId: uuid('repository_id'),
   subjectSha: text('subject_sha'),
   /** The exact RFC 8785 statement bytes that were signed. */
   statementCanonical: text('statement_canonical').notNull(),
@@ -1731,12 +1732,20 @@ export const attestaRecords = pgTable('attesta_records', {
     and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
     and (
       (${table.predicateType} = 'https://trackai.dev/attesta/ai-provenance/v1'
+        and ${table.repositoryId} is not null
         and ${table.statementKind} is not null
         and ${table.statementKind} in ('commit_observed', 'pr_merged', 'deployed')
         and ${table.subjectSha} is not null
         and ${table.subjectSha} ~ '^([0-9a-f]{40}|[0-9a-f]{64})$')
       or
       (${table.predicateType} = 'https://trackai.dev/attesta/period-report/v1'
+        and ${table.repositoryId} is not null
+        and ${table.statementKind} is null
+        and ${table.subjectSha} is null
+        and ${table.outboxSubjectId} is null)
+      or
+      (${table.predicateType} = 'https://trackai.dev/attesta/audit-seal/v1'
+        and ${table.repositoryId} is null
         and ${table.statementKind} is null
         and ${table.subjectSha} is null
         and ${table.outboxSubjectId} is null)
@@ -2155,6 +2164,102 @@ export const attestaPeriodReports = pgTable('attesta_period_reports', {
   `),
 }));
 
+/**
+ * Audit seals (Task16e, A16.4; docs/contracts/attesta/audit-seal.md). One row per seal,
+ * written only in the ledger transaction that chains its audit_seal statement. Windows are
+ * the exact microsecond occurred_at text, half-open and contiguous per tenant. Append-only;
+ * the insert guard (0023) checks the document, the record and the previous link.
+ */
+export const attestaAuditSeals = pgTable('attesta_audit_seals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  windowFrom: text('window_from').notNull(),
+  windowTo: text('window_to').notNull(),
+  rowCount: integer('row_count').notNull(),
+  previousDigest: text('previous_digest'),
+  /** The exact RFC 8785 document bytes the statement's subject digest names. */
+  sealDocument: text('seal_document').notNull(),
+  sealDigest: text('seal_digest').notNull(),
+  recordId: uuid('record_id').notNull(),
+  statementDigest: text('statement_digest').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_audit_seals_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantFromUnique: unique('attesta_audit_seals_tenant_window_from_key').on(table.tenantId, table.windowFrom),
+  tenantDigestUnique: unique('attesta_audit_seals_tenant_seal_digest_key').on(table.tenantId, table.sealDigest),
+  tenantRecordUnique: unique('attesta_audit_seals_tenant_record_key').on(table.tenantId, table.recordId),
+  // Exactly one first seal per tenant.
+  tenantFirstUnique: uniqueIndex('attesta_audit_seals_tenant_first_key').on(table.tenantId)
+    .where(sql`${table.previousDigest} is null`),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_audit_seals_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  tenantToIndex: index('attesta_audit_seals_tenant_window_to_idx').on(table.tenantId, table.windowTo),
+  shapeCheck: check('attesta_audit_seals_shape_check', sql`
+    ${table.windowFrom} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
+    and ${table.windowTo} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
+    and ${table.windowFrom} < ${table.windowTo}
+    and ${table.rowCount} between 0 and 50000
+    and ${table.sealDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and (${table.previousDigest} is null or ${table.previousDigest} ~ '^sha256:[0-9a-f]{64}$')
+  `),
+}));
+
+/**
+ * Signed audit export jobs (Task16e, A16.7; docs/contracts/audit/export.md), in the
+ * attesta_evidence_packs style (0020): status moves only forward, identity columns never
+ * change, ready and failed rows are final, no DELETE or TRUNCATE (guards in 0023).
+ */
+export const auditExports = pgTable('audit_exports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  idempotencyKey: text('idempotency_key').notNull(),
+  /** `{from, to}` as normalized by the service (RFC 3339 UTC, ms). */
+  scope: jsonb('scope').notNull(),
+  status: text('status').$type<'queued' | 'running' | 'ready' | 'failed'>().notNull().default('queued'),
+  requestedBy: text('requested_by').notNull(),
+  requestId: text('request_id').notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  exportDigest: text('export_digest'),
+  storageReference: text('storage_reference'),
+  bytes: bigint('bytes', { mode: 'number' }),
+  counts: jsonb('counts'),
+  /** The DSSE export signature (public; never a credential reference). */
+  signatureEnvelope: jsonb('signature_envelope'),
+  errorCode: text('error_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+}, (table) => ({
+  tenantIdIdUnique: unique('audit_exports_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantKeyUnique: unique('audit_exports_tenant_idempotency_key').on(table.tenantId, table.idempotencyKey),
+  tenantStatusIndex: index('audit_exports_tenant_status_idx').on(table.tenantId, table.status),
+  shapeCheck: check('audit_exports_shape_check', sql`
+    ${table.idempotencyKey} ~ '^[A-Za-z0-9._-]{8,64}$'
+    and ${table.status} in ('queued', 'running', 'ready', 'failed')
+    and length(${table.requestedBy}) between 1 and 256
+    and length(${table.requestId}) between 1 and 128
+    and ${table.attempts} >= 0
+    and jsonb_typeof(${table.scope}) = 'object'
+    and (${table.status} = 'running') = (${table.leaseUntil} is not null)
+    and (${table.status} = 'ready') = (${table.exportDigest} is not null)
+    and (${table.status} = 'ready') = (${table.storageReference} is not null)
+    and (${table.status} = 'ready') = (${table.bytes} is not null)
+    and (${table.status} = 'ready') = (${table.signatureEnvelope} is not null)
+    and (${table.status} = 'ready') = (${table.counts} is not null)
+    and (${table.status} = 'failed') = (${table.errorCode} is not null)
+    and (${table.status} in ('ready', 'failed')) = (${table.finishedAt} is not null)
+    and (${table.exportDigest} is null or ${table.exportDigest} ~ '^sha256:[0-9a-f]{64}$')
+    and (${table.errorCode} is null or ${table.errorCode} ~ '^AUDIT_[A-Z0-9_]{1,64}$')
+    and (${table.bytes} is null or ${table.bytes} > 0)
+    and (${table.storageReference} is null or length(${table.storageReference}) between 1 and 512)
+  `),
+}));
+
 // Type inference helpers
 export type Tenant = typeof ssoTenants.$inferSelect;
 export type TenantAdminMembership = typeof tenantAdminMemberships.$inferSelect;
@@ -2199,3 +2304,5 @@ export type AttestaAnchorBatch = typeof attestaAnchorBatches.$inferSelect;
 export type AttestaAnchorResume = typeof attestaAnchorResumes.$inferSelect;
 export type AttestaAnchor = typeof attestaAnchors.$inferSelect;
 export type AttestaPeriodReport = typeof attestaPeriodReports.$inferSelect;
+export type AttestaAuditSeal = typeof attestaAuditSeals.$inferSelect;
+export type AuditExport = typeof auditExports.$inferSelect;

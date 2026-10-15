@@ -2,7 +2,7 @@
 
 Written by Task16b (A16.3), 2026-10-15. Frozen once merged: **additive changes only**. Any other change needs a version 2 and a founder decision.
 
-The contract has three parts:
+The contract has three parts (plus, since Task16e, the signed export `export.md` / `export-v1.schema.json` and the audit seals in `../attesta/audit-seal.md`):
 - `event-v1.schema.json`: one audit row as the read API (Task16c) returns it.
 - `catalog.md`: every action, **generated** from `apps/api/src/core/audit/catalog.ts` with `npm run audit:catalog -w apps/api`. Never edit it by hand: a unit test fails when it is out of date.
 - One emitter, `recordAuditEvent()` (`apps/api/src/core/audit/`). It refuses any row the catalog does not describe.
@@ -78,3 +78,9 @@ The emitter checks every event:
 
 ## Audit reads are audited
 Founder, 2026-10-15. Each query of the audit trail writes one `audit.events.read` event at `info` severity. The event holds the filter names, the limit and the returned count, never row contents. It is reserved here and emitted by Task16c.
+
+## Tamper evidence and export (Task16e, additive)
+- **Seals (A16.4):** the trail is sealed in contiguous windows by signed Attesta statements (`../attesta/audit-seal.md`). `GET /api/audit/verify?from&to` recomputes every sealed row and reports `missing_row`, `changed_row`, `unsealed_row_in_sealed_window`, `broken_previous` or `statement_problem`; rows newer than the last seal are reported as `unsealed_tail`, never as verified.
+- **TRUNCATE** of `security_audit_events` is refused by a trigger (migration 0023), in addition to the 0003 UPDATE/DELETE trigger.
+- **Signed export (A16.7):** `export.md`.
+- Catalog version 2 adds `audit.trail.sealed`, `audit.trail.verified`, `audit.export.requested` and `audit.export.downloaded`.
