@@ -9,9 +9,10 @@
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import { checkEnvelope, envelopeSchemaValidator } from './envelope';
 import { QUESTIONS_MD_PATH, renderQuestions } from './generate-registry';
 import { QA_GAPS, QA_QUESTIONS, QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from './registry';
 import {
@@ -144,5 +145,124 @@ test('qa registry: gaps agree with the questions and with the catalogue', () => 
     const users = QA_QUESTIONS.filter((q) => q.gaps.includes(gap.id)).map((q) => q.id).sort();
     assert.deepEqual([...gap.questions].sort(), users, `${gap.id}: QA_GAPS.questions vs the entries' gaps`);
     assert.deepEqual([...(catalogue.get(gap.id) ?? [])].sort(), users, `${gap.id}: catalogue "Gaps found" row`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Envelope: schema, fixtures and registry checks
+
+const FIXTURES = resolve(REPO, 'docs/contracts/qa/fixtures');
+const fixture = (name: string): Record<string, any> => JSON.parse(readFileSync(resolve(FIXTURES, `${name}.json`), 'utf8'));
+
+test('qa envelope: one valid fixture per kind and availability, each passes', () => {
+  const names = readdirSync(FIXTURES).filter((n) => n.startsWith('valid-')).sort();
+  const expected = (['live', 'verifiable', 'signed'] as const).flatMap((kind) =>
+    (['partial', 'recorded', 'unavailable'] as const).map((a) => `valid-${kind}-${a}.json`)).sort();
+  assert.deepEqual(names, expected);
+  for (const name of names) {
+    const envelope = fixture(name.replace(/\.json$/, ''));
+    const [, kind, availability] = name.replace(/\.json$/, '').split('-');
+    assert.equal(envelope.kind, kind, name);
+    assert.equal(envelope.availability, availability, name);
+    assert.deepEqual(checkEnvelope(envelope), { ok: true, path: null }, name);
+  }
+});
+
+test('qa envelope: every invalid fixture fails, for the reason it is named after', () => {
+  const reasons: Record<string, string> = {
+    'invalid-unavailable-zero': '/figures/0/value',
+    'invalid-float': '/figures/0/value',
+    'invalid-person-dimension': '/figures/0/breakdown/0/dimension',
+    'invalid-live-with-evidence': '/figures/0',
+    'invalid-signed-without-signed': '/',
+    'invalid-not-captured-without-gap': '/figures/0/reasons/0',
+    'invalid-drilldown-path-label': '/drilldown/0/label',
+    'invalid-extra-field': '/figures/0',
+  };
+  const names = readdirSync(FIXTURES).filter((n) => n.startsWith('invalid-')).map((n) => n.replace(/\.json$/, '')).sort();
+  assert.deepEqual(names, Object.keys(reasons).sort());
+  const validate = envelopeSchemaValidator();
+  for (const name of names) {
+    assert.equal(checkEnvelope(fixture(name)).ok, false, name);
+    assert.equal(validate(fixture(name)), false, name);
+    const paths = (validate.errors ?? []).map((e) => e.instancePath || '/');
+    assert.ok(paths.includes(reasons[name]), `${name}: fails at ${reasons[name]} (got ${paths.join(', ')})`);
+  }
+});
+
+test('qa envelope: an unavailable figure never serializes as 0', () => {
+  const envelope = fixture('valid-live-unavailable');
+  const text = JSON.stringify(envelope);
+  assert.match(text, /"value":null/);
+  // Every way of writing 0 for it is refused.
+  for (const zero of [0, { type: 'count', count: 0 }, { type: 'ratio', numerator: 0, denominator: 1 }, { type: 'duration_ms', ms: 0 }, '0', false]) {
+    const broken = structuredClone(envelope);
+    broken.figures[0].value = zero;
+    assert.equal(checkEnvelope(broken).ok, false, JSON.stringify(zero));
+  }
+  // An unavailable figure has no breakdown buckets either.
+  const withBuckets = structuredClone(envelope);
+  withBuckets.figures[0].breakdown = [{ dimension: 'repository', key: 'r', value: { type: 'count', count: 0 } }];
+  assert.equal(checkEnvelope(withBuckets).ok, false);
+});
+
+test('qa envelope: integers only, within ±(2^53 − 1); ratios never divide by zero', () => {
+  const base = fixture('valid-live-recorded');
+  const set = (value: unknown) => { const e = structuredClone(base); e.figures[0].value = value; return e; };
+  assert.equal(checkEnvelope(set({ type: 'count', count: Number.MAX_SAFE_INTEGER })).ok, true);
+  assert.equal(checkEnvelope(set({ type: 'count', count: Number.MAX_SAFE_INTEGER + 1 })).ok, false);
+  assert.equal(checkEnvelope(set({ type: 'count', count: -1 })).ok, false);
+  assert.equal(checkEnvelope(set({ type: 'ratio', numerator: 1, denominator: 0 })).ok, false);
+  assert.equal(checkEnvelope(set({ type: 'ratio', numerator: 0.5, denominator: 2 })).ok, false);
+  assert.equal(checkEnvelope(set({ type: 'duration_ms', ms: 1.5 })).ok, false);
+  assert.equal(checkEnvelope(set({ type: 'share', value: 0.43 })).ok, false);
+});
+
+test('qa envelope: registry rules', () => {
+  const live = fixture('valid-live-recorded');
+  const mutate = (f: (e: Record<string, any>) => void, from = live) => { const e = structuredClone(from); f(e); return checkEnvelope(e); };
+  assert.equal(mutate((e) => { e.question_id = 'Q99'; }).path, '/question_id (not registered)');
+  assert.equal(mutate((e) => { e.registry_version = QA_REGISTRY_VERSION + 1; }).path, '/registry_version');
+  assert.equal(mutate((e) => { e.question_id = 'Q7'; }).path, '/kind (not offered)');
+  assert.equal(mutate((e) => { e.wording = []; }).path, '/wording (missing unknown_model_explicit)');
+  assert.equal(mutate((e) => { e.figures[0].breakdown[0].dimension = 'machine'; }).path, '/figures/0/breakdown/0/dimension (not offered)');
+  assert.equal(mutate((e) => { e.figures.push(structuredClone(e.figures[0])); }).path, '/figures/1/key (duplicate)');
+  assert.equal(mutate((e) => { e.scope.from = '2025-01-01T00:00:00.000Z'; }).path, '/scope (period)');
+  assert.equal(mutate((e) => { e.scope.from = '2026-12-01T00:00:00.000Z'; }).path, '/scope (period)');
+  assert.equal(mutate((e) => { e.availability = 'partial'; e.figures[0].availability = 'partial'; }).path, '/reasons (empty)');
+  // previous: exactly for compare_previous questions, same keys, same length, before the period.
+  const s7 = fixture('valid-signed-recorded');
+  assert.equal(mutate((e) => { delete e.previous; }, s7).path, '/previous (compare_previous)');
+  assert.equal(mutate((e) => { e.previous = structuredClone(s7.previous); delete e.previous.figures[0].evidence; }).path, '/previous (compare_previous)');
+  assert.equal(mutate((e) => { e.previous.figures[0].key = 'other'; }, s7).path, '/previous/figures (keys differ)');
+  assert.equal(mutate((e) => { e.previous.from = '2026-04-01T00:00:00.000Z'; }, s7).path, '/previous (period)');
+  // Security answers must carry monitor_only_observed.
+  assert.equal(mutate((e) => { e.wording = []; }, s7).path, '/wording (missing monitor_only_observed)');
+  // Against the request: question, kind, scope and the requested breakdown.
+  const expected = { questionId: 'Q3' as const, kind: 'live' as const, scope: structuredClone(live.scope), breakdown: 'model' };
+  assert.deepEqual(checkEnvelope(live, expected), { ok: true, path: null });
+  assert.equal(checkEnvelope(live, { ...expected, kind: 'verifiable' }).path, '/kind (not requested)');
+  assert.equal(checkEnvelope(live, { ...expected, questionId: 'Q1' }).path, '/question_id (not requested)');
+  assert.equal(checkEnvelope(live, { ...expected, scope: { ...expected.scope, repository_id: undefined } }).path, '/scope (not requested)');
+  assert.equal(checkEnvelope(live, { ...expected, breakdown: 'tool' }).path, '/figures/0/breakdown/0/dimension (not requested)');
+});
+
+test('qa envelope: no field can carry raw content (closed objects all the way down)', () => {
+  const walk = (node: unknown, at: string, out: string[]) => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    if (n.type === 'object' || n.properties) {
+      if (n.additionalProperties !== false) out.push(at);
+    }
+    for (const [k, v] of Object.entries(n)) walk(v, `${at}/${k}`, out);
+  };
+  const schema = JSON.parse(readFileSync(resolve(REPO, 'docs/contracts/qa/answer-v1.schema.json'), 'utf8'));
+  const open: string[] = [];
+  walk(schema, '#', open);
+  // Conditional sub-schemas (if/then/else) only narrow properties already declared closed.
+  assert.deepEqual(open.filter((p) => !/\/(if|then|else|allOf\/\d+|not)(\/|$)/.test(p)), []);
+  const text = JSON.stringify(schema).toLowerCase();
+  for (const word of ['prompt', 'command', '"path":{"type"', 'diff', 'content']) {
+    assert.ok(!text.includes(word), `the schema declares no ${word} field`);
   }
 });

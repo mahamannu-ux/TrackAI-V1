@@ -1,0 +1,40 @@
+{
+  "question_id": "Q13",
+  "registry_version": 1,
+  "kind": "signed",
+  "as_of": "2026-10-15T09:30:00.000Z",
+  "scope": {
+    "repository_id": "00000000-0000-4000-8000-0000000000a1",
+    "from": "2026-07-01T00:00:00.000Z",
+    "to": "2026-09-30T23:59:59.999Z"
+  },
+  "availability": "partial",
+  "reasons": [],
+  "figures": [
+    {
+      "key": "unknown_lines",
+      "availability": "partial",
+      "reasons": [
+        {
+          "code": "partial_linkage"
+        }
+      ],
+      "value": {
+        "type": "count",
+        "count": 19
+      },
+      "evidence": {
+        "count": 1,
+        "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "records": [
+          {
+            "seq": 7,
+            "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ]
+      }
+    }
+  ],
+  "wording": [],
+  "drilldown": []
+}

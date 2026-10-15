@@ -1,0 +1,71 @@
+{
+  "question_id": "Q3",
+  "registry_version": 1,
+  "kind": "verifiable",
+  "as_of": "2026-10-15T09:30:00.000Z",
+  "scope": {
+    "repository_id": "00000000-0000-4000-8000-0000000000a1",
+    "from": "2026-07-01T00:00:00.000Z",
+    "to": "2026-09-30T23:59:59.999Z"
+  },
+  "availability": "recorded",
+  "reasons": [],
+  "figures": [
+    {
+      "key": "merged_ai_lines",
+      "availability": "recorded",
+      "reasons": [],
+      "value": {
+        "type": "count",
+        "count": 1420
+      },
+      "evidence": {
+        "count": 2,
+        "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "records": [
+          {
+            "seq": 10,
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "seq": 14,
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    },
+    {
+      "key": "merged_lines",
+      "availability": "recorded",
+      "reasons": [],
+      "value": {
+        "type": "count",
+        "count": 3310
+      },
+      "evidence": {
+        "count": 2,
+        "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "records": [
+          {
+            "seq": 10,
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "seq": 14,
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    }
+  ],
+  "wording": [
+    "unknown_model_explicit"
+  ],
+  "drilldown": [
+    {
+      "scope": "statement",
+      "id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "label": "pr_merged seq 10"
+    }
+  ]
+}
