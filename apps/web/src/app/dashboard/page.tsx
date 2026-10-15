@@ -11,7 +11,7 @@ import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
   getLifecycle,
   getModels, getPullRequestIntelligence, getPullRequests, getRepositories, getSession,
-  getSessions, getAdminContext, getAdminAudit, getAdminBackfillAuthorizations,
+  getSessions, getAdminContext, getAdminBackfillAuthorizations,
   getAdminEvidenceExports, getAdminGitHubInstallations, getAdminMachines, getAdminOperationalMonitoring,
   getAdminRepositoryPolicies, getAdminSecurityFindings,
   downloadAdminEvidenceExport,
@@ -21,7 +21,7 @@ import {
   replaceAdminMachineRepositoryGrantBranchScope,
   revokeAdminMachineRepositoryGrant, revokeAdminRepositoryEnrollment,
   authorizeAdminRepositoryBackfill, revokeAdminRepositoryBackfill,
-  type AdminAuditResources, type AdminBackfillResources, type AdminContext,
+  type AdminBackfillResources, type AdminContext,
   type AdminExportResources, type AdminGitHubResources, type AdminMachineResources, type AdminOperationsResources,
   type AdminRepositoryResources, type AdminSecurityFindingResources,
   type CommitListItem, type Contributor, type DashboardSummary,
@@ -186,12 +186,11 @@ type AdminResources = {
   repositories: AdminRepositoryResources | null;
   backfills: AdminBackfillResources | null;
   github: AdminGitHubResources | null;
-  audit: AdminAuditResources;
   operations: AdminOperationsResources;
   exports: AdminExportResources;
 };
 
-type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'audit' | 'attestation';
+type AdminSection = 'overview' | 'machines' | 'fleet' | 'repositories' | 'history' | 'github' | 'operations' | 'findings' | 'attestation';
 
 const adminNavigation: Array<{ id: AdminSection; label: string; description: string }> = [
   { id: 'overview', label: 'Overview', description: 'Setup status and next steps' },
@@ -202,7 +201,6 @@ const adminNavigation: Array<{ id: AdminSection; label: string; description: str
   { id: 'github', label: 'GitHub App', description: 'Connected organizations' },
   { id: 'operations', label: 'Operations', description: 'Evidence health and retention' },
   { id: 'findings', label: 'Security findings', description: 'Monitor-only observations' },
-  { id: 'audit', label: 'Security audit', description: 'Who changed what' },
   { id: 'attestation', label: 'Attestation', description: 'Verify the signed ledger and export evidence' },
 ];
 
@@ -551,7 +549,7 @@ function AdminPanel({ context, resources, loading, error, onChanged, repositorie
         {adminNavigation.filter(item => item.id !== 'fleet' || canManageFleet).map(item => <button key={item.id} type="button" onClick={() => selectAdminSection(item.id)} className={`rounded-lg px-3 py-3 text-left transition ${adminSection === item.id ? 'bg-violet-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`}><span className="block text-sm font-medium">{item.label}</span><span className={`mt-1 block text-xs ${adminSection === item.id ? 'text-violet-100' : 'text-slate-500'}`}>{item.description}</span></button>)}
       </nav>
       {adminSection === 'overview' && <section className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><Metric label="Active machines" value={resources.machines?.machines.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Enrolled repositories" value={resources.repositories?.enrollments.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="GitHub installations" value={resources.github?.installations.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Monitor findings" value={securityFindings?.findings.length ?? 'Open to load'} /><Metric label="Recent audit events" value={resources.audit.events.length} /></div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="Active machines" value={resources.machines?.machines.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Enrolled repositories" value={resources.repositories?.enrollments.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="GitHub installations" value={resources.github?.installations.filter(row => row.status === 'active').length ?? 'Audit only'} /><Metric label="Monitor findings" value={securityFindings?.findings.length ?? 'Open to load'} /></div>
         <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6"><h2 className="font-semibold text-white">Recommended setup flow</h2><p className="mt-1 text-sm text-slate-500">Complete the first four steps for each developer installation. Historical import is optional.</p><div className="mt-5 grid gap-3 lg:grid-cols-5">{[
           ['1', 'Register machine', 'Create one logical installation.', 'machines' as AdminSection],
           ['2', 'Install key', 'Issue and securely install its credential.', 'machines' as AdminSection],
@@ -625,7 +623,6 @@ function AdminPanel({ context, resources, loading, error, onChanged, repositorie
         {!securityFindings && securityFindingsLoading && <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-400">Loading security findings…</div>}
         {securityFindings && <TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{securityFindings.findings.length ? securityFindings.findings.map(finding => { const repository = resources.repositories?.repositories.find(row => row.id === finding.repositoryId); return <tr key={finding.id}><td className="px-5 py-4 text-slate-500">{date(finding.occurredAt)}</td><td className="px-5 py-4"><div className="font-medium text-white">{finding.ruleId.replace('trackai.exec.', '').replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">Version {finding.ruleVersion} · {finding.phase.replace('_', ' ')}</div></td><td className="px-5 py-4"><Badge tone={finding.ruleSeverity === 'critical' ? 'amber' : 'violet'}>{finding.ruleSeverity}</Badge></td><td className="px-5 py-4 text-slate-400">{repository?.name ?? finding.repositoryId.slice(0, 8)}</td><td className="px-5 py-4 text-slate-400">{finding.operatingSystem}</td><td className="px-5 py-4"><Badge tone="slate">Monitor only</Badge></td></tr>; }) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No monitor findings have been received for this tenant.</td></tr>}</TableShell>}
       </section>}
-      {adminSection === 'audit' && <section><div className="mb-4"><h2 className="font-semibold text-white">Security audit</h2><p className="mt-1 text-sm text-slate-500">Immutable history of administrative security changes. Revoking a resource does not erase its earlier entries.</p></div><TableShell headers={['Time', 'Action', 'Actor type', 'Target']}>{resources.audit.events.map((event) => <tr key={event.id}><td className="px-5 py-4 text-slate-500">{date(event.occurredAt)}</td><td className="px-5 py-4 font-medium text-white">{event.action}</td><td className="px-5 py-4 text-slate-400">{event.actorType}</td><td className="px-5 py-4 text-slate-500">{event.targetType}</td></tr>)}</TableShell></section>}
       {adminSection === 'attestation' && <section className="space-y-4"><AttestaWorkspace repositories={repositories} /></section>}
     </>}
   </div>;
@@ -668,17 +665,17 @@ export default function DashboardPage() {
         setAdminLoading(true);
         void (async () => {
           try {
-            const [audit, operations, exports] = await Promise.all([
-              getAdminAudit(), getAdminOperationalMonitoring(), getAdminEvidenceExports(),
+            const [operations, exports] = await Promise.all([
+              getAdminOperationalMonitoring(), getAdminEvidenceExports(),
             ]);
             if (adminData.membership?.role === 'tenant_auditor') {
-              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, audit, operations, exports });
+              setAdminResources({ machines: null, repositories: null, backfills: null, github: null, operations, exports });
             } else {
               const [machines, repositories, backfills, github] = await Promise.all([
                 getAdminMachines(), getAdminRepositoryPolicies(),
                 getAdminBackfillAuthorizations(), getAdminGitHubInstallations(),
               ]);
-              setAdminResources({ machines, repositories, backfills, github, audit, operations, exports });
+              setAdminResources({ machines, repositories, backfills, github, operations, exports });
             }
             setAdminError(null);
           } catch (cause) {
