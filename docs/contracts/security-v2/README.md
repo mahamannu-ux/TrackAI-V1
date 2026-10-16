@@ -88,10 +88,11 @@ the body or to `record_id`.
 Every kind except `indicator` is write-once: identical replay is `duplicate`,
 while reuse with changed content is rejected. Indicators are monotonic upserts,
 as Numbat requires (`numbat@20a5a52:docs/cli.md:192-194`): the same ID with a
-higher `count` or later `last_seen` is accepted and replaces the stored values;
-an identical or older observation is `duplicate`. An upsert may not lower
-`count`, move `last_seen` backwards, change `first_seen`, or change any identity
-field.
+higher `count` or later `last_seen` is accepted. The stored `count` and
+`last_seen` become the component-wise maxima of old and submitted values; this
+defines a mixed update without regressing either value. An observation whose
+count and last-seen time are both identical or older is `duplicate`. Changing
+`first_seen` or any identity field is rejected.
 
 ## Record decisions and field provenance
 

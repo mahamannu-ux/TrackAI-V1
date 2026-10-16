@@ -60,10 +60,12 @@ the request body.
   an ID with different content is `rejected` with
   `SECURITY_V2_RECORD_CONFLICT`.
 - An indicator ID represents Numbat's `(run_id,type,value)` tuple. A replay with
-  a higher `count` or later `last_seen` is `accepted` and replaces the stored
-  count and window end. Identical or older state is `duplicate`. A request that
-  lowers `count`, moves `last_seen` backwards, changes `first_seen`, or changes
-  any identity field is `rejected` with `SECURITY_V2_RECORD_CONFLICT`.
+  a higher `count` or later `last_seen` is `accepted`. The stored count and
+  window end become the component-wise maxima of the stored and submitted
+  values, so a mixed update cannot regress either value. A submission whose
+  count and last-seen time are both identical or older is `duplicate`. Changing
+  `first_seen` or an identity field is `rejected` with
+  `SECURITY_V2_RECORD_CONFLICT`.
 
 These rules are machine-scoped: the same local source identifiers on two
 machines cannot collide inside one tenant.

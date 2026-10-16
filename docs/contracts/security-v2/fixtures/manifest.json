@@ -30,6 +30,7 @@
 
     { "file": "valid-rule-bundle.json", "schema": "../security-rule-bundle-v1.schema.json", "expectedValid": true, "rationale": "Bundle has a positive version and epoch, pinned Numbat revision, and bounded agent files." },
     { "file": "invalid-rule-bundle-path-traversal.json", "schema": "../security-rule-bundle-v1.schema.json", "expectedValid": false, "rationale": "Bundle file paths refuse traversal." },
+    { "file": "invalid-rule-bundle-file-too-large.json", "schema": "../security-rule-bundle-v1.schema.json", "expectedValid": false, "rationale": "A 262146-byte decoded rule file exceeds the 262144-byte limit." },
 
     { "file": "valid-activation-lease.json", "schema": "../security-activation-lease-v2.schema.json", "expectedValid": true, "rationale": "Monitoring lease embeds complete versioned data settings and at least one agent." },
     { "file": "invalid-activation-lease-monitor-no-agents.json", "schema": "../security-activation-lease-v2.schema.json", "expectedValid": false, "rationale": "An active monitoring mode requires at least one agent." },

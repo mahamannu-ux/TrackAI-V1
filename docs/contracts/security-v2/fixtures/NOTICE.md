@@ -4,13 +4,19 @@ The finding and enforcement fixtures contain adapted material from
 [Numbat](https://github.com/perplexityai/numbat), commit `20a5a52`, licensed
 under the Apache License 2.0.
 
-- `valid-finding.json` is a privacy-reduced TrackAI projection of the real
-  `cmd/numbat/testdata/secrets_fixture.ndjson` event `e1` and the
-  `secrets.agent_read_env` match asserted by `cmd/numbat/main_test.go`.
-- `valid-enforcement.json` uses Numbat's real hook enforcement record shape
-  from `cmd/numbat/hook_enforce_test.go` and projects the deny for the same
-  `cat .env` action represented by event `e1`. Numbat's CLI fixture stream
-  contains input events, not persisted enforcement records.
+- `valid-finding.json` is a privacy-reduced projection of the real
+  `cmd/numbat/testdata/secrets_fixture.ndjson` event `e1` and its
+  `secrets.agent_read_env` 1.3 match. Its source ID is reproduced from the
+  pinned `internal/finding/finding.go` length-prefixed ID algorithm.
+- `valid-enforcement.json` is the monitor-mode enforcement record Numbat emits
+  beside that finding for the same `cat .env` hook action. Its source ID is
+  reproduced from pinned `cmd/numbat/hook.go:hookDecisionID` using fixture run
+  `run-placeholder` and action event `e1`. Numbat's
+  `TestHookWritesFindingToFileSinkNotStdout` proves that the real file sink
+  persists the finding followed by this `no_override`/`monitor` record.
+- `valid-rule-bundle.json` embeds the exact valid operator rule used by pinned
+  Numbat's `TestRulesCheckRunsCompanionTestsAgainstBuiltinOverride`; that test
+  executes `numbat rules check` successfully.
 
 Paths, host names, user names, tenant identity, machine identity, session
 identity and lease identity are omitted or replaced with explicit placeholders.

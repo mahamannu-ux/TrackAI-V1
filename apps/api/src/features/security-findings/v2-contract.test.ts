@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import Ajv, { type ValidateFunction } from 'ajv';
 import {
   checkDataSettings,
@@ -13,6 +14,8 @@ import {
 
 const CONTRACT_DIR = join(__dirname, '../../../../../docs/contracts/security-v2');
 const FIXTURE_DIR = join(CONTRACT_DIR, 'fixtures');
+const REPOSITORY_DIR = resolve(CONTRACT_DIR, '../../..');
+const NUMBAT_DIR = join(dirname(dirname(REPOSITORY_DIR)), 'numbat');
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
 
 interface ManifestCase {
@@ -164,8 +167,8 @@ test('T20a security v2: upload kinds each have valid and invalid coverage', () =
 
 test('T20a security v2: valid upload record IDs use the frozen preimage', () => {
   const sourceKeys: Record<string, string[]> = {
-    finding: ['fnd-9575a451f198509a363fa30a'],
-    enforcement: ['enf-0123456789abcdef01234567'],
+    finding: ['fnd-65b142e7f953cd8cbbea3c8d'],
+    enforcement: ['enf-9bb4594ebea86e95f2c93163'],
     indicator: ['run-placeholder', 'domain', 'example.invalid'],
     scan_summary: ['scan-placeholder'],
     permission_event: ['permission-placeholder'],
@@ -185,6 +188,20 @@ test('T20a security v2: valid upload record IDs use the frozen preimage', () => 
   }
 });
 
+test('T20a security v2: adapted source IDs reproduce pinned Numbat algorithms', () => {
+  const findingHash = createHash('sha256');
+  for (const part of ['secrets.agent_read_env', '1.3', 'e1']) {
+    const bytes = Buffer.from(part, 'utf8');
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(bytes.length));
+    findingHash.update(length).update(bytes);
+  }
+  assert.equal(`fnd-${findingHash.digest('hex').slice(0, 24)}`, 'fnd-65b142e7f953cd8cbbea3c8d');
+
+  const decisionHash = createHash('sha256').update('run-placeholder\0e1', 'utf8').digest('hex');
+  assert.equal(`enf-${decisionHash.slice(0, 24)}`, 'enf-9bb4594ebea86e95f2c93163');
+});
+
 test('T20a security v2: valid bundle file digest matches decoded content', () => {
   const bundle = readJson(join(FIXTURE_DIR, 'valid-rule-bundle.json')) as {
     agents: Record<string, { files: Array<{ sha256: string; content_b64: string }> }>;
@@ -196,6 +213,23 @@ test('T20a security v2: valid bundle file digest matches decoded content', () =>
       assert.equal(createHash('sha256').update(content).digest('hex'), file.sha256);
     }
   }
+});
+
+test('T20a security v2: bundled rule is the pinned rules-check success case', {
+  skip: !existsSync(join(NUMBAT_DIR, 'cmd/numbat/rules_dir_test.go')),
+}, () => {
+  const pin = execFileSync('git', ['-C', NUMBAT_DIR, 'rev-parse', '--short=7', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+  assert.equal(pin, '20a5a52');
+  const bundle = readJson(join(FIXTURE_DIR, 'valid-rule-bundle.json')) as {
+    agents: Record<string, { files: Array<{ content_b64: string }> }>;
+  };
+  const rule = Buffer.from(bundle.agents['claude-code'].files[0].content_b64, 'base64')
+    .toString('utf8');
+  const pinnedRuleCheckTest = readFileSync(join(NUMBAT_DIR, 'cmd/numbat/rules_dir_test.go'), 'utf8');
+  assert.ok(pinnedRuleCheckTest.includes(rule));
+  assert.match(pinnedRuleCheckTest, /runCLI\("rules", "check", "--rules-dir", dir\)/);
 });
 
 test('T20a security v2: adapted fixture notice records source, pin, and license', () => {

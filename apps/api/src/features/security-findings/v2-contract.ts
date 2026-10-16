@@ -87,14 +87,10 @@ export interface SecurityFindingV2 {
   endpoint?: { hostname?: string; username?: string };
 }
 
-export interface SecurityEnforcementV2 {
+interface SecurityEnforcementV2Base {
   kind: 'enforcement';
   record_id: SecurityRecordId;
-  decision: 'deny' | 'no_override';
-  mode: 'monitor' | 'enforce';
   rule_ids: string[];
-  deny_rule_id?: string;
-  deny_rule_version?: string;
   finding_record_ids: SecurityRecordId[];
   tool_name?: string;
   tool_call_id?: string;
@@ -102,6 +98,21 @@ export interface SecurityEnforcementV2 {
   source_agent: SecuritySourceAgent;
   timestamp: string;
 }
+
+export type SecurityEnforcementV2 = SecurityEnforcementV2Base & (
+  | {
+    decision: 'deny';
+    mode: 'enforce';
+    deny_rule_id: string;
+    deny_rule_version: string;
+  }
+  | {
+    decision: 'no_override';
+    mode: 'monitor' | 'enforce';
+    deny_rule_id?: never;
+    deny_rule_version?: never;
+  }
+);
 
 export interface SecurityIndicatorV2 {
   kind: 'indicator';
@@ -125,17 +136,20 @@ export interface SecurityScanSummaryV2 {
   diagnostics: number;
 }
 
-export interface SecurityPermissionEventV2 {
+interface SecurityPermissionEventV2Base {
   kind: 'permission_event';
   record_id: SecurityRecordId;
   outcome: 'requested' | 'approved' | 'denied';
   tool_name?: string;
-  tool_call_id?: string;
-  session_id?: string;
   source_agent: SecuritySourceAgent;
   timestamp: string;
-  join: 'exact' | 'same_session_window' | 'unavailable';
 }
+
+export type SecurityPermissionEventV2 = SecurityPermissionEventV2Base & (
+  | { join: 'exact'; tool_call_id: string; session_id?: string }
+  | { join: 'same_session_window'; session_id: string; tool_call_id?: string }
+  | { join: 'unavailable'; tool_call_id?: string; session_id?: string }
+);
 
 export type SecurityHealthStateV2 = 'ok' | 'failed' | 'unavailable';
 

@@ -9,11 +9,11 @@
   "agents": {
     "claude-code": {
       "files": [{
-        "path": "rules/trackai.example.yaml",
-        "sha256": "98b3d8a2133bf11263d958d834498e6b389b2d950be194a77def08212fe1908a",
-        "content_b64": "aWQ6IHRyYWNrYWkuZXhhbXBsZQp2ZXJzaW9uOiAiMS4wIgp0aXRsZTogRXhhbXBsZSBydWxlCg=="
+        "path": "rules/secrets.agent_read_env.yaml",
+        "sha256": "d362272600460fd98c5c84a9ba9f87d821833c175b022da4159c0a08e8616607",
+        "content_b64": "CmlkOiBzZWNyZXRzLmFnZW50X3JlYWRfZW52CnZlcnNpb246ICIyLjAiCmVuYWJsZWQ6IHRydWUKdGl0bGU6IE5hcnJvdyBlbnZpcm9ubWVudCBydWxlCnNldmVyaXR5OiBtZWRpdW0KZXhwcjogJ2V2ZW50LmV2ZW50X3R5cGUgPT0gImNvbW1hbmQuZXhlYyIgJiYgZXZlbnQuY29tbWFuZC5jb250YWlucygiT1ZFUlJJREVfT05MWSIpJwo="
       }],
-      "enabled_rule_ids": ["trackai.example"]
+      "enabled_rule_ids": ["secrets.agent_read_env"]
     }
   }
 }

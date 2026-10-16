@@ -2,7 +2,7 @@
   "schema_version": "trackai.security-upload/2",
   "records": [{
     "kind": "finding",
-    "record_id": "sha256:9fc4f1f7a1466ef51869e6bd4613e7879b8673b7d098563c63a679fbc9d4980b",
+    "record_id": "sha256:bcdc560340a0d658668db550dba3a3ef74a580e7c93938aa21e358201f00b4f1",
     "rule_id": "secrets.agent_read_env",
     "rule_version": "1.3",
     "severity": "medium",
