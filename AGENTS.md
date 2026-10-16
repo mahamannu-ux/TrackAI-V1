@@ -63,6 +63,8 @@ The root also holds pre-kit files, kept where they are because many documents li
 
 New Task trackers go in `docs/plan/`. Besides the files above, only `AGENTS.md`, `CLAUDE.md` and `Makefile` are added to the root.
 
+**Names** (founder, 2026-10-16): **"GitAI"** means only the GitAI fork repository and its code; **"Git AI"** the upstream open-source project; the **TrackAI Endpoint** ("the Endpoint") is what TrackAI installs on a developer machine: the package, the daemon, the Git AI and Numbat binaries and the signed files delivered to it. Say "the Endpoint" for anything that runs on or is delivered to a machine, even though its code lives in GitAI.
+
 ---
 
 ## 3. Git workflow
@@ -304,4 +306,4 @@ The founder pastes the author's review request and nothing else; the reviewer re
   - **Muse** by default when every decision can be made upfront and the work is well bounded (it is faster and free).
   - **Codex** when the work needs long evidence and verification back-and-forth with the founder (live agents, real machines, tenants, browsers), or deep context on code it wrote.
   - **Claude** for cross-cutting design, UI/UX, security-critical cores and integration-heavy work.
-- **Codex as lead when Claude is not available.** The founder may start a Task with Codex directly. Codex may then hand a bounded piece to Muse: it writes the Muse prompt from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md` with every decision made, pre-approved files and a "Port from" section, and it reviews Muse's branch with `docs/agents/CROSS_REVIEW_PROMPT.md`. Muse's piece gets its own branch from `main` and its own PR; if it depends on Codex's interface, that interface lands first as a small PR (§5). Codex follows `docs/agents/TASK_LEAD_PROCEDURE.md` when it leads a whole Task (primer and sub-task graph, session plan, sessions, Muse prompts, reviews, close-out), and `docs/agents/MANAGER_PROMPT.md` for answering and reviewing Muse.
+- **Codex as lead when Claude is not available.** The founder may start a Task with Codex directly. Codex may then hand a bounded piece to Muse: it writes the Muse prompt from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md` with every decision made, pre-approved files and a "Port from" section, and it reviews Muse's branch with `docs/agents/CROSS_REVIEW_PROMPT.md`. Muse's piece gets its own branch from `main` and its own PR; if it depends on Codex's interface, that interface lands first as a small PR (§5). Codex follows `docs/agents/TASK_LEAD_PROCEDURE.md` when it leads a whole Task (primer and session graph, session plan, sessions, Muse prompts, reviews, close-out), and `docs/agents/MANAGER_PROMPT.md` for answering and reviewing Muse.
