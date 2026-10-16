@@ -13,8 +13,8 @@ Branch `docs/Task20-plan` (base: `main` at `6b6156c`). Documentation only. Writt
 | Task19 | `docs/plan/TASK19.md` updated for the Numbat decision: T19.7 done, Task19a merged, T19.4/Task19c wait for Task20d, gaps G7/G8/G10 (model)/G11 moved into Task20, G9 cancelled, G2/G12 shelved, §5 superseded, §6 gap table and session graph | ✅ |
 | Shared docs | AGENTS.md §2 (naming: GitAI, Git AI, TrackAI Endpoint) and §4 (a Task20 row; Task6 Security marked superseded); `docs/templates/TASK_PRIMER_TEMPLATE.md` and `docs/agents/TASK_LEAD_PROCEDURE.md` (session graph instead of sub-task graph) | ✅ founder-requested |
 | Licence | `docs/TASK6_SECURITY_NUMBAT_LICENSE_PLAN.md`: section for binary redistribution at the pin `20a5a52` | 🟡 needs the founder's or counsel's confirmation before the first customer build |
-| Status board | Task20 row; Task19 row refreshed; remaining-plan rows 9–9k; IT-T20 and E20 rows | ✅ |
-| Review | independent review subagent on the primer (6 must-fix, 9 should-fix, all fixed before checkpoint 1); plan review subagent; Codex cross-review | 🟡 Codex pending |
+| Status board | Task20 row; Task19 and Task9 rows refreshed; remaining-plan rows 9–9k; IT-T20 and E20 rows | ✅ |
+| Review | independent review subagent on the primer (6 must-fix, 9 should-fix, all fixed before checkpoint 1); plan review subagent; Codex cross-review round 1 "fix first": (1) Task20f now owns the server half of the fleet lease reference, (2) Task20a freezes the machine-authenticated lease and bundle retrieval routes, (3) `TASK9.md` decision 10 and the status board record the pause and the resume point, (4) `git diff --check` clean | 🟡 round 2 pending |
 
 ## Decisions the next sessions build on
 1. Endpoint vocabulary: "the Endpoint" for anything on or delivered to a machine; "GitAI" only for the repository.

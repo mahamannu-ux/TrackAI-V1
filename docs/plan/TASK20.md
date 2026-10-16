@@ -42,7 +42,7 @@
 
 | ID | Outcome | Implemented | Automated evidence | Founder-live evidence | Session | Completion boundary |
 |---|---|---:|---:|---:|---|---|
-| T20.1 | Security v2 contract: upload kinds (finding, enforcement, indicator, scan summary, permission event, Endpoint security status, agent inventory), rule-bundle manifest, activation lease v2, data settings, error codes, fixtures from Numbat 0.5.0 | ⬜ | ⬜ | n/a | Task20a | Frozen under `docs/contracts/security-v2/`; fixtures validate against Numbat's own schema |
+| T20.1 | Security v2 contract: upload kinds (finding, enforcement, indicator, scan summary, permission event, Endpoint security status, agent inventory), rule-bundle manifest, activation lease v2, the lease reference in the fleet configuration, the machine-authenticated retrieval routes, data settings, error codes, fixtures from Numbat 0.5.0 | ⬜ | ⬜ | n/a | Task20a | Frozen under `docs/contracts/security-v2/`; fixtures validate against Numbat's own schema |
 | T20.2 | Mirror fork, reproducible build, checksums, monthly-sync runbook, coverage-table extraction | ⬜ | ⬜ | ⬜ founder creates the mirror | Task20b | Two builds give identical bytes; Numbat's own tests pass at the pin |
 | T20.3 | Licence and notices for the binary | 🟡 plan doc updated in the plan PR | n/a | n/a | plan PR, Task20b | Notices inside the package |
 | T20.4 | Size and hook-latency budgets; Git AI release build stripped or not | ⬜ | ⬜ script | ⬜ measured on the Mac | Task20b | Budgets written into this tracker (§6) |
@@ -91,6 +91,13 @@ The exact JSON and table names are decided in Task20a; these meanings are fixed 
   - the data settings and the day-one-scan switch.
 
   It replaces Task9's `securityActivation {mode, version}` field; Task9's fleet configuration carries a reference to the lease.
+- **Lease reference in the fleet configuration.** It is a new schema version of Task9's configuration. In place of `securityActivation` it carries `securityLease: {leaseId, bundleDigest, expiresAt}`. Schema v1 and v2 configurations stay readable, and their `securityActivation` is treated as `off`, which is fail-closed. The server half is built in Task20f, the Endpoint half in Task20g.
+- **Retrieval routes (machine-authenticated, under `/worker/security`).**
+  - `GET` the current lease for this machine;
+  - `GET` a bundle by its digest;
+  - `POST` an acknowledgement or a refusal.
+
+  Tenant and machine come **only from the machine credential**. No path, query or body field names a tenant or a machine. A digest belonging to another tenant, or a lease for another machine, answers the same safe "not found" as a missing one, and the server audits it. Responses are `no-store` and carry the signed bytes exactly as signed. Task20a freezes the shapes, Task20f implements them, and Task20f's tests include Company A/B and machine X/Y cases.
 - **Errors.** Safe codes only, in RFC 7807 form; no raw values are echoed back.
 
 ## 4. Waves and exit gates
@@ -133,15 +140,15 @@ TrackAI and GitAI-repository work are separate sessions and PRs. Endpoint code i
 | **Task20c-endpoint-trust-verifier** | GitAI / Codex | T20.5 | about 0.15× | plan merged (vectors are on `main`) | new `src/trust/` module and tests; copied vectors under `tests/fixtures/trust/`; `Cargo.toml` / `Cargo.lock` (an ECDSA P-256 crate such as `p256`, pre-approved by merging this plan); closes GitAI backlog row G8 |
 | **Task20d-security-ingest-v2** | TrackAI / Muse (Codex reviews) | T20.7a, T20.7b | about 0.33× | Task20a merged | `apps/api/src/core/db/schema.ts` (security tables only), one migration + `meta/`, `features/security-findings/` (v2 ingest, storage, reads, tests, `task20d-ingest-live-verify.ts`), `apps/api/src/app.ts` (mount only), `apps/api/package.json` (scripts) |
 | **Task20e-endpoint-shipper** | GitAI / Codex | T20.6a, T20.6b | about 0.32× | Task20a and Task20b merged (contract fixtures and the pinned Numbat build); the run against the real Task20d route is IT-M20-02, not a merge gate | `src/security/` (new tail, records, minimize modules; `delivery.rs`, `delivery_queue.rs` generalized; evaluator in `mod.rs` removed; `activation.rs` reduced to the lease interface), `src/daemon.rs` and `src/daemon/telemetry_worker.rs` (wiring only), `src/commands/checkpoint_agent/orchestrator.rs` (remove `submit_activated_command` call) |
-| **Task20f-security-settings-signing** | TrackAI / Claude | T20.8 | about 0.25× | Task20a merged | new `apps/api/src/features/security/` (settings, catalogue data from the pin with notices, compiler, bundle, lease, routes, tests, `task20f-signing-live-verify.ts`), `schema.ts` (security settings, bundle and lease tables only), one migration + `meta/`, `app.ts` (mount only), imports of `features/attesta/signer-contract.ts` and the KMS adapters (read-only use), `core/audit/catalog.ts` (only after a Task16 contract PR to the frozen `docs/contracts/audit/catalog.md` that flips the reserved `fleet.lease.*`, `policy.bundle.*` and `security.monitor.changed` events to active, gives them Task20 as owner, widens `security.monitor.changed`'s mode to `monitor_and_pilot_block`, and adds `security.enforce_mode.changed`) |
-| **Task20g-endpoint-policy-apply** | GitAI / Codex | T20.9 | about 0.20× | Task20c, Task20e, Task20f merged | new `src/security/policy_apply.rs`, lease handling in `src/security/activation.rs`, `src/fleet/` (replace `securityActivation` with a lease reference; Task9-owned, same agent) |
+| **Task20f-security-settings-signing** | TrackAI / Claude | T20.8 | about 0.30× (0.25× plus the fleet lease reference) | Task20a merged | new `apps/api/src/features/security/` (settings, catalogue data from the pin with notices, compiler, bundle, lease, the machine-authenticated retrieval routes with Company A/B and machine X/Y tests, `task20f-signing-live-verify.ts`); the server half of the lease reference in Task9's files, pre-approved with Codex as Task9's owner reviewing: `features/fleet/{contract,service}.ts` and `fleet.test.ts` (new configuration schema version, v1/v2 compatibility), fleet audit details, and the fleet tables in `schema.ts` with this session's migration if a column is needed; `schema.ts` (security settings, bundle and lease tables only), one migration + `meta/`, `app.ts` (mount only), imports of `features/attesta/signer-contract.ts` and the KMS adapters (read-only use), `core/audit/catalog.ts` (only after a Task16 contract PR to the frozen `docs/contracts/audit/catalog.md` that flips the reserved `fleet.lease.*`, `policy.bundle.*` and `security.monitor.changed` events to active, gives them Task20 as owner, widens `security.monitor.changed`'s mode to `monitor_and_pilot_block`, and adds `security.enforce_mode.changed`) |
+| **Task20g-endpoint-policy-apply** | GitAI / Codex | T20.9 | about 0.20× | Task20c, Task20e, Task20f merged | new `src/security/policy_apply.rs` (fetch the lease and bundle through Task20a's retrieval routes, verify, apply, acknowledge or refuse), lease handling in `src/security/activation.rs`, `src/fleet/` (parse the new configuration schema version's `securityLease`; Task9-owned, same agent) |
 | **Task20h-endpoint-package-install** | GitAI / Codex + founder-live | T20.10, T20.12 (Endpoint), T20.13 | about 0.35× | Task20b, Task20g merged | `packaging/macos/` (PKG adds Numbat and managed hooks), `mdm/` scripts, `src/security/` (status, inventory, day-one scan), offboarding cleanup; then the re-run of Task9's paused package checks; Task9's tracker rows (TrackAI repository) are updated in a separate small docs PR, `docs/Task20h-task9-resume`, by Codex as Task9's owner |
 | **Task20i-security-console** | TrackAI / Claude design note, Muse build | T20.11, T20.12 (server) | about 0.29× | Task20d, Task20f merged | new `apps/web/src/app/dashboard/security-workspace.tsx`, `apps/web/src/lib/api.ts`, minimal `dashboard/page.tsx` navigation, server storage for status and inventory (`features/security-findings/`, `schema.ts`, one migration) |
 | **Task20j-acceptance** | TrackAI docs + founder-live, Codex for Endpoint runs | T20.14, T20.20 | about 0.17× | Task20h merged (Task20i for the console rows); Task15n keys for IT-T20f-02 | `docs/plan/TASK20.md` §6–§8, `AGENTS.md` §9 items 9 and 11, `TASK6_SECURITY.md` (superseded note), runbook `docs/plan/TASK20_ACCEPTANCE.md` |
 | Task20k-enforce-pilot (later) | Codex + founder-live; its prompt splits it into a GitAI session and a TrackAI session | T20.15 | about 0.10× | Task20j passed; root helper designed (Q2) | named in its prompt |
 | Task20l-rule-wave-2 (later) | TrackAI / Muse | T20.16 | about 0.08× | Task20j passed | `features/security/` default policy and tests |
 
-**Total:** about 2.5× T6 for Task20's own sessions (Task20a–Task20l). Task15o/15p, Task19c and Task4-entitlements are sized in their own Tasks.
+**Total:** about 2.55× T6 for Task20's own sessions (Task20a–Task20l). Task15o/15p, Task19c and Task4-entitlements are sized in their own Tasks.
 
 **Parallel work** (one session per agent at a time):
 - Claude: Task20a → Task20f → the Task20i design note.
@@ -165,7 +172,7 @@ flowchart TB
     E["<b>Task20e</b> Endpoint shipper<br/>T20.6a, T20.6b · Codex · 0.32×"]
   end
   subgraph W3["Wave 3: settings, signing, install"]
-    F["<b>Task20f</b> settings, compile, sign<br/>T20.8 · Claude · 0.25×"]
+    F["<b>Task20f</b> settings, compile, sign, lease routes<br/>T20.8 · Claude · 0.30×"]
     G["<b>Task20g</b> Endpoint policy apply<br/>T20.9 · Codex · 0.20×"]
     H["<b>Task20h</b> package and install<br/>T20.10, T20.12, T20.13 · Codex + founder · 0.35×"]
     I["<b>Task20i</b> security console<br/>T20.11, T20.12 · Claude design, Muse · 0.29×"]

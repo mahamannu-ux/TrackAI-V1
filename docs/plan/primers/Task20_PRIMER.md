@@ -123,7 +123,7 @@ flowchart TB
     E["<b>Task20e</b> Endpoint shipper<br/>T20.6a, T20.6b · Codex · 0.32×"]
   end
   subgraph W3["Wave 3: settings, signing, install"]
-    F["<b>Task20f</b> settings, compile, sign<br/>T20.8 · Claude · 0.25×"]
+    F["<b>Task20f</b> settings, compile, sign, lease routes<br/>T20.8 · Claude · 0.30×"]
     G["<b>Task20g</b> Endpoint policy apply<br/>T20.9 · Codex · 0.20×"]
     H["<b>Task20h</b> package and install<br/>T20.10, T20.12, T20.13 · Codex + founder · 0.35×"]
     I["<b>Task20i</b> security console<br/>T20.11, T20.12 · Claude design, Muse · 0.29×"]
@@ -242,7 +242,7 @@ TrackAI and GitAI-repository work are separate sessions (AGENTS.md §3); a sessi
 | Task20c-endpoint-trust-verifier | T20.5 | Codex | about 0.15× | Rust Endpoint code in GitAI, security-critical, vector-driven |
 | Task20d-security-ingest-v2 | T20.7a, T20.7b | Muse (Codex reviews) | about 0.33× | Fully specified by Task20a; frees Codex |
 | Task20e-endpoint-shipper | T20.6a, T20.6b | Codex | about 0.32× | Deep knowledge of the Endpoint code (its own queue and evaluator) |
-| Task20f-security-settings-signing | T20.8 | Claude | about 0.25× | Signing and activation are security-critical cores |
+| Task20f-security-settings-signing | T20.8, plus the fleet lease reference and retrieval routes (Codex review, 2026-10-16) | Claude | about 0.30× | Signing and activation are security-critical cores |
 | Task20g-endpoint-policy-apply | T20.9 | Codex | about 0.20× | Endpoint code, on Task20c's verifier |
 | Task20h-endpoint-package-install | T20.10, T20.12 (Endpoint), T20.13 | Codex + founder-live | about 0.35× | Task9's owner; real machines |
 | Task20i-security-console | T20.11, T20.12 (server) | Muse after Claude's design note | about 0.29× | UI against a fixed API |

@@ -74,4 +74,3 @@ Task20 ships Numbat itself inside the TrackAI Endpoint package (`docs/plan/TASK2
 | Changes the pin (monthly sync) | Repeat this record: licence, NOTICE, dependency list, rule-file diff |
 
 This is an engineering compliance plan, not legal advice; the founder or counsel confirms it before the first customer build.
-
