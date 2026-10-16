@@ -1,6 +1,6 @@
-# Numbat adoption review (draft for the founder brainstorm)
+# Numbat adoption review
 
-*Written 2026-10-16 by the Task19 lead (Claude), at the founder's request (T19.7, Task6 strategy). Sources: Numbat at `perplexityai/numbat` `20a5a52` (2026-10-15, latest release tag v0.2.0), its `docs/` and `rules/`; the founder's four primers in `docs/founder/`; TrackAI `main` at `67c903f`; GitAI fork `main` at `d1838619c`. Numbat's code and docs are the authority; the primers are input. This is a draft: the founder's answers in §10 turn it into a plan.*
+*Written 2026-10-16 by the Task19 lead (Claude), at the founder's request (T19.7, Task6 strategy). Sources: Numbat at `perplexityai/numbat` `20a5a52` (2026-10-15, latest release tag v0.2.0), its `docs/` and `rules/`; the founder's four primers in `docs/founder/`; TrackAI `main` at `67c903f`; GitAI fork `main` at `d1838619c`. Numbat's code and docs are the authority; the primers are input. The founder approved §10 on 2026-10-16, with the refinements in §13; this is now the decision record for Task20.*
 
 ## 1. Bottom line
 
