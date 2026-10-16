@@ -43,6 +43,7 @@
     },
     "sha256": {
       "type": "string",
+      "maxLength": 64,
       "pattern": "^[a-f0-9]{64}$"
     }
   }

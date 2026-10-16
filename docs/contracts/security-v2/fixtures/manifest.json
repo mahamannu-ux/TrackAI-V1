@@ -23,7 +23,7 @@
     { "file": "invalid-security-status-endpoint-device-id.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Security status refuses forbidden endpoint.device_id." },
 
     { "file": "valid-agent-inventory.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Agent version may be null when Numbat 0.5.0 does not report it." },
-    { "file": "invalid-agent-inventory-content-preview.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Agent inventory refuses forbidden message content_preview." },
+    { "file": "invalid-agent-inventory-content-preview.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Agent inventory refuses forbidden content_preview." },
 
     { "file": "valid-data-settings.json", "schema": "../security-data-settings-v1.schema.json", "expectedValid": true, "rationale": "All five data groups are explicitly disabled by default." },
     { "file": "invalid-data-settings-missing-urls.json", "schema": "../security-data-settings-v1.schema.json", "expectedValid": false, "rationale": "Every data-setting boolean is required." },
