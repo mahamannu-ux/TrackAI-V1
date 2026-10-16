@@ -17,6 +17,7 @@ import type { LifecycleSummary, LifecycleValue } from '../../telemetry/lifecycle
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from '../registry';
 import type {
   QaAnswerContext,
+  QaAnswerer,
   QaAvailability,
   QaDrilldown,
   QaEnvelope,
@@ -52,6 +53,8 @@ export interface ComputeInput {
   /** Absent for Q13/Q18, which aggregate raw tables, and for Q14 (PR intelligence). */
   scope?: ScopeFacts;
   breakdownFacts?: BreakdownFacts;
+  /** Q20 only: the previous period's facts, with the same figure keys. */
+  previous?: { from: string; to: string; scope: ScopeFacts; breakdownFacts: BreakdownFacts };
 }
 
 export function periodMs(scope: { from: string; to: string }): { fromMs: number; toMs: number } {
@@ -130,6 +133,11 @@ function signedEvidence(ctx: QaAnswerContext): QaSignedEvidenceLink | undefined 
  * Assembles the envelope (§2.1 rule 6): as_of, scope, kind live, registry
  * version, exact registry wording, worst-of availability, union reasons, and
  * the first 20 drill-down items. No kind and no subject_sha on the evidence link.
+ *
+ * One deviation the frozen schema forces: top-level `unavailable` means every
+ * figure is unavailable (answer-v1.schema.json), so a mix of recorded and
+ * unavailable figures tops out at `partial` instead of the literal worst.
+ * The union reasons still name every gap.
  */
 export function finishEnvelope(
   ctx: QaAnswerContext,
@@ -139,8 +147,15 @@ export function finishEnvelope(
 ): QaEnvelope {
   const question = QA_QUESTIONS_BY_ID.get(ctx.questionId);
   if (!question) throw new Error(`Task19b: unknown question ${ctx.questionId}`);
-  const availability = figures.reduce<QaAvailability>(
+  const worst = figures.reduce<QaAvailability>(
     (acc, figure) => worse(acc, figure.availability), 'recorded');
+  void worst;
+  // The frozen schema reads top-level `unavailable` as "every figure is
+  // unavailable", so that level applies only when nothing is available; any
+  // other mix with a gap tops out at `partial`.
+  const availability: QaAvailability = figures.length > 0 && figures.every((figure) => figure.availability === 'unavailable')
+    ? 'unavailable'
+    : figures.some((figure) => figure.availability !== 'recorded') ? 'partial' : 'recorded';
   const reasons = unionReasons(figures);
   const drilldown: QaDrilldown[] = listDrilldownItems(context, ctx).slice(0, 20);
   const envelope: QaEnvelope = {
@@ -179,7 +194,6 @@ export async function loadScopeFacts(
   context: QaContext,
   ctx: QaAnswerContext,
 ): Promise<{ scope: ScopeFacts; breakdownFacts: BreakdownFacts }> {
-  const { fromMs, toMs } = periodMs(ctx.scope);
   const filter = {
     ...(ctx.scope.repository_id ? { repositoryId: ctx.scope.repository_id } : {}),
     ...(ctx.scope.pull_request_id ? { pullRequestId: ctx.scope.pull_request_id } : {}),
@@ -221,18 +235,11 @@ export async function loadScopeFacts(
     }
   }
   if (ctx.breakdown === 'model' || ctx.breakdown === 'tool') {
-    const filtered = {
-      ...context,
-      modelLifecycleEvents: context.modelLifecycleEvents.filter((row) =>
-        inPeriod(row.occurredAt, fromMs, toMs) && modelRowInScope(context, ctx, row)),
-    };
-    const keys = [...new Set(filtered.modelLifecycleEvents.map((row) => row.modelKey))].sort();
-    for (const key of keys) {
-      const rows = filtered.modelLifecycleEvents.filter((row) => row.modelKey === key);
-      const tools = [...new Set(rows.map((row) => row.tool))].sort();
+    const filtered = periodFilteredContext(context, ctx);
+    for (const { key, tool } of modelKeysInScope(context, ctx)) {
       breakdownFacts.models.push({
         key,
-        tool: tools[0] ?? 'unknown',
+        tool,
         summary: lifecycleForModel(filtered, key).summary,
       });
     }
@@ -254,4 +261,48 @@ function modelRowInScope(context: QaContext, ctx: QaAnswerContext, row: ModelRow
     if (!commit || row.commitId !== commit.id) return false;
   }
   return true;
+}
+
+/** Distinct model keys with rows in the request's scope and period, with each key's tool. */
+export function modelKeysInScope(
+  context: QaContext,
+  ctx: QaAnswerContext,
+): Array<{ key: string; tool: string }> {
+  const { fromMs, toMs } = periodMs(ctx.scope);
+  const rows = context.modelLifecycleEvents.filter((row) =>
+    inPeriod(row.occurredAt, fromMs, toMs) && modelRowInScope(context, ctx, row));
+  return [...new Set(rows.map((row) => row.modelKey))].sort().map((key) => {
+    const tools = [...new Set(rows.filter((row) => row.modelKey === key).map((row) => row.tool))].sort();
+    return { key, tool: tools[0] ?? 'unknown' };
+  });
+}
+
+/**
+ * The period-filtered copy of the context §2.1 rule 2 blesses: input
+ * filtering, the same as lifecycleForTenant's inTime helper, not a new
+ * calculation.
+ */
+export function periodFilteredContext(context: QaContext, ctx: QaAnswerContext): QaContext {
+  const { fromMs, toMs } = periodMs(ctx.scope);
+  return {
+    ...context,
+    modelLifecycleEvents: context.modelLifecycleEvents.filter((row) => inPeriod(row.occurredAt, fromMs, toMs)),
+  };
+}
+
+/** Thin answerer: loads the context and the Task2 scope facts, then computes purely. */
+export function liveAnswer(compute: (input: ComputeInput) => QaEnvelope): QaAnswerer {
+  return async (ctx) => {
+    const context = await loadContext(ctx.tenantId);
+    const { scope, breakdownFacts } = await loadScopeFacts(ctx.tenantId, context, ctx);
+    return compute({ context, ctx, scope, breakdownFacts });
+  };
+}
+
+/** Thin answerer for raw-table questions (Q13, Q18): context only, no lifecycle facts. */
+export function rawAnswer(compute: (input: ComputeInput) => QaEnvelope): QaAnswerer {
+  return async (ctx) => {
+    const context = await loadContext(ctx.tenantId);
+    return compute({ context, ctx });
+  };
 }
