@@ -1,0 +1,19 @@
+docs/contracts/security-v2/security-rule-bundle-v1.schema.json
+  s_1f118df22e382d::t_9157e8045e95b1 1-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "948fdf6ded416cfbec8b648b59ebfefd0a972940",
+  "prompts": {},
+  "sessions": {
+    "s_1f118df22e382d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_ebaa3cf4dffer1cmfO0Aw1f1Zb",
+        "model": "muse-spark-1.3-contributor-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
