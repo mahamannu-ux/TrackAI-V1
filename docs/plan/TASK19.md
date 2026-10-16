@@ -80,7 +80,7 @@ Columns:
 | 19 | Q20 | 🟡 ⬜ n/a | identity linking partial (T2.20); **no team mapping exists** (no team table or column), so by-team is `unavailable` and the answer is by repository | T19.3 aggregated | n/a | team mapping: open issue (§3.1) |
 | 20 | Q17 | n/a n/a n/a | phase 2 (SCANOSS) | phase 2 | phase 2 | customer trigger |
 | 1 | S1 | 🟡 ⬜ ⬜ | stored for 3 rules; 44 rules with Task20 (G9 cancelled); signing G6 → Task15o (redesigned on Numbat's finding schema) | T19.4 | A16.13b via Task15p | Task20d, then Task15o |
-| 2 | S2 | 🟡 ⬜ ⬜ | G7 → Task20 (lease history in Task20f, Endpoint posture history in Task20h) | after G7 | after G7 (coverage figures in Task15p) | Task20f, Task20h |
+| 2 | S2 | 🟡 ⬜ ⬜ | G7 → Task20 (lease history in Task20f; Endpoint status reported in Task20h, stored per day in Task20i) | after G7 | after G7 (coverage figures in Task15p) | Task20f, Task20h, Task20i |
 | 3 | S3 | ⬜ ⬜ ⬜ | G8 → Task20f (settings writer, audit event reserved in Task16b); tamper rules in Task20's first wave | after Task20d/20f | after Task15o | Task20d, Task20f |
 | 4 | S4 | ⬜ ⬜ ⬜ | secrets, exfiltration and chain rules in Task20's first wave (G9 cancelled) | after Task20d | after Task15o | Task20d |
 | 5 | S5 | 🟡 ⬜ ⬜ | partly; G10 session key → Task13 after Task20 (founder, review §13 item 10) | T19.4 partly | A16.13b partly | Task13 revisit |
@@ -88,7 +88,7 @@ Columns:
 | 7 | S7 | ✅ ⬜ ⬜ | stored | T19.4 | A16.13b via Task15p | — |
 | 8 | S8 | 🟡 ⬜ ⬜ | agent stored; model on Numbat's finding, stored by Task20d (G10, model part) | T19.4 | A16.13b | Task20d |
 | 9 | S9 | 🟡 ⬜ ⬜ | stored; macOS only (Windows and Linux with Task9g and the Linux wave) | T19.4 | A16.13b | — |
-| 10 | S10 | 🟡 ⬜ ⬜ | partly; G7 → Task20 (rule bundle digest and Numbat version per machine and day) | T19.4 partly | A16.13b partly | Task20h |
+| 10 | S10 | 🟡 ⬜ ⬜ | partly; G7 → Task20 (rule bundle digest and Numbat version per machine and day) | T19.4 partly | A16.13b partly | Task20h, Task20i |
 | 11 | S11 | ✅ ⬜ ⬜ | stored | T19.4 | A16.13b | — |
 | 12 | S12 | ✅ ⬜ ⬜ | stored ("none blocked"); "denied by request" after the Task20k pilot | T19.4 | A16.13b | — |
 | 13 | S13 | ⬜ ⬜ ⬜ | activation lease part: G11 → Task20f/20g; organization policy G2 shelved | lease part after Task20g | lease part after Task15o | Task20f, Task20g |
@@ -162,7 +162,7 @@ Revised 2026-10-16 for the Numbat decision. Security gaps close inside Task20's 
 | G3 PR reviews | `Task2-pr-reviews` (before production) |
 | G1 repository snapshot | `Task2-repo-snapshot` (+ `-gitai`) |
 | G6 findings signed on their own | Task15o, redesigned on Numbat's finding schema, after Task20a and Task20d |
-| G7 coverage history | Task20f (lease history) and Task20h (Endpoint posture per machine and day) |
+| G7 coverage history | Task20f (lease history), Task20h (the Endpoint reports its security status) and Task20i (stored per machine and day) |
 | G8 monitor writer and audit event | Task20f (security settings writer; event reserved in Task16b) |
 | G9 rule coverage | **Cancelled:** Task20's first wave adopts 44 of Numbat's rules (proved in Task20j) |
 | G10 model and session key | Model: Task20a/20d (Numbat's `model` field). Session key to Git AI sessions: Task13, after Task20 (review §13 item 10) |
@@ -227,7 +227,7 @@ flowchart TB
   subgraph T20["Task20 (its own plan)"]
     X["<b>Task20a</b> security v2 contract"]
     Y["<b>Task20d</b> security ingest v2<br/>G10 model part"]
-    Z["<b>Task20f / 20g / 20h</b><br/>G7, G8, G11"]
+    Z["<b>Task20f / 20g / 20h / 20i</b><br/>G7, G8, G11"]
   end
   subgraph Other["Other owners"]
     G4["<b>Task2-merged-by</b> G4"]

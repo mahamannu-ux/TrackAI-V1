@@ -99,7 +99,8 @@ Ownership is by **concern and file**, not by whole directory: several directorie
 | **Transport and security** around that flow: durable delivery, idempotency, watermarks, repository enforcement and scope, provider-delivery idempotency, retry and projection ordering, provider delivery ledger, webhook crypto | Task4 | `features/telemetry/{repository-enforcement,watermark-policy}.ts`, `features/scm/{provider-event,provider-delivery-store,crypto}.ts`, every `task4-*` file |
 | Identity, credentials, encryption, grants, admin, retention, export, monitoring | Task4 | `core/security/`, `core/operations/`, `core/middleware/`, `features/admin/`, `features/operations/` |
 | Governed evidence: taxonomy, ingestion, graph, raw reveal, analytics, semantic search | Task5 | `features/evidence/`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` |
-| Coding-agent security findings (monitor-only) | Task6 Security | `features/security-findings/`, `docs/contracts/task6/`; GitAI security evaluator |
+| Coding-agent security findings, Task6.a era (monitor-only; frozen contracts, readable rows) | Task6 Security, superseded by Task20 from 2026-10-16 | `docs/contracts/task6/` (frozen); the Task6.a files in `features/security-findings/` |
+| Coding-agent security with Numbat: ingest v2, security rule and data settings, signed rule bundle and activation lease, security console; Endpoint shipper, trust verifier, policy apply and Numbat packaging | Task20 | `features/security-findings/` (v2 files), `features/security/` (new), `docs/contracts/security-v2/` (from Task20a), `apps/web/src/app/dashboard/security-workspace.tsx` (from Task20i); GitAI `src/security/`, `src/trust/`, `packaging/numbat/` |
 | Organization policy engine | Task6 Policy (deferred) | none yet |
 | Route and surface coverage | Task13 | `AGENT_COVERAGE.md`; adapters mostly in GitAI |
 | Signed provenance attestation | Task15 Attesta | named in its first prompt |

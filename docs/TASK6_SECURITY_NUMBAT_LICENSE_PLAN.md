@@ -1,6 +1,6 @@
 # Task6 Security Numbat license plan
 
-Status: **Approved for the first monitor-only subset; no upstream code copied**
+Status: **Approved for the first monitor-only subset; no upstream code copied.** Extended 2026-10-16 for Task20, which **redistributes the Numbat binary** (section "Task20: binary redistribution" below; needs the founder's or legal's approval before the first customer build).
 
 Last updated: **2026-09-29**
 
@@ -51,3 +51,27 @@ another legal/security review. The final release review must compare the shipped
 files with this source record.
 
 This is an engineering compliance plan, not legal advice.
+
+## Task20: binary redistribution (added 2026-10-16 by the Task20 lead)
+
+Task20 ships Numbat itself inside the TrackAI Endpoint package (`docs/plan/TASK20.md` §1 item 9). That is distribution of the Apache-2.0 work and of the Go dependencies compiled into it, so the earlier "only if copied" plan is not enough.
+
+| Item | Recorded value |
+|---|---|
+| Source | `https://github.com/perplexityai/numbat`, built from the TrackAI mirror fork with no product changes |
+| Pinned commit | `20a5a52bab41c9bf6ee857efd43c7b198b055de5` (`v0.2.0-14-g20a5a52`), mirror tag `v0.2.0-trackai.1`; moves to the first upstream release containing it before the first customer build |
+| Licence at the pin | Apache License 2.0 (`LICENSE`) |
+| Upstream `NOTICE` | none at the pin (re-check at every monthly sync) |
+| Dependency notices | `THIRD_PARTY_LICENSES.txt` at the pin, shipped **in full** because the binary contains those dependencies |
+| Rule files | the 51 rule YAML files at the pin, stored by TrackAI's server as data and compiled into override files (Task20f): adapted material |
+
+| What Task20 does | Required handling |
+|---|---|
+| Ships the Numbat binary in the Endpoint package | Put Numbat's `LICENSE` and `THIRD_PARTY_LICENSES.txt` next to the binary in the package (GitAI `packaging/numbat/`, Task20b) and list Numbat, the pin and the licence in the package's notices |
+| Stores and changes Numbat's rule YAML (severity, `enabled`, `enforce`, version suffix) | Keep the Apache-2.0 text with the catalogue data, keep each file's origin (path at the pin), and mark compiled override files "modified by TrackAI" in a comment line |
+| Derives contract fixtures from Numbat's schema or test fixtures (Task20a) | Same as above: notice file in the fixtures folder |
+| Names Numbat in the product | "Powered by Numbat (Apache-2.0)" only; no Numbat or Perplexity marks as a TrackAI endorsement; TrackAI is never branded as Numbat |
+| Changes the pin (monthly sync) | Repeat this record: licence, NOTICE, dependency list, rule-file diff |
+
+This is an engineering compliance plan, not legal advice; the founder or counsel confirms it before the first customer build.
+
