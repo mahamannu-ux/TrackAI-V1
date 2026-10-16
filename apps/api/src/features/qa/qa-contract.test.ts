@@ -8,12 +8,15 @@
  * checked in sync).
  */
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join, resolve } from 'node:path';
 import test from 'node:test';
 import { checkEnvelope, envelopeSchemaValidator } from './envelope';
-import { QUESTIONS_MD_PATH, renderQuestions } from './generate-registry';
+import { ANSWER_V1_SCHEMA } from './answer-schema';
+import { ANSWER_SCHEMA_TS_PATH, QUESTIONS_MD_PATH, renderAnswerSchemaModule, renderQuestions } from './generate-registry';
 import { QA_GAPS, QA_QUESTIONS, QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from './registry';
 import {
   QA_DIMENSIONS, QA_DRILLDOWN_SCOPES, QA_PERSON_WORDS, QA_SCOPES, type QaBuilder, type QaKind,
@@ -178,6 +181,8 @@ test('qa envelope: every invalid fixture fails, for the reason it is named after
     'invalid-not-captured-without-gap': '/figures/0/reasons/0',
     'invalid-drilldown-path-label': '/drilldown/0/label',
     'invalid-extra-field': '/figures/0',
+    'invalid-verifiable-without-evidence': '/figures/0',
+    'invalid-signed-previous-without-evidence': '/previous/figures/0',
   };
   const names = readdirSync(FIXTURES).filter((n) => n.startsWith('invalid-')).map((n) => n.replace(/\.json$/, '')).sort();
   assert.deepEqual(names, Object.keys(reasons).sort());
@@ -271,5 +276,37 @@ test('qa envelope: no field can carry raw content (closed objects all the way do
   const text = JSON.stringify(schema).toLowerCase();
   for (const word of ['prompt', 'command', '"path":{"type"', 'diff', 'content']) {
     assert.ok(!text.includes(word), `the schema declares no ${word} field`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The embedded schema and the production layout (the API image ships only dist/, no docs/)
+
+test('qa envelope: answer-schema.ts is generated from the frozen JSON and in sync', () => {
+  assert.equal(readFileSync(ANSWER_SCHEMA_TS_PATH, 'utf8'), renderAnswerSchemaModule(), 'run: npm run qa:registry -w apps/api');
+  assert.deepEqual(ANSWER_V1_SCHEMA, JSON.parse(readFileSync(resolve(REPO, 'docs/contracts/qa/answer-v1.schema.json'), 'utf8')));
+});
+
+test('qa envelope: the compiled validator works with no docs/ anywhere above it (production layout)', () => {
+  let tsc: string;
+  try { tsc = require.resolve('typescript/bin/tsc'); } catch { return; } // optional toolchain absent: skip
+  const dir = mkdtempSync(join(tmpdir(), 'qa-dist-'));
+  try {
+    // As apps/api/Dockerfile: compile src/ to dist/; only dist/ is shipped.
+    execFileSync(process.execPath, [tsc, '--outDir', join(dir, 'dist'), '--rootDir', resolve(__dirname, '../..'),
+      '--module', 'commonjs', '--target', 'ES2022', '--esModuleInterop', '--strict', '--skipLibCheck',
+      resolve(__dirname, 'envelope.ts')], { stdio: 'pipe' });
+    const names = readdirSync(FIXTURES).filter((n) => n.endsWith('.json')).sort();
+    const script = `const {checkEnvelope}=require(${JSON.stringify(join(dir, 'dist/features/qa/envelope.js'))});
+      const input=JSON.parse(require('fs').readFileSync(0,'utf8'));
+      process.stdout.write(JSON.stringify(input.map((e)=>checkEnvelope(e).ok)));`;
+    const out = execFileSync(process.execPath, ['-e', script], {
+      cwd: dir,
+      input: JSON.stringify(names.map((n) => JSON.parse(readFileSync(resolve(FIXTURES, n), 'utf8')))),
+      env: { ...process.env, NODE_PATH: [resolve(REPO, 'node_modules'), resolve(REPO, 'apps/api/node_modules')].join(delimiter) },
+    }).toString();
+    assert.deepEqual(JSON.parse(out), names.map((n) => n.startsWith('valid-')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

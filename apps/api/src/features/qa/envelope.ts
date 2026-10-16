@@ -5,11 +5,11 @@
  * never reaches the client. Results carry the failing rule's path only, never a value.
  *
  * Validated with the `ajv` already in apps/api (no new dependency), with the
- * settings Attesta's schema checks use (features/attesta/builder.ts).
+ * settings Attesta's schema checks use (features/attesta/builder.ts). The schema is
+ * embedded (answer-schema.ts), because the API image ships no docs/ (Dockerfile).
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import Ajv, { type ValidateFunction } from 'ajv';
+import { ANSWER_V1_SCHEMA } from './answer-schema';
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from './registry';
 import type { QaEnvelope, QaFigure, QaKind, QaQuestionId, QaScope } from './types';
 
@@ -31,21 +31,11 @@ export interface EnvelopeExpectation {
 
 let validator: ValidateFunction | null = null;
 
-function contractPath(): string {
-  // Walk up from this file to docs/contracts/qa (src and dist sit at the same depth).
-  let dir = __dirname;
-  for (let i = 0; i < 8; i += 1) {
-    const candidate = join(dir, 'docs', 'contracts', 'qa', 'answer-v1.schema.json');
-    if (existsSync(candidate)) return candidate;
-    dir = dirname(dir);
-  }
-  throw new Error('docs/contracts/qa/answer-v1.schema.json not found above envelope.ts');
-}
-
+/** Compiled from the embedded schema (answer-schema.ts, generated from the frozen JSON), so no file is read at run time. */
 export function envelopeSchemaValidator(): ValidateFunction {
   if (validator) return validator;
   const ajv = new Ajv({ strict: true, allErrors: true, strictTypes: false, strictRequired: false });
-  validator = ajv.compile(JSON.parse(readFileSync(contractPath(), 'utf8')) as Record<string, unknown>);
+  validator = ajv.compile(ANSWER_V1_SCHEMA);
   return validator;
 }
 

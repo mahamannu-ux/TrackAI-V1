@@ -283,6 +283,138 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "verifiable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "figures": {
+            "type": "array",
+            "items": {
+              "if": {
+                "required": [
+                  "availability"
+                ],
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "recorded",
+                      "partial"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "evidence"
+                ]
+              }
+            }
+          },
+          "previous": {
+            "properties": {
+              "figures": {
+                "type": "array",
+                "items": {
+                  "if": {
+                    "required": [
+                      "availability"
+                    ],
+                    "properties": {
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "evidence"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "signed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "figures": {
+            "type": "array",
+            "items": {
+              "if": {
+                "required": [
+                  "availability"
+                ],
+                "properties": {
+                  "availability": {
+                    "enum": [
+                      "recorded",
+                      "partial"
+                    ]
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "evidence"
+                ]
+              }
+            }
+          },
+          "previous": {
+            "properties": {
+              "figures": {
+                "type": "array",
+                "items": {
+                  "if": {
+                    "required": [
+                      "availability"
+                    ],
+                    "properties": {
+                      "availability": {
+                        "enum": [
+                          "recorded",
+                          "partial"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "evidence"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "definitions": {

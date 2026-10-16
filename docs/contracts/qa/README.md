@@ -16,7 +16,7 @@ Every surface that answers a customer's or an auditor's question uses this contr
 1. **One registry.** Each question has a stable id (`Q1`…`Q20`, `S1`…`S18`), a family, a rank, an auditor flag, the kinds of answer it offers (and who builds each), its open gaps, the scopes it accepts, the breakdowns it allows, whether it compares with the previous period, and the caveats every answer must show. `QA_REGISTRY_VERSION` goes up whenever an entry or a gap changes, and a unit test pins each version's content. Ids are never reused.
 2. **Three kinds of answer.**
    - `live` is a query over today's tables. It proves nothing and is for admins only.
-   - `verifiable` is computed only from signed Attesta statements. Each figure lists the statements behind it (`evidence`: count, seqs, digests and an RFC 6962 root, as in RP-1 and `docs/contracts/attesta/period-report.md`).
+   - `verifiable` is computed only from signed Attesta statements. Each figure lists the statements behind it (`evidence`: count, seqs, digests and an RFC 6962 root, as in RP-1 and `docs/contracts/attesta/period-report.md`). In a verifiable or signed answer, every `recorded` or `partial` figure, in `figures` and in `previous`, **must** carry `evidence`; the schema refuses one without it.
    - `signed` is a signed report: the envelope names its `statement_digest` and `predicate_type`.
 
    There is no hybrid (TASK19.md D2). A live answer may carry `signed_evidence`, a link to `GET /api/attesta/statements` for the same scope, but never the statements themselves.
