@@ -230,16 +230,30 @@ describe('Q4 production models', () => {
     assert.deepEqual(figureOf(e, 'models_in_production').value, { type: 'count', count: 1 });
     assert.deepEqual(figureOf(e, 'production_ai_lines').value, { type: 'count', count: 250 });
     assert.deepEqual(figureOf(e, 'approved_at_the_time').reasons, [{ code: 'not_captured_yet', gap: 'G2' }]);
-    const commit = computeQ4({
-      ...input,
-      ctx: ctxFor('Q4', 'commit', { repository_id: REPO, commit_sha: SHA, from: FROM, to: TO }),
-      context: { ...q4Context(), commits: [realtimeCommit({ id: 'c1', sha: SHA })] },
-    });
-    assert.deepEqual(figureOf(commit, 'models_in_production').value, { type: 'count', count: 1 });
-    // No Task2 calculation scopes production to one commit: unavailable, never repo-wide.
-    assert.equal(figureOf(commit, 'production_ai_lines').availability, 'unavailable');
-    assert.deepEqual(figureOf(commit, 'production_ai_lines').reasons, [{ code: 'answer_not_built' }]);
-    assert.equal(figureOf(commit, 'production_ai_lines').value, null);
+    const commitCtx = ctxFor('Q4', 'commit', { repository_id: REPO, commit_sha: SHA, from: FROM, to: TO });
+    const withOwnProduction = {
+      ...q4Context(),
+      commits: [realtimeCommit({ id: 'c1', sha: SHA }), realtimeCommit({ id: 'c2', sha: 'b'.repeat(40) })],
+      modelLifecycleEvents: [
+        row<QaContext['modelLifecycleEvents'][number]>({ modelKey: 'model-a', tool: 'tool-a', repositoryId: REPO, stage: 'production', lineCount: 250, commitId: 'c1', occurredAt: AT }),
+      ],
+    };
+    const own = computeQ4({ ...input, ctx: commitCtx, context: withOwnProduction });
+    assert.deepEqual(figureOf(own, 'models_in_production').value, { type: 'count', count: 1 });
+    // No Task2 calculation scopes production lines to one commit: unavailable, never repo-wide.
+    assert.equal(figureOf(own, 'production_ai_lines').availability, 'unavailable');
+    assert.deepEqual(figureOf(own, 'production_ai_lines').reasons, [{ code: 'answer_not_built' }]);
+    assert.equal(figureOf(own, 'production_ai_lines').value, null);
+    // Regression: the same model reaches production only through another
+    // commit, so the requested commit reports zero models in production.
+    const throughOther = {
+      ...withOwnProduction,
+      modelLifecycleEvents: [
+        row<QaContext['modelLifecycleEvents'][number]>({ modelKey: 'model-a', tool: 'tool-a', repositoryId: REPO, stage: 'production', lineCount: 250, commitId: 'c2', occurredAt: AT }),
+      ],
+    };
+    const other = computeQ4({ ...input, ctx: commitCtx, context: throughOther });
+    assert.deepEqual(figureOf(other, 'models_in_production').value, { type: 'count', count: 0 });
   });
 });
 

@@ -4,8 +4,10 @@
  * Models in production are the model keys whose period-filtered
  * lifecycleForModel summary.production is above 0 (Task2's function on
  * input-filtered rows, never a re-implementation). At commit scope the keys
- * are the commit's attributions; otherwise every key in scope. Approval is G2,
- * honestly unavailable. No Task2 calculation scopes production lines to one
+ * are the commit's attributions and production is judged on the commit-scoped
+ * filtered context (Task2 projections retain commitId, so only production
+ * evidence for that commit counts). Approval is G2, honestly unavailable.
+ * No Task2 calculation scopes production lines to one
  * commit, so at commit scope production_ai_lines is unavailable until Task2
  * supplies one (review fix 3); the repository figure would over-claim.
  */
@@ -30,17 +32,10 @@ export function computeQ4(input: ComputeInput): QaEnvelope {
       .filter((row) => row.commitId === commit.id)
       .map((row) => row.modelKey))].sort()
     : modelKeysInScope(context, ctx).map(({ key }) => key);
-  // The attributions pick the models; production is judged per model over the
-  // period and repository (production evidence is never linked to one commit,
-  // so a commit-row filter here would empty every check).
-  const checkCtx = commit && ctx.scope.repository_id
-    ? {
-      ...ctx,
-      scopeLevel: 'repository' as const,
-      scope: { repository_id: ctx.scope.repository_id, from: ctx.scope.from, to: ctx.scope.to },
-    }
-    : ctx;
-  const filtered = periodFilteredContext(context, checkCtx);
+  // The attributions pick the models at commit scope; production is judged
+  // on the commit-scoped filtered context, so a model that reached
+  // production only through another commit does not count here.
+  const filtered = periodFilteredContext(context, ctx);
   let inProduction = 0;
   for (const key of keys) {
     const production = lifecycleForModel(filtered, key).summary.production;
