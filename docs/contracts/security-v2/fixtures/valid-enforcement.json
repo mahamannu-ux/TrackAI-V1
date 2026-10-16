@@ -1,0 +1,18 @@
+{
+  "schema_version": "trackai.security-upload/2",
+  "records": [{
+    "kind": "enforcement",
+    "record_id": "sha256:6200daffa3440ac3687df085f2d753d9fb194741d55645b6c37ed8145436fcd9",
+    "decision": "deny",
+    "mode": "enforce",
+    "rule_ids": ["secrets.agent_read_env"],
+    "deny_rule_id": "secrets.agent_read_env",
+    "deny_rule_version": "1.3",
+    "finding_record_ids": ["sha256:9fc4f1f7a1466ef51869e6bd4613e7879b8673b7d098563c63a679fbc9d4980b"],
+    "tool_name": "Bash",
+    "tool_call_id": "tool-call-placeholder",
+    "session_id": "session-placeholder",
+    "source_agent": "claude-code",
+    "timestamp": "2026-06-02T10:00:00Z"
+  }]
+}
