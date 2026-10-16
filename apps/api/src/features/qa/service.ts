@@ -10,6 +10,7 @@ import { scmCommits, scmPullRequests, scmRepositories } from '../../core/db/sche
 import { withTenant } from '../../core/db/tenant';
 import { loadContext } from '../telemetry/task2-lifecycle-read';
 import type { AnswererRegistry } from './answerers';
+import type { QaContext } from './answers/common';
 import {
   DRILLDOWN_BUILT_QUESTIONS,
   decodeCursor,
@@ -209,6 +210,8 @@ export interface AnswerRequest {
 export interface QaServiceDeps {
   answerers: AnswererRegistry;
   scopes: QaScopeStore;
+  /** Loads the Task2 context; tests inject a synthetic one (default: loadContext). */
+  contextLoader?: (tenantId: string) => Promise<QaContext>;
 }
 
 /** Checks the request in the documented order and returns a validated envelope. */
@@ -278,9 +281,15 @@ export async function answerDrilldown(
     throw new QaProblem('QA_DRILLDOWN_NOT_BUILT');
   }
   const limitText = single(request.query, 'limit');
+  if (limitText !== undefined && (!/^\d{1,3}$/.test(limitText) || Number(limitText) < 1 || Number(limitText) > DRILLDOWN_MAX_LIMIT)) {
+    throw new QaProblem('QA_SCOPE_INVALID', 'limit');
+  }
   const limit = limitText === undefined ? 50 : Number(limitText);
   const cursorText = single(request.query, 'cursor');
-  const context = await loadContext(request.tenantId);
+  if (cursorText !== undefined && !CURSOR_RE.test(cursorText)) {
+    throw new QaProblem('QA_SCOPE_INVALID', 'cursor');
+  }
+  const context = await (deps.contextLoader ?? loadContext)(request.tenantId);
   const ctx = {
     tenantId: request.tenantId,
     questionId: question.id as QaQuestionId,

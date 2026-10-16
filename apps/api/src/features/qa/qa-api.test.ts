@@ -10,6 +10,7 @@ import { describe, test } from 'node:test';
 import express, { type RequestHandler } from 'express';
 import { adminMembershipAllows, type AdminMembershipRecord } from '../../core/security/admin-authorization';
 import { AnswererRegistrationError, createAnswererRegistry, type AnswererRegistry } from './answerers';
+import type { QaContext } from './answers/common';
 import { checkEnvelope } from './envelope';
 import { PROBLEM_TYPE_BASE, QA_API_STATUSES, REQUEST_ID_RE, type QaApiCode } from './http';
 import { createQaRouter, type QaRouterDeps } from './qa.routes';
@@ -342,15 +343,40 @@ describe('qa api: parameters and scope', () => {
     } finally { await h.close(); }
   });
 
-  test('drill-down: parameters checked, then 501 until Task19b', async () => {
-    const h = await harness();
+  test('drill-down: parameters checked, built questions page, others keep 501', async () => {
+    const contextLoader = async (): Promise<QaContext> => ({
+      repositories: [{ id: REPO_A, name: 'repo-a' }],
+      pullRequests: [],
+      contributors: [],
+      sessions: [],
+      sessionRepositories: [],
+      usage: [],
+      commits: [],
+      files: [],
+      commitSessions: [],
+      pullRequestCommits: [],
+      generationObservations: [],
+      lifecycleEvents: [],
+      memberships: [],
+      commitLineage: [],
+      mergeLineage: [],
+      deployments: [],
+      commitModelAttributions: [],
+      modelLifecycleEvents: [],
+      corrections: new Map(),
+    }) as unknown as QaContext;
+    const h = await harness({ contextLoader });
     try {
-      assertProblem(await h.get('/questions/Q3/drilldown?kind=live&limit=20'), 'QA_DRILLDOWN_NOT_BUILT');
+      const page = await h.get('/questions/Q3/drilldown?kind=live&limit=20');
+      assert.equal(page.status, 200);
+      assert.deepEqual(Object.keys(page.body).sort(), ['items', 'next_cursor']);
       assertProblem(await h.get('/questions/Q3/drilldown?kind=live&limit=0'), 'QA_SCOPE_INVALID');
       assertProblem(await h.get('/questions/Q3/drilldown?kind=live&limit=101'), 'QA_SCOPE_INVALID');
       assertProblem(await h.get('/questions/Q3/drilldown?kind=live&cursor=a%2Fb'), 'QA_SCOPE_INVALID');
       assertProblem(await h.get('/questions/Q3/drilldown?kind=live', AUDITOR), 'QA_KIND_NOT_ALLOWED');
       assertProblem(await h.get('/questions/Q99/drilldown?kind=live'), 'QA_QUESTION_NOT_FOUND');
+      // A question Task19b does not build keeps answering 501.
+      assertProblem(await h.get('/questions/Q5/drilldown?kind=live'), 'QA_DRILLDOWN_NOT_BUILT');
     } finally { await h.close(); }
   });
 });
