@@ -1,4 +1,4 @@
-# Handoff prompt: Task15n-attesta-live-gates (Attesta on real KMS, real Rekor and TSA, offline verification on a clean machine; plus the Task6.a founder acceptance walkthrough), Codex (or Muse) with the founder
+# Handoff prompt: Task15n-attesta-live-gates (Attesta on real KMS, real Rekor and TSA, offline verification on a clean machine), Codex (or Muse) with the founder
 
 > **Founder setup (agent: skip to "You are…"):**
 > 1. Merge this prompt's docs PR. Then `cd ~/AIProjects/TrackAI-v1 && git checkout main && git pull --ff-only`.
@@ -18,7 +18,7 @@ You are **Codex** (or Muse), running **Task15n-attesta-live-gates** (Task15 A15.
 
 Attesta is built and tested against fakes. The fakes cover the KMS signer (Task15g), the Rekor and RFC 3161 anchors (Task15f/15f2), the trust layer and key inventory (Task15l/15l2), evidence packs (Task15i2) and the offline verifier (Task15j). Nothing has yet signed with a real cloud KMS, anchored in a real transparency log or timestamp authority, or been verified on a machine that never saw TrackAI. This session proves those three things live.
 
-It also runs the **Task6.a founder acceptance walkthrough** (gate 6). Codex's 2026-10-14 report recommends it, and it must pass before Task15o starts signing security findings.
+*(2026-10-16: the Task6.a acceptance walkthrough, formerly gate 6, is removed; see gate 6 below.)*
 
 It is mostly **founder-live**: you write exact numbered steps, the founder runs them, and you diagnose. Code changes are allowed only for a defect the live run exposes, kept minimal, each with a regression test. If a fix is larger than about 30 lines, stop and write it up for the lead.
 
@@ -90,21 +90,12 @@ Write each gate as **numbered** founder steps (one bash block per gate, sections
    **Pass:** exit 0. Then edit one statement byte in a copy: the verifier exits 1. If Task16f2 has merged, also run `audit:verify-export` on a signed audit export, with the same expectations.
 5. **Gate 5, sealing on real keys** (short): `attesta:audit-seal --confirm` seals the seeded tenant's audit trail with the KMS-backed key, the seal anchors in gate 3's pass, and `GET /api/audit/verify` is green.
 
-6. **Gate 6, Task6.a founder acceptance walkthrough** (Codex's report, "Recommended next step"), on the same local stack, in the browser:
-   1. Set monitoring to `off`, trigger one synthetic safe test pattern: no finding appears.
-   2. Enable `monitor`.
-   3. Trigger the same synthetic safe pattern (OpenCode terminal on macOS, route `AC-CLI-03`; use the approved safe test case from Task6's rule fixtures, never a real destructive command).
-   4. As admin: the finding appears in Security findings, and its `security_findings.read` audit entry appears in the Audit view.
-   5. As auditor: the same finding, read-only, with no mutation control.
-   6. As developer: findings and administration are refused.
-   7. Confirm that the action was **not blocked** (monitor-only) and that no raw command text appears anywhere: UI, API response, audit details.
-
-   Read `TASK6_SECURITY.md` and the Task6 handoffs for how the founder triggers the safe pattern through GitAI on this Mac. **Pass:** all seven confirmed. Screenshots go in the founder's own records, not the repository. Record one line per step in the handoff.
+6. ~~**Gate 6, Task6.a founder acceptance walkthrough**~~ **Removed 2026-10-16** (founder, `docs/plan/NUMBAT_ADOPTION_REVIEW.md` §15 item 4). Task6.a's OpenCode route and its three rules are retired by Task20 (Numbat), and Task15o waits for Task20, so this walkthrough no longer gates anything. Do not run it. Task20 has its own acceptance walkthrough on Numbat.
 
 ## 3. Pre-approved files
 - `docs/handoffs/Task15n-attesta-live-gates_HANDOFF.md`.
-- `docs/plan/TASK15.md` (the A15.13 row and the Task15n session row only); the founder-acceptance row in `TASK6_SECURITY.md` (one line, gate 6 result).
-- `docs/plan/STATUS_BOARD.md` (new rows IT-T15n-01…05, one per gate, and IT-T6-ACC-01 for gate 6; the remaining-plan actual).
+- `docs/plan/TASK15.md` (the A15.13 row and the Task15n session row only).
+- `docs/plan/STATUS_BOARD.md` (new rows IT-T15n-01…05, one per gate; the remaining-plan actual).
 - Minimal fixes in `apps/api/src/features/attesta/` for defects the live run exposes, each with a regression test. Name every one in the handoff.
 
 **Never touch:** `docs/contracts/`, migrations, any key file, the root private key.
