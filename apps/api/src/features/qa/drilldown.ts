@@ -11,6 +11,11 @@ import type { QaAnswerContext, QaDrilldown } from './types';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** The ten code questions Task19b builds (§2.4); every other question keeps 501. */
+export const DRILLDOWN_BUILT_QUESTIONS: readonly string[] = [
+  'Q1', 'Q3', 'Q4', 'Q9', 'Q10', 'Q13', 'Q14', 'Q18', 'Q19', 'Q20',
+];
+
 export function encodeCursor(id: string): string {
   return Buffer.from(id, 'utf8').toString('base64url');
 }

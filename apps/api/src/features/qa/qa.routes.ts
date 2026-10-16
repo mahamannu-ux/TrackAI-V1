@@ -17,7 +17,7 @@ import { defaultAnswerers, type AnswererRegistry } from './answerers';
 import { defaultLog, logFailure, problemizeAuth, qaHttp, sendJson, sendProblem, type QaLog } from './http';
 import { QA_QUESTIONS, QA_REGISTRY_VERSION } from './registry';
 import {
-  QaProblem, answerQuestion, checkDrilldownRequest, describeQuestion, findQuestion, pgScopeStore,
+  QaProblem, answerDrilldown, answerQuestion, checkDrilldownRequest, describeQuestion, findQuestion, pgScopeStore,
   type QaScopeStore,
 } from './service';
 import type { QaRole } from './types';
@@ -88,11 +88,14 @@ export function createQaRouter(deps: QaRouterDeps = {}): Router {
     sendJson(res, envelope);
   }));
 
-  router.get('/questions/:id/drilldown', handle((req, _res, who) => {
+  router.get('/questions/:id/drilldown', handle(async (req, res, who) => {
     checkDrilldownRequest({
       tenantId: who.tenantId, role: who.role, questionId: idParam(req), query: query(req), now: now(),
     });
-    throw new QaProblem('QA_DRILLDOWN_NOT_BUILT');
+    const page = await answerDrilldown({ answerers, scopes }, {
+      tenantId: who.tenantId, role: who.role, questionId: idParam(req), query: query(req), now: now(),
+    });
+    sendJson(res, page);
   }));
 
   return router;

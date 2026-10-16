@@ -8,7 +8,14 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { scmCommits, scmPullRequests, scmRepositories } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
+import { loadContext } from '../telemetry/task2-lifecycle-read';
 import type { AnswererRegistry } from './answerers';
+import {
+  DRILLDOWN_BUILT_QUESTIONS,
+  decodeCursor,
+  listDrilldownItems,
+  pageDrilldownItems,
+} from './drilldown';
 import { MAX_PERIOD_MS, checkEnvelope } from './envelope';
 import type { QaApiCode } from './http';
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION, openGapsOf } from './registry';
@@ -250,6 +257,51 @@ export function checkDrilldownRequest(request: AnswerRequest): void {
   }
   const cursor = single(request.query, 'cursor');
   if (cursor !== undefined && !CURSOR_RE.test(cursor)) throw new QaProblem('QA_SCOPE_INVALID', 'cursor');
+}
+
+/**
+ * The drill-down page (§2.3): the same checks as the answer route, then the
+ * listing for the request's scope with keyset paging. Other questions keep
+ * answering 501 QA_DRILLDOWN_NOT_BUILT. Drill-down reads are not audited
+ * (Task19a decision).
+ */
+export async function answerDrilldown(
+  deps: QaServiceDeps,
+  request: AnswerRequest,
+): Promise<{ items: Array<{ scope: string; id: string; label: string }>; next_cursor: string | null }> {
+  const question = findQuestion(request.questionId);
+  const kind = parseKind(request.query, question, request.role);
+  onlyKnown(request.query, DRILLDOWN_PARAMS);
+  const { level, scope } = parseScope(request.query, question, request.now);
+  await checkScopeExists(deps.scopes, request.tenantId, scope);
+  if (!DRILLDOWN_BUILT_QUESTIONS.includes(request.questionId)) {
+    throw new QaProblem('QA_DRILLDOWN_NOT_BUILT');
+  }
+  const limitText = single(request.query, 'limit');
+  const limit = limitText === undefined ? 50 : Number(limitText);
+  const cursorText = single(request.query, 'cursor');
+  const context = await loadContext(request.tenantId);
+  const ctx = {
+    tenantId: request.tenantId,
+    questionId: question.id as QaQuestionId,
+    kind,
+    role: request.role,
+    scopeLevel: level,
+    scope,
+    breakdown: null,
+    now: request.now.toISOString(),
+  };
+  const items = listDrilldownItems(context, ctx);
+  let cursorId: string | null = null;
+  if (cursorText !== undefined) {
+    const decoded = decodeCursor(cursorText);
+    if (decoded === null || !items.some((item) => item.id === decoded)) {
+      throw new QaProblem('QA_SCOPE_INVALID', 'cursor');
+    }
+    cursorId = decoded;
+  }
+  const page = pageDrilldownItems(items, limit, cursorId);
+  return { items: page.items, next_cursor: page.nextCursor };
 }
 
 /** GET /questions/{id}: the entry and, per kind, whether an answer is built and which gaps are open. */
