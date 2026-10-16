@@ -58,7 +58,8 @@ An upload is `{schema_version, records}`. It never carries a tenant ID or machin
 ID. Machine authentication supplies both. Every record is a closed object with
 `kind` and `record_id`; the remaining fields depend on `kind`.
 
-`record_id` is the lowercase SHA-256 digest of these UTF-8 bytes:
+`record_id` is `sha256:` followed by the lowercase hexadecimal SHA-256 digest
+of this exact UTF-8 preimage (`NUL` is one `0x00` byte):
 
 ```text
 trackai.security-record/2 NUL <kind> NUL <source key part 1> [NUL <source key part 2> ...]
@@ -80,8 +81,17 @@ The wire value is `sha256:<64 lowercase hexadecimal characters>`. Hashing every
 source key, rather than exposing Numbat IDs or indicator values inside an
 idempotency key, keeps logs and safe errors from becoming a second data channel.
 The Endpoint persists a generated snapshot's `observed_at` and `record_id` across
-retries. A repeated ID with identical content is a duplicate; reuse with changed
-content is rejected.
+retries. The server's idempotency key is
+`(tenant_id, machine_id, record_id)` for every kind; neither identity is added to
+the body or to `record_id`.
+
+Every kind except `indicator` is write-once: identical replay is `duplicate`,
+while reuse with changed content is rejected. Indicators are monotonic upserts,
+as Numbat requires (`numbat@20a5a52:docs/cli.md:192-194`): the same ID with a
+higher `count` or later `last_seen` is accepted and replaces the stored values;
+an identical or older observation is `duplicate`. An upsert may not lower
+`count`, move `last_seen` backwards, change `first_seen`, or change any identity
+field.
 
 ## Record decisions and field provenance
 
@@ -246,6 +256,8 @@ closed object keyed by normalized Numbat agent name; each value contains
 non-empty `files` and unique `enabled_rule_ids`. Each file has a relative POSIX
 `path` with no empty, `.` or `..` segment, its lowercase `sha256`, and canonical
 padded `content_b64`. Receivers decode and verify every file digest before use.
+`epoch` increases monotonically per tenant. The Endpoint refuses a verified
+bundle whose epoch is below the last epoch it applied with `EPOCH_REGRESSION`.
 
 The activation-lease payload contains `schema_version`, `tenant_id`,
 `machine_id`, `lease_id`, `issued_at`, `expires_at`, `mode`, unique non-empty
@@ -256,6 +268,8 @@ and refresh hourly. Expiry, rejected verification, or unavailable verification
 means monitoring is off and new uploads stop. Turning monitoring off takes
 effect when the next hourly refresh supplies an `off` lease; a disconnected
 machine remains governed by its current signed lease until expiry.
+The lease's `bundle_digest` must equal the digest of the bundle being applied;
+otherwise the Endpoint refuses it with `BUNDLE_DIGEST_MISMATCH`.
 
 Both payloads travel in the existing DSSE envelope from
 [`../attesta/envelope.md`](../attesta/envelope.md). The bundle uses purpose
@@ -271,8 +285,11 @@ lease keeps monitoring off.
 `trackai.security-acknowledgement/1` contains `schema_version`, `lease_id`,
 `bundle_digest`, `result`, and an optional `refusal_code`. `result` is `applied`
 or `refused`. `refusal_code` is required for `refused`, forbidden for `applied`,
-and is a bounded safe code rather than free text. Tenant and machine identity
-still come only from the machine credential.
+and is one of `SIGNATURE_REJECTED`, `VERIFICATION_UNAVAILABLE`, `LEASE_EXPIRED`,
+`MACHINE_MISMATCH`, `TENANT_MISMATCH`, `EPOCH_REGRESSION`,
+`BUNDLE_DIGEST_MISMATCH`, `RULES_CHECK_FAILED`, or `UNSUPPORTED_SCHEMA`. Codes
+may be added only additively. Tenant and machine identity still come only from
+the machine credential.
 
 ## Fleet configuration schema version 3
 
@@ -324,3 +341,8 @@ placeholders instead of real paths, hosts, users, or secrets.
    meaning cannot drift independently of the signed payload.
 6. The acknowledgement is versioned and makes `refusal_code` conditionally
    required, so a refusal is actionable without accepting free-text details.
+
+The Task20 lead confirmed these decisions on 2026-10-17 and added the
+machine-scoped idempotency key, monotonic indicator upserts, monotonic bundle
+epoch, exact bundle-digest binding, and the closed acknowledgement refusal-code
+set above.
