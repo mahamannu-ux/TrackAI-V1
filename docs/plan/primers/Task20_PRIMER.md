@@ -137,14 +137,14 @@ flowchart LR
     M12[T20.12 inventory, server part]
     M16[T20.16 rule wave 2]
   end
-  subgraph Founder-live
+  subgraph Founder_live["Founder-live"]
     F2[T20.2 create mirror repo]
     F4[T20.4 measure on the Mac]
     F10[T20.10 install on the Mac]
     F14[T20.14 rule proof and walkthrough]
     F15[T20.15 pilot on the Mac]
   end
-  subgraph Other Tasks
+  subgraph Other_Tasks["Other Tasks"]
     T15[T20.17 Task15o/15p redesign]
     T19[Task19 T19.4, A16.13b]
     E19[T20.19 entitlements owner]
