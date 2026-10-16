@@ -80,7 +80,7 @@ Sizes against T6 (1.0× = all of Task6.a). Muse sizes include the 1.3× factor. 
 
 | # | Piece, in plain words | Example of what it does | Value to the customer | Size | Who | Could we simplify or defer it? What would we lose? | Founder: keep / simplify / defer / reorder |
 |---|---|---|---|---|---|---|---|
-| T20.8 | **Rule and data settings, compiled and signed** (server): versioned tenant settings with an audited writer (gap G8), the 51 pinned rule files stored as data, a compiler to Numbat override files (one directory per agent), the bundle manifest signed with the `policy_bundle` key, a per-machine lease signed with the `activation_lease` key and kept as history (gap G7, part 1), lease issued and refused audit events (gap G11), the recommended default (44 on, 7 off, no previews) | Priya turns `secrets.agent_read_env` on at severity low: the compiler writes its full YAML with `severity: low`, version `1.3-trackai.1`, and a new bundle digest | Very high: the CISO's control, and D6.1 | about 0.25× | Claude (security-critical: signing and activation) | Ship the default policy only, with no settings tables or console: saves about 0.10×, the CISO cannot change anything | |
+| T20.8 | **Rule and data settings, compiled and signed** (server): versioned tenant settings with an audited writer (gap G8), the 51 pinned rule files stored as data, a compiler to Numbat override files (one directory per agent), the bundle manifest signed with the `policy_bundle` key, a per-machine lease signed with the `activation_lease` key and kept as history (gap G7, part 1), lease-issued events (gap G11; the refused event comes from T20.9 on the machine), the recommended default (44 on, 7 off, no previews) | Priya turns `secrets.agent_read_env` on at severity low: the compiler writes its full YAML with `severity: low`, version `1.3-trackai.1`, and a new bundle digest | Very high: the CISO's control, and D6.1 | about 0.25× | Claude (security-critical: signing and activation) | Ship the default policy only, with no settings tables or console: saves about 0.10×, the CISO cannot change anything | |
 | T20.9 | **Apply on the machine**: the Endpoint verifies the lease and the bundle, runs `numbat rules check` on the staged bundle, swaps it in atomically, keeps the last good one; a rejected, unavailable or expired lease means **off** as `trust.md:111` requires: nothing is uploaded and records stay local. Numbat itself cannot be stopped without administrator rights (fact 2), so the Endpoint also swaps in the monitor-only variant of the bundle, which drops any block switch | A tampered bundle is refused and the last good one stays; the lease expires on a laptop left offline for a week, uploads stop and resume when a fresh lease arrives | Very high | about 0.20× | Codex | Depends on Q2 (who may write admin-owned files) | |
 | T20.10 | **Package and install** (Task9's PKG): the Numbat binary at a fixed admin path with its checksum, managed hooks for the five agents, the record-file location from Q1, the four-layer health check (`numbat@20a5a52:docs/deployment.md:348-356`) reported as fleet posture (gap G7, part 2; the server keeps it per machine and day in Task20i), offboarding removes hooks. Afterwards Task9's paused endpoint-package checks are re-run once (review §15 item 5) | Fleet view shows "Numbat 0.2.0-trackai.1 · Claude Code hooked (managed) · last record 2 min ago" | Very high: without it nothing runs on real machines | about 0.25× | Codex (owns Task9) + founder-live | Start with Claude Code and Codex only, add Cursor, Gemini CLI, Copilot CLI after: lower risk (fact 8), same total | |
 | T20.11 | **Security console**: Settings (rule switches, severity, data-settings switches, publish), Findings (agent, model, rule version, permission events), Coverage (which agents are installed, hooked and monitored, per machine) | Priya publishes v3 of her settings and sees 117 of 120 machines on it | High: what the CISO actually uses | about 0.25× | Claude design note, Muse build | Settings read-only in the first release (show the default, change it by request): saves about 0.08× | |
@@ -100,7 +100,7 @@ Sizes against T6 (1.0× = all of Task6.a). Muse sizes include the 1.3× factor. 
 | # | Piece, in plain words | Example | Value | Size (Task20's share) | Who | Could we simplify or defer it? | Founder |
 |---|---|---|---|---|---|---|---|
 | T20.17 | **Attesta for findings**: Task15o (`finding_observed`) and Task15p (security period report) redesigned against Numbat's finding schema, plus signed case bundles (S25) | An auditor checks that the high/critical register for Q3 was not changed | Very high for auditors | about 0.02× (contract input and review) | Task15 lead (Claude) | No signing inside Task20 | |
-| T20.18 | **Q&A feed**: S1–S18 statuses updated and S19–S26 proposed to Task19 (T19.4 live, A16.13b auditor); Task19c (security answers, including Q11) waits for T20.1's ingest contract (review §15 item 6) | S4 "secrets read, then egress" moves from "not captured" to "live" | High | about 0.02× | Claude (doc) → Task19 lead ranks with the founder | No | |
+| T20.18 | **Q&A feed**: S1–S18 statuses updated and S19–S26 proposed to Task19 (T19.4 live, A16.13b auditor); Task19c (security answers, including Q11) waits for Task20d's ingest (review §15 item 6) | S4 "secrets read, then egress" moves from "not captured" to "live" | High | about 0.02× | Claude (doc) → Task19 lead ranks with the founder | No | |
 | T20.19 | **Module switches (entitlements)**: per-tenant on/off for attribution, evidence, security, Attesta; Task20 gates only its own routes on `security` | A security-only customer sees no attribution screens | High for selling modules | Task20 share about 0.02× (a guard stub); the real work belongs to its owner | Owner per Q9 | Accept the principle, build after Task20 | |
 | T20.20 | **Rule and support wording**: AGENTS.md §4 row for Task20, §9 item 9 (activation is no longer repository-bound, if Q5 is approved) and §9 item 11's support boundary rewritten after T20.14, Task6.a tracker marked superseded | "Validated: Claude Code and Codex on macOS 15, monitor" | Medium: keeps every agent honest | about 0.02× | Claude | No | |
 
@@ -108,7 +108,7 @@ Sizes against T6 (1.0× = all of Task6.a). Muse sizes include the 1.3× factor. 
 
 ## Session graph
 
-One box per session, with the pieces it builds. Solid arrow: must merge before. Dotted arrow: needed before the first customer build, not before the next session. Boxes outside Task20 are the other Tasks' sessions that wait for Task20 or feed it.
+One box per session, with the pieces it builds. Solid arrow: must merge before. Dotted arrow: needed later (for the end-to-end run or the first customer build), not before the next session merges. Boxes outside Task20 are the other Tasks' sessions that wait for Task20 or feed it.
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontSize": "20px"}}}%%
@@ -149,7 +149,8 @@ flowchart TB
   A --> E
   A --> F
   A --> O
-  D --> E
+  D -.-> E
+  B --> E
   D --> I
   C --> G
   E --> G
@@ -170,7 +171,7 @@ flowchart TB
   D --> ENT
 ```
 
-**Critical path:** Task20a → Task20e → Task20g → Task20h → Task20j (about 1.2× of serial work). Task20c and Task20f run beside Task20e and must merge before Task20g.
+**Critical path:** Task20a (or Task20b) → Task20e → Task20g → Task20h → Task20j (about 1.2× of serial work); Task20e merges against Task20a's schemas and meets Task20d's real route later (IT-M20-02). Task20c and Task20f run beside Task20e and must merge before Task20g.
 **Start at once:** Task20a (Claude), Task20c (Codex) and Task20b (Muse, after the founder creates the mirror repository). Task19b keeps running.
 
 ## What we reuse

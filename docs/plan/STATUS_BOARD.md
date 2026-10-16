@@ -73,13 +73,14 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 9b | Task20b-numbat-mirror-build (T20.2–T20.4; GitAI) | Muse + founder-live | about 0.12× | | plan PR merged; mirror fork and tag created | written after the plan PR |
 | 9c | Task20c-endpoint-trust-verifier (T20.5; GitAI) | Codex | about 0.15× | | plan PR merged | written after the plan PR |
 | 9d | Task20d-security-ingest-v2 (T20.7a, T20.7b) | Muse | about 0.33× | | Task20a merged | written after Task20a |
-| 9e | Task20e-endpoint-shipper (T20.6a, T20.6b; GitAI) | Codex | about 0.32× | | Task20a merged | written after Task20a |
+| 9e | Task20e-endpoint-shipper (T20.6a, T20.6b; GitAI) | Codex | about 0.32× | | Task20a and Task20b merged | written after Task20a |
 | 9f | Task20f-security-settings-signing (T20.8) | Claude | about 0.25× | | Task20a merged | written after Task20a |
 | 9g | Task20g-endpoint-policy-apply (T20.9; GitAI) | Codex | about 0.20× | | Task20c, Task20e, Task20f merged | written later |
 | 9h | Task20h-endpoint-package-install (T20.10, T20.12, T20.13; GitAI) | Codex + founder-live | about 0.35× | | Task20b, Task20g merged | written later |
 | 9i | Task20i-security-console (T20.11, T20.12 server) | Claude design + Muse | about 0.29× | | Task20d, Task20f merged | written later |
 | 9j | Task20j-acceptance (T20.14, T20.20) | Codex + founder-live | about 0.17× | | Task20h merged | written later |
-| 9k | Task20k-enforce-pilot, Task20l-rule-wave-2 (later) | Codex / Muse | about 0.10× + 0.08× | | Task20j passed; founder's go | later |
+| 9k | Task20k-enforce-pilot (T20.15, later) | Codex + founder-live | about 0.10× | | Task20j passed; root helper; founder's go | later |
+| 9l | Task20l-rule-wave-2 (T20.16, later) | Muse | about 0.08× | | Task20j passed; founder's go | later |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
 
 **Actuals:** adopt-agent-kit ran slightly over (0.07× against 0.06×): three cross-review fix rounds on draft project slots that did not match the code.
@@ -162,5 +163,6 @@ Integration tests prove what only real infrastructure can. They are founder-owne
 | IT-T20h-01 | Task20h | Intel Mac: PKG installs Numbat and managed hooks, health check green, offboarding removes them | founder's Mac | Blocking: Task20h merge | ⬜ planned |
 | E20-01…E20-12 | Task20j | Acceptance walkthrough per agent on Numbat (replaces Task15n gate 6) | `docs/plan/TASK20_ACCEPTANCE.md` (Task20j) | Blocking: any "monitored" claim | ⬜ planned |
 | IT-M20-01 | Task20, Task15o, Task19c | Task15o signs v2 findings; Task19c answers S rows from v2 tables | cross-Task | Cross-Task | ⬜ planned |
+| IT-M20-02 | Task20d, Task20e | The Endpoint shipper against the real ingest v2 route | GitAI tests + `scripts/it-db.sh` | Blocking: Task20h merge | ⬜ planned |
 
 Gating means "must pass on the founder's machine before the named merge or milestone". It does not stop other agents developing against the unit-tested code in parallel.

@@ -41,7 +41,7 @@ Documentation only; no code changed. `npm test` on the base: 1020 passed, 0 fail
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T20b-01 … IT-T20h-01, E20-01…E20-12, IT-M20-01 | planned in `docs/plan/TASK20.md` §7 and the status board | per session | ⬜ planned |
+| IT-T20b-01 … IT-T20h-01, E20-01…E20-12, IT-M20-01, IT-M20-02 | planned in `docs/plan/TASK20.md` §7 and the status board | per session | ⬜ planned |
 
 ## Integration notes
 - Task19c, Task15o and Task4-entitlements wait for Task20d; Task9 resumes its paused package checks after Task20h; Task13 is revisited after Task20j.

@@ -51,8 +51,8 @@
 | T20.6b | Shipper send side: generalized queue and uploader, local-file rotation (7 days), evaluator and its three rules retired | ⬜ | ⬜ | n/a | Task20e | Offline, restart and rotation cases; `src/security/mod.rs` evaluator removed |
 | T20.7a | Ingest v2: migration widening `security_findings`, new tables, `/worker/security` v2 route, server re-check, Task6.a rows readable, Company A/B | ⬜ | ⬜ IT-T20d-01 | n/a | Task20d | Attesta builder query (`builder.ts:409-424`) still returns Task6.a and v2 rows |
 | T20.7b | Admin and auditor reads, AP-1, `no-store`, audited | ⬜ | ⬜ | n/a | Task20d | Previews only to admin/auditor roles when the tenant allows them |
-| T20.8 | Settings (audited writer, G8), pinned catalogue, compiler (one folder per agent), signed bundle, signed per-machine lease with history (G7 part 1) and issue/refuse events (G11), default policy | ⬜ | ⬜ IT-T20f-01 | ⬜ IT-T20f-02 (real KMS keys) | Task20f | Dev signer in tests; production keys from Task15n |
-| T20.9 | Apply on the machine: verify lease and bundle, `numbat rules check`, atomic swap, last-known-good, off and monitor-only fallback, refusal reported | ⬜ | ⬜ | ⬜ IT-T20g-01 | Task20g | Tampered, expired, replayed and broken bundles never activate |
+| T20.8 | Settings (audited writer, G8), pinned catalogue, compiler (one folder per agent), signed bundle, signed per-machine lease with history (G7 part 1) and lease-issued events (G11, issued part), default policy | ⬜ | ⬜ IT-T20f-01 | ⬜ IT-T20f-02 (real KMS keys) | Task20f | Dev signer in tests; production keys from Task15n |
+| T20.9 | Apply on the machine: verify lease and bundle, `numbat rules check`, atomic swap, last-known-good, off and monitor-only fallback, refusal reported as a `fleet.lease.refused` event (G11, refused part) | ⬜ | ⬜ | ⬜ IT-T20g-01 | Task20g | Tampered, expired, replayed and broken bundles never activate |
 | T20.10 | Package and install: Numbat at a fixed path with checksum, managed hooks per agent, record-file location, four-layer health check, Endpoint security status reported (G7 part 2, stored per machine and day by Task20i), offboarding; re-run of Task9's paused package checks | ⬜ | ⬜ | ⬜ IT-T20h-01 | Task20h | Health check green for each agent in the walkthrough |
 | T20.11 | Console: Settings, Findings, Coverage | ⬜ | ⬜ | ⬜ browser walkthrough | Task20i | Settings switches publish a new bundle; honest states shown |
 | T20.12 | Agent inventory (S19) and coverage inventory: Endpoint side and server storage | ⬜ | ⬜ | ⬜ | Task20h, Task20i | Inventory under the same data settings |
@@ -132,13 +132,13 @@ TrackAI and GitAI-repository work are separate sessions and PRs. Endpoint code i
 | **Task20b-numbat-mirror-build** | GitAI / Muse + founder-live | T20.2, T20.3 (package side), T20.4 | about 0.12× | plan merged; founder has created the mirror fork and pushed tag `v0.2.0-trackai.1` | new `packaging/numbat/` in GitAI (build script, `SHA256SUMS` recipe, `LICENSE`, `THIRD_PARTY_LICENSES.txt`, `measure.sh`, sync runbook); no change to the Numbat mirror beyond the tag |
 | **Task20c-endpoint-trust-verifier** | GitAI / Codex | T20.5 | about 0.15× | plan merged (vectors are on `main`) | new `src/trust/` module and tests; copied vectors under `tests/fixtures/trust/`; `Cargo.toml` / `Cargo.lock` (an ECDSA P-256 crate such as `p256`, pre-approved by merging this plan); closes GitAI backlog row G8 |
 | **Task20d-security-ingest-v2** | TrackAI / Muse (Codex reviews) | T20.7a, T20.7b | about 0.33× | Task20a merged | `apps/api/src/core/db/schema.ts` (security tables only), one migration + `meta/`, `features/security-findings/` (v2 ingest, storage, reads, tests, `task20d-ingest-live-verify.ts`), `apps/api/src/app.ts` (mount only), `apps/api/package.json` (scripts) |
-| **Task20e-endpoint-shipper** | GitAI / Codex | T20.6a, T20.6b | about 0.32× | Task20a merged; Task20d's route available for the live test | `src/security/` (new tail, records, minimize modules; `delivery.rs`, `delivery_queue.rs` generalized; evaluator in `mod.rs` removed; `activation.rs` reduced to the lease interface), `src/daemon.rs` and `src/daemon/telemetry_worker.rs` (wiring only), `src/commands/checkpoint_agent/orchestrator.rs` (remove `submit_activated_command` call) |
-| **Task20f-security-settings-signing** | TrackAI / Claude | T20.8 | about 0.25× | Task20a merged | new `apps/api/src/features/security/` (settings, catalogue data from the pin with notices, compiler, bundle, lease, routes, tests, `task20f-signing-live-verify.ts`), `schema.ts` (security settings, bundle and lease tables only), one migration + `meta/`, `app.ts` (mount only), imports of `features/attesta/signer-contract.ts` and the KMS adapters (read-only use), `core/audit/catalog.ts` (activating the reserved `fleet.lease.*`, `policy.bundle.*` and `security.monitor.changed` events; an additive `security.enforce_mode.changed` entry through a Task16 contract PR) |
+| **Task20e-endpoint-shipper** | GitAI / Codex | T20.6a, T20.6b | about 0.32× | Task20a and Task20b merged (contract fixtures and the pinned Numbat build); the run against the real Task20d route is IT-M20-02, not a merge gate | `src/security/` (new tail, records, minimize modules; `delivery.rs`, `delivery_queue.rs` generalized; evaluator in `mod.rs` removed; `activation.rs` reduced to the lease interface), `src/daemon.rs` and `src/daemon/telemetry_worker.rs` (wiring only), `src/commands/checkpoint_agent/orchestrator.rs` (remove `submit_activated_command` call) |
+| **Task20f-security-settings-signing** | TrackAI / Claude | T20.8 | about 0.25× | Task20a merged | new `apps/api/src/features/security/` (settings, catalogue data from the pin with notices, compiler, bundle, lease, routes, tests, `task20f-signing-live-verify.ts`), `schema.ts` (security settings, bundle and lease tables only), one migration + `meta/`, `app.ts` (mount only), imports of `features/attesta/signer-contract.ts` and the KMS adapters (read-only use), `core/audit/catalog.ts` (only after a Task16 contract PR to the frozen `docs/contracts/audit/catalog.md` that flips the reserved `fleet.lease.*`, `policy.bundle.*` and `security.monitor.changed` events to active, gives them Task20 as owner, widens `security.monitor.changed`'s mode to `monitor_and_pilot_block`, and adds `security.enforce_mode.changed`) |
 | **Task20g-endpoint-policy-apply** | GitAI / Codex | T20.9 | about 0.20× | Task20c, Task20e, Task20f merged | new `src/security/policy_apply.rs`, lease handling in `src/security/activation.rs`, `src/fleet/` (replace `securityActivation` with a lease reference; Task9-owned, same agent) |
-| **Task20h-endpoint-package-install** | GitAI / Codex + founder-live | T20.10, T20.12 (Endpoint), T20.13 | about 0.35× | Task20b, Task20g merged | `packaging/macos/` (PKG adds Numbat and managed hooks), `mdm/` scripts, `src/security/` (status, inventory, day-one scan), offboarding cleanup; then the re-run of Task9's paused package checks (Task9 tracker rows edited by Codex as Task9's owner) |
+| **Task20h-endpoint-package-install** | GitAI / Codex + founder-live | T20.10, T20.12 (Endpoint), T20.13 | about 0.35× | Task20b, Task20g merged | `packaging/macos/` (PKG adds Numbat and managed hooks), `mdm/` scripts, `src/security/` (status, inventory, day-one scan), offboarding cleanup; then the re-run of Task9's paused package checks; Task9's tracker rows (TrackAI repository) are updated in a separate small docs PR, `docs/Task20h-task9-resume`, by Codex as Task9's owner |
 | **Task20i-security-console** | TrackAI / Claude design note, Muse build | T20.11, T20.12 (server) | about 0.29× | Task20d, Task20f merged | new `apps/web/src/app/dashboard/security-workspace.tsx`, `apps/web/src/lib/api.ts`, minimal `dashboard/page.tsx` navigation, server storage for status and inventory (`features/security-findings/`, `schema.ts`, one migration) |
 | **Task20j-acceptance** | TrackAI docs + founder-live, Codex for Endpoint runs | T20.14, T20.20 | about 0.17× | Task20h merged (Task20i for the console rows); Task15n keys for IT-T20f-02 | `docs/plan/TASK20.md` §6–§8, `AGENTS.md` §9 items 9 and 11, `TASK6_SECURITY.md` (superseded note), runbook `docs/plan/TASK20_ACCEPTANCE.md` |
-| Task20k-enforce-pilot (later) | GitAI + TrackAI / Codex + founder-live | T20.15 | about 0.10× | Task20j passed; root helper designed (Q2) | named in its prompt |
+| Task20k-enforce-pilot (later) | Codex + founder-live; its prompt splits it into a GitAI session and a TrackAI session | T20.15 | about 0.10× | Task20j passed; root helper designed (Q2) | named in its prompt |
 | Task20l-rule-wave-2 (later) | TrackAI / Muse | T20.16 | about 0.08× | Task20j passed | `features/security/` default policy and tests |
 
 **Total:** about 2.5× T6 for Task20's own sessions (Task20a–Task20l). Task15o/15p, Task19c and Task4-entitlements are sized in their own Tasks.
@@ -191,7 +191,8 @@ flowchart TB
   A --> E
   A --> F
   A --> O
-  D --> E
+  D -.-> E
+  B --> E
   D --> I
   C --> G
   E --> G
@@ -212,7 +213,7 @@ flowchart TB
   D --> ENT
 ```
 
-**Critical path:** Task20a → Task20e → Task20g → Task20h → Task20j (about 1.2×). **Start at once:** Task20a, Task20c and Task20b (once the mirror exists).
+**Critical path:** Task20a (or Task20b) → Task20e → Task20g → Task20h → Task20j (about 1.2×); Task20d is off it because Task20e merges against Task20a's schemas and meets the real route only in IT-M20-02. **Start at once:** Task20a, Task20c and Task20b (once the mirror exists).
 
 ## 6. Budgets (filled by Task20b)
 
@@ -230,13 +231,14 @@ flowchart TB
 |---|---|---|---|---|
 | IT-T20b-01 | Two builds of the mirror tag give identical bytes; Numbat's tests pass at the pin | Go toolchain | Blocking: Task20b | ⬜ |
 | IT-T20d-01 | Real PostgreSQL: v2 upload of each kind, refusal beyond data settings, idempotent replay, Task6.a rows readable, Attesta builder query, Company A/B | `scripts/it-db.sh` | Blocking: Task20d merge | ⬜ |
-| IT-T20e-01 | The real Numbat binary writes a fixture session's records; the Endpoint tails, minimizes, queues and uploads to a local API; restart and rotation lose nothing | Numbat build from Task20b, `scripts/it-db.sh` | Blocking: Task20e merge | ⬜ |
+| IT-T20e-01 | The real Numbat binary writes a fixture session's records; the Endpoint tails, minimizes, queues and uploads to a local receiver that validates every body against Task20a's schemas; restart and rotation lose nothing | Numbat build from Task20b | Blocking: Task20e merge | ⬜ |
 | IT-T20f-01 | Settings → compiled bundle → signed bundle and lease (dev signer) → TypeScript `verifyTrusted` accepts; tampering rejected; audit events; Company A/B | `scripts/it-db.sh` | Blocking: Task20f merge | ⬜ |
 | IT-T20f-02 | The same with the platform `policy_bundle` and `activation_lease` KMS keys | Task15n root ceremony and keys | Blocking: first customer build | ⬜ |
 | IT-T20g-01 | Intel Mac: tampered, expired, replayed and broken bundle and lease never activate; last-known-good kept; off means nothing uploaded | founder's Mac, throwaway tenant | Blocking: Task20g merge | ⬜ |
 | IT-T20h-01 | Intel Mac: PKG installs Numbat and managed hooks (Claude Code, Codex), the four-layer health check is green, offboarding removes them | founder's Mac | Blocking: Task20h merge | ⬜ |
 | E20-01…E20-12 | Acceptance walkthrough per agent: monitor, off, offline, lease expiry, restart, tampered bundle, data settings, day-one scan, inventory, console, Company A/B | Task20h (+ Task20i) merged | Blocking: any "monitored" claim | ⬜ |
 | IT-M20-01 | Task15o signs v2 findings; Task19c answers S rows from v2 tables | Task15o, Task19c | Cross-Task | ⬜ |
+| IT-M20-02 | The same Endpoint against the real Task20d route on `scripts/it-db.sh` | Task20d and Task20e merged | Blocking: Task20h merge | ⬜ |
 
 ## 8. Completion and deferral boundary
 
