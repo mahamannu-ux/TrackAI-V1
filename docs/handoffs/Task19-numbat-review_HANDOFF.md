@@ -11,6 +11,8 @@ Branch `docs/Task19-numbat-review` (base: `main` at `67c903f`). Documentation on
 | Primers | the founder's four Numbat primers committed unchanged under `docs/founder/` | ✅ |
 | Review | `docs/plan/NUMBAT_ADOPTION_REVIEW.md`: Numbat verified against its code at `20a5a52`, primer corrections, Task6.a salvage, proposed architecture, new CISO questions S19–S26, effects on Tasks, ten decisions | 🟡 waiting on the founder's answers |
 | Decisions | founder answers of 2026-10-16 recorded (review §13); glossary of policies and signing (§14) | ✅ |
+| Round 2 | founder decisions of 2026-10-16 (review §15): Numbat pin confirmed, 44 rules, binary sizes, Task9 package validation paused; Task15n gate 6 removed (prompt edited) | ✅ |
+| Prompt | `docs/prompts/Task19/NEXT_CHAT_Task19b-qa-live-code_PROMPT.md` (Muse, T19.3: ten code questions and the drill-down; Q11 moved to Task19c) | ✅ |
 | Prompt | `docs/prompts/Task20/NEXT_CHAT_Task20-lead_PROMPT.md` (Task20 primer and plan in a fresh chat) | ✅ |
 
 ## Review
