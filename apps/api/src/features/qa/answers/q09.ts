@@ -2,11 +2,15 @@
  * Q9 live answer (Task19b, T19.3): which AI-assisted changes reached production.
  *
  * Production lines come from Task2's summary.production; the merged proxy is
- * its own figure (summary.mergedProxy, never added to production); the
- * deployment count is Task2's evidence.deployments. Breakdown `repository`
- * only on `production_ai_lines`.
+ * its own figure (summary.mergedProxy, never added to production). The
+ * deployment count is Task2's deployment rows cut to the scope and period
+ * (input filtering; evidence.deployments itself is all-time). No Task2
+ * calculation maps deployments to one pull request, so at PR scope the
+ * deployment figure is unavailable until Task2 supplies one (review fix 3).
+ * Breakdown `repository` only on `production_ai_lines`.
  */
 import {
+  deploymentsInScope,
   finishEnvelope,
   lifecycleFigure,
   liveAnswer,
@@ -40,12 +44,14 @@ export function computeQ9(input: ComputeInput): QaEnvelope {
     reasons: proxy.reasons,
     value: proxy.value,
   };
-  const deployments: QaFigure = {
-    key: 'production_deployments',
-    availability: 'recorded',
-    reasons: [],
-    value: { type: 'count', count: scope.deployments },
-  };
+  const deployments: QaFigure = ctx.scope.pull_request_id
+    ? { key: 'production_deployments', availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null }
+    : {
+      key: 'production_deployments',
+      availability: 'recorded',
+      reasons: [],
+      value: { type: 'count', count: deploymentsInScope(context, ctx) },
+    };
   return finishEnvelope(ctx, context, [lines, proxyFigure, deployments]);
 }
 

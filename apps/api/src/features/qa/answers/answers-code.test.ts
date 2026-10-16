@@ -21,11 +21,16 @@ import type {
   QaScopeLevel,
 } from '../types';
 import {
+  deploymentsInScope,
+  modelKeysInScope,
+  periodFilteredContext,
+  periodTotals,
   type BreakdownFacts,
   type ComputeInput,
   type QaContext,
   type ScopeFacts,
 } from './common';
+import { lifecycleForModel } from '../../telemetry/task2-lifecycle-read';
 import { computeQ1 } from './q01';
 import { computeQ3 } from './q03';
 import { computeQ4 } from './q04';
@@ -231,13 +236,19 @@ describe('Q4 production models', () => {
       context: { ...q4Context(), commits: [realtimeCommit({ id: 'c1', sha: SHA })] },
     });
     assert.deepEqual(figureOf(commit, 'models_in_production').value, { type: 'count', count: 1 });
+    // No Task2 calculation scopes production to one commit: unavailable, never repo-wide.
+    assert.equal(figureOf(commit, 'production_ai_lines').availability, 'unavailable');
+    assert.deepEqual(figureOf(commit, 'production_ai_lines').reasons, [{ code: 'answer_not_built' }]);
+    assert.equal(figureOf(commit, 'production_ai_lines').value, null);
   });
 });
 
 describe('Q9 production', () => {
   test('production, proxy and deployment count; proxy never added', () => {
+    const c = baseContext();
+    c.deployments = [row({ repositoryId: REPO, deployedAt: AT })];
     const e = computeQ9({
-      context: baseContext(),
+      context: c,
       ctx: ctxFor('Q9', 'repository', { repository_id: REPO, from: FROM, to: TO }, 'repository'),
       scope: facts(summaryWith({ production: lv(250), mergedProxy: lv(60) }), { sessions: 0, commits: 0, finalAiLines: 0, finalHumanLines: 0 }, 1),
       breakdownFacts: {
@@ -249,6 +260,25 @@ describe('Q9 production', () => {
     assert.deepEqual(figureOf(e, 'merged_not_deployed_proxy_lines').value, { type: 'count', count: 60 });
     assert.deepEqual(figureOf(e, 'production_deployments').value, { type: 'count', count: 1 });
     assert.ok(e.wording.includes('merged_not_deployed_proxy'));
+  });
+
+  test('deployments count the scope and period; PR scope is unavailable (review fix 3)', () => {
+    const c = baseContext();
+    c.deployments = [
+      row({ repositoryId: REPO, deployedAt: AT }),
+      row({ repositoryId: REPO, deployedAt: new Date('2026-01-01T00:00:00.000Z') }),
+      row({ repositoryId: REPO2, deployedAt: AT }),
+    ];
+    assert.equal(deploymentsInScope(c, ctxFor('Q9', 'repository', { repository_id: REPO, from: FROM, to: TO })), 1);
+    assert.equal(deploymentsInScope(c, ctxFor('Q9', 'tenant', { from: FROM, to: TO })), 2);
+    const pr = computeQ9({
+      context: c,
+      ctx: ctxFor('Q9', 'pull_request', { pull_request_id: PR, from: FROM, to: TO }),
+      scope: facts(summaryWith({ production: lv(10), mergedProxy: lv(0) })),
+      breakdownFacts: noBreakdown,
+    });
+    assert.equal(figureOf(pr, 'production_deployments').availability, 'unavailable');
+    assert.deepEqual(figureOf(pr, 'production_deployments').reasons, [{ code: 'answer_not_built' }]);
   });
 });
 
@@ -457,6 +487,68 @@ describe('Q20 change over time', () => {
     assert.ok(e.previous, 'previous is present');
     assert.deepEqual(e.previous?.figures.map((f) => f.key), e.figures.map((f) => f.key));
     assert.deepEqual(figureOf({ figures: e.previous?.figures ?? [] } as QaEnvelope, 'ai_committed_lines').value, { type: 'count', count: 300 });
+  });
+});
+
+describe('period totals are period-scoped, never all-time (review fix 1)', () => {
+  const SEPT = '2026-09-01T00:00:00.000Z';
+  const SEPT_END = '2026-09-30T00:00:00.000Z';
+  const AUG = '2026-08-01T00:00:00.000Z';
+  const AUG_END = '2026-08-31T00:00:00.000Z';
+  function totalsContext(): QaContext {
+    const c = baseContext();
+    c.commits = [
+      realtimeCommit({ id: 'sep-a', repositoryId: REPO, committedAt: new Date('2026-09-10T00:00:00.000Z'), observedAiLines: 100, observedHumanLines: 50 }),
+      realtimeCommit({ id: 'sep-b', repositoryId: REPO2, committedAt: new Date('2026-09-11T00:00:00.000Z'), observedAiLines: 50, observedHumanLines: 25 }),
+      realtimeCommit({ id: 'aug-a', repositoryId: REPO, committedAt: new Date('2026-08-10T00:00:00.000Z'), observedAiLines: 200, observedHumanLines: 100 }),
+    ];
+    return c;
+  }
+  test('current and previous periods see distinct commits', () => {
+    const c = totalsContext();
+    const current = periodTotals(c, ctxFor('Q20', 'tenant', { from: SEPT, to: SEPT_END }));
+    assert.deepEqual([current.commits, current.finalAiLines, current.finalHumanLines], [2, 150, 75]);
+    const previous = periodTotals(c, ctxFor('Q20', 'tenant', { from: AUG, to: AUG_END }));
+    assert.deepEqual([previous.commits, previous.finalAiLines, previous.finalHumanLines], [1, 200, 100]);
+  });
+
+  test('repository scope narrows the period totals', () => {
+    const totals = periodTotals(
+      totalsContext(), ctxFor('Q1', 'repository', { repository_id: REPO, from: SEPT, to: SEPT_END }));
+    assert.deepEqual([totals.commits, totals.finalAiLines, totals.finalHumanLines], [1, 100, 50]);
+  });
+});
+
+describe('model inputs stay inside the requested scope (review fix 2)', () => {
+  const OTHER_PR = '00000000-0000-4000-8000-0000000000c9';
+  function modelContext(): QaContext {
+    const c = baseContext();
+    c.modelLifecycleEvents = [
+      row({ modelKey: 'model-a', tool: 'tool-a', repositoryId: REPO, pullRequestId: null, commitId: null, stage: 'merged', lineCount: 300, occurredAt: AT }),
+      row({ modelKey: 'model-a', tool: 'tool-a', repositoryId: REPO2, pullRequestId: null, commitId: null, stage: 'merged', lineCount: 700, occurredAt: AT }),
+      row({ modelKey: 'model-a', tool: 'tool-a', repositoryId: REPO, pullRequestId: OTHER_PR, commitId: null, stage: 'merged', lineCount: 500, occurredAt: AT }),
+    ];
+    return c;
+  }
+  test('same model in two repositories: repository scope sees only its own rows', () => {
+    const c = modelContext();
+    const ctx = ctxFor('Q3', 'repository', { repository_id: REPO, from: FROM, to: TO });
+    assert.deepEqual(modelKeysInScope(c, ctx).map(({ key }) => key), ['model-a']);
+    const merged = lifecycleForModel(periodFilteredContext(c, ctx), 'model-a').summary.merged;
+    // REPO's own rows (300 + its other-PR row 500); REPO2's 700 stays out.
+    assert.equal(merged.value, 800);
+    const tenant = lifecycleForModel(
+      periodFilteredContext(c, ctxFor('Q3', 'tenant', { from: FROM, to: TO })), 'model-a').summary.merged;
+    assert.equal(tenant.value, 1500);
+  });
+
+  test('pull-request scope excludes the same model’s other-PR rows', () => {
+    const c = modelContext();
+    const ctx = ctxFor('Q3', 'pull_request', { pull_request_id: PR, from: FROM, to: TO });
+    const merged = lifecycleForModel(periodFilteredContext(c, ctx), 'model-a').summary.merged;
+    // No row names this PR (nor one of its commits): nothing is in scope.
+    assert.equal(merged.value, null);
+    assert.deepEqual(modelKeysInScope(c, ctx), []);
   });
 });
 

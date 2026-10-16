@@ -5,8 +5,9 @@
  * lifecycleForModel summary.production is above 0 (Task2's function on
  * input-filtered rows, never a re-implementation). At commit scope the keys
  * are the commit's attributions; otherwise every key in scope. Approval is G2,
- * honestly unavailable. At commit scope the production figure is the
- * repository's (lifecycleForTenant scopes to repository, never to a commit).
+ * honestly unavailable. No Task2 calculation scopes production lines to one
+ * commit, so at commit scope production_ai_lines is unavailable until Task2
+ * supplies one (review fix 3); the repository figure would over-claim.
  */
 import { lifecycleForModel } from '../../telemetry/task2-lifecycle-read';
 import { commitInScope } from '../drilldown';
@@ -29,7 +30,17 @@ export function computeQ4(input: ComputeInput): QaEnvelope {
       .filter((row) => row.commitId === commit.id)
       .map((row) => row.modelKey))].sort()
     : modelKeysInScope(context, ctx).map(({ key }) => key);
-  const filtered = periodFilteredContext(context, ctx);
+  // The attributions pick the models; production is judged per model over the
+  // period and repository (production evidence is never linked to one commit,
+  // so a commit-row filter here would empty every check).
+  const checkCtx = commit && ctx.scope.repository_id
+    ? {
+      ...ctx,
+      scopeLevel: 'repository' as const,
+      scope: { repository_id: ctx.scope.repository_id, from: ctx.scope.from, to: ctx.scope.to },
+    }
+    : ctx;
+  const filtered = periodFilteredContext(context, checkCtx);
   let inProduction = 0;
   for (const key of keys) {
     const production = lifecycleForModel(filtered, key).summary.production;
@@ -41,7 +52,9 @@ export function computeQ4(input: ComputeInput): QaEnvelope {
     reasons: [],
     value: { type: 'count', count: inProduction },
   };
-  const production = lifecycleFigure(scope.summary.production);
+  const production = commit
+    ? { availability: 'unavailable' as const, reasons: [{ code: 'answer_not_built' as const }], value: null }
+    : lifecycleFigure(scope.summary.production);
   const breakdown: QaBreakdownItem[] = [];
   if (production.availability !== 'unavailable' && breakdownFacts
     && (ctx.breakdown === 'model' || ctx.breakdown === 'tool')) {

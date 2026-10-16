@@ -308,6 +308,9 @@ async function main(): Promise<void> {
     check(Array.isArray(q20.body?.previous?.figures), '(c) Q20 previous is present');
     check(JSON.stringify(q20.body.previous.figures.map((f: any) => f.key)) === JSON.stringify(q20.body.figures.map((f: any) => f.key)),
       '(c) Q20 previous has the same keys');
+    // The previous period has no seeded commits: totals are period-scoped, never all-time.
+    check(fig({ figures: q20.body.previous.figures }, 'ai_committed_lines')?.value?.count === 0,
+      '(c) Q20 previous committed = 0 (period-scoped totals)');
     console.log('IT-T19b-01c ok: Q20 has previous with the same keys');
 
     // (d) Drill-down from tenant to repository to PR to commit.

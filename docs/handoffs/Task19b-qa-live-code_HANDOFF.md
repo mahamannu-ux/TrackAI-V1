@@ -5,7 +5,8 @@ Branch `task/Task19b-qa-live-code`. Ten live answerers registered, drill-down bu
 ## At a glance
 - Q1 changed-lines share + G1 repository share; Q3 merged lines + retained share; Q4 production models + G2 approval; Q9 production + proxy + deployments; Q13 commits/notes/unknown/coverage; Q14 PR chain from Task2 intelligence; Q10 rework by actor + never-written churn; Q19 generated/committed/acceptance; Q18 tokens + micro-costs; Q20 committed lines + previous, team unavailable.
 - Commit 2 moves PR intelligence unchanged into `pullRequestIntelligence` (`e4b8c4b`, for Codex as Task2 owner).
-- `npm test` 1052 pass (32 new); typecheck and lint clean; IT-T19b-01 agent-passed, founder run blocks the merge.
+- `npm test` 1057 pass (37 new); typecheck and lint clean; IT-T19b-01 agent-passed, founder run blocks the merge.
+- Review fix round (lead `fix first`): period-scoped totals, scope-filtered model inputs, `answer_not_built` for commit-scope production and PR-scope deployments; rebased onto `5d9a716`, Task20 rows kept.
 
 ## Implemented interfaces
 - `features/qa/answers/common.ts`: LifecycleValue mapping, ratio shares, envelope assembly, `loadScopeFacts` (Task2 functions only), thin `liveAnswer`/`rawAnswer`.
@@ -15,7 +16,9 @@ Branch `task/Task19b-qa-live-code`. Ten live answerers registered, drill-down bu
 
 ## Deviations
 - Top-level `unavailable` means every figure is unavailable (frozen schema), so mixed envelopes top out at `partial`, not the literal worst. Reasons still name every gap.
-- Q20 previous equals current when only time differs: scope totals are all-time, so a time-only previous cannot change them.
+- Totals are period-scoped through Task2's own `calculateLifecycleScopeTotals` on period-filtered commits (Task2's dates never reached its totals); model inputs are scope-filtered the same way. No Task2 file changed.
+- At commit scope Q4's production and at PR scope Q9's deployment count answer `answer_not_built` (no Task2 calculation supports them); deployments are otherwise cut to scope and period.
+- Q20 previous equals current only when the periods hold the same commits; an empty previous reads 0, never the all-time total.
 - At commit scope Q4's production figure is the repository's; Q9's PR-scope deployment count is the repository's (Task2 scopes no finer).
 - Q18 sessions with anything but one linked repository bucket as `unknown`, never double-counted. Cost units with no reported amount emit no figure.
 - `qa-api.test.ts` drill-down test now expects 200 for built questions (plus a router `contextLoader` seam); Q5 still 501s.
@@ -39,4 +42,4 @@ Branch `task/Task19b-qa-live-code`. Ten live answerers registered, drill-down bu
 - No other integration impact; no migration; Task2 tests pass unmodified.
 
 ## Effort
-- Estimate about 0.12× T6; actual about 0.30×. Over for three reasons: the frozen schema forced the top-level availability deviation (found by reading the schema, not the prompt); Docker was down and local Postgres has no pgvector (diagnosed to `CREATE EXTENSION vector`, started Docker Desktop); one type error slipped through a piped tsc. Next prompt: keep the estimate when the schema pre-check and Docker state are confirmed upfront.
+- Estimate about 0.12× T6; actual about 0.38× including the review fix round. Over for four reasons: the frozen schema forced the top-level availability deviation (found by reading the schema, not the prompt); Docker was down and local Postgres has no pgvector (diagnosed to `CREATE EXTENSION vector`, started Docker Desktop); one type error slipped through a piped tsc; the totals/scope/narrow-scope fixes needed Task2-input-level rechecks. Next prompt: keep the estimate when the schema pre-check and Docker state are confirmed upfront.

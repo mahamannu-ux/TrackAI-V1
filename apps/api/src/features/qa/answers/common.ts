@@ -9,10 +9,15 @@
  * touch the database. Scope and listing helpers live in ../drilldown.ts.
  */
 import {
+  audited,
   lifecycleForModel,
   lifecycleForTenant,
   loadContext,
 } from '../../telemetry/task2-lifecycle-read';
+import {
+  calculateLifecycleScopeTotals,
+  isCommittedLineReworkEvidence,
+} from '../../telemetry/lifecycle';
 import type { LifecycleSummary, LifecycleValue } from '../../telemetry/lifecycle';
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from '../registry';
 import type {
@@ -192,12 +197,9 @@ export async function loadScopeFacts(
   if (!live) throw new Error('Task19b: lifecycle scope not found');
   const scope: ScopeFacts = {
     summary: live.summary,
-    totals: {
-      sessions: live.totals.sessions,
-      commits: live.totals.commits,
-      finalAiLines: live.totals.finalAiLines,
-      finalHumanLines: live.totals.finalHumanLines,
-    },
+    // lifecycleForTenant's totals are all-time, so the period share comes
+    // from Task2's own totals function on period-filtered commits (below).
+    totals: periodTotals(context, ctx),
     deployments: live.evidence.deployments,
   };
   const breakdownFacts: BreakdownFacts = { repositories: [], models: [] };
@@ -205,16 +207,12 @@ export async function loadScopeFacts(
     for (const id of repositoryIdsInScope(context, ctx)) {
       const per = await lifecycleForTenant(tenantId, { ...filter, repositoryId: id });
       if (!per) throw new Error('Task19b: lifecycle scope not found');
+      const repoCtx: QaAnswerContext = { ...ctx, scope: { ...ctx.scope, repository_id: id } };
       breakdownFacts.repositories.push({
         id,
         scope: {
           summary: per.summary,
-          totals: {
-            sessions: per.totals.sessions,
-            commits: per.totals.commits,
-            finalAiLines: per.totals.finalAiLines,
-            finalHumanLines: per.totals.finalHumanLines,
-          },
+          totals: periodTotals(context, repoCtx),
           deployments: per.evidence.deployments,
         },
       });
@@ -264,15 +262,65 @@ export function modelKeysInScope(
 }
 
 /**
- * The period-filtered copy of the context §2.1 rule 2 blesses: input
- * filtering, the same as lifecycleForTenant's inTime helper, not a new
- * calculation.
+ * Retained-lines totals for the request's scope *and period*.
+ * lifecycleForTenant's dates reach its lifecycle rows but not its totals, so
+ * the period share calls Task2's own calculateLifecycleScopeTotals directly,
+ * with Task2's identical input mapping (task2-lifecycle-read.ts) plus a
+ * committedAt period filter on the commits. The selection, the audited
+ * corrections and the rework deduction are Task2's; only the period input
+ * filter is ours — the same input filtering the prompt blesses for model rows.
+ */
+export function periodTotals(context: QaContext, ctx: QaAnswerContext): ScopeFacts['totals'] {
+  const { fromMs, toMs } = periodMs(ctx.scope);
+  const repositoryIds = ctx.scope.repository_id ? new Set([ctx.scope.repository_id]) : null;
+  // PR membership selection exactly as lifecycleForTenant scopes it: the PR's
+  // memberships, active only.
+  const pullRequestIds = ctx.scope.pull_request_id ? new Set([ctx.scope.pull_request_id]) : null;
+  const scopedMemberships = context.memberships
+    .filter((row) => !pullRequestIds || pullRequestIds.has(row.pullRequestId));
+  const pullRequestCommitIds = pullRequestIds
+    ? new Set(scopedMemberships.filter((row) => row.active).map((row) => row.commitId))
+    : null;
+  const totals = calculateLifecycleScopeTotals({
+    commits: context.commits
+      .filter((commit) => inPeriod(commit.committedAt, fromMs, toMs))
+      .map((commit) => ({
+        id: commit.id,
+        repositoryId: commit.repositoryId,
+        reachability: commit.reachability,
+        finalAiLines: audited(context.corrections, 'commit', commit.id, 'observedAiLines', commit.observedAiLines).auditedValue,
+        finalHumanLines: audited(context.corrections, 'commit', commit.id, 'observedHumanLines', commit.observedHumanLines).auditedValue,
+      })),
+    commitSessions: context.commitSessions,
+    sessionRepositories: context.sessionRepositories,
+    allSessionIds: context.sessions.map((session) => session.id),
+    repositoryIds,
+    pullRequestCommitIds,
+    contributorCommitIds: null,
+    reworkRows: context.lifecycleEvents
+      .filter((row) => row.stage === 'reworked' && isCommittedLineReworkEvidence(row.evidenceType))
+      .map((row) => ({ commitId: row.commitId, lineCount: row.lineCount, evidenceType: row.evidenceType })),
+  });
+  return {
+    sessions: totals.sessions,
+    commits: totals.commits,
+    finalAiLines: totals.finalAiLines,
+    finalHumanLines: totals.finalHumanLines,
+  };
+}
+
+/**
+ * The period- and scope-filtered copy of the context §2.1 rule 2 blesses:
+ * input filtering, the same as lifecycleForTenant's inTime helper, not a new
+ * calculation. Model breakdowns stay inside the requested repository, PR or
+ * commit: the same model's events elsewhere never leak in.
  */
 export function periodFilteredContext(context: QaContext, ctx: QaAnswerContext): QaContext {
   const { fromMs, toMs } = periodMs(ctx.scope);
   return {
     ...context,
-    modelLifecycleEvents: context.modelLifecycleEvents.filter((row) => inPeriod(row.occurredAt, fromMs, toMs)),
+    modelLifecycleEvents: context.modelLifecycleEvents.filter((row) =>
+      inPeriod(row.occurredAt, fromMs, toMs) && modelRowInScope(context, ctx, row)),
   };
 }
 
@@ -291,4 +339,18 @@ export function rawAnswer(compute: (input: ComputeInput) => QaEnvelope): QaAnswe
     const context = await loadContext(ctx.tenantId);
     return compute({ context, ctx });
   };
+}
+
+/**
+ * Production deployments in the request's scope and period (review fix 3).
+ * Task2's evidence.deployments counts the whole repository all-time; the
+ * period cut is input filtering on the same rows. No Task2 calculation maps
+ * deployments to one pull request, so at PR scope the caller must answer
+ * answer_not_built instead of calling this.
+ */
+export function deploymentsInScope(context: QaContext, ctx: QaAnswerContext): number {
+  const { fromMs, toMs } = periodMs(ctx.scope);
+  const repos = new Set(repositoryIdsInScope(context, ctx));
+  return context.deployments.filter((row) =>
+    repos.has(row.repositoryId) && inPeriod(row.deployedAt, fromMs, toMs)).length;
 }
