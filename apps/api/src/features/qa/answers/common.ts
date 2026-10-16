@@ -94,11 +94,6 @@ export function ratioFigure(numerator: number | null, denominator: number | null
   return { type: 'ratio', numerator, denominator };
 }
 
-function worse(a: QaAvailability, b: QaAvailability): QaAvailability {
-  const rank = (x: QaAvailability) => (x === 'unavailable' ? 2 : x === 'partial' ? 1 : 0);
-  return rank(a) >= rank(b) ? a : b;
-}
-
 function sameReason(a: QaReason, b: QaReason): boolean {
   return a.code === b.code && a.gap === b.gap;
 }
@@ -147,9 +142,6 @@ export function finishEnvelope(
 ): QaEnvelope {
   const question = QA_QUESTIONS_BY_ID.get(ctx.questionId);
   if (!question) throw new Error(`Task19b: unknown question ${ctx.questionId}`);
-  const worst = figures.reduce<QaAvailability>(
-    (acc, figure) => worse(acc, figure.availability), 'recorded');
-  void worst;
   // The frozen schema reads top-level `unavailable` as "every figure is
   // unavailable", so that level applies only when nothing is available; any
   // other mix with a gap tops out at `partial`.
@@ -174,12 +166,6 @@ export function finishEnvelope(
   const link = signedEvidence(ctx);
   if (link) envelope.signed_evidence = link;
   return envelope;
-}
-
-/** Placeholder body for commit 1: every pure function signature exists, nothing is built yet. */
-export function notYet(questionId: QaQuestionId, context: QaContext, ctx: QaAnswerContext): QaEnvelope {
-  void questionId;
-  return finishEnvelope(ctx, context, []);
 }
 
 /**
