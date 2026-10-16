@@ -17,18 +17,20 @@ import { auditRouter } from '../../features/audit/audit.routes';
 import { evidenceAdminRouter } from '../../features/evidence/evidence.routes';
 import { createFleetAdminRouter } from '../../features/fleet/fleet.routes';
 import { createAttestaRouter } from '../../features/attesta/attesta.routes';
+import { createQaRouter } from '../../features/qa/qa.routes';
 import { problemizeAuth } from '../../features/attesta/http';
 import { adminActionOf, requireAdminAction } from '../middleware/admin';
 
 // Mount points from apps/api/src/app.ts (adminRouter at /api/admin,
 // evidenceAdminRouter at /api/admin/evidence, fleetAdminRouter at
-// /api/admin/fleet, attestaRouter at /api/attesta, auditRouter at /api/audit).
+// /api/admin/fleet, attestaRouter at /api/attesta, auditRouter at /api/audit, qaRouter at /api/qa).
 // Keys below use the full path so the routers can never collide.
 const ADMIN_MOUNT = '/api/admin';
 const EVIDENCE_ADMIN_MOUNT = '/api/admin/evidence';
 const FLEET_ADMIN_MOUNT = '/api/admin/fleet';
 const ATTESTA_MOUNT = '/api/attesta';
 const AUDIT_MOUNT = '/api/audit';
+const QA_MOUNT = '/api/qa';
 
 // Every guarded route on the admin, evidence-admin and fleet routers, mapped to
 // the action its requireAdminAction guard passes (read from the route file). Since
@@ -90,6 +92,11 @@ const ROUTE_ACTIONS: Record<string, AdminAction> = {
   'POST /api/audit/exports': 'audit.read',
   'GET /api/audit/exports/:id': 'audit.read',
   'GET /api/audit/exports/:id/content': 'audit.read',
+  // --- qaRouter (Task19a; router-level qa.read guard; auditors are refused kind=live in the service) ---
+  'GET /api/qa/questions': 'qa.read',
+  'GET /api/qa/questions/:id': 'qa.read',
+  'GET /api/qa/questions/:id/answer': 'qa.read',
+  'GET /api/qa/questions/:id/drilldown': 'qa.read',
 };
 
 // Non-GET attesta routes mapped to their effective per-route action (read from
@@ -207,6 +214,7 @@ const SWEPT: StackedRouter[] = [
   { mount: FLEET_ADMIN_MOUNT, router: createFleetAdminRouter(), guard: 'router-level', routerAction: 'machine.manage' },
   { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level', routerAction: 'attesta.read' },
   { mount: AUDIT_MOUNT, router: auditRouter, guard: 'router-level', routerAction: 'audit.read' },
+  { mount: QA_MOUNT, router: createQaRouter(), guard: 'router-level', routerAction: 'qa.read' },
 ];
 
 const STACKED: StackedRoute[] = SWEPT.flatMap(entry => routesOf(entry.router, entry.mount));

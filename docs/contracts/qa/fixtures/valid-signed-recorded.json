@@ -1,0 +1,88 @@
+{
+  "question_id": "S7",
+  "registry_version": 1,
+  "kind": "signed",
+  "as_of": "2026-10-15T09:30:00.000Z",
+  "scope": {
+    "from": "2026-07-01T00:00:00.000Z",
+    "to": "2026-09-30T23:59:59.999Z"
+  },
+  "availability": "recorded",
+  "reasons": [],
+  "figures": [
+    {
+      "key": "findings",
+      "availability": "recorded",
+      "reasons": [],
+      "value": {
+        "type": "count",
+        "count": 8
+      },
+      "evidence": {
+        "count": 2,
+        "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "records": [
+          {
+            "seq": 21,
+            "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          {
+            "seq": 22,
+            "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        ]
+      },
+      "breakdown": [
+        {
+          "dimension": "severity",
+          "key": "high",
+          "value": {
+            "type": "count",
+            "count": 6
+          }
+        },
+        {
+          "dimension": "severity",
+          "key": "critical",
+          "value": {
+            "type": "count",
+            "count": 2
+          }
+        }
+      ]
+    }
+  ],
+  "wording": [
+    "monitor_only_observed"
+  ],
+  "drilldown": [],
+  "previous": {
+    "from": "2026-03-31T00:00:00.000Z",
+    "to": "2026-06-30T23:59:59.999Z",
+    "figures": [
+      {
+        "key": "findings",
+        "availability": "recorded",
+        "reasons": [],
+        "value": {
+          "type": "count",
+          "count": 5
+        },
+        "evidence": {
+          "count": 1,
+          "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "records": [
+            {
+              "seq": 3,
+              "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "signed": {
+    "statement_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "predicate_type": "https://trackai.dev/attesta/security-period-report/v1"
+  }
+}

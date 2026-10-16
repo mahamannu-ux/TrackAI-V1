@@ -1,0 +1,53 @@
+{
+  "question_id": "Q1",
+  "registry_version": 1,
+  "kind": "verifiable",
+  "as_of": "2026-10-15T09:30:00.000Z",
+  "scope": {
+    "repository_id": "00000000-0000-4000-8000-0000000000a1",
+    "from": "2026-07-01T00:00:00.000Z",
+    "to": "2026-09-30T23:59:59.999Z"
+  },
+  "availability": "partial",
+  "reasons": [
+    {
+      "code": "not_captured_yet",
+      "gap": "G1"
+    }
+  ],
+  "figures": [
+    {
+      "key": "changed_lines_ai_share",
+      "availability": "recorded",
+      "reasons": [],
+      "value": {
+        "type": "ratio",
+        "numerator": 432,
+        "denominator": 451
+      },
+      "evidence": {
+        "count": 1,
+        "statements_root": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "records": [
+          {
+            "seq": 7,
+            "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ]
+      }
+    },
+    {
+      "key": "repository_ai_share",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "not_captured_yet",
+          "gap": "G1"
+        }
+      ],
+      "value": null
+    }
+  ],
+  "wording": [],
+  "drilldown": []
+}

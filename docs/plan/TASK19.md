@@ -28,8 +28,8 @@ Sizes against T6. "Who": Claude, Muse, Codex, founder-live.
 
 | ID | Subtask | Who | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| T19.1 | Confirm the delivery matrix (§3) against the code, with `file:line`: which rows Task2's dashboards already half-answer; final owner per gap | Claude | 0.02× | — | ⬜ |
-| T19.2 | **Q&A contract:** question registry as code (id, rank, audience, kinds of answer, availability rules, gaps); one answer envelope (value, availability, kind `live`/`verifiable`/`signed`, backing statement digests, `as_of`); `/api/qa/*` routes under AP-1, admin and auditor guards; frozen under `docs/contracts/qa/` | Claude | 0.06× | T19.1 | ⬜ |
+| T19.1 | Confirm the delivery matrix (§3) against the code, with `file:line`: which rows Task2's dashboards already half-answer; final owner per gap | Claude | 0.02× | — | ✅ Task19a (§3 corrections, §3.1) |
+| T19.2 | **Q&A contract:** question registry as code (id, rank, audience, kinds of answer, availability rules, gaps); one answer envelope (value, availability, kind `live`/`verifiable`/`signed`, backing statement digests, `as_of`); `/api/qa/*` routes under AP-1, admin and auditor guards; frozen under `docs/contracts/qa/` | Claude | 0.06× | T19.1 | 🟡 Task19a built; IT-T19a-01 founder run, then merge |
 | T19.3 | Live answers, code rows with data today (Q3, Q9, Q13, Q14, Q10, Q19, Q1's changed-lines share, Q11, Q18, Q20) | Muse | 0.08× | T19.2 | ⬜ |
 | T19.4 | Live answers, security rows with data today (S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view) | Muse | 0.06× | T19.2 | ⬜ |
 | T19.5 | Admin **Questions** screen (ex-T10.9): question list by rank, charts, drill-down, `Unavailable` states, no-surveillance defaults, "see the signed evidence" | Claude design, Muse build | 0.1× | T19.3, Task10 design system (or UI-1 rules until it exists) | ⬜ |
@@ -89,25 +89,25 @@ Columns:
 
 | Rank | Q | Status (capture · live · auditor) | Capture | Live | Auditor | Next step |
 |---|---|---|---|---|---|---|
-| 1 | Q3 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
+| 1 | Q3 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's merged-lines-by-tool-and-model figure | T19.2 |
 | 2 | Q1 | 🟡 ⬜ ⬜ | changed lines: stored; whole repository: G1 → Task2 + GitAI | T19.3 (changed lines) | A16.13a via the Task15i4 period report; repository share after G1 | G1 prompt |
 | 3 | Q4 | 🟡 ⬜ ⬜ | models: stored; approval: G2 → Task6.b | T19.3 (models) | A16.13a (models); approval `Unavailable` until G2 | Task6.b MVP (§5) |
 | 4 | Q11 | 🟡 ⬜ ⬜ | stored (session link is a text join, G10) | T19.3 | A16.13a partly | G10 |
 | 5 | Q7 | 🟡 n/a ⬜ | Attesta built | n/a | A16.13a; production proof Task15n | Task15n |
 | 6 | Q16 | 🟡 n/a ⬜ | Attesta built | n/a | A16.13a; clean machine Task15n | Task15n |
 | 7 | Q5 | ⬜ ⬜ ⬜ | G3 → Task2 (semantics), Task4 (delivery) | after G3 | after G3 (predicate field ready) | G3 prompt (before production) |
-| 8 | Q13 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
-| 9 | Q9 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
+| 8 | Q13 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's unknown-lines figure | T19.2 |
+| 9 | Q9 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's production-deployments figure | T19.2 |
 | 10 | Q14 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
 | 11 | Q12 | 🟡 ⬜ ⬜ | partly; org policy G2 → Task6.b | T19.3 (partly) | partly, then after G2 | Task6.b MVP |
-| 12 | Q2 | 🟡 ⬜ ⬜ | stored; hard query (ranges plus lineage walk) | `Task19d-qa-line-walk` | later (file paths are hashed in the predicate) | size in T19.1 |
+| 12 | Q2 | 🟡 ⬜ ⬜ | ranges stored; no line-offset history: point-in-time blame needs the provider's blame (GitHub GraphQL `blame`) mapped through merge lineage | `Task19d-qa-line-walk` | later (file paths are hashed in the predicate) | `Task19d-qa-line-walk` (Codex, about 0.12×, §6.1) |
 | 13 | Q6 | 🟡 ⬜ ⬜ | committer stored; merger G4 → Task2 | after G4 | after G4 (predicate v1.x) | G4 prompt (small) |
 | 14 | Q8 | 🟡 n/a ⬜ | stored + Attesta | n/a | A16.13a | — |
 | 15 | Q15 | ⬜ ⬜ ⬜ | G5 → Task4 (capture), Task16 (expose) | after G5 | after G5 (count in a batch statement) | G5 prompt |
 | 16 | Q10 | ✅ ⬜ n/a | stored (Churned always `Unavailable`) | T19.3 | n/a (count only) | T19.2 |
 | 17 | Q19 | ✅ ⬜ n/a | stored | T19.3 | n/a | T19.2 |
 | 18 | Q18 | 🟡 ⬜ n/a | stored; vendor gaps permanent | T19.3 | n/a | T19.2 |
-| 19 | Q20 | 🟡 ⬜ n/a | identity linking partial (T2.20) | T19.3 aggregated | n/a | T19.2 |
+| 19 | Q20 | 🟡 ⬜ n/a | identity linking partial (T2.20); **no team mapping exists** (no team table or column), so by-team is `unavailable` and the answer is by repository | T19.3 aggregated | n/a | team mapping: open issue (§3.1) |
 | 20 | Q17 | n/a n/a n/a | phase 2 (SCANOSS) | phase 2 | phase 2 | customer trigger |
 | 1 | S1 | 🟡 ⬜ ⬜ | stored for 3 rules; signing G6 → Task15o; rule coverage G9 → Task6.a | T19.4 | A16.13b via Task15p | Task15o after Task15n |
 | 2 | S2 | 🟡 ⬜ ⬜ | G7 → Task6 + Task9 | after G7 | after G7 (coverage figures in Task15p) | G7 prompt |
@@ -125,8 +125,62 @@ Columns:
 | 14 | S14 | ⬜ ⬜ ⬜ | G12 → Task6.b | after Task6.b | after Task6.b | deferred with Task6.b exceptions |
 | 15 | S15 | ✅ 🟡 🟡 | stored (audit events) | Task16 audit read API | Task16e (sealed) | Task16 |
 | 16 | S16 | ⬜ ⬜ ⬜ | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
-| 17 | S17 | 🟡 ⬜ n/a | stored | T19.4 | n/a (partly) | — |
+| 17 | S17 | 🟡 ⬜ n/a | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
 | 18 | S18 | 🟡 ⬜ n/a | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
+
+### 3.1 Answer sources (T19.1, confirmed against `main` at `67c903f`, 2026-10-15)
+
+Where each live answer will come from. Paths are under `apps/api/src/`. Short names:
+- `s` = `core/db/schema.ts`;
+- `t2r` = `features/telemetry/task2-lifecycle-read.ts` (moved out of `read.routes.ts` unchanged in Task19a; `loadContext` `t2r:70`, `lifecycleForTenant` `t2r:113`, `lifecycleForModel` `t2r:285`, `audited` `t2r:53`, `contributesToCurrentCommittedState` `t2r:66`);
+- `lc` = `features/telemetry/lifecycle.ts` (`calculateLifecycleSummary` `lc:102`, `calculateLifecycleScopeTotals` `lc:327`, `currentRetainedAiLines` `lc:279`, `isCommittedLineReworkEvidence` `lc:274`);
+- `rr` = `features/telemetry/read.routes.ts` (after the move: `/telemetry/sessions` `rr:83`, `/pull-requests/:id/intelligence` `rr:308`, `/metrics/lifecycle` `rr:388`, `/telemetry/models` `rr:405`, `/dashboard/summary` `rr:439`);
+- `sf` = `security_findings` (`s:474`; columns `s:477-505`; checks `s:525-560`).
+
+"Half-answered today" means a Task2 dashboard route already shows the figure, but not as an answer to the question. Rule 8: a lifecycle figure comes only from the Task2 function named; a figure with no Task2 function is an open issue for Task2, never a new query.
+
+| Q | Sources (`file:line`) | Task2 / Task6 function reused | Open issue |
+|---|---|---|---|
+| Q3 | `ai_model_lifecycle_events` `s:1468` (stage `merged`), `ai_commit_model_attributions` `s:1075`, `scm_pull_requests.merged_at` `s:826` | `lifecycleForModel` `t2r:285` per model key; `lifecycleForTenant` `t2r:113` for the whole; half-answered by `rr:388` + `rr:405` | "Share" = merged AI lines ÷ merged lines: the denominator is `lifecycleForTenant(...).totals` (`lc:327`); Task19b must not recompute it |
+| Q1 | `scm_commits` `s:950` (`observed_ai_lines`, `observed_human_lines`, `observed_unknown_lines` `s:969-971`), `scm_commit_files` `s:985` | `calculateLifecycleScopeTotals` via `lifecycleForTenant` `t2r:113` (changed lines); half-answered by `rr:439` | Whole-repository share: G1 (no denominator) |
+| Q4 | `ai_commit_model_attributions` `s:1075` (`tool`, `model`, `model_key`), `scm_deployments` `s:1179` | `lifecycleForModel` `t2r:285` (stage `production`) | Approval: G2 |
+| Q11 | `sf` (`session_id` text `s:481`, `rule_category`, `rule_severity`), `ai_sessions` `s:1002`, `ai_commit_sessions` `s:1061` | none (no Task6 aggregate; the admin read `features/security-findings/admin-read.ts:36` lists rows and is audited) | Session link is a text join, `partial` (G10) |
+| Q7 | Attesta ledger (`attesta_records` `s:1691`, `attesta_anchors` `s:1817`) | `GET /api/attesta/verify` (`docs/contracts/attesta/api.md`) | verifiable only |
+| Q16 | `attesta_evidence_packs` `s:2053` | evidence-pack routes (`api.md`) | verifiable only |
+| Q5 | none | — | G3 (`pull_request_review` not parsed: `features/scm/parser.ts:119-173` handles push, deployment and pull_request only) |
+| Q13 | `scm_commits.observed_unknown_lines` `s:971`, `scm_commits.authorship_note` `s:972` (null = no Git AI note), `reachability` `s:962` | `contributesToCurrentCommittedState` `t2r:66`; `generationCoverage` from `lifecycleForTenant` `t2r:113` | — |
+| Q9 | `scm_deployments` `s:1179` (`production`, `status`), `ai_code_lifecycle_events` `s:1447` (stage `production`) | `lifecycleForTenant` `t2r:113` (`summary` production value, `evidence.deployments`) | Merged-not-deployed proxy keeps its own label (`merged_not_deployed_proxy`) |
+| Q14 | `ai_sessions` `s:1002`, `ai_commit_sessions` `s:1061`, `scm_pull_request_commit_memberships` `s:1146`, `scm_merge_lineage` `s:1163`, `scm_deployments` `s:1179` | half-answered by `rr:308` (PR intelligence: commits, sessions, merge result) | The chain logic lives inline in the `rr:308` handler, not in a function: Task2 to extract it (open issue for Task2) or Task19b links to it; never copied |
+| Q12 | `repository_enrollments` `s:191`, `machine_repository_grants` `s:256`, `tenant_security_monitor_settings` `s:291`, `sf.rule_pack_version` `s:504` | `loadSecurityActivationLease` (`features/security-findings/activation.ts:67`) | Org policy: G2; the monitor setting has no history (G7) |
+| Q2 | `scm_commit_files.attribution_ranges` `s:993`, `scm_commit_lineage` `s:1111`, `scm_merge_lineage` `s:1163` | none | No line-offset history: needs the provider's blame (Task19d, §6.1) |
+| Q6 | `scm_commits.author_*` `s:956-957`, `scm_pull_requests.author_*` `s:818-820` | — | Merger: G4 (no `merged_by` column, `s:809-833`) |
+| Q8 | `scm_commits.first_seen_at` `s:963`, statement `signed_late` (`docs/contracts/attesta/fields.md:16`) | statements routes (`api.md`) | verifiable only |
+| Q15 | none | — | G5 (rejected events dropped before storage) |
+| Q10 | `ai_code_lifecycle_events` `s:1447` (stage `reworked`, `actor_kind` `s:1456`) | `lifecycleForTenant` `t2r:113` (`summary` reworked value), `isCommittedLineReworkEvidence` `lc:274` | Churned is never written (`lc:133` reads it; no writer): always `churned_unavailable` |
+| Q19 | `ai_generation_observations` `s:1198`, `ai_code_lifecycle_events` `s:1447` | `calculateLifecycleSummary` `lc:102` via `lifecycleForTenant` / `lifecycleForModel` | — |
+| Q18 | `ai_session_usage` `s:1038` (`availability`, nullable tokens, `cost_amount` numeric(20,6)) | half-answered by `rr:83` (tokens per session) and `rr:308` (cost per unit); both inline, no function | (1) Cost is numeric with 6 decimals; the envelope has no floats, so Task19b reports cost as an integer count of millionths per `cost_unit` (figure key `cost_micro`, breakdown by unit). (2) Null tokens stay `unavailable`, never 0 (`s:1037` comment) |
+| Q20 | `scm_contributors` `s:1546`, `scm_provider_identities` `s:1495` | `lifecycleForTenant` per repository | **Team mapping:** no team entity exists (no `team` in `s`); a `team` breakdown answers `unavailable`. Owner to decide (nearest: Task2 T2.20 identity linking); not a new G id until the lead assigns it |
+| Q17 | none | — | phase 2 |
+| S1 | `sf` (`rule_id`, `rule_category`, `rule_severity`, `occurred_at` `s:502`; index `s:521`) | none (rows only) | Signing G6; rule coverage G9 |
+| S2 | `tenant_security_monitor_settings` `s:291`, `fleet_machine_states` `s:385`, `developer_machines` `s:96` | `loadSecurityActivationLease` `activation.ts:67` | History: G7 |
+| S3 | none | — | G8 (no writer: the setting is only read, `activation.ts:73`, `features/security-findings/storage-service.ts:212`), G9 |
+| S4 | none | — | G9 |
+| S5 | `sf.machine_id` `s:477`, `sf.repository_id` `s:478`, `sf.session_id` `s:481` → `ai_sessions.external_session_id` `s:1005` | as Q14 (`rr:308`) once the session is found | G10 (text join) |
+| S6 | `sf` + `ai_commit_sessions` `s:1061` + `scm_merge_lineage` `s:1163` + `scm_deployments` `s:1179` | `lifecycleForTenant` with `pullRequestId` | G10 (text join, `partial`) |
+| S7 | `sf.repository_id`, `rule_category`, `rule_severity`; index `s:521` | none | — |
+| S8 | `sf.agent_family` `s:489` | none | Model: G10 |
+| S9 | `sf.operating_system` `s:493`; check `s:542` | none | Only macOS validated (D6.2): other platforms answer `not_monitored` |
+| S10 | `sf.rule_version` `s:485`, `rule_pack_version` `s:504`, `client_version` `s:503`; `fleet_machine_states.gitai_version` `s:399` (current only) | none | G7 |
+| S11 | `sf.timing` `s:494`, `phase` `s:498`, `result_category` `s:501`; checks `s:544-560` | none | — |
+| S12 | `sf.effect` `s:497`, check `s:548` (`= 'monitor'`) | none | Answer is "none blocked", worded monitor-only |
+| S13 | none | — | G2, G11 |
+| S14 | none | — | G12 |
+| S15 | `security_audit_events` `s:573` | Task16c audit read API (`GET /api/audit/events`) | Joins the contract in T19.4 as a link to the Audit view |
+| S16 | none | — | G13 |
+| S17 | `sf.machine_id` `s:477`, `developer_machines` `s:96` | none | Team mapping (as Q20) |
+| S18 | `sf.rule_id` `s:484` | none | Disposition: G13 |
+
+**Item 9 confirmed:** Q1, Q3, Q4, Q9, Q10, Q13, Q19, Q20 and S6 need `loadContext`, `lifecycleForTenant` or `lifecycleForModel`, so Task19a moved them (with their helpers `CorrectionRow`, `correctionMap`, `audited`, `contributesToCurrentCommittedState` and `LifecycleFilter`) unchanged into `t2r`. Nothing else changed.
 
 ## 4. Gap dispatch order (T19.6)
 1. **G4** (merged-by, Task2, small).
@@ -166,15 +220,15 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 
 | # | Session | Subtasks | Agent | Estimate | Starts when | Main files | Status |
 |---|---|---|---|---|---|---|---|
-| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.09× (if it passes 0.12×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount; a pure move of three Task2 lifecycle read functions out of `read.routes.ts` (Codex reviews) | ⬜ prompt ready |
+| 1 | `Task19a-qa-matrix-contract` | T19.1, T19.2 | Claude | about 0.09× (if it passes 0.12×, the routes move to a follow-up) | now, alongside Task16 | `docs/plan/TASK19.md` §3, `docs/plan/CUSTOMER_AUDITOR_QA.md`, `docs/contracts/qa/` (new), `apps/api/src/features/qa/` (new), one admin action, the router mount; a pure move of three Task2 lifecycle read functions out of `read.routes.ts` (Codex reviews) | 🟡 built (about 0.10×); handoff `docs/handoffs/Task19a-qa-matrix-contract_HANDOFF.md`; Codex review and IT-T19a-01 founder run pending |
 | 2 | `Task19b-qa-live-code` | T19.3: Q3, Q9, Q13, Q14, Q10, Q19, Q1 (changed lines), Q11, Q18, Q20 | Muse | about 0.1× | Task19a merged | `features/qa/` answer modules for code questions | ⬜ prompt after Task19a |
 | 3 | `Task19c-qa-live-security` | T19.4: S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view | Muse | about 0.08× | Task19b merged (one Muse session at a time) | `features/qa/` answer modules for security questions | ⬜ |
-| 4 | `Task19d-qa-line-walk` | Q2 (point-in-time line attribution: ranges plus lineage walk) | Codex or Muse, decided in T19.1 | sized in T19.1 | Task19a merged | `features/qa/` | ⬜ |
+| 4 | `Task19d-qa-line-walk` | Q2 (point-in-time line attribution). T19.1: TrackAI stores per-commit ranges (`scm_commit_files.attribution_ranges`) but no line-offset history and no code, so "which commit last touched line N at commit C" needs the provider's blame (GitHub GraphQL `blame` through the GitHub App) mapped through `scm_merge_lineage` and `scm_commit_lineage` to the observed commit's ranges | **Codex** (GitHub App calls, lineage internals, rate limits: decisions not all writable upfront) | about 0.12× | Task19a merged | `features/qa/` answerer; a GitHub App read helper in `features/scm/` (pre-approved in its prompt) | ⬜ |
 | 5 | `Task19e-qa-questions-screen` | T19.5: a design note by the lead (about 0.02×), then the build | Claude design, Muse build | about 0.12× | Task19b and Task19c merged; Task10's design system, or the UI-1 rules until it exists | `apps/web/src/app/dashboard/questions-workspace.tsx` (new); the dashboard navigation (shared, pre-approved in its prompt) | ⬜ |
 | — | Lead work | T19.6 prompts and reviews, T19.7, T19.8 | Claude (lead chat) | about 0.05× | ongoing | prompts, this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 plan written |
 | — | Founder walkthrough | T19.9 | founder-live | about 0.02× | Task19e merged; A16.13a merged | — | ⬜ |
 
-**Total:** about 0.46× T6 for Task19's own work, against the 0.4× plan, mostly from the Muse factor. It excludes Q2 (`Task19d`), which T19.1 sizes.
+**Total:** about 0.46× T6 for Task19's own work, against the 0.4× plan, mostly from the Muse factor. Q2 (`Task19d`, sized in T19.1 at about 0.12×) comes on top: about 0.58×. The Task19b/19c split is unchanged by the inventory.
 
 **Critical path:** Task19a → Task19b → Task19c → Task19e → T19.9. Two things can start at once: Task19a, and the Task6.a acceptance walkthrough (Task15n gate 6). Task16's A16.13a can start as soon as Task19a merges.
 

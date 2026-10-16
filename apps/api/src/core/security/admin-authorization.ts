@@ -15,6 +15,9 @@ export const ADMIN_ACTIONS = [
   'attesta.read',
   // Task15i2 (A15.9): request and download Attesta evidence packs (every one audited).
   'attesta.export',
+  // Task19a (T19.2): the Q&A routes /api/qa/* (live answers for admins; auditors get
+  // verifiable and signed answers only, enforced in features/qa/service.ts).
+  'qa.read',
 ] as const;
 
 export type AdminAction = typeof ADMIN_ACTIONS[number];
@@ -62,5 +65,6 @@ export function adminMembershipAllows(
       || input.action === 'evidence.raw.read'
       || input.action === 'attesta.read'
       // An auditor's job is to take evidence away; each request and download is audited.
-      || input.action === 'attesta.export');
+      || input.action === 'attesta.export'
+      || input.action === 'qa.read');
 }
