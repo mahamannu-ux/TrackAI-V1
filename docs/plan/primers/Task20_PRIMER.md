@@ -114,9 +114,9 @@ One box per session, with the pieces it builds. Solid arrow: must merge before. 
 %%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontSize": "20px"}}}%%
 flowchart TB
   subgraph W1["Wave 1: foundations"]
-    A["<b>Task20a</b> security v2 contract<br/>T20.1 · Claude · 0.12×"]
+    A["<b>Task20a</b> security v2 contract<br/>T20.1 · Codex, Claude reviews · 0.12×"]
     B["<b>Task20b</b> Numbat mirror, build, licence, measure<br/>T20.2, T20.3, T20.4 · Muse + founder · 0.12×"]
-    C["<b>Task20c</b> Endpoint trust verifier<br/>T20.5 · Codex · 0.15×"]
+    C["<b>Task20c</b> Endpoint trust verifier<br/>T20.5 · Muse, Codex reviews · 0.15×"]
   end
   subgraph W2["Wave 2: monitor pipeline"]
     D["<b>Task20d</b> security ingest v2<br/>T20.7a, T20.7b · Muse · 0.33×"]
@@ -172,7 +172,7 @@ flowchart TB
 ```
 
 **Critical path:** Task20a (or Task20b) → Task20e → Task20g → Task20h → Task20j (about 1.2× of serial work); Task20e merges against Task20a's schemas and meets Task20d's real route later (IT-M20-02). Task20c and Task20f run beside Task20e and must merge before Task20g.
-**Start at once:** Task20a (Claude), Task20c (Codex) and Task20b (Muse, after the founder creates the mirror repository). Task19b keeps running.
+**Start at once:** Task20a (Codex, reviewed by Claude) and Task20b (Muse, after the founder creates the mirror repository); Task20c (Muse) follows Task20b. Task19b keeps running.
 
 ## What we reuse
 
@@ -237,9 +237,9 @@ TrackAI and GitAI-repository work are separate sessions (AGENTS.md §3); a sessi
 
 | Session | Pieces | Agent | Estimate (× T6) | Why this agent |
 |---|---|---|---|---|
-| Task20a-security-v2-contract | T20.1 | Claude | about 0.12× | Cross-cutting contract; lands first as its own PR |
+| Task20a-security-v2-contract | T20.1 | Codex, Claude reviews (founder 2026-10-17, to save Claude usage) | about 0.12× | Contract decisions are written down in `TASK20.md` §3; lands first as its own PR |
 | Task20b-numbat-mirror-build | T20.2, T20.3, T20.4 script | Muse + founder-live | about 0.12× | Every decision can be written down; CI and docs |
-| Task20c-endpoint-trust-verifier | T20.5 | Codex | about 0.15× | Rust Endpoint code in GitAI, security-critical, vector-driven |
+| Task20c-endpoint-trust-verifier | T20.5 | Muse, Codex reviews | about 0.15× | Rust Endpoint code in GitAI; every answer fixed by the vectors |
 | Task20d-security-ingest-v2 | T20.7a, T20.7b | Muse (Codex reviews) | about 0.33× | Fully specified by Task20a; frees Codex |
 | Task20e-endpoint-shipper | T20.6a, T20.6b | Codex | about 0.32× | Deep knowledge of the Endpoint code (its own queue and evaluator) |
 | Task20f-security-settings-signing | T20.8, plus the fleet lease reference and retrieval routes (Codex review, 2026-10-16) | Claude | about 0.30× | Signing and activation are security-critical cores |
