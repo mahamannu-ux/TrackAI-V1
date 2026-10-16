@@ -12,11 +12,11 @@ The Task's own prompt (`docs/prompts/NEXT_CHAT_<TaskN>-lead_PROMPT.md`) says wha
 3. Baseline: `npm ci && npm test` in TrackAI; in GitAI, read its `AGENTS.md` and `Taskfile.yml` (do not build yet).
 4. One-line message to the founder: what you read, any blocker, and that the primer comes next.
 
-## Phase 1. Primer and sub-task graph → founder checkpoint 1
+## Phase 1. Primer and session graph → founder checkpoint 1
 Write `docs/plan/primers/<TaskN>_PRIMER.md` from `docs/templates/TASK_PRIMER_TEMPLATE.md`:
 - plain words, a customer story (the customer is primarily a CISO, then engineering leaders), a "words you will see" table;
 - **one row per subtask** (use the roadmap's workstream IDs, `T9.1`, `T9.2`…, splitting any that are too large into `T9.1a`…), each with an example, value, size against T6, the cheaper or deferrable option, and **who does it**: Codex, Muse, or *founder-live* (needs a real machine, account, tenant or browser);
-- the **sub-task graph**: a Mermaid `flowchart` with one node per subtask, arrows for "must finish before", and lanes (`subgraph`) for Codex, Muse and founder-live, so it shows what runs in sequence and what in parallel; then two lines naming the critical path and the first things that can start at once;
+- the proposed **sessions** and the **session graph**: a Mermaid `flowchart TB` with one box per session (naming the subtasks it handles, its agent and its estimate), arrows for "must merge before", the other Tasks' sessions that wait for it or feed it, and the larger font of the template, so it shows what runs in sequence and what in parallel; then two lines naming the critical path and the first things that can start at once. No sub-task graph (founder, 2026-10-16);
 - what is reused (SushiCorp catalog, other Tasks' code), risks, and the questions only the founder can answer, each with your recommendation.
 
 Commit on `docs/<TaskN>-plan`. **Stop.** Reply with a short summary, the questions, and the primer path. The founder marks each row keep / simplify / defer / reorder and answers the questions (he may ask FounderQA or the orchestrator first).

@@ -63,6 +63,8 @@ The root also holds pre-kit files, kept where they are because many documents li
 
 New Task trackers go in `docs/plan/`. Besides the files above, only `AGENTS.md`, `CLAUDE.md` and `Makefile` are added to the root.
 
+**Names** (founder, 2026-10-16): **"GitAI"** means only the GitAI fork repository and its code; **"Git AI"** the upstream open-source project; the **TrackAI Endpoint** ("the Endpoint") is what TrackAI installs on a developer machine: the package, the daemon, the Git AI and Numbat binaries and the signed files delivered to it. Say "the Endpoint" for anything that runs on or is delivered to a machine, even though its code lives in GitAI.
+
 ---
 
 ## 3. Git workflow
@@ -97,7 +99,8 @@ Ownership is by **concern and file**, not by whole directory: several directorie
 | **Transport and security** around that flow: durable delivery, idempotency, watermarks, repository enforcement and scope, provider-delivery idempotency, retry and projection ordering, provider delivery ledger, webhook crypto | Task4 | `features/telemetry/{repository-enforcement,watermark-policy}.ts`, `features/scm/{provider-event,provider-delivery-store,crypto}.ts`, every `task4-*` file |
 | Identity, credentials, encryption, grants, admin, retention, export, monitoring | Task4 | `core/security/`, `core/operations/`, `core/middleware/`, `features/admin/`, `features/operations/` |
 | Governed evidence: taxonomy, ingestion, graph, raw reveal, analytics, semantic search | Task5 | `features/evidence/`, `apps/api/scripts/`, `apps/web/src/app/dashboard/evidence-workspace.tsx` |
-| Coding-agent security findings (monitor-only) | Task6 Security | `features/security-findings/`, `docs/contracts/task6/`; GitAI security evaluator |
+| Coding-agent security findings, Task6.a era (monitor-only; frozen contracts, readable rows) | Task6 Security, superseded by Task20 from 2026-10-16 | `docs/contracts/task6/` (frozen); the Task6.a files in `features/security-findings/` |
+| Coding-agent security with Numbat: ingest v2, security rule and data settings, signed rule bundle and activation lease, security console; Endpoint shipper, trust verifier, policy apply and Numbat packaging | Task20 | `features/security-findings/` (v2 files), `features/security/` (new), `docs/contracts/security-v2/` (from Task20a), `apps/web/src/app/dashboard/security-workspace.tsx` (from Task20i); GitAI `src/security/`, `src/trust/`, `packaging/numbat/` |
 | Organization policy engine | Task6 Policy (deferred) | none yet |
 | Route and surface coverage | Task13 | `AGENT_COVERAGE.md`; adapters mostly in GitAI |
 | Signed provenance attestation | Task15 Attesta | named in its first prompt |
@@ -204,7 +207,7 @@ These have already caused bugs or near-misses. Do not reintroduce them.
 - TypeScript `strict` in both apps. The API targets ES2022 and builds to CommonJS; the web app targets ES2017 with ESNext modules (Next.js). API tests use `node:test` via `tsx` and live beside the code (`*.test.ts`), registered in `apps/api/package.json`'s `test` script; the web app has no unit tests yet.
 - Database access: Drizzle. Some existing routes query directly (`features/telemetry/read.routes.ts`, `features/scm/scm.routes.ts`); **new code puts queries in the feature service** and keeps route handlers thin. Tenant-owned access goes through `withTenant()`.
 - **New routes follow API conventions** (SushiCorp catalog AP-1, so a later public API is a selection, not a rewrite; `docs/plan/TASK11.md`): RFC 7807 problem responses, cursor (keyset) paging with bounded page sizes, an `X-Request-ID` echoed in responses and logs. Existing routes are not migrated just for this.
-- Routes (`apps/api/src/index.ts`): `/health` (unauthenticated); `/api/v1/webhooks/*` (raw body, provider signature verification); `/worker/*` (machine-authenticated GitAI uploads, including `/worker/security` and `/worker/evidence`); `/api/*` (Supabase JWT plus tenant middleware); `/api/admin/*` (administrators).
+- Routes (`apps/api/src/index.ts`): `/health` (unauthenticated); `/api/v1/webhooks/*` (raw body, provider signature verification); `/worker/*` (machine-authenticated Endpoint uploads, including `/worker/security` and `/worker/evidence`); `/api/*` (Supabase JWT plus tenant middleware); `/api/admin/*` (administrators).
 - HTTP responses with sensitive data send `Cache-Control: no-store` and safe error codes, never raw values.
 - Comments explain why. Docs in plain language, short tables, stable IDs.
 - Existing trackers keep their legend (🟢 ✅ / 🟡 ◐ / 🔴 ☐ / ⚪ —); new documents use §11's three symbols (✅ = 🟢 ✅, 🟡 = 🟡 ◐, ⬜ = 🔴 ☐, n/a = ⚪ —).
@@ -304,4 +307,4 @@ The founder pastes the author's review request and nothing else; the reviewer re
   - **Muse** by default when every decision can be made upfront and the work is well bounded (it is faster and free).
   - **Codex** when the work needs long evidence and verification back-and-forth with the founder (live agents, real machines, tenants, browsers), or deep context on code it wrote.
   - **Claude** for cross-cutting design, UI/UX, security-critical cores and integration-heavy work.
-- **Codex as lead when Claude is not available.** The founder may start a Task with Codex directly. Codex may then hand a bounded piece to Muse: it writes the Muse prompt from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md` with every decision made, pre-approved files and a "Port from" section, and it reviews Muse's branch with `docs/agents/CROSS_REVIEW_PROMPT.md`. Muse's piece gets its own branch from `main` and its own PR; if it depends on Codex's interface, that interface lands first as a small PR (§5). Codex follows `docs/agents/TASK_LEAD_PROCEDURE.md` when it leads a whole Task (primer and sub-task graph, session plan, sessions, Muse prompts, reviews, close-out), and `docs/agents/MANAGER_PROMPT.md` for answering and reviewing Muse.
+- **Codex as lead when Claude is not available.** The founder may start a Task with Codex directly. Codex may then hand a bounded piece to Muse: it writes the Muse prompt from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md` with every decision made, pre-approved files and a "Port from" section, and it reviews Muse's branch with `docs/agents/CROSS_REVIEW_PROMPT.md`. Muse's piece gets its own branch from `main` and its own PR; if it depends on Codex's interface, that interface lands first as a small PR (§5). Codex follows `docs/agents/TASK_LEAD_PROCEDURE.md` when it leads a whole Task (primer and session graph, session plan, sessions, Muse prompts, reviews, close-out), and `docs/agents/MANAGER_PROMPT.md` for answering and reviewing Muse.

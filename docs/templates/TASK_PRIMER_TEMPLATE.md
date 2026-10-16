@@ -26,21 +26,19 @@ One row per subtask. **Value** is what the customer notices; **Size** is the est
 |---|---|---|---|---|---|---|---|
 | 1 | <subtask> | <tiny example> | <high / medium / low, and why> | about 0.1× | Muse | <option and what is lost> | |
 
-## Sub-task graph
+## Session graph
+One box per proposed session (see "Suggested sessions"), naming the pieces it builds, its agent and its estimate; never one box per subtask (founder, 2026-10-16). Draw it top to bottom with the larger font below so it reads on a phone. Add the other Tasks' sessions that wait for this Task or feed it.
 ```mermaid
-flowchart LR
-  subgraph Codex
-    A[1 piece]
-  end
-  subgraph Muse
-    B[2 piece]
-  end
-  subgraph Founder-live
-    C[3 live check]
-  end
+%%{init: {"flowchart": {"nodeSpacing": 40, "rankSpacing": 60}, "themeVariables": {"fontSize": "20px"}}}%%
+flowchart TB
+  A["<b>TaskNa</b> short name<br/>pieces 1, 2 · Codex · 0.2×"]
+  B["<b>TaskNb</b> short name<br/>piece 3 · Muse · 0.1×"]
+  C["<b>TaskNc</b> live gate<br/>piece 4 · founder-live"]
+  X["<b>TaskM</b> other Task's session that waits"]
   A --> B --> C
+  A --> X
 ```
-<Critical path in one line; what can start at once in one line. An arrow means "must finish before".>
+<Critical path in one line; what can start at once in one line. A solid arrow means "must merge before"; a dotted arrow means "needed before the first customer build".>
 
 ## What we reuse
 <What comes from SushiCorp or elsewhere, in plain words ("the tamper-evident log SushiCorp already built and tested"), and what is new.>
