@@ -13,6 +13,11 @@ Branch `docs/Task19-numbat-review` (base: `main` at `67c903f`). Documentation on
 | Decisions | founder answers of 2026-10-16 recorded (review §13); glossary of policies and signing (§14) | ✅ |
 | Prompt | `docs/prompts/Task20/NEXT_CHAT_Task20-lead_PROMPT.md` (Task20 primer and plan in a fresh chat) | ✅ |
 
+## Review
+- Codex cross-review (2026-10-16), "fix first", both fixed:
+  1. The Numbat pin is now the audited commit `20a5a52` (`v0.2.0-14-g20a5a52`, unreleased), not v0.2.0 (review §1, §11 item 1, §13 item 4; Task20 prompt §1 item 1). Founder to confirm.
+  2. The rule bundle (`policy_bundle`) and the activation lease (`activation_lease`, D6.1) stay separately signed, with the trust contract's separate failure rules. The security data settings are inside the lease, and the server re-checks uploads (review §5, §14; Task20 prompt §1 item 5).
+
 ## Known limitations
 - The TASK19.md tracker is not edited here, to avoid colliding with Task19a's open branch. The lead records the pauses (T19.4; gaps G7–G10) and the cancellation of G9 after Task19a merges.
 - GitAI facts (security module sizes, agent presets) were read from the fork's `main` at `d1838619c`; Codex should confirm them in its review.

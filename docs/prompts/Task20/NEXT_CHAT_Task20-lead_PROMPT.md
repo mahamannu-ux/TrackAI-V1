@@ -27,7 +27,7 @@ Follow `docs/agents/TASK_LEAD_PROCEDURE.md` from Phase 0. In Phase 1, write `doc
 
 ## 1. Scope the primer must cover (founder-approved, review §10 and §13)
 1. **Endpoint:**
-   - Numbat pinned to one stable release, built from a TrackAI mirror fork with no product changes, synced monthly;
+   - Numbat pinned to the audited commit `20a5a52` (`v0.2.0-14-g20a5a52`, unreleased; tagged `v0.2.0-trackai.1` in the mirror fork), built from a TrackAI mirror fork with no product changes and synced monthly. The first customer build moves to the first upstream release that contains `20a5a52` (review §13 item 4);
    - distributed and installed by Task9, with `--managed` hooks where the agent supports it;
    - first agents: Claude Code, Codex, Cursor, Copilot CLI and Gemini CLI on macOS; Windows and Linux later with Task9f/9g;
    - record file admin-owned.
@@ -40,7 +40,11 @@ Follow `docs/agents/TASK_LEAD_PROCEDURE.md` from Phase 0. In Phase 1, write `doc
    - first wave: 42 rules, plus the 2 tamper rules if the founder confirms (review §13 item 5);
    - Task6.a's three Rust rules retired;
    - the 7 noisy rules in a later wave.
-5. **TrackAI security rule settings:** a console with toggles (on/off, severity, monitor/block per rule and agent). The server compiles them to Numbat override files and produces **one signed rule bundle** that also carries activation scope (this replaces D6.1), delivered through Task9. No rule editor, no customer-authored rules, no Task6.b infrastructure.
+5. **TrackAI security rule settings:** a console with toggles (on/off, severity, monitor/block per rule and agent). The server compiles them to Numbat override files. Two documents are signed **separately** (review §14):
+   - the **rule bundle** (`policy_bundle` key; on failure, keep last-known-good);
+   - the per-machine **activation lease** (`activation_lease` key, D6.1; on failure, off). The lease carries agents, mode, expiry, the bundle digest and the **security data settings**.
+
+   Both are delivered through Task9 and verified with Task15's trust layer (`docs/contracts/attesta/trust.md`). The server re-checks uploads against the data settings. No rule editor, no customer-authored rules, no Task6.b infrastructure.
 6. **Blocking:** an opt-in pilot of 3–5 high-signal rules on managed hooks, after monitor mode is proven.
 7. **Day-one scan:** a retroactive `numbat scan` at enrolment, opt-in, findings only (S20).
 8. **Inventory and coverage:** `numbat agents` inventory (S19), and a running coverage inventory taken from Numbat's coverage matrix at each sync.

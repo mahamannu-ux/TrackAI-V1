@@ -1,6 +1,6 @@
 # Numbat adoption review
 
-*Written 2026-10-16 by the Task19 lead (Claude), at the founder's request (T19.7, Task6 strategy). Sources: Numbat at `perplexityai/numbat` `20a5a52` (2026-10-15, latest release tag v0.2.0), its `docs/` and `rules/`; the founder's four primers in `docs/founder/`; TrackAI `main` at `67c903f`; GitAI fork `main` at `d1838619c`. Numbat's code and docs are the authority; the primers are input. The founder approved §10 on 2026-10-16, with the refinements in §13; this is now the decision record for Task20.*
+*Written 2026-10-16 by the Task19 lead (Claude), at the founder's request (T19.7, Task6 strategy). Sources: Numbat at `perplexityai/numbat` `20a5a52` (2026-10-15; `git describe`: `v0.2.0-14-g20a5a52`, i.e. **14 commits after the last release, unreleased**), its `docs/` and `rules/`; the founder's four primers in `docs/founder/`; TrackAI `main` at `67c903f`; GitAI fork `main` at `d1838619c`. Numbat's code and docs are the authority; the primers are input. The founder approved §10 on 2026-10-16, with the refinements in §13; this is now the decision record for Task20.*
 
 ## 1. Bottom line
 
@@ -10,7 +10,7 @@ The primers overstate some things, and a few claims in them are wrong (§3). Fou
 - **Blocking is fail-open and host-dependent.** Numbat asks the agent to deny; it is a guardrail, not a security boundary.
 - **OpenCode is monitor-only in Numbat.** It is the only route TrackAI validated in Task6.a.
 - **Records carry redacted commands, paths, URLs, hostnames and usernames.** That collides with TrackAI's raw-content rule (AGENTS.md rule 6) and needs a founder decision.
-- **Numbat is young and moves fast.** Its first commit was 2026-07-29; the schema went from 0.2 to 0.5 in eleven weeks.
+- **Numbat is young and moves fast.** Its first commit was 2026-07-29; the schema went from 0.2 to 0.5 in eleven weeks, and the version reviewed here (`20a5a52`) is 14 commits past the last release (v0.2.0).
 
 **Task6.a is not all throw-away.** Its server side carries over:
 - the findings table and the `/worker/security` route;
@@ -88,7 +88,7 @@ So about 39 of the 48 deferrals were engineering gaps that Numbat closes; 7 rema
 flowchart LR
   subgraph Machine["Developer machine (managed by Task9)"]
     AG[Coding agents] -->|managed hooks| NB[Numbat binary<br/>pinned, checksum-verified]
-    POL[(TrackAI rule bundle<br/>admin-owned, read-only)] --> NB
+    POL[(TrackAI rule bundle + activation lease<br/>separately signed, admin-owned)] --> NB
     NB -->|NDJSON records| F[(admin-owned record file)]
     F --> GA[GitAI daemon<br/>tails, minimizes, queues]
     AG -->|Git AI hooks| GA
@@ -109,7 +109,7 @@ flowchart LR
    - which rules enforce, on which agents;
    - customer rules (`acme.*`).
 
-   It compiles to a rules directory, signed through Attesta's trust layer (A15.12) and placed admin-owned and read-only by Task9. This replaces most of Task6.b's design (`TASK6_POLICY.md`).
+   It compiles to a rules directory, signed with the platform `policy_bundle` key of Attesta's trust layer (A15.12) and placed admin-owned and read-only by Task9. Activation is a separate, per-machine `activation_lease` (D6.1), which also carries the security data settings (§14). This replaces most of Task6.b's design (`TASK6_POLICY.md`).
 4. **The server stores findings, enforcement decisions, indicators and coverage.** Raw events are not stored by default. Attesta signs `finding_observed` statements (Task15o), designed against **Numbat's finding schema**, not Task6.a's.
 5. **Git AI and Numbat keep separate hooks** in the same agents: attribution and security respectively. Both must be measured for latency, since each agent tool call launches two short processes.
 
@@ -158,7 +158,7 @@ Entitlements are new cross-cutting work. They touch Task4 (tenant model), Task8 
 | Task | Change |
 |---|---|
 | Task6.a | Server and GitAI queue reused; the evaluator retired; G9 cancelled; the support boundary (AGENTS.md §9 item 11) rewritten when the new route is validated |
-| Task6.b | Re-scoped: policy is Numbat rule bundles plus D6.1 activation. The Cedar/OPA design is shelved unless a customer needs it |
+| Task6.b | Re-scoped: policy is Numbat rule bundles (`policy_bundle` signature) plus the D6.1 activation lease (`activation_lease` signature), signed and verified separately (§14). The Cedar/OPA design is shelved unless a customer needs it |
 | Task9 | Ships and updates the Numbat binary, managed hook installs, the rule bundle and an admin-owned output path; adds health checks (Numbat's "four-layer" check) |
 | Task13 | Uses Numbat's coverage matrix for security coverage and `numbat agents` for inventory; Git AI presets stay the attribution coverage |
 | Task15 | **Task15o waits:** `finding_observed` and `security-finding/v1` must be designed against Numbat's finding schema. Task15p follows. Signed case bundles become a new Attesta item |
@@ -183,7 +183,7 @@ Entitlements are new cross-cutting work. They touch Task4 (tenant model), Task8 
 
 ## 11. Risks
 
-1. **Upstream churn.** Numbat is pre-1.0 (v0.2.0) and the schema version changes often. Ingest must accept versioned records and pin a tested range.
+1. **Upstream churn.** Numbat is pre-1.0. The last release, v0.2.0 (2026-08-17), carries record schemas 0.2 and 0.3 only. The 14 commits since (to `20a5a52`) add schemas 0.4 and 0.5 and change content retention (#64), enforcement (#66, #70), path handling (#69) and `ship` (#56). **This review describes `20a5a52`, not v0.2.0.** Ingest must accept versioned records and pin a tested range.
 2. **Coexisting hooks.** Two hooks per tool call (Git AI and Numbat) add latency and can conflict in agent settings files. This needs a measured budget (AGENTS.md §9 item 7 spirit).
 3. **Noise.** Several built-ins fire on normal development, Git AI's own hook installs included. A default TrackAI policy must ship tuned, or the first customer sees false alarms.
 4. **Tamper resistance** is only as good as managed scope and Task9's file permissions. Wording must stay honest: "observed", "requested", "denied by request", never "prevented".
@@ -198,7 +198,7 @@ After the founder's answers to §10, the lead writes the Task20 primer (`docs/pl
 1. **§10 Q1–Q10 approved as recommended,** with the refinements below. The pause and continue list in Q10 stands.
 2. **Monitor mode is the product.** Blocking is opt-in, one rule at a time, because false positives and interruptions cost developers time. Fail-open is accepted.
 3. **What leaves the machine (Q1)** is built as a **per-tenant on/off setting** for each field group (command, path, URL previews; host identity). The default is decided later. Until then the build ships the most conservative setting: no previews, and host identity replaced by TrackAI's machine id.
-4. **Upstream cadence:** start from one stable Numbat release, then sync **once a month** through the mirror fork (Q3).
+4. **Upstream cadence:** sync **once a month** through the mirror fork (Q3). **The pin (Codex review, 2026-10-16):** v0.2.0 lacks schema 0.5 and the enforcement, path and content fixes this review relies on. So Task20 develops against the **audited commit `20a5a52`**, tagged in the mirror fork as `v0.2.0-trackai.1`. The first customer build moves to the first upstream release that contains `20a5a52`, after re-running Numbat's own tests and TrackAI's fixtures. If no such release exists by then, the build ships the mirror tag. *Founder to confirm (it replaces "start from one stable release").*
 5. **Rules, first wave:** the 42 rules (39 that Numbat's engineering unlocks plus the 3 already in Task6.a), using Numbat's own definitions. Task6.a's three Rust rules (`trackai.exec.*`) are **retired**, not kept. The 7 rules that look like normal development come in a later wave, so they do not add noise during TrackAI's own development. Lead's suggestion for the 2 tamper rules (`tamper.detector_state_write`, `tamper.guardrails_off`): include them in the first wave, because they are no longer noisy once Numbat runs and they answer S21. That would be 44.
 6. **OpenCode:** not a serious enterprise route. Numbat's own OpenCode plugin gives monitor-only coverage of every rule, which is all Task6.a gave, so nothing of Task6.a is kept for it.
 7. **Approvals are in scope from the start.** "Which rule-breaking actions did the developer approve?" is a key CISO question. This refines Q4: phase 1 uploads **content-free permission events** (`permission.requested/approved/denied`, `approval_*`) alongside findings, so a finding can be joined to the developer's decision where the agent supplies a per-action id.
@@ -229,9 +229,16 @@ After the founder's answers to §10, the lead writes the Task20 primer (`docs/pl
 | **OS code signing** | The GitAI and Numbat executables and installers: Apple Developer ID plus notarization, Windows Authenticode | macOS and Windows let them run without warnings or blocks | Task9 packaging, Task14 |
 | **Build provenance** | TrackAI's release artifacts and SBOM (Sigstore-style) | A customer can check that TrackAI built what they install | Task14 (T14.7) |
 | **Attesta statements** | Evidence about commits, merges, deployments, findings and audit seals, signed server-side with the tenant's keys and anchored in Rekor and a timestamp service | An auditor can prove the records were not changed later | Task15 |
-| **Rule bundle signing** (replaces D6.1) | The compiled TrackAI security rule settings plus activation scope (tenant, machine, agents, mode, expiry), signed by the server with Attesta's trust-layer keys (A15.12) and verified by GitAI before it installs them | A tampered or spoofed bundle cannot switch monitoring off or change rules | Task20 |
+| **Rule bundle signing** (`policy_bundle` key) | The compiled TrackAI security rule settings (Numbat override files and enabled set), signed by the server's platform `policy_bundle` key (A15.12) and verified by GitAI before install | A forged bundle cannot change rules. On `rejected`, refuse the bundle; on `unavailable`, keep last-known-good (`docs/contracts/attesta/trust.md` "Consumers") | Task20 |
+| **Activation lease signing** (`activation_lease` key; this is D6.1) | Per machine: tenant, machine, agents, monitor or block mode, expiry, the rule bundle's digest, **and the TrackAI security data settings** (what may leave the machine), signed by the platform `activation_lease` key and verified by GitAI | A forged or edited lease cannot switch monitoring on or off, widen scope, or enable command, path or URL upload. On `rejected` or `unavailable`: stay off and upload nothing beyond the most conservative settings (fail closed) | Task20, on Task15's trust layer |
 | **Case bundle signing** (S25) | The digest of a Numbat case bundle for one incident, as an Attesta statement | Numbat itself says unsigned bundles prove nothing | Task20 with Task15 |
 
 Machine credentials (Task4) authenticate uploads; they are not signatures over content. Numbat's own HMAC upload option is not used.
 
-**What D6.1 was, and why it folds in.** Today the server tells GitAI "monitoring is on for this repository" through a short-lived value kept in memory (`docs/TASK6_SECURITY_ACTIVATION_REVIEW.md`). D6.1 would have made that value signed, machine-bound and expiring, so neither a spoofed server response nor a local edit could change it. With Numbat, activation becomes "which agents get hooks, with which rule bundle, in which mode". The signed rule bundle carries exactly that, so D6.1 becomes one field set inside it. There is no separate activation service and no Task6.b distribution infrastructure: the bundle is one signed file delivered through Task9's existing rollout channel.
+**What D6.1 is, and how it fits (corrected after Codex's review, 2026-10-16).** Today the server tells GitAI "monitoring is on for this repository" through a short-lived value kept in memory (`docs/TASK6_SECURITY_ACTIVATION_REVIEW.md`). D6.1 makes that value a signed, machine-bound, expiring **activation lease**.
+
+The frozen trust contract (`docs/contracts/attesta/trust.md` "Hierarchy" and "Consumers") deliberately gives `activation_lease`, `fleet_config` and `policy_bundle` **separate keys and separate failure rules**: a bad lease means off; a bad bundle means keep the last good one. So TrackAI keeps **two signed documents**, the rule bundle and the activation lease. They may travel in one Task9 delivery, but each is verified on its own, and the lease names the bundle digest it activates.
+
+The **security data settings live inside the lease**, so a local edit cannot enable command, path or URL upload. The server also re-checks every upload against the tenant's current data settings and strips or refuses fields beyond them (AGENTS.md rule 9).
+
+None of this needs Task6.b's distribution infrastructure: two small signed files, Task9's existing rollout channel, and Task15's existing trust layer.
