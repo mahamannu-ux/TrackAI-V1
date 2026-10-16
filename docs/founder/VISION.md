@@ -35,3 +35,19 @@ TrackAI is an AI Code Provenance, Security, Attribution and Engg Productivity Pr
 - TrackAI has added Entire.io's feature set (not yet where it should be). Entire.io is a competitor of Git AI; Git AI does not offer Entire.io's features.
 - **Audit and the auditor** are a subtask or Task of their own. Audit information today covers Task6.a security findings and Task4 admin actions (machine grants and revocation, credentials). D6.1 signed activation, Task6.b signed policy bundles and Task14 signed artifacts have no audit events yet but will. There is no API, invitation or report surface like SushiCorp's; some of it belongs to Task11 (API/SDK). Not yet clear.
 - Attesta's shared trust layer (signer, key hierarchy, rotation, revocation) is owned by Attesta and reused by D6.1, Task6.b and Task14.
+
+## 4. Security through Numbat, and a modular product (founder, 2026-10-16)
+
+*Recorded by the Task19 lead at the founder's request. Supersedes the "Security" paragraph in §1 and the Task6.a note in §2.*
+
+- **TrackAI provides coding-agent security through Numbat** (https://github.com/perplexityai/numbat, Apache-2.0). Security is a **first-class subsystem and offering**, not a side feature of attribution.
+- **Adopt Numbat the way TrackAI adopted Git AI:** take the engine, its rules, its agent and platform adapters and its test framework as they are, and add what it lacks: enterprise integration (fleet distribution, policy management, central ingestion, tenant isolation, audit, signed evidence, the CISO's console). The Task6.a approach, re-implementing a few Numbat rules inside TrackAI's own client, is replaced. Whether TrackAI keeps a fork or a synced clone of Numbat is a minor decision for the plan.
+- **Numbat can also feed observability** (agent activity, tool calls, approvals, agent inventory), where it fills gaps Task13 would otherwise build custom, so long as TrackAI's raw-content rules hold.
+- **The product is modular.** A customer may buy one part or any combination:
+  - Security;
+  - Code attribution and engineering productivity (Task2, Task5);
+  - Attesta (signed provenance), with code, with security, or with both;
+  - all of them.
+
+  The architecture must allow each part to be enabled, sold, deployed and operated on its own, and to work better together.
+- **Reference material:** the founder's research primers in this folder (`numbat-architecture-capability_reference_primer.md`, `numbat_enterprise_blueprint_primer.md`, `numbat_server_architecture_primer.md`, `numbat_observability_blueprint_primer.md`). They are input, not authority: Numbat's own code and docs are the source of truth. The lead's review that checks the primers against Numbat is `docs/plan/NUMBAT_ADOPTION_REVIEW.md`.
