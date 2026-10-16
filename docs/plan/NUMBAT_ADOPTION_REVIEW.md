@@ -192,3 +192,46 @@ Entitlements are new cross-cutting work. They touch Task4 (tenant model), Task8 
 ## 12. Next step
 
 After the founder's answers to §10, the lead writes the Task20 primer (`docs/plan/primers/Task20_PRIMER.md`): subtasks, sizes, the sub-task graph and owners. The founder marks it up, then the plan is written as for Task19. Codex reviews the GitAI and server parts, because it owns Task6.a and GitAI.
+
+## 13. Founder decisions (2026-10-16)
+
+1. **§10 Q1–Q10 approved as recommended,** with the refinements below. The pause and continue list in Q10 stands.
+2. **Monitor mode is the product.** Blocking is opt-in, one rule at a time, because false positives and interruptions cost developers time. Fail-open is accepted.
+3. **What leaves the machine (Q1)** is built as a **per-tenant on/off setting** for each field group (command, path, URL previews; host identity). The default is decided later. Until then the build ships the most conservative setting: no previews, and host identity replaced by TrackAI's machine id.
+4. **Upstream cadence:** start from one stable Numbat release, then sync **once a month** through the mirror fork (Q3).
+5. **Rules, first wave:** the 42 rules (39 that Numbat's engineering unlocks plus the 3 already in Task6.a), using Numbat's own definitions. Task6.a's three Rust rules (`trackai.exec.*`) are **retired**, not kept. The 7 rules that look like normal development come in a later wave, so they do not add noise during TrackAI's own development. Lead's suggestion for the 2 tamper rules (`tamper.detector_state_write`, `tamper.guardrails_off`): include them in the first wave, because they are no longer noisy once Numbat runs and they answer S21. That would be 44.
+6. **OpenCode:** not a serious enterprise route. Numbat's own OpenCode plugin gives monitor-only coverage of every rule, which is all Task6.a gave, so nothing of Task6.a is kept for it.
+7. **Approvals are in scope from the start.** "Which rule-breaking actions did the developer approve?" is a key CISO question. This refines Q4: phase 1 uploads **content-free permission events** (`permission.requested/approved/denied`, `approval_*`) alongside findings, so a finding can be joined to the developer's decision where the agent supplies a per-action id.
+8. **Rules policy UI:** the 51 built-ins are enough. **No customer-authored rules and no rule editor for now.** Admins manage the existing rules through toggles (on/off, severity, monitor/block per agent), never YAML.
+9. **Task6.b is shelved** under the name `customerPolicyForDataAccess`, and so is its policy-distribution infrastructure (§14).
+10. **Task13 is held** until Task20 is done. Then Task13 is revisited, including:
+    - letting Git AI use Numbat's agent adapters and events for the attribution and evidence that other agents do not give Git AI today;
+    - removing duplicate hooks;
+    - linking findings to Git AI sessions through the shared agent `session_id`.
+11. **Coverage inventory:** TrackAI keeps a running inventory of what Numbat supports per agent and platform, taken from Numbat's `docs/agent-coverage.md` at each monthly sync, rather than testing every agent itself.
+12. **Task20 "Numbat security subsystem"** is created, Claude leading (Q8).
+
+## 14. Glossary: which policy, which signing
+
+**Policies.** Always name which one is meant.
+
+| Name | What it is | Who sets it | Status |
+|---|---|---|---|
+| **Numbat built-in rules** | Numbat's 51 shipped rules (YAML and CEL), monitor-only | Numbat upstream | Adopted, pinned per monthly sync |
+| **TrackAI security rule settings** | Per tenant: which built-ins are on, severity overrides, allow-lists, and monitor or block per rule and agent. The server compiles them into Numbat override files (same id, `enforce: true`, bumped version) | CISO, through toggles in the console | Task20 |
+| **TrackAI security data settings** | Per tenant: which field groups leave the machine (§13 item 3) | CISO | Task20 |
+| **`customerPolicyForDataAccess`** (was Task6.b) | Organization AI-usage policy: approved agents and models, a Cedar/OPA-style engine, exceptions | — | **Shelved** |
+
+**Signing.** There are five different kinds; they are not the same thing.
+
+| Kind | What is signed, by whom | Why | Owner |
+|---|---|---|---|
+| **OS code signing** | The GitAI and Numbat executables and installers: Apple Developer ID plus notarization, Windows Authenticode | macOS and Windows let them run without warnings or blocks | Task9 packaging, Task14 |
+| **Build provenance** | TrackAI's release artifacts and SBOM (Sigstore-style) | A customer can check that TrackAI built what they install | Task14 (T14.7) |
+| **Attesta statements** | Evidence about commits, merges, deployments, findings and audit seals, signed server-side with the tenant's keys and anchored in Rekor and a timestamp service | An auditor can prove the records were not changed later | Task15 |
+| **Rule bundle signing** (replaces D6.1) | The compiled TrackAI security rule settings plus activation scope (tenant, machine, agents, mode, expiry), signed by the server with Attesta's trust-layer keys (A15.12) and verified by GitAI before it installs them | A tampered or spoofed bundle cannot switch monitoring off or change rules | Task20 |
+| **Case bundle signing** (S25) | The digest of a Numbat case bundle for one incident, as an Attesta statement | Numbat itself says unsigned bundles prove nothing | Task20 with Task15 |
+
+Machine credentials (Task4) authenticate uploads; they are not signatures over content. Numbat's own HMAC upload option is not used.
+
+**What D6.1 was, and why it folds in.** Today the server tells GitAI "monitoring is on for this repository" through a short-lived value kept in memory (`docs/TASK6_SECURITY_ACTIVATION_REVIEW.md`). D6.1 would have made that value signed, machine-bound and expiring, so neither a spoofed server response nor a local edit could change it. With Numbat, activation becomes "which agents get hooks, with which rule bundle, in which mode". The signed rule bundle carries exactly that, so D6.1 becomes one field set inside it. There is no separate activation service and no Task6.b distribution infrastructure: the bundle is one signed file delivered through Task9's existing rollout channel.
