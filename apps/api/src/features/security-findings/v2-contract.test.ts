@@ -7,9 +7,13 @@ import { execFileSync } from 'node:child_process';
 import Ajv, { type ValidateFunction } from 'ajv';
 import {
   checkDataSettings,
+  SecurityV2FieldNotPermittedError,
   validateSecurityUploadV2,
   type SecurityDataSettingsV1,
+  type SecurityFindingV2,
+  type SecurityRecordId,
   type SecurityRecordV2,
+  type SecurityUploadV2,
 } from './v2-contract';
 
 const CONTRACT_DIR = join(__dirname, '../../../../../docs/contracts/security-v2');
@@ -283,13 +287,130 @@ test('T20a security v2: adapted fixture notice records source, pin, and license'
   assert.match(notice, new RegExp(REPLAY_ENFORCEMENT_ID));
 });
 
-test('T20a security v2: Task20d validation stubs fail closed', () => {
+test('T20d security v2: validateSecurityUploadV2 accepts every valid upload fixture and rejects the invalid ones', () => {
+  const ajv = contractAjv();
+  void ajv;
+  for (const fixture of manifest.cases.filter(
+    (entry) => entry.schema === '../security-upload-v2.schema.json',
+  )) {
+    const upload = readJson(join(FIXTURE_DIR, fixture.file));
+    if (fixture.expectedValid) {
+      const validated = validateSecurityUploadV2(upload);
+      assert.equal(validated.schema_version, 'trackai.security-upload/2', fixture.file);
+      assert.ok(validated.records.length >= 1, fixture.file);
+    } else {
+      assert.throws(() => validateSecurityUploadV2(upload), fixture.file);
+    }
+  }
+});
+
+test('T20d security v2: validation maps failures to the three safe codes', () => {
   assert.throws(
-    () => validateSecurityUploadV2({}),
-    { message: 'not implemented (Task20d)' },
+    () => validateSecurityUploadV2({ schema_version: 'trackai.security-upload/1', records: [] }),
+    (error: { code?: string }) => error.code === 'SECURITY_V2_UNSUPPORTED_SCHEMA',
   );
   assert.throws(
-    () => checkDataSettings({} as SecurityRecordV2, {} as SecurityDataSettingsV1),
-    { message: 'not implemented (Task20d)' },
+    () => validateSecurityUploadV2({
+      schema_version: 'trackai.security-upload/2',
+      records: [{
+        kind: 'finding', record_id: 'sha256:'.concat('a'.repeat(64)),
+      }],
+    }),
+    (error: { code?: string }) => error.code === 'SECURITY_V2_INVALID_BODY',
   );
+  assert.throws(
+    () => validateSecurityUploadV2({
+      schema_version: 'trackai.security-upload/2',
+      records: [{
+        kind: 'finding', record_id: 'sha256:'.concat('a'.repeat(64)),
+        tool_input: 'raw',
+      }],
+    }),
+    (error: { code?: string }) => error.code === 'SECURITY_V2_UNKNOWN_FIELD',
+  );
+  assert.throws(
+    () => validateSecurityUploadV2({ schema_version: 'trackai.security-upload/2' }),
+    (error: { code?: string }) => error.code === 'SECURITY_V2_INVALID_BODY',
+  );
+  assert.throws(
+    () => validateSecurityUploadV2('not an object'),
+    (error: { code?: string }) => error.code === 'SECURITY_V2_INVALID_BODY',
+  );
+});
+
+const ALL_OFF_SETTINGS: SecurityDataSettingsV1 = {
+  schema_version: 'trackai.security-data-settings/1',
+  command_previews: false,
+  file_paths: false,
+  urls: false,
+  host_identity: false,
+  user_identity: false,
+};
+
+const ALL_ON_SETTINGS: SecurityDataSettingsV1 = {
+  schema_version: 'trackai.security-data-settings/1',
+  command_previews: true,
+  file_paths: true,
+  urls: true,
+  host_identity: true,
+  user_identity: true,
+};
+
+test('T20d security v2: checkDataSettings governs finding fields by switch', () => {
+  const recordId: SecurityRecordId = `sha256:${'a'.repeat(64)}`;
+  const base: SecurityFindingV2 = {
+    kind: 'finding',
+    record_id: recordId,
+    rule_id: 'secrets.agent_read_env',
+    rule_version: '1.3',
+    severity: 'high',
+    title: 'Rule title',
+    source_agent: 'codex',
+    source_type: 'hook',
+    confidence: 'medium',
+    detected_at: '2026-10-17T10:00:00Z',
+    numbat_schema_version: '0.5.0',
+    bundle_digest: 'b'.repeat(64),
+    lease_id: 'lease-1',
+    found_at_rest: false,
+    repository: { kind: 'not_enrolled' },
+  };
+  // Nothing optional: allowed with all settings off.
+  assert.doesNotThrow(() => checkDataSettings(base, ALL_OFF_SETTINGS));
+  // Each optional field is refused while its switch is off.
+  assert.throws(
+    () => checkDataSettings({ ...base, observed_command: 'cat /etc/hosts' }, ALL_OFF_SETTINGS),
+    (error: SecurityV2FieldNotPermittedError) => error.fields.length === 1,
+  );
+  assert.doesNotThrow(() => checkDataSettings(
+    { ...base, observed_command: 'cat /etc/hosts', observed_file_path: '/x', observed_url: 'https://x.invalid', endpoint: { hostname: 'h', username: 'u' } },
+    ALL_ON_SETTINGS,
+  ));
+  assert.throws(
+    () => checkDataSettings(
+      { ...base, endpoint: { hostname: 'h', username: 'u' } },
+      ALL_OFF_SETTINGS,
+    ),
+    (error: SecurityV2FieldNotPermittedError) => error.fields.length === 2,
+  );
+});
+
+test('T20d security v2: the whole indicator kind is governed by the urls switch', () => {
+  const indicator = readJson(join(FIXTURE_DIR, 'valid-indicator.json')) as SecurityUploadV2;
+  assert.throws(
+    () => checkDataSettings(indicator.records[0], ALL_OFF_SETTINGS),
+    SecurityV2FieldNotPermittedError,
+  );
+  assert.doesNotThrow(() => checkDataSettings(indicator.records[0], ALL_ON_SETTINGS));
+  const partial: SecurityDataSettingsV1 = { ...ALL_OFF_SETTINGS, urls: true };
+  assert.doesNotThrow(() => checkDataSettings(indicator.records[0], partial));
+});
+
+test('T20d security v2: kinds without optional content pass any settings', () => {
+  for (const file of ['valid-enforcement.json', 'valid-scan-summary.json', 'valid-permission-event.json', 'valid-security-status.json', 'valid-agent-inventory.json']) {
+    const upload = readJson(join(FIXTURE_DIR, file)) as SecurityUploadV2;
+    for (const record of upload.records) {
+      assert.doesNotThrow(() => checkDataSettings(record, ALL_OFF_SETTINGS), file);
+    }
+  }
 });

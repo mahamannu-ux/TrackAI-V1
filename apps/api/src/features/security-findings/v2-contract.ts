@@ -3,6 +3,9 @@
  * TypeScript view of docs/contracts/security-v2. Breaking changes require a
  * new major version beside this module; Task20d implements the two stubs.
  */
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import Ajv from 'ajv';
 
 export const SECURITY_V2_UPLOAD_SCHEMA = 'trackai.security-upload/2' as const;
 export const SECURITY_DATA_SETTINGS_SCHEMA = 'trackai.security-data-settings/1' as const;
@@ -303,13 +306,106 @@ export interface SecurityV2RecordResult {
   code?: SecurityV2ErrorCode;
 }
 
-export function validateSecurityUploadV2(_value: unknown): SecurityUploadV2 {
-  throw new Error('not implemented (Task20d)');
+/**
+ * Locates docs/contracts/security-v2 by walking upward from this module, so the
+ * loader works from src, from the tsc dist build and from tests (the same
+ * pattern as attesta/period-report-rules.ts).
+ */
+function contractDir(): string {
+  let dir = dirname(__dirname);
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = join(dir, 'docs', 'contracts', 'security-v2');
+    if (existsSync(join(candidate, 'security-upload-v2.schema.json'))) return candidate;
+    dir = dirname(dir);
+  }
+  throw new Error('docs/contracts/security-v2 not found above the v2 contract module');
 }
 
+type AjvError = {
+  keyword: string;
+  instancePath: string;
+  params?: { additionalProperty?: string; missingProperty?: string };
+};
+
+let uploadValidator: ReturnType<Ajv['compile']> | null = null;
+
+function uploadAjvValidator(): ReturnType<Ajv['compile']> {
+  if (uploadValidator) return uploadValidator;
+  const ajv = new Ajv({ strict: true, strictRequired: false, allErrors: true });
+  // The utcTimestamp definition's pattern carries the real bound (canonical
+  // uppercase-Z RFC 3339); the format only needs parseability, as the fixture
+  // test's Ajv setup does.
+  ajv.addFormat('date-time', {
+    type: 'string',
+    validate: (value: string) => Number.isFinite(Date.parse(value)),
+  });
+  const schema = JSON.parse(
+    readFileSync(join(contractDir(), 'security-upload-v2.schema.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  uploadValidator = ajv.compile(schema);
+  return uploadValidator;
+}
+
+/** Maps a failed closed-schema validation to its one safe code (errors.md). */
+function validationErrorOf(errors: AjvError[]): SecurityV2ValidationError {
+  if (errors.some(e => e.keyword === 'const'
+    && e.instancePath.split('/').pop() === 'schema_version')) {
+    return new SecurityV2ValidationError('SECURITY_V2_UNSUPPORTED_SCHEMA');
+  }
+  if (errors.some(e => e.keyword === 'additionalProperties')) {
+    return new SecurityV2ValidationError('SECURITY_V2_UNKNOWN_FIELD');
+  }
+  return new SecurityV2ValidationError('SECURITY_V2_INVALID_BODY');
+}
+
+export function validateSecurityUploadV2(value: unknown): SecurityUploadV2 {
+  const validate = uploadAjvValidator();
+  if (validate(value) !== true) {
+    throw validationErrorOf(((validate as unknown as { errors?: AjvError[] }).errors ?? []) as AjvError[]);
+  }
+  return value as SecurityUploadV2;
+}
+
+const DATA_SETTINGS_FIELDS: ReadonlyArray<readonly [keyof SecurityDataSettingsV1, string]> = [
+  ['command_previews', 'observed_command'],
+  ['file_paths', 'observed_file_path'],
+  ['urls', 'observed_url'],
+  ['host_identity', 'endpoint.hostname'],
+  ['user_identity', 'endpoint.username'],
+];
+
+/**
+ * The server refuses a record whose optional fields the tenant's current data
+ * settings do not allow; it never strips a field (api.md "POST"). The whole
+ * indicator kind is governed by `urls` (README "Data settings").
+ */
 export function checkDataSettings(
-  _record: SecurityRecordV2,
-  _settings: SecurityDataSettingsV1,
+  record: SecurityRecordV2,
+  settings: SecurityDataSettingsV1,
 ): void {
-  throw new Error('not implemented (Task20d)');
+  const notPermitted: string[] = [];
+  if (record.kind === 'finding') {
+    for (const [switchName, fieldName] of DATA_SETTINGS_FIELDS) {
+      if (settings[switchName]) continue;
+      if (fieldName === 'observed_command' && record.observed_command !== undefined) {
+        notPermitted.push(fieldName);
+      }
+      if (fieldName === 'observed_file_path' && record.observed_file_path !== undefined) {
+        notPermitted.push(fieldName);
+      }
+      if (fieldName === 'observed_url' && record.observed_url !== undefined) {
+        notPermitted.push(fieldName);
+      }
+      if (fieldName === 'endpoint.hostname' && record.endpoint?.hostname !== undefined) {
+        notPermitted.push(fieldName);
+      }
+      if (fieldName === 'endpoint.username' && record.endpoint?.username !== undefined) {
+        notPermitted.push(fieldName);
+      }
+    }
+  }
+  if (record.kind === 'indicator' && !settings.urls) {
+    notPermitted.push('indicator');
+  }
+  if (notPermitted.length > 0) throw new SecurityV2FieldNotPermittedError(notPermitted);
 }
