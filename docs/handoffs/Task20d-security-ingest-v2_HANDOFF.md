@@ -50,7 +50,7 @@ None (custom TrackAI ingest adhering to docs/contracts/security-v2).
 ## Founder-approved decisions
 1. Router mounted at `/worker/security/v2` inside `security-findings.routes.ts` via factory `createSecurityFindingsRouter`, preserving `app.ts` immutability.
 2. Ingest defaults to `unavailableSecurityV2Authority` (fail-closed, LEASE_REQUIRED) until Task20f supplies the database lease store.
-3. Content-Length guard runs before body parser to reliably enforce 4 MiB under the app-level 5 MiB parser.
+3. Production currently uses the existing global 5 MiB parser before machine authentication; full-stack credential-before-body and exact 4 MiB enforcement are deferred to Task20f or a later founder-approved `app.ts` session.
 4. Schema regexes in table checks are inlined as literals to prevent Drizzle unquoted SQL operator rendering.
 
 ## Deviations from spec
@@ -59,7 +59,10 @@ None (custom TrackAI ingest adhering to docs/contracts/security-v2).
 3. Migration 0025: reordered the `security_findings_tenant_id_id_key` unique constraint before `security_finding_previews` foreign key reference to satisfy PostgreSQL DDL dependency order.
 
 ## Review findings addressed
-1. **Finding 1 (Body parser & admission boundary):** The v2 route mounts its credential check before any body parser and enforces the exact 4 MiB stream limit via `express.json({ limit: '4mb' })` with an RFC 7807 413 error handler. Unauthenticated requests are rejected 403 `SECURITY_V2_LEASE_REQUIRED` without reading or parsing request bodies. Under the full `app.ts` stack, `app.use(express.json({ limit: '5mb' }))` runs at the root before `/worker`; addressing this globally across all worker routes requires an explicit architectural decision on `app.ts` (e.g. moving the global parser to `/api` or behind route groups), which prompt §2.4 forbids for Task20d ("Never touch app.ts"). In the standalone v2 router mount, credential-before-parsing and the exact 4 MiB limit are strictly enforced and verified by unit tests.
+1. **Finding 1 (Body parser & admission boundary):**
+   - Production currently uses the existing global 5 MiB parser in `app.ts` before machine authentication.
+   - The v2 router independently enforces 4 MiB and credential-before-body only when mounted without that global parser.
+   - Full-stack credential-before-body and exact 4 MiB enforcement are deferred to Task20f or a later founder-approved `app.ts` session.
 2. **Finding 2 (Authority lookup order):** In `v2.routes.ts`, `currentLease()` evaluates before `currentDataSettings()`. If no active lease exists or the lookup fails, the request immediately terminates with 403 `SECURITY_V2_LEASE_REQUIRED` without reaching settings lookup or database access.
 3. **Finding 3 (Check constraint null rejection):** In `schema.ts` and migration `0025`, all remaining Task6a check constraints (`rule_id`, `rule_category`, `rule_severity`, `route_id`, `agent_family`, `host_surface`, `host_mode`, `capture_channel`, `native_effect`, `operating_system`, `timing`, `activation`, `effect`, `phase`, `availability`, `completeness`, `result_category`) and the v2 check on `effect` explicitly enforce `IS NOT NULL`, closing the PostgreSQL 3-valued logic check bypass.
 
