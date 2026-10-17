@@ -1,0 +1,465 @@
+{
+  "schema_version": "trackai.numbat-catalogue/1",
+  "numbat_commit": "20a5a52bab41c9bf6ee857efd43c7b198b055de5",
+  "rules": [
+    {
+      "id": "chain.guardrails_off_then_egress",
+      "group": "chains",
+      "path": "chains/guardrails_off_then_egress.yaml",
+      "sha256": "7a7319ae70966b9ccd38298f3261b3e44ed4ee21a20c4af8ec898d0908dbcbb9",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "chain.permission_denied_then_runtime_bypass",
+      "group": "chains",
+      "path": "chains/permission_denied_then_runtime_bypass.yaml",
+      "sha256": "1af384303295c0a95078e43139aacee0ab03929946817bc95426fd42afe85fc0",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "chain.privilege_discovery_then_elevation",
+      "group": "chains",
+      "path": "chains/privilege_discovery_then_elevation.yaml",
+      "sha256": "aaa5e7f77b93ab6a40efe596355a78e6cbb43f8b3753d6a15067741ce288f650",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "chain.secret_manager_read_then_egress",
+      "group": "chains",
+      "path": "chains/secret_manager_read_then_egress.yaml",
+      "sha256": "0be917d2650b5d49e92958e2252672a16bbb87a1419a88d34babbba34a52d0c1",
+      "version": "1.5",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "chain.secret_read_then_egress",
+      "group": "chains",
+      "path": "chains/secret_read_then_egress.yaml",
+      "sha256": "8d95d49258a7a324e0fdffb41c43d3ed1c34d74195611a172588851e8f37f5d4",
+      "version": "1.6",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "chain.workload_identity_then_lateral_execution",
+      "group": "chains",
+      "path": "chains/workload_identity_then_lateral_execution.yaml",
+      "sha256": "8d609b3f4dd51981d217a72d2671df8ff10418dfc7597c54acaf46de99c873f8",
+      "version": "1.6",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exec.agent_runtime_bypass_flags",
+      "group": "exec",
+      "path": "exec/agent_runtime_bypass_flags.yaml",
+      "sha256": "9f04f50e088a0056286a23cc306465d42dc6a6769ffcbc3cfa7e0aa8fe59112f",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exec.destructive_recursive_delete",
+      "group": "exec",
+      "path": "exec/destructive_recursive_delete.yaml",
+      "sha256": "8d14d85a33739ce3727050c750f018e910ab783e2edc137da1f8e3b284f3c3bc",
+      "version": "1.5",
+      "severity": "critical",
+      "enabled": true
+    },
+    {
+      "id": "exec.download_pipe_shell",
+      "group": "exec",
+      "path": "exec/download_pipe_shell.yaml",
+      "sha256": "e468e875f04ac840ca45eb6119f2d23302ee4994a6c768ac721fa6c9eb2d2ab5",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exec.encoded_payload_shell",
+      "group": "exec",
+      "path": "exec/encoded_payload_shell.yaml",
+      "sha256": "4be1385e46fecfbf1203463293628d5ed1aba66277e618a76587e44c379be8dd",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exec.reverse_shell",
+      "group": "exec",
+      "path": "exec/reverse_shell.yaml",
+      "sha256": "8101f3c80172d37056520310fbe3ab777efb87f107e860e3220f9ccf5a93d096",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exec.reverse_tunnel",
+      "group": "exec",
+      "path": "exec/reverse_tunnel.yaml",
+      "sha256": "1e85157c348186d957c1ee3cb0041c05d45562be023bcb20a645e55d020ac17f",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exfil.curl_post_file",
+      "group": "exfil",
+      "path": "exfil/curl_post_file.yaml",
+      "sha256": "6875eb32f102c39e5311c97f8019fb49d01abb0d2419132f7a89ed8a426de776",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exfil.dns_tunnel_exec",
+      "group": "exfil",
+      "path": "exfil/dns_tunnel_exec.yaml",
+      "sha256": "81217cfa5defe3b277771a6bce10bfb66271f52af7c1e79f11c43358416c36e7",
+      "version": "1.4",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "exfil.env_capture_to_network",
+      "group": "exfil",
+      "path": "exfil/env_capture_to_network.yaml",
+      "sha256": "d8c922bc0c991bbc348583d9de343e73bff4ea0087ea44cdebeb11d766fbac2c",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "exfil.secret_read_and_egress_oneliner",
+      "group": "exfil",
+      "path": "exfil/secret_read_and_egress_oneliner.yaml",
+      "sha256": "af4c9a1da87fdd36bce522ebbe668069d71874958699c33f59b138cdb8df0d9a",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "impact.cryptomining_launch",
+      "group": "impact",
+      "path": "impact/cryptomining_launch.yaml",
+      "sha256": "5b86184f91f2d8f1d6b8cd0f80f037e856c6356afe5dce4d6f79b0627dbe9d63",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "impact.disk_wipe",
+      "group": "impact",
+      "path": "impact/disk_wipe.yaml",
+      "sha256": "db999ca61bab0374770e5b7dcf847fea6cd0d6a870016b3f3958afd08e302545",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "impact.fork_bomb",
+      "group": "impact",
+      "path": "impact/fork_bomb.yaml",
+      "sha256": "f61c628174d4e441b92419f176e75ddcde717c9ef391e7f601bf3c19cebef9f0",
+      "version": "1.3",
+      "severity": "critical",
+      "enabled": true
+    },
+    {
+      "id": "impact.mass_process_termination",
+      "group": "impact",
+      "path": "impact/mass_process_termination.yaml",
+      "sha256": "f36856414a9e0dbefaffc11d0d5bc4d43a102c11654fc35af9048445d1b07311",
+      "version": "1.4",
+      "severity": "critical",
+      "enabled": true
+    },
+    {
+      "id": "integrity.git_hooks_bypass",
+      "group": "integrity",
+      "path": "integrity/git_hooks_bypass.yaml",
+      "sha256": "6b9800b18e7f4d359a19d326addf3c5059801fef6759e63c29ac674bb4bb87c0",
+      "version": "1.2",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "integrity.history_tamper",
+      "group": "integrity",
+      "path": "integrity/history_tamper.yaml",
+      "sha256": "74c77b09b1c8566e257375edd660299f221eb95de90975dec3f29a109a1a9a9e",
+      "version": "1.2",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "lateral.workload_exec",
+      "group": "lateral",
+      "path": "lateral/workload_exec.yaml",
+      "sha256": "7c98acc29cc352e19561a3fb5740850ff1f7d4a23948085e809379b3cd11c8bb",
+      "version": "1.5",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "persistence.git_hook_write",
+      "group": "persistence",
+      "path": "persistence/git_hook_write.yaml",
+      "sha256": "15c39e0aadbb3c9e848a2433ef6dcea9980145a20adc40a3ee088c908152e787",
+      "version": "1.4",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "persistence.privileged_account_change",
+      "group": "persistence",
+      "path": "persistence/privileged_account_change.yaml",
+      "sha256": "927e7ecf93482050e34b98ddc19da249c607519f4edfb0ba3226552f726314aa",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "persistence.scheduler_install",
+      "group": "persistence",
+      "path": "persistence/scheduler_install.yaml",
+      "sha256": "597f6c493fd4059bd267a3151cab81f9cda06b153546a9784cc18d9d0cde57b7",
+      "version": "1.7",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "persistence.shell_profile_write",
+      "group": "persistence",
+      "path": "persistence/shell_profile_write.yaml",
+      "sha256": "88aa4e66e6aca326a83026aad71b10cd7b17c49667e86afeed25e0c2f5854039",
+      "version": "1.5",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "persistence.ssh_authorized_keys",
+      "group": "persistence",
+      "path": "persistence/ssh_authorized_keys.yaml",
+      "sha256": "672aff8c6d8e8f8c4b87bd4368273351364b5cdfebde0fa53218c38d9e373ede",
+      "version": "1.3",
+      "severity": "critical",
+      "enabled": true
+    },
+    {
+      "id": "persistence.ssh_authorized_keys_command",
+      "group": "persistence",
+      "path": "persistence/ssh_authorized_keys_command.yaml",
+      "sha256": "8d2eefff8531c428af8f8cda299e79b13eeeedfbb7b569c16d1e7d0cf14e776f",
+      "version": "1.7",
+      "severity": "critical",
+      "enabled": true
+    },
+    {
+      "id": "privilege.access_control_mutation",
+      "group": "privilege",
+      "path": "privilege/access_control_mutation.yaml",
+      "sha256": "a9c0ba36cddd3cac6f90e8a7c74e587351ff8e1bf8f1bd83a7cc28eeb5183066",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "privilege.container_host_escape",
+      "group": "privilege",
+      "path": "privilege/container_host_escape.yaml",
+      "sha256": "0c0efa941e849faa41b93a855e11110eb5bffa9b422177868962de7e71efa509",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "privilege.container_runtime_socket_access",
+      "group": "privilege",
+      "path": "privilege/container_runtime_socket_access.yaml",
+      "sha256": "0860538b093e8ac6f0271cafd6a0e5b2f78fb360008b0afb9646675c0cf0903c",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "privilege.elevated_shell",
+      "group": "privilege",
+      "path": "privilege/elevated_shell.yaml",
+      "sha256": "579f37f0be5c171d71dd24c021624f63aa4815b71fb5b1411a7d135c66e7c0cf",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "privilege.host_namespace_entry",
+      "group": "privilege",
+      "path": "privilege/host_namespace_entry.yaml",
+      "sha256": "ffa32f38eca1577e4c435348e682d884c1d8fee6d469eef6220f1e45ba94684d",
+      "version": "1.2",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "privilege.sudoers_tamper",
+      "group": "privilege",
+      "path": "privilege/sudoers_tamper.yaml",
+      "sha256": "6e732fcb01008d97380bbbf5ec08ba13aaef920bf29674424bb7a2d8ec19b3c0",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "recon.cloud_metadata",
+      "group": "recon",
+      "path": "recon/cloud_metadata.yaml",
+      "sha256": "020d087d7d11232ee78a9bbb3dbf8c258caed5006c908f0f597b7eb1754006f0",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "recon.network_sweep",
+      "group": "recon",
+      "path": "recon/network_sweep.yaml",
+      "sha256": "606c0e318ad3d449ad5f52f8e07250eedc46ed3eb68c1c516abd721b8639e422",
+      "version": "1.4",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "recon.privilege_escalation",
+      "group": "recon",
+      "path": "recon/privilege_escalation.yaml",
+      "sha256": "9411db3342d49f2f570d742d77a644b3c818c5795784f618cc8de346b9b874ed",
+      "version": "1.3",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "secrets.agent_read_env",
+      "group": "secrets",
+      "path": "secrets/agent_read_env.yaml",
+      "sha256": "cf34b2835adce12bfbf4c5615623b303c90730f417ee7cb9df4b6dacf9d75940",
+      "version": "1.3",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "secrets.browser_session_store_read",
+      "group": "secrets",
+      "path": "secrets/browser_session_store_read.yaml",
+      "sha256": "6658934c0b9c70a71c9ec2488aad8cec4d3a5eb08eea89472b39f4224482af38",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.cloud_credential_read",
+      "group": "secrets",
+      "path": "secrets/cloud_credential_read.yaml",
+      "sha256": "fbc766e30efdba691386dc41466c3905efad81865637709c75aa83820ad8547c",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.cloud_secret_manager_read",
+      "group": "secrets",
+      "path": "secrets/cloud_secret_manager_read.yaml",
+      "sha256": "81e5c86f2bb2f5f01ff444e05bd146c44ae3404df96a7bf3a90d5060a530adee",
+      "version": "1.2",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.developer_credential_read",
+      "group": "secrets",
+      "path": "secrets/developer_credential_read.yaml",
+      "sha256": "b2ed99147ea2f4dc9d7aa7d1ef7d5165753babb8aeb4d35a561359b87f6fcf7b",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.process_environment_read",
+      "group": "secrets",
+      "path": "secrets/process_environment_read.yaml",
+      "sha256": "4007a65cfee86bace7ff2faa2a5dd1ebfac66500e4551c67587b778dbc4e535c",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.read_private_key",
+      "group": "secrets",
+      "path": "secrets/read_private_key.yaml",
+      "sha256": "4f5ba2dfd2d53511b308e877b293edb76a0c1bf236ab0b7cca9de4c747599933",
+      "version": "1.6",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "secrets.workload_identity_token_read",
+      "group": "secrets",
+      "path": "secrets/workload_identity_token_read.yaml",
+      "sha256": "fb19ac462329be4bef92bcca8f226a1f39dc961c78bc5c7993a32216afc76a9b",
+      "version": "1.3",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "source.git_config_exec",
+      "group": "source_control",
+      "path": "source_control/git_config_exec.yaml",
+      "sha256": "b3854304d499542841177cfec3cb28008c3aac88e28922823818a48498b113e2",
+      "version": "1.4",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "source.git_remote_tamper",
+      "group": "source_control",
+      "path": "source_control/git_remote_tamper.yaml",
+      "sha256": "87fa6dc45aca2e2f9c12fcd5dfa1435f92617c093df43f94c1b1b53a192cab13",
+      "version": "1.4",
+      "severity": "medium",
+      "enabled": true
+    },
+    {
+      "id": "tamper.agent_config_write",
+      "group": "tamper",
+      "path": "tamper/agent_config_write.yaml",
+      "sha256": "7ba10b0f667e1d5304ec6cb928657c7af4c6ae2749339c94ccfd0bcb5e0da0dc",
+      "version": "1.8",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "tamper.detector_state_write",
+      "group": "tamper",
+      "path": "tamper/detector_state_write.yaml",
+      "sha256": "c6d68b0290bb9c6388358635b8113663ec4a0089e405e8291424da03d23990ef",
+      "version": "1.4",
+      "severity": "high",
+      "enabled": true
+    },
+    {
+      "id": "tamper.guardrails_off",
+      "group": "tamper",
+      "path": "tamper/guardrails_off.yaml",
+      "sha256": "4ee1176655162ffcae89a53c1d1fe4cf02c020e6b89aef4e81e24c1aa98a4d5d",
+      "version": "1.1",
+      "severity": "low",
+      "enabled": true
+    }
+  ]
+}
