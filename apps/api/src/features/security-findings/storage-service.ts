@@ -165,15 +165,39 @@ type StorageDbTransaction = NodePgTransaction<
 function rowToCanonicalFinding(
   row: typeof securityFindings.$inferSelect,
 ): CanonicalSecurityFinding {
+  // Task20d widened these columns to nullable for v2 rows; every Task6.a row is
+  // guaranteed non-null by the security_findings_*_task6a_check constraints,
+  // and only the Task6.a path writes this projection.
+  const task6a = row as unknown as {
+    repositoryId: string;
+    findingId: string;
+    deliveryId: string;
+    sessionId: string;
+    sourceEventId: string;
+    routeId: string;
+    agentFamily: string;
+    hostSurface: string;
+    hostMode: string;
+    captureChannel: string;
+    operatingSystem: string;
+    timing: string;
+    nativeEffect: string;
+    activation: string;
+    phase: string;
+    availability: string;
+    completeness: string;
+    resultCategory: string;
+    clientVersion: string;
+  };
   return {
     schemaVersion: 'trackai.security-finding/0.1',
     tenantId: row.tenantId,
     machineId: row.machineId,
-    repositoryId: row.repositoryId,
-    findingId: row.findingId,
-    deliveryId: row.deliveryId,
-    sessionId: row.sessionId,
-    sourceEventId: row.sourceEventId,
+    repositoryId: task6a.repositoryId,
+    findingId: task6a.findingId,
+    deliveryId: task6a.deliveryId,
+    sessionId: task6a.sessionId,
+    sourceEventId: task6a.sourceEventId,
     correlationId: row.correlationId ?? undefined,
     rule: {
       id: row.ruleId as CanonicalSecurityFinding['rule']['id'],
@@ -182,23 +206,23 @@ function rowToCanonicalFinding(
       severity: row.ruleSeverity as CanonicalSecurityFinding['rule']['severity'],
     },
     capability: {
-      routeId: 'AC-CLI-03',
-      agentFamily: 'opencode',
-      hostSurface: 'terminal',
-      hostMode: 'cli',
-      captureChannel: 'provider-plugin',
-      operatingSystem: row.operatingSystem as CanonicalSecurityFinding['capability']['operatingSystem'],
-      timing: row.timing as CanonicalSecurityFinding['capability']['timing'],
-      nativeEffect: 'observe_only',
-      activation: row.activation as CanonicalSecurityFinding['capability']['activation'],
+      routeId: task6a.routeId as CanonicalSecurityFinding['capability']['routeId'],
+      agentFamily: task6a.agentFamily as CanonicalSecurityFinding['capability']['agentFamily'],
+      hostSurface: task6a.hostSurface as CanonicalSecurityFinding['capability']['hostSurface'],
+      hostMode: task6a.hostMode as CanonicalSecurityFinding['capability']['hostMode'],
+      captureChannel: task6a.captureChannel as CanonicalSecurityFinding['capability']['captureChannel'],
+      operatingSystem: task6a.operatingSystem as CanonicalSecurityFinding['capability']['operatingSystem'],
+      timing: task6a.timing as CanonicalSecurityFinding['capability']['timing'],
+      nativeEffect: task6a.nativeEffect as CanonicalSecurityFinding['capability']['nativeEffect'],
+      activation: task6a.activation as CanonicalSecurityFinding['capability']['activation'],
     },
     effect: 'monitor',
-    phase: row.phase as CanonicalSecurityFinding['phase'],
-    availability: row.availability as CanonicalSecurityFinding['availability'],
-    completeness: row.completeness as CanonicalSecurityFinding['completeness'],
-    resultCategory: row.resultCategory as CanonicalSecurityFinding['resultCategory'],
+    phase: task6a.phase as CanonicalSecurityFinding['phase'],
+    availability: task6a.availability as CanonicalSecurityFinding['availability'],
+    completeness: task6a.completeness as CanonicalSecurityFinding['completeness'],
+    resultCategory: task6a.resultCategory as CanonicalSecurityFinding['resultCategory'],
     occurredAt: row.occurredAt.toISOString(),
-    clientVersion: row.clientVersion,
+    clientVersion: task6a.clientVersion,
     rulePackVersion: row.rulePackVersion,
   };
 }
