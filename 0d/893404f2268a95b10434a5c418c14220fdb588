@@ -1,0 +1,19 @@
+apps/api/src/features/security-findings/v2-ingest.test.ts
+  s_df10a58a9e9bbd::t_b2b58708a402fe 22,86,148,403,411,416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "0d893404f2268a95b10434a5c418c14220fdb588",
+  "prompts": {},
+  "sessions": {
+    "s_df10a58a9e9bbd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_eb625df9effekW1zxEtBGbuHKn",
+        "model": "glm-5.3-flash-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
