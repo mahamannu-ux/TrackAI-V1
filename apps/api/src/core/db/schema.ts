@@ -470,44 +470,78 @@ export const fleetMachineStates = pgTable('fleet_machine_states', {
   `),
 }));
 
-/** Immutable, metadata-only Task6 monitor findings accepted from managed machines. */
+/**
+ * Security findings (Task20d): two generations share this table.
+ * - `task6a`: the immutable Task6.a metadata-only finding rows; their columns
+ *   and checks are unchanged (every Task6.a check now reads
+ *   `record_generation <> 'task6a' or <the old condition>`).
+ * - `v2`: Numbat-backed records under the frozen security v2 contract
+ *   (docs/contracts/security-v2). The shared columns are filled so the Attesta
+ *   builder's findings query keeps returning both generations unchanged.
+ */
 export const securityFindings = pgTable('security_findings', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
   machineId: uuid('machine_id').notNull(),
-  repositoryId: uuid('repository_id').notNull(),
-  findingId: text('finding_id').notNull(),
-  deliveryId: text('delivery_id').notNull(),
-  sessionId: text('session_id').notNull(),
-  sourceEventId: text('source_event_id').notNull(),
-  correlationId: text('correlation_id'),
+  recordGeneration: text('record_generation').notNull().default('task6a'),
+  // Shared columns both generations fill (Task6.a and v2):
   ruleId: text('rule_id').notNull(),
   ruleVersion: text('rule_version').notNull(),
   ruleCategory: text('rule_category').notNull(),
   ruleSeverity: text('rule_severity').notNull(),
-  routeId: text('route_id').notNull(),
-  agentFamily: text('agent_family').notNull(),
-  hostSurface: text('host_surface').notNull(),
-  hostMode: text('host_mode').notNull(),
-  captureChannel: text('capture_channel').notNull(),
-  operatingSystem: text('operating_system').notNull(),
-  timing: text('timing').notNull(),
-  nativeEffect: text('native_effect').notNull(),
-  activation: text('activation').notNull(),
-  effect: text('effect').notNull(),
-  phase: text('phase').notNull(),
-  availability: text('availability').notNull(),
-  completeness: text('completeness').notNull(),
-  resultCategory: text('result_category').notNull(),
+  effect: text('effect'),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
-  clientVersion: text('client_version').notNull(),
   rulePackVersion: text('rule_pack_version').notNull(),
   receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+  // Task6.a-only columns (nullable since Task20d; guarded by _task6a_check):
+  repositoryId: uuid('repository_id'),
+  findingId: text('finding_id'),
+  deliveryId: text('delivery_id'),
+  sessionId: text('session_id'),
+  sourceEventId: text('source_event_id'),
+  correlationId: text('correlation_id'),
+  routeId: text('route_id'),
+  agentFamily: text('agent_family'),
+  hostSurface: text('host_surface'),
+  hostMode: text('host_mode'),
+  captureChannel: text('capture_channel'),
+  operatingSystem: text('operating_system'),
+  timing: text('timing'),
+  nativeEffect: text('native_effect'),
+  activation: text('activation'),
+  phase: text('phase'),
+  availability: text('availability'),
+  completeness: text('completeness'),
+  resultCategory: text('result_category'),
+  clientVersion: text('client_version'),
+  // v2-only columns (nullable; guarded by security_findings_v2_check):
+  recordId: text('record_id'),
+  sourceAgent: text('source_agent'),
+  sourceType: text('source_type'),
+  model: text('model'),
+  modelProvider: text('model_provider'),
+  parentSessionId: text('parent_session_id'),
+  subAgentId: text('sub_agent_id'),
+  confidence: text('confidence'),
+  title: text('title'),
+  tags: jsonb('tags').$type<string[]>(),
+  foundAtRest: boolean('found_at_rest'),
+  detectedAt: timestamp('detected_at', { withTimezone: true }),
+  numbatSchemaVersion: text('numbat_schema_version'),
+  bundleDigest: text('bundle_digest'),
+  leaseId: text('lease_id'),
+  repositoryKind: text('repository_kind'),
 }, (table) => ({
-  tenantDeliveryUnique: unique('security_findings_tenant_delivery_key')
-    .on(table.tenantId, table.deliveryId),
-  tenantFindingUnique: unique('security_findings_tenant_finding_key')
-    .on(table.tenantId, table.findingId),
+  tenantIdIdUnique: unique('security_findings_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantDeliveryUnique: uniqueIndex('security_findings_tenant_delivery_task6a_key')
+    .on(table.tenantId, table.deliveryId)
+    .where(sql`${table.recordGeneration} = 'task6a'`),
+  tenantFindingUnique: uniqueIndex('security_findings_tenant_finding_task6a_key')
+    .on(table.tenantId, table.findingId)
+    .where(sql`${table.recordGeneration} = 'task6a'`),
+  v2RecordUnique: uniqueIndex('security_findings_tenant_machine_record_v2_key')
+    .on(table.tenantId, table.machineId, table.recordId)
+    .where(sql`${table.recordGeneration} = 'v2'`),
   tenantMachineForeignKey: foreignKey({
     name: 'security_findings_tenant_machine_fk',
     columns: [table.tenantId, table.machineId],
@@ -522,42 +556,47 @@ export const securityFindings = pgTable('security_findings', {
     .on(table.tenantId, table.repositoryId, table.occurredAt),
   tenantMachineReceivedIndex: index('security_findings_tenant_machine_received_idx')
     .on(table.tenantId, table.machineId, table.receivedAt),
-  ruleIdCheck: check('security_findings_rule_id_check', sql`${table.ruleId} in (
+  recordGenerationCheck: check('security_findings_record_generation_check',
+    sql`${table.recordGeneration} in ('task6a', 'v2')`),
+  ruleIdCheck: check('security_findings_rule_id_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.ruleId} in (
     'trackai.exec.destructive_recursive_delete',
     'trackai.exec.download_pipe_shell',
     'trackai.exec.reverse_shell'
   )`),
-  ruleCategoryCheck: check('security_findings_rule_category_check',
-    sql`${table.ruleCategory} = 'execution'`),
-  ruleSeverityCheck: check('security_findings_rule_severity_check',
-    sql`${table.ruleSeverity} in ('high', 'critical')`),
-  routeCheck: check('security_findings_route_check', sql`
+  ruleCategoryCheck: check('security_findings_rule_category_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.ruleCategory} = 'execution'`),
+  ruleSeverityCheck: check('security_findings_rule_severity_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.ruleSeverity} in ('high', 'critical')`),
+  routeCheck: check('security_findings_route_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or (
     ${table.routeId} = 'AC-CLI-03'
     and ${table.agentFamily} = 'opencode'
     and ${table.hostSurface} = 'terminal'
     and ${table.hostMode} = 'cli'
     and ${table.captureChannel} = 'provider-plugin'
     and ${table.nativeEffect} = 'observe_only'
-  `),
-  operatingSystemCheck: check('security_findings_operating_system_check',
-    sql`${table.operatingSystem} in ('macos', 'linux', 'windows', 'wsl', 'unavailable')`),
-  timingCheck: check('security_findings_timing_check',
-    sql`${table.timing} in ('pre_action', 'post_action', 'at_rest', 'unavailable')`),
-  activationCheck: check('security_findings_activation_check',
-    sql`${table.activation} in ('configured', 'loaded', 'observed', 'unavailable')`),
-  effectCheck: check('security_findings_effect_check', sql`${table.effect} = 'monitor'`),
-  phaseCheck: check('security_findings_phase_check',
-    sql`${table.phase} in ('requested', 'observed_result', 'partial', 'unavailable')`),
-  availabilityCheck: check('security_findings_availability_check',
-    sql`${table.availability} in ('available', 'unavailable', 'redacted', 'expired')`),
-  completenessCheck: check('security_findings_completeness_check',
-    sql`${table.completeness} in ('complete', 'partial')`),
-  resultCategoryCheck: check('security_findings_result_category_check', sql`
-    ${table.resultCategory} in (
+  )`),
+  operatingSystemCheck: check('security_findings_operating_system_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.operatingSystem} in ('macos', 'linux', 'windows', 'wsl', 'unavailable')`),
+  timingCheck: check('security_findings_timing_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.timing} in ('pre_action', 'post_action', 'at_rest', 'unavailable')`),
+  activationCheck: check('security_findings_activation_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.activation} in ('configured', 'loaded', 'observed', 'unavailable')`),
+  effectCheck: check('security_findings_effect_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.effect} = 'monitor'`),
+  phaseCheck: check('security_findings_phase_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.phase} in ('requested', 'observed_result', 'partial', 'unavailable')`),
+  availabilityCheck: check('security_findings_availability_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.availability} in ('available', 'unavailable', 'redacted', 'expired')`),
+  completenessCheck: check('security_findings_completeness_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.completeness} in ('complete', 'partial')`),
+  resultCategoryCheck: check('security_findings_result_category_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or ${table.resultCategory} in (
       'not_observed', 'success', 'failure', 'cancelled', 'unknown', 'unavailable'
-    )
-  `),
-  boundedMetadataCheck: check('security_findings_bounded_metadata_check', sql`
+    )`),
+  boundedMetadataCheck: check('security_findings_bounded_metadata_task6a_check', sql`
+    ${table.recordGeneration} <> 'task6a' or (
     length(${table.findingId}) between 1 and 128
     and length(${table.deliveryId}) between 1 and 128
     and length(${table.sessionId}) between 1 and 128
@@ -566,7 +605,305 @@ export const securityFindings = pgTable('security_findings', {
     and length(${table.ruleVersion}) between 1 and 32
     and length(${table.clientVersion}) between 1 and 64
     and length(${table.rulePackVersion}) between 1 and 64
+  )`),
+  v2Check: check('security_findings_v2_check', sql`
+    ${table.recordGeneration} <> 'v2' or (
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and length(${table.ruleId}) between 1 and 128
+    and length(${table.ruleVersion}) between 1 and 64
+    and ${table.ruleSeverity} in ('info', 'low', 'medium', 'high', 'critical')
+    and length(${table.title}) between 1 and 256
+    and length(${table.sourceAgent}) between 1 and 128
+    and ${table.sourceType} in ('artifact', 'hook', 'otel')
+    and ${table.confidence} in ('high', 'medium', 'low')
+    and ${table.detectedAt} is not null
+    and ${table.occurredAt} = ${table.detectedAt}
+    and ${table.numbatSchemaVersion} = '0.5.0'
+    and ${table.bundleDigest} ~ '^[a-f0-9]{64}$'
+    and length(${table.leaseId}) between 1 and 128
+    and ${table.leaseId} ~ '^[^[:space:]]+$'
+    and ${table.foundAtRest} is not null
+    and ${table.repositoryKind} in ('enrolled', 'not_enrolled')
+    and (
+      (${table.repositoryKind} = 'enrolled' and ${table.repositoryId} is not null)
+      or (${table.repositoryKind} = 'not_enrolled' and ${table.repositoryId} is null)
+    )
+    and ${table.ruleCategory} = split_part(${table.ruleId}, '.', 1)
+    and ${table.rulePackVersion} = 'bundle:' || substr(${table.bundleDigest}, 1, 16)
+    and ${table.effect} = 'monitor'
+    and (${table.tags} is null or jsonb_typeof(${table.tags}) = 'array')
+    and (${table.sessionId} is null or (length(${table.sessionId}) between 1 and 128 and ${table.sessionId} ~ '^[^[:space:]]+$'))
+    and (${table.parentSessionId} is null or (length(${table.parentSessionId}) between 1 and 128 and ${table.parentSessionId} ~ '^[^[:space:]]+$'))
+    and (${table.subAgentId} is null or (length(${table.subAgentId}) between 1 and 128 and ${table.subAgentId} ~ '^[^[:space:]]+$'))
+    and (${table.model} is null or (length(${table.model}) between 1 and 128 and ${table.model} ~ '^[^[:space:]]+$'))
+    and (${table.modelProvider} is null or (length(${table.modelProvider}) between 1 and 128 and ${table.modelProvider} ~ '^[^[:space:]]+$'))
+  )`),
+  v2SourceAgentCheck: check('security_findings_v2_source_agent_check', sql`
+    ${table.recordGeneration} <> 'v2' or ${table.sourceAgent} in (
+      'claude-code', 'cowork', 'codex', 'gemini-cli', 'cursor', 'windsurf', 'copilot',
+      'vscode', 'opencode', 'openclaw', 'antigravity', 'factory', 'grok', 'devin-cli',
+      'hermes', 'kimi-code', 'pi', 'qwen-code', 'cline', 'amp', 'auggie', 'kiro',
+      'goose', 'kilo', 'openhands', 'crush', 'junie', 'unknown'
+    )`),
+}));
+
+/** Numbat enforcement decisions, monitor-only evidence (Task20d, kind `enforcement`). */
+export const securityEnforcementDecisions = pgTable('security_enforcement_decisions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  decision: text('decision').notNull(),
+  mode: text('mode').notNull(),
+  ruleIds: text('rule_ids').array().notNull(),
+  denyRuleId: text('deny_rule_id'),
+  denyRuleVersion: text('deny_rule_version'),
+  findingRecordIds: text('finding_record_ids').array().notNull(),
+  toolName: text('tool_name'),
+  toolCallId: text('tool_call_id'),
+  sessionId: text('session_id'),
+  sourceAgent: text('source_agent').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_enforcement_decisions_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_enforcement_decisions_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_enforcement_decisions_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantOccurredIndex: index('security_enforcement_decisions_tenant_occurred_idx')
+    .on(table.tenantId, table.occurredAt),
+  decisionCheck: check('security_enforcement_decisions_decision_check', sql`
+    ${table.decision} in ('deny', 'no_override') and ${table.mode} in ('monitor', 'enforce')`),
+  denyShapeCheck: check('security_enforcement_decisions_deny_shape_check', sql`
+    (${table.decision} = 'deny') = (${table.denyRuleId} is not null)
+    and (${table.decision} = 'deny') = (${table.denyRuleVersion} is not null)
+    and (${table.decision} <> 'deny' or ${table.mode} = 'enforce')`),
+  boundedShapeCheck: check('security_enforcement_decisions_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and array_length(${table.ruleIds}, 1) between 1 and 128
+    and array_length(${table.findingRecordIds}, 1) between 0 and 128
+    and (${table.toolName} is null or (length(${table.toolName}) between 1 and 128 and ${table.toolName} ~ '^[^[:space:]]+$'))
+    and (${table.toolCallId} is null or (length(${table.toolCallId}) between 1 and 128 and ${table.toolCallId} ~ '^[^[:space:]]+$'))
+    and (${table.sessionId} is null or (length(${table.sessionId}) between 1 and 128 and ${table.sessionId} ~ '^[^[:space:]]+$'))
+    and length(${table.sourceAgent}) between 1 and 128
   `),
+}));
+
+/** Numbat indicators with monotonic component-wise maxima (Task20d, kind `indicator`). */
+export const securityIndicators = pgTable('security_indicators', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  type: text('type').notNull(),
+  value: text('value').notNull(),
+  count: bigint('count', { mode: 'number' }).notNull(),
+  firstSeen: timestamp('first_seen', { withTimezone: true }).notNull(),
+  lastSeen: timestamp('last_seen', { withTimezone: true }).notNull(),
+  sourceAgent: text('source_agent').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_indicators_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_indicators_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_indicators_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  typeCheck: check('security_indicators_type_check', sql`
+    ${table.type} in ('domain', 'ipv4', 'ipv6', 'url', 'email', 'md5', 'sha1', 'sha256')`),
+  countCheck: check('security_indicators_count_check', sql`
+    ${table.count} between 1 and 9007199254740991`),
+  windowCheck: check('security_indicators_window_check', sql`
+    ${table.lastSeen} >= ${table.firstSeen}`),
+  boundedShapeCheck: check('security_indicators_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and length(${table.value}) between 1 and 200
+    and length(${table.sourceAgent}) between 1 and 128
+  `),
+}));
+
+/** Numbat at-rest scan summaries, counters only (Task20d, kind `scan_summary`). */
+export const securityScanSummaries = pgTable('security_scan_summaries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  status: text('status').notNull(),
+  artifactsScanned: bigint('artifacts_scanned', { mode: 'number' }).notNull(),
+  eventsEmitted: bigint('events_emitted', { mode: 'number' }).notNull(),
+  findingsEmitted: bigint('findings_emitted', { mode: 'number' }).notNull(),
+  indicatorsEmitted: bigint('indicators_emitted', { mode: 'number' }).notNull(),
+  diagnostics: bigint('diagnostics', { mode: 'number' }).notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_scan_summaries_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_scan_summaries_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_scan_summaries_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  statusCheck: check('security_scan_summaries_status_check',
+    sql`${table.status} in ('complete', 'partial', 'error')`),
+  boundedShapeCheck: check('security_scan_summaries_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.artifactsScanned} between 0 and 9007199254740991
+    and ${table.eventsEmitted} between 0 and 9007199254740991
+    and ${table.findingsEmitted} between 0 and 9007199254740991
+    and ${table.indicatorsEmitted} between 0 and 9007199254740991
+    and ${table.diagnostics} between 0 and 9007199254740991
+  `),
+}));
+
+/** Content-free permission requests (Task20d, kind `permission_event`). */
+export const securityPermissionEvents = pgTable('security_permission_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  outcome: text('outcome').notNull(),
+  toolName: text('tool_name'),
+  toolCallId: text('tool_call_id'),
+  sessionId: text('session_id'),
+  sourceAgent: text('source_agent').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  join: text('join').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_permission_events_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_permission_events_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_permission_events_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantOccurredIndex: index('security_permission_events_tenant_occurred_idx')
+    .on(table.tenantId, table.occurredAt),
+  outcomeCheck: check('security_permission_events_outcome_check', sql`
+    ${table.outcome} in ('requested', 'approved', 'denied')`),
+  joinCheck: check('security_permission_events_join_check', sql`
+    ${table.join} in ('exact', 'same_session_window', 'unavailable')
+    and (${table.join} <> 'exact' or ${table.toolCallId} is not null)
+    and (${table.join} <> 'same_session_window' or ${table.sessionId} is not null)`),
+  boundedShapeCheck: check('security_permission_events_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and (${table.toolName} is null or (length(${table.toolName}) between 1 and 128 and ${table.toolName} ~ '^[^[:space:]]+$'))
+    and (${table.toolCallId} is null or (length(${table.toolCallId}) between 1 and 128 and ${table.toolCallId} ~ '^[^[:space:]]+$'))
+    and (${table.sessionId} is null or (length(${table.sessionId}) between 1 and 128 and ${table.sessionId} ~ '^[^[:space:]]+$'))
+    and length(${table.sourceAgent}) between 1 and 128
+  `),
+}));
+
+/** Endpoint security status snapshots, observed health only (Task20d, kind `security_status`). */
+export const securityStatusSnapshots = pgTable('security_status_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+  numbatVersion: text('numbat_version').notNull(),
+  wiredAgents: text('wired_agents').array().notNull(),
+  activeBundleDigest: text('active_bundle_digest'),
+  leaseId: text('lease_id'),
+  lastRecordAt: timestamp('last_record_at', { withTimezone: true }),
+  hookStatus: text('hook_status').notNull(),
+  agentEffectiveView: text('agent_effective_view').notNull(),
+  localRecord: text('local_record').notNull(),
+  forwarderAck: text('forwarder_ack').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_status_snapshots_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_status_snapshots_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_status_snapshots_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantObservedIndex: index('security_status_snapshots_tenant_observed_idx')
+    .on(table.tenantId, table.observedAt),
+  healthCheck: check('security_status_snapshots_health_check', sql`
+    ${table.hookStatus} in ('ok', 'failed', 'unavailable')
+    and ${table.agentEffectiveView} in ('ok', 'failed', 'unavailable')
+    and ${table.localRecord} in ('ok', 'failed', 'unavailable')
+    and ${table.forwarderAck} in ('ok', 'failed', 'unavailable')`),
+  boundedShapeCheck: check('security_status_snapshots_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and length(${table.numbatVersion}) between 1 and 64
+    and array_length(${table.wiredAgents}, 1) between 0 and 64
+    and (${table.activeBundleDigest} is null or ${table.activeBundleDigest} ~ '^[a-f0-9]{64}$')
+    and (${table.leaseId} is null or (length(${table.leaseId}) between 1 and 128 and ${table.leaseId} ~ '^[^[:space:]]+$'))
+  `),
+}));
+
+/** Agent inventory snapshots (Task20d, kind `agent_inventory`; honest multi-state rows). */
+export const securityAgentInventorySnapshots = pgTable('security_agent_inventory_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  recordId: text('record_id').notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+  agents: jsonb('agents').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_agent_inventory_snapshots_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineRecordUnique: unique('security_agent_inventory_snapshots_tenant_machine_record_key')
+    .on(table.tenantId, table.machineId, table.recordId),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_agent_inventory_snapshots_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantObservedIndex: index('security_agent_inventory_snapshots_tenant_observed_idx')
+    .on(table.tenantId, table.observedAt),
+  boundedShapeCheck: check('security_agent_inventory_snapshots_bounded_shape_check', sql`
+    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and jsonb_typeof(${table.agents}) = 'array'
+    and jsonb_array_length(${table.agents}) between 1 and 64
+  `),
+}));
+
+/**
+ * Finding previews (Task20d): stored only encrypted, never in a plaintext
+ * column (AGENTS.md rule 6; api.md "Data settings"). A row exists only when the
+ * tenant's data settings allowed that field, and the plaintext never leaves the
+ * envelope: `value_encrypted` is an EncryptedValue whose context binds the
+ * tenant, the finding and the field.
+ */
+export const securityFindingPreviews = pgTable('security_finding_previews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  findingId: uuid('finding_id').notNull(),
+  field: text('field').notNull(),
+  valueEncrypted: jsonb('value_encrypted').notNull(),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_finding_previews_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantFindingFieldUnique: unique('security_finding_previews_tenant_finding_field_key')
+    .on(table.tenantId, table.findingId, table.field),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_finding_previews_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantFindingForeignKey: foreignKey({
+    name: 'security_finding_previews_tenant_finding_fk',
+    columns: [table.tenantId, table.findingId],
+    foreignColumns: [securityFindings.tenantId, securityFindings.id],
+  }),
+  fieldCheck: check('security_finding_previews_field_check', sql`
+    ${table.field} in ('observed_command', 'observed_file_path', 'observed_url', 'endpoint_hostname', 'endpoint_username')`),
+  encryptedShapeCheck: check('security_finding_previews_encrypted_shape_check', sql`
+    jsonb_typeof(${table.valueEncrypted}) = 'object'`),
 }));
 
 /** Append-only security administration audit trail. */
