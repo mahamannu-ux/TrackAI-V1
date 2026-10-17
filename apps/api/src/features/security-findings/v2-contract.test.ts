@@ -227,10 +227,17 @@ test('T20a security v2: replay preserves the pinned persisted-hook relationship'
 }, () => {
   const hookTest = readFileSync(join(NUMBAT_DIR, 'cmd/numbat/hook_test.go'), 'utf8');
   const hookSource = readFileSync(join(NUMBAT_DIR, 'cmd/numbat/hook.go'), 'utf8');
-  assert.match(hookTest, /func TestHookWritesFindingToFileSinkNotStdout/);
-  assert.ok(hookTest.includes('"tool_name":"Bash","tool_input":{"command":"cat .env"}'));
-  assert.match(hookTest, /decision\.FindingIDs, \[\]string\{f\.FindingID\}/);
-  assert.match(hookTest, /decision\.ActionEventIDs, f\.CitedEventIDs/);
+  const testStart = hookTest.indexOf('func TestHookWritesFindingToFileSinkNotStdout');
+  const testEnd = hookTest.indexOf('\nfunc ', testStart + 1);
+  assert.ok(testStart >= 0 && testEnd > testStart);
+  const persistedHookTest = hookTest.slice(testStart, testEnd);
+  assert.ok(persistedHookTest.includes('"tool_name":"Bash","tool_input":{"command":"cat .env"}'));
+  const sourcePayload = persistedHookTest.match(/payload := `([^`]+)`/)?.[1];
+  assert.ok(sourcePayload);
+  assert.equal(sourcePayload.includes('tool_call_id'), false);
+  assert.equal(sourcePayload.includes('tool_use_id'), false);
+  assert.match(persistedHookTest, /decision\.FindingIDs, \[\]string\{f\.FindingID\}/);
+  assert.match(persistedHookTest, /decision\.ActionEventIDs, f\.CitedEventIDs/);
   assert.match(hookSource, /events := hook\.MapEvents\(lc, agent, sourceAgent, hookEventID\(run\), payload\)/);
   assert.match(hookSource, /return "hook-" \+ run/);
 });

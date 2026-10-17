@@ -8,7 +8,6 @@
     "rule_ids": ["secrets.agent_read_env"],
     "finding_record_ids": ["sha256:3600c333faf7fddf87d4508d3d9e308f05f53cf70b3735c8575fadf0488a8338"],
     "tool_name": "Bash",
-    "tool_call_id": "tool-call-placeholder",
     "session_id": "session-placeholder",
     "source_agent": "codex",
     "timestamp": "2026-10-17T10:00:00Z"
