@@ -195,7 +195,7 @@ test('audit contract: 52 emitted actions, each validates as today\'s emitter wri
 test('audit contract: entries are well formed', () => {
   const names = AUDIT_CATALOG.flatMap(entry => [entry.action, ...entry.aliases]);
   assert.equal(new Set(names).size, names.length, 'actions and aliases are unique');
-  assert.equal(AUDIT_CATALOG_VERSION, 2);
+  assert.equal(AUDIT_CATALOG_VERSION, 3);
   for (const entry of AUDIT_CATALOG) {
     assert.ok(entry.actorTypes.length > 0, entry.action);
     assert.ok(entry.sources.length > 0, `${entry.action} cites its source`);
@@ -293,7 +293,7 @@ test('audit contract: every reserved action refuses', () => {
   const expected = [
     'artifact.signed', 'attesta.anchor.failed', 'fleet.lease.issued', 'fleet.lease.refused',
     'policy.bundle.acknowledged', 'policy.bundle.activated', 'policy.bundle.published', 'security.finding.triaged',
-    'security.monitor.changed',
+    'security.monitor.changed', 'security.settings.changed',
   ];
   assert.deepEqual(reserved.map(entry => entry.action).sort(), expected);
   for (const entry of reserved) {
