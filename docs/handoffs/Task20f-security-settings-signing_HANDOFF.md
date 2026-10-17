@@ -23,7 +23,7 @@ The **monitor switch is not a new table.** The lease mode comes from Task6.a's e
   - a new first line `# Modified by TrackAI (Task20f) from perplexityai/numbat@20a5a52 <path>; Apache-2.0`;
   - the top-level lines `enabled:`, `severity:` and `version:` replaced as text (`version: "<upstream>-trackai.<n>"`).
 - A catalogue test asserts that each of the 51 files has exactly one top-level line of each. The compiler throws if a future pin breaks that. There is no YAML dependency, and `enforce` is never written.
-- **Empty case (decision).** Numbat refuses an empty `--rules-dir` (`numbat@20a5a52:docs/rules.md:661-664`), and the contract requires at least one file per agent. If no rule differs from upstream, the compiler emits one *identity override*: the first rule by id, unchanged except for the header and the version tag. A same-id replacement replaces the rule as a whole, so behaviour is identical.
+- **Empty case (decision).** Numbat refuses an empty `--rules-dir` (`numbat@20a5a52:docs/rules.md:657-659`), and the contract requires at least one file per agent. If no rule differs from upstream, the compiler emits one *identity override*: the first rule by id, unchanged except for the header and the version tag. A same-id replacement replaces the rule as a whole, so behaviour is identical.
 - Every agent folder (`claude-code`, `codex`, `cursor`, `gemini-cli`, `copilot`; these are the contract's `SecuritySourceAgent` spellings, so Copilot CLI is `copilot`) gets the same files. `enabled_rule_ids` is the effective enabled set, sorted. `compiler_version` is `task20f.1`.
 - Output is checked against the bundle limits: each file ≤ 256 KiB, payload ≤ 4 MiB.
 
