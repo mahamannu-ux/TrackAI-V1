@@ -83,11 +83,18 @@ export function createSecurityFindingUploadHandler(
   };
 }
 
-const securityFindingsRouter = Router();
-const uploadSecurityFindings = createSecurityFindingUploadHandler();
-const readSecurityActivation = createSecurityActivationHandler();
-securityFindingsRouter.get('/activation', (req, res) => readSecurityActivation(req, res));
-securityFindingsRouter.post('/findings', (req, res) => uploadSecurityFindings(req, res));
-securityFindingsRouter.use('/v2', createSecurityV2Router());
+export function createSecurityFindingsRouter(
+  options: { v2Dependencies?: Parameters<typeof createSecurityV2Router>[0] } = {},
+): Router {
+  const router = Router();
+  const uploadSecurityFindings = createSecurityFindingUploadHandler();
+  const readSecurityActivation = createSecurityActivationHandler();
+  router.get('/activation', (req, res) => readSecurityActivation(req, res));
+  router.post('/findings', (req, res) => uploadSecurityFindings(req, res));
+  router.use('/v2', createSecurityV2Router(options.v2Dependencies));
+  return router;
+}
+
+const securityFindingsRouter = createSecurityFindingsRouter();
 
 export default securityFindingsRouter;

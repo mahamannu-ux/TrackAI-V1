@@ -19,6 +19,7 @@ import {
 import {
   SECURITY_V2_NUMBAT_SCHEMA,
   type SecurityFindingV2,
+  type SecurityIndicatorV2,
   type SecurityRecordId,
   type SecurityRecordV2,
   type SecurityUploadV2,
@@ -82,7 +83,7 @@ function enforcementRecord(): SecurityRecordV2 {
   };
 }
 
-function indicatorRecord(overrides: Partial<SecurityRecordV2> = {}): SecurityRecordV2 {
+function indicatorRecord(overrides: Partial<SecurityIndicatorV2> = {}): SecurityIndicatorV2 {
   return {
     kind: 'indicator',
     record_id: recordId(),
@@ -144,7 +145,7 @@ function memoryStore(options: { enrollmentActive?: boolean } = {}): {
       let endpoint = result.endpoint;
       for (const field of ['observed_command', 'observed_file_path', 'observed_url'] as const) {
         const plaintext = previews.get(`${rowId}:${field}`);
-        if (plaintext !== undefined) (result as Record<string, unknown>)[field] = plaintext;
+        if (plaintext !== undefined) (result as unknown as Record<string, unknown>)[field] = plaintext;
       }
       const hostname = previews.get(`${rowId}:endpoint_hostname`);
       if (hostname !== undefined) endpoint = { ...endpoint, hostname };
@@ -399,7 +400,7 @@ test('T20d ingest: indicator maxima merge monotonically and identity fields are 
   assert.deepEqual(same, [{ record_id: record.record_id, result: 'duplicate' }]);
 
   // Higher count and later last_seen both move their own component only.
-  const raised: SecurityRecordV2 = { ...record, count: 5, last_seen: '2026-10-17T09:45:00Z' };
+  const raised: SecurityIndicatorV2 = { ...record, count: 5, last_seen: '2026-10-17T09:45:00Z' };
   assert.deepEqual(await persist(uploadOf(raised)), [{ record_id: record.record_id, result: 'accepted' }]);
   const stored = store.state.storedIndicators.get(`${MACHINE_A}:${record.record_id}`);
   assert.ok(stored);
@@ -407,12 +408,12 @@ test('T20d ingest: indicator maxima merge monotonically and identity fields are 
   assert.equal(new Date(stored.last_seen).getTime(), new Date('2026-10-17T09:45:00Z').getTime());
 
   // Older count and last_seen are duplicate, even when first_seen matches.
-  const older: SecurityRecordV2 = { ...record, count: 2, last_seen: '2026-10-17T09:10:00Z' };
+  const older: SecurityIndicatorV2 = { ...record, count: 2, last_seen: '2026-10-17T09:10:00Z' };
   assert.deepEqual(await persist(uploadOf(older)), [{ record_id: record.record_id, result: 'duplicate' }]);
   assert.equal(store.state.maximaUpdates, 1);
 
   // A changed identity field is a conflict.
-  const changedValue: SecurityRecordV2 = { ...record, value: 'other.example.internal', count: 9 };
+  const changedValue: SecurityIndicatorV2 = { ...record, value: 'other.example.internal', count: 9 };
   assert.deepEqual(await persist(uploadOf(changedValue)), [{
     record_id: record.record_id,
     result: 'rejected',
