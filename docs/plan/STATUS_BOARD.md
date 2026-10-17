@@ -69,7 +69,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7i4 | Task19e-qa-questions-screen (T19.5) | Claude design + Muse | about 0.12× | | Task19b and Task19c merged | written later |
 | 7i | Task2-lab-regression: Lifecycle Lab regression check after Task9 and Task17 | Codex | about 0.1× | | Task17 done | to write |
 | 9 | Task20-lead: primer, plan, prompts, reviews (`docs/plan/TASK20.md`) | Claude | about 0.08× (own work) | | primer approved 2026-10-16 | `docs/prompts/Task20/NEXT_CHAT_Task20-lead_PROMPT.md` |
-| 9a | Task20a-security-v2-contract (T20.1) | Codex (Claude reviews) | about 0.12× | | plan PR merged | `docs/prompts/Task20/NEXT_CHAT_Task20a-security-v2-contract_PROMPT.md` |
+| 9a | Task20a-security-v2-contract (T20.1) | Codex (Claude reviews) | about 0.12× | about 0.16× | plan PR merged | `docs/prompts/Task20/NEXT_CHAT_Task20a-security-v2-contract_PROMPT.md` |
 | 9b | Task20b-numbat-mirror-build (T20.2–T20.4; GitAI) | Muse + founder-live | about 0.12× | | plan PR merged; mirror fork and tag created | written after the plan PR |
 | 9c | Task20c-endpoint-trust-verifier (T20.5; GitAI) | Muse (Codex reviews) | about 0.15× | | Task20b merged (one Muse session at a time) | written after the plan PR |
 | 9d | Task20d-security-ingest-v2 (T20.7a, T20.7b) | Muse | about 0.33× | | Task20a merged | written after Task20a |
