@@ -1,0 +1,21 @@
+apps/api/src/features/security-findings/v2-contract.test.ts
+  s_df10a58a9e9bbd::t_b1547ca373eaaa 10,13-14,16,290-380,382-383,385-388,390-394,397-416
+apps/api/src/features/security-findings/v2-contract.ts
+  s_df10a58a9e9bbd::t_74042bd3dae801 6-8,309-346,349-381,383-384,386-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "2628e9e6d92dbc1e83b47ef9a987c75db945ac21",
+  "prompts": {},
+  "sessions": {
+    "s_df10a58a9e9bbd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_eb625df9effekW1zxEtBGbuHKn",
+        "model": "glm-5.3-flash-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
