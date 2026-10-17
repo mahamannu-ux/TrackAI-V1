@@ -1,0 +1,65 @@
+apps/api/src/features/qa/answers/answers-code.test.ts
+  s_f54ac136724f7f::t_56f7b4f4950ced 1-675
+apps/api/src/features/qa/answers/common.ts
+  s_f54ac136724f7f::t_37887e4b8073b0 1-356
+apps/api/src/features/qa/answers/q01.ts
+  s_f54ac136724f7f::t_2f4d852db49147 1-55
+apps/api/src/features/qa/answers/q03.ts
+  s_f54ac136724f7f::t_07ebc7fd2167d7 1-65
+apps/api/src/features/qa/answers/q04.ts
+  s_f54ac136724f7f::t_a8da0798e4c221 1-86
+apps/api/src/features/qa/answers/q09.ts
+  s_f54ac136724f7f::t_293b244e318435 1-62
+apps/api/src/features/qa/answers/q10.ts
+  s_f54ac136724f7f::t_9bcff5ed086ee3 1-72
+apps/api/src/features/qa/answers/q13.ts
+  s_f54ac136724f7f::t_8c0524215775e3 1-61
+apps/api/src/features/qa/answers/q14.ts
+  s_f54ac136724f7f::t_8a12bcceacadc3 1-52
+apps/api/src/features/qa/answers/q18.ts
+  s_f54ac136724f7f::t_2b7824d4739e20 1-113
+apps/api/src/features/qa/answers/q19.ts
+  s_f54ac136724f7f::t_a6818103b1edc4 1-73
+apps/api/src/features/qa/answers/q20.ts
+  s_f54ac136724f7f::t_f1d93f749e58b1 1-95
+apps/api/src/features/qa/answers/register-code.ts
+  s_f54ac136724f7f::t_d70da360d29a7e 1-26
+apps/api/src/features/qa/drilldown.test.ts
+  s_f54ac136724f7f::t_f37c34557df45f 1-201
+apps/api/src/features/qa/drilldown.ts
+  s_f54ac136724f7f::t_3769ef67ac39a9 1-155
+apps/api/src/features/qa/qa-api.test.ts
+  s_f54ac136724f7f::t_49c3b9edeb1aa5 13,346-368,370-372,378-379
+apps/api/src/features/qa/qa.routes.ts
+  s_f54ac136724f7f::t_25f8001111f6b0 17-18,22,33-34,55,96,100-103
+apps/api/src/features/qa/service.ts
+  s_f54ac136724f7f::t_0ad684f397cc3d 11,13-19,213-214,265-315
+apps/api/src/features/qa/task19b-qa-live-verify.ts
+  s_f54ac136724f7f::t_b156d0be946643 1-356
+apps/api/src/features/telemetry/read.routes.ts
+  s_f54ac136724f7f::t_b0229c2e8b9553 25,310-312
+apps/api/src/features/telemetry/task2-lifecycle-read.ts
+  s_f54ac136724f7f::t_e1fed511f40cb7 41,331-410
+docs/handoffs/Task19b-qa-live-code_HANDOFF.md
+  s_f54ac136724f7f::t_8c642938232911 1-44
+docs/plan/STATUS_BOARD.md
+  s_f54ac136724f7f::t_89405c6a440933 67,157
+docs/plan/TASK19.md
+  s_f54ac136724f7f::t_29aaca1ad6aeab 33,189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "81a5bca5939138c8fe9b17d70c1fe1053d47e94d",
+  "prompts": {},
+  "sessions": {
+    "s_f54ac136724f7f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14628-ccd4-7be2-9f05-1b05899a86ac",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
