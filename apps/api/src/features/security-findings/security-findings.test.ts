@@ -176,13 +176,20 @@ test('security storage schema is tenant-bound and contains metadata only', () =>
     'created_at', 'id', 'mode', 'revoked_at', 'tenant_id', 'updated_at',
     'updated_by', 'valid_until', 'version',
   ].sort());
+  // Task20d widened security_findings into a two-generation table: every
+  // Task6.a column keeps its name and its _task6a_check, and the v2-only
+  // columns carry Numbat-backed records under the frozen security-v2 contract.
   assert.deepEqual([...findingColumns].sort(), [
-    'activation', 'agent_family', 'availability', 'capture_channel', 'client_version',
-    'completeness', 'correlation_id', 'delivery_id', 'effect', 'finding_id', 'host_mode',
-    'host_surface', 'id', 'machine_id', 'native_effect', 'occurred_at', 'operating_system',
-    'phase', 'received_at', 'repository_id', 'result_category', 'route_id', 'rule_category',
-    'rule_id', 'rule_pack_version', 'rule_severity', 'rule_version', 'session_id',
-    'source_event_id', 'tenant_id', 'timing',
+    'activation', 'agent_family', 'availability', 'bundle_digest', 'capture_channel',
+    'client_version', 'completeness', 'confidence', 'correlation_id', 'delivery_id',
+    'detected_at', 'effect', 'finding_id', 'found_at_rest', 'host_mode', 'host_surface',
+    'id', 'lease_id', 'machine_id', 'model', 'model_provider', 'native_effect',
+    'numbat_schema_version', 'occurred_at', 'operating_system', 'parent_session_id',
+    'phase', 'received_at', 'record_generation', 'record_id', 'repository_id',
+    'repository_kind', 'result_category', 'route_id', 'rule_category', 'rule_id',
+    'rule_pack_version', 'rule_severity', 'rule_version', 'session_id', 'source_agent',
+    'source_event_id', 'source_type', 'sub_agent_id', 'tags', 'tenant_id',
+    'timing', 'title',
   ].sort());
   for (const column of findingColumns) {
     assert.equal(
@@ -193,7 +200,11 @@ test('security storage schema is tenant-bound and contains metadata only', () =>
   }
   assert.equal(settings.uniqueConstraints.length, 1);
   assert.equal(settings.checks.length >= 2, true);
-  assert.equal(findings.uniqueConstraints.length, 2);
+  // Task20d replaced the two whole-table Task6.a uniques with partial unique
+  // indexes scoped to record_generation = 'task6a' (plus one for v2) and added
+  // the shared (tenant_id, id) key the finding previews reference.
+  assert.equal(findings.uniqueConstraints.length, 1);
+  assert.equal(findings.indexes.length >= 3, true);
   assert.equal(findings.foreignKeys.length >= 3, true);
   assert.equal(findings.checks.length >= 8, true);
 });

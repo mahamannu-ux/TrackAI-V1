@@ -91,7 +91,7 @@ export interface SecurityFindingV2 {
   endpoint?: { hostname?: string; username?: string };
 }
 
-interface SecurityEnforcementV2Base {
+export interface SecurityEnforcementV2Base {
   kind: 'enforcement';
   record_id: SecurityRecordId;
   rule_ids: string[];

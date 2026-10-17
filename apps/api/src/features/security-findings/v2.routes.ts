@@ -26,6 +26,7 @@ import {
 } from './v2-contract';
 import type { SecurityV2Authority } from './v2-authority';
 import { unavailableSecurityV2Authority } from './v2-authority';
+import { persistSecurityV2Upload } from './v2-storage';
 
 const REQUEST_ID_HEADER = 'X-Request-ID';
 const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -108,6 +109,7 @@ export type SecurityV2Persist = (input: {
   machineId: string;
   upload: SecurityUploadV2;
   settings: SecurityDataSettingsV1 | null;
+  authority: SecurityV2Authority;
   receivedAt: Date;
 }) => Promise<SecurityV2RecordResult[]>;
 
@@ -142,11 +144,10 @@ export function createSecurityV2Router(
 ): Router {
   const resolved: SecurityV2RouterDependencies = {
     authority: dependencies.authority ?? unavailableSecurityV2Authority,
-    persist: dependencies.persist ?? (() => {
-      // Unreachable in production: the unavailable authority answers
-      // LEASE_REQUIRED before storage runs. Fail-closed, never a silent path.
-      return Promise.reject(new Error('not implemented (Task20d)'));
-    }),
+    // Production storage. The unavailable authority answers LEASE_REQUIRED
+    // before storage runs, so this stays unreachable until Task20f's lease
+    // store supplies a real authority.
+    persist: dependencies.persist ?? persistSecurityV2Upload,
     log: dependencies.log ?? defaultLog,
   };
   const router = Router();
@@ -221,6 +222,7 @@ async function handleRecords(
       machineId: req.machineId,
       upload,
       settings,
+      authority: dependencies.authority,
       receivedAt,
     });
     const counts = results.reduce<Record<string, number>>((acc, result) => {
