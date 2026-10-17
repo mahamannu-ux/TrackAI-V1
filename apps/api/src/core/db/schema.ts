@@ -559,42 +559,42 @@ export const securityFindings = pgTable('security_findings', {
   recordGenerationCheck: check('security_findings_record_generation_check',
     sql`${table.recordGeneration} in ('task6a', 'v2')`),
   ruleIdCheck: check('security_findings_rule_id_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.ruleId} in (
+    ${table.recordGeneration} <> 'task6a' or (${table.ruleId} is not null and ${table.ruleId} in (
     'trackai.exec.destructive_recursive_delete',
     'trackai.exec.download_pipe_shell',
     'trackai.exec.reverse_shell'
-  )`),
+  ))`),
   ruleCategoryCheck: check('security_findings_rule_category_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.ruleCategory} = 'execution'`),
+    ${table.recordGeneration} <> 'task6a' or (${table.ruleCategory} is not null and ${table.ruleCategory} = 'execution')`),
   ruleSeverityCheck: check('security_findings_rule_severity_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.ruleSeverity} in ('high', 'critical')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.ruleSeverity} is not null and ${table.ruleSeverity} in ('high', 'critical'))`),
   routeCheck: check('security_findings_route_task6a_check', sql`
     ${table.recordGeneration} <> 'task6a' or (
-    ${table.routeId} = 'AC-CLI-03'
-    and ${table.agentFamily} = 'opencode'
-    and ${table.hostSurface} = 'terminal'
-    and ${table.hostMode} = 'cli'
-    and ${table.captureChannel} = 'provider-plugin'
-    and ${table.nativeEffect} = 'observe_only'
+    ${table.routeId} is not null and ${table.routeId} = 'AC-CLI-03'
+    and ${table.agentFamily} is not null and ${table.agentFamily} = 'opencode'
+    and ${table.hostSurface} is not null and ${table.hostSurface} = 'terminal'
+    and ${table.hostMode} is not null and ${table.hostMode} = 'cli'
+    and ${table.captureChannel} is not null and ${table.captureChannel} = 'provider-plugin'
+    and ${table.nativeEffect} is not null and ${table.nativeEffect} = 'observe_only'
   )`),
   operatingSystemCheck: check('security_findings_operating_system_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.operatingSystem} in ('macos', 'linux', 'windows', 'wsl', 'unavailable')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.operatingSystem} is not null and ${table.operatingSystem} in ('macos', 'linux', 'windows', 'wsl', 'unavailable'))`),
   timingCheck: check('security_findings_timing_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.timing} in ('pre_action', 'post_action', 'at_rest', 'unavailable')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.timing} is not null and ${table.timing} in ('pre_action', 'post_action', 'at_rest', 'unavailable'))`),
   activationCheck: check('security_findings_activation_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.activation} in ('configured', 'loaded', 'observed', 'unavailable')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.activation} is not null and ${table.activation} in ('configured', 'loaded', 'observed', 'unavailable'))`),
   effectCheck: check('security_findings_effect_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.effect} = 'monitor'`),
+    ${table.recordGeneration} <> 'task6a' or (${table.effect} is not null and ${table.effect} = 'monitor')`),
   phaseCheck: check('security_findings_phase_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.phase} in ('requested', 'observed_result', 'partial', 'unavailable')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.phase} is not null and ${table.phase} in ('requested', 'observed_result', 'partial', 'unavailable'))`),
   availabilityCheck: check('security_findings_availability_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.availability} in ('available', 'unavailable', 'redacted', 'expired')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.availability} is not null and ${table.availability} in ('available', 'unavailable', 'redacted', 'expired'))`),
   completenessCheck: check('security_findings_completeness_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.completeness} in ('complete', 'partial')`),
+    ${table.recordGeneration} <> 'task6a' or (${table.completeness} is not null and ${table.completeness} in ('complete', 'partial'))`),
   resultCategoryCheck: check('security_findings_result_category_task6a_check', sql`
-    ${table.recordGeneration} <> 'task6a' or ${table.resultCategory} in (
+    ${table.recordGeneration} <> 'task6a' or (${table.resultCategory} is not null and ${table.resultCategory} in (
       'not_observed', 'success', 'failure', 'cancelled', 'unknown', 'unavailable'
-    )`),
+    ))`),
   boundedMetadataCheck: check('security_findings_bounded_metadata_task6a_check', sql`
     ${table.recordGeneration} <> 'task6a' or (
     ${table.repositoryId} is not null
@@ -632,7 +632,7 @@ export const securityFindings = pgTable('security_findings', {
     )
     and ${table.ruleCategory} = split_part(${table.ruleId}, '.', 1)
     and ${table.rulePackVersion} = 'bundle:' || substr(${table.bundleDigest}, 1, 16)
-    and ${table.effect} = 'monitor'
+    and ${table.effect} is not null and ${table.effect} = 'monitor'
     and (${table.tags} is null or jsonb_typeof(${table.tags}) = 'array')
     and (${table.sessionId} is null or (length(${table.sessionId}) between 1 and 128 and ${table.sessionId} ~ '^[^[:space:]]+$'))
     and (${table.parentSessionId} is null or (length(${table.parentSessionId}) between 1 and 128 and ${table.parentSessionId} ~ '^[^[:space:]]+$'))

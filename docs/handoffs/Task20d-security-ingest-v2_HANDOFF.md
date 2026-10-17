@@ -15,7 +15,7 @@ Task20d delivers the server ingest side of the frozen security-v2 contract: migr
 | Acceptance | Write-once replay returns `duplicate`; changed field returns `SECURITY_V2_RECORD_CONFLICT` | ✅ |
 | Acceptance | Indicators merge monotonically on `count` and `last_seen`; identity change conflicts | ✅ |
 | Acceptance | Finding previews envelope-encrypted (`encryptEnvelope`); plaintext absent from DB/logs | ✅ |
-| Quality | 1,115 unit tests pass, type check and lint clean | ✅ |
+| Quality | 1,117 unit tests pass, type check and lint clean | ✅ |
 | Integration | IT-T20d-01 (disposable DB live verify) passes; IT-T6-live and IT-T15h-live pass | 🟡 agent-verified · ⬜ founder run |
 | Review | Self-review & review fix rounds complete; ready for Codex migration review and Claude session review | 🟡 |
 
@@ -59,9 +59,9 @@ None (custom TrackAI ingest adhering to docs/contracts/security-v2).
 3. Migration 0025: reordered the `security_findings_tenant_id_id_key` unique constraint before `security_finding_previews` foreign key reference to satisfy PostgreSQL DDL dependency order.
 
 ## Review findings addressed
-1. **Finding 1 (Body parser & limit boundary):** The route applies Content-Length pre-check `bodyLimitGuard` (4 MiB) and its own `express.json({ limit: '4mb' })` with an error handler converting `entity.too.large` to RFC 7807 problem `413 SECURITY_V2_PAYLOAD_TOO_LARGE`. `app.ts` remains untouched per prompt §2.4.
-2. **Finding 2 (Authority lookup order):** In `v2.routes.ts`, `currentLease()` now evaluates before `currentDataSettings()`. If no active lease exists or the lookup fails, the request immediately terminates with 403 `SECURITY_V2_LEASE_REQUIRED` without reaching settings lookup or database access.
-3. **Finding 3 (Check constraint null rejection):** In `schema.ts` and migration `0025`, `security_findings_bounded_metadata_task6a_check` and `security_findings_v2_check` explicitly guard all mandatory columns with `IS NOT NULL`, ensuring PostgreSQL 3-valued check logic cannot pass rows with null required keys or bypass `(tenant_id, machine_id, record_id)` uniqueness.
+1. **Finding 1 (Body parser & admission boundary):** The v2 route mounts its credential check before any body parser and enforces the exact 4 MiB stream limit via `express.json({ limit: '4mb' })` with an RFC 7807 413 error handler. Unauthenticated requests are rejected 403 `SECURITY_V2_LEASE_REQUIRED` without reading or parsing request bodies. Under the full `app.ts` stack, `app.use(express.json({ limit: '5mb' }))` runs at the root before `/worker`; addressing this globally across all worker routes requires an explicit architectural decision on `app.ts` (e.g. moving the global parser to `/api` or behind route groups), which prompt §2.4 forbids for Task20d ("Never touch app.ts"). In the standalone v2 router mount, credential-before-parsing and the exact 4 MiB limit are strictly enforced and verified by unit tests.
+2. **Finding 2 (Authority lookup order):** In `v2.routes.ts`, `currentLease()` evaluates before `currentDataSettings()`. If no active lease exists or the lookup fails, the request immediately terminates with 403 `SECURITY_V2_LEASE_REQUIRED` without reaching settings lookup or database access.
+3. **Finding 3 (Check constraint null rejection):** In `schema.ts` and migration `0025`, all remaining Task6a check constraints (`rule_id`, `rule_category`, `rule_severity`, `route_id`, `agent_family`, `host_surface`, `host_mode`, `capture_channel`, `native_effect`, `operating_system`, `timing`, `activation`, `effect`, `phase`, `availability`, `completeness`, `result_category`) and the v2 check on `effect` explicitly enforce `IS NOT NULL`, closing the PostgreSQL 3-valued logic check bypass.
 
 ## Known limitations
 | Status | Limitation | Impact |

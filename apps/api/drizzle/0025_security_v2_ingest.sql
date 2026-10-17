@@ -266,42 +266,42 @@ CREATE UNIQUE INDEX "security_findings_tenant_finding_task6a_key" ON "security_f
 CREATE UNIQUE INDEX "security_findings_tenant_machine_record_v2_key" ON "security_findings" USING btree ("tenant_id","machine_id","record_id") WHERE "security_findings"."record_generation" = 'v2';--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_record_generation_check" CHECK ("security_findings"."record_generation" in ('task6a', 'v2'));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_rule_id_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."rule_id" in (
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."rule_id" is not null and "security_findings"."rule_id" in (
     'trackai.exec.destructive_recursive_delete',
     'trackai.exec.download_pipe_shell',
     'trackai.exec.reverse_shell'
-  ));--> statement-breakpoint
+  )));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_rule_category_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."rule_category" = 'execution');--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."rule_category" is not null and "security_findings"."rule_category" = 'execution'));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_rule_severity_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."rule_severity" in ('high', 'critical'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."rule_severity" is not null and "security_findings"."rule_severity" in ('high', 'critical')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_route_task6a_check" CHECK (
     "security_findings"."record_generation" <> 'task6a' or (
-    "security_findings"."route_id" = 'AC-CLI-03'
-    and "security_findings"."agent_family" = 'opencode'
-    and "security_findings"."host_surface" = 'terminal'
-    and "security_findings"."host_mode" = 'cli'
-    and "security_findings"."capture_channel" = 'provider-plugin'
-    and "security_findings"."native_effect" = 'observe_only'
+    "security_findings"."route_id" is not null and "security_findings"."route_id" = 'AC-CLI-03'
+    and "security_findings"."agent_family" is not null and "security_findings"."agent_family" = 'opencode'
+    and "security_findings"."host_surface" is not null and "security_findings"."host_surface" = 'terminal'
+    and "security_findings"."host_mode" is not null and "security_findings"."host_mode" = 'cli'
+    and "security_findings"."capture_channel" is not null and "security_findings"."capture_channel" = 'provider-plugin'
+    and "security_findings"."native_effect" is not null and "security_findings"."native_effect" = 'observe_only'
   ));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_operating_system_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."operating_system" in ('macos', 'linux', 'windows', 'wsl', 'unavailable'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."operating_system" is not null and "security_findings"."operating_system" in ('macos', 'linux', 'windows', 'wsl', 'unavailable')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_timing_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."timing" in ('pre_action', 'post_action', 'at_rest', 'unavailable'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."timing" is not null and "security_findings"."timing" in ('pre_action', 'post_action', 'at_rest', 'unavailable')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_activation_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."activation" in ('configured', 'loaded', 'observed', 'unavailable'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."activation" is not null and "security_findings"."activation" in ('configured', 'loaded', 'observed', 'unavailable')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_effect_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."effect" = 'monitor');--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."effect" is not null and "security_findings"."effect" = 'monitor'));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_phase_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."phase" in ('requested', 'observed_result', 'partial', 'unavailable'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."phase" is not null and "security_findings"."phase" in ('requested', 'observed_result', 'partial', 'unavailable')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_availability_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."availability" in ('available', 'unavailable', 'redacted', 'expired'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."availability" is not null and "security_findings"."availability" in ('available', 'unavailable', 'redacted', 'expired')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_completeness_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."completeness" in ('complete', 'partial'));--> statement-breakpoint
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."completeness" is not null and "security_findings"."completeness" in ('complete', 'partial')));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_result_category_task6a_check" CHECK (
-    "security_findings"."record_generation" <> 'task6a' or "security_findings"."result_category" in (
+    "security_findings"."record_generation" <> 'task6a' or ("security_findings"."result_category" is not null and "security_findings"."result_category" in (
       'not_observed', 'success', 'failure', 'cancelled', 'unknown', 'unavailable'
-    ));--> statement-breakpoint
+    )));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_bounded_metadata_task6a_check" CHECK (
     "security_findings"."record_generation" <> 'task6a' or (
     "security_findings"."repository_id" is not null
@@ -339,7 +339,7 @@ ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_v2_check" CHEC
     )
     and "security_findings"."rule_category" = split_part("security_findings"."rule_id", '.', 1)
     and "security_findings"."rule_pack_version" = 'bundle:' || substr("security_findings"."bundle_digest", 1, 16)
-    and "security_findings"."effect" = 'monitor'
+    and "security_findings"."effect" is not null and "security_findings"."effect" = 'monitor'
     and ("security_findings"."tags" is null or jsonb_typeof("security_findings"."tags") = 'array')
     and ("security_findings"."session_id" is null or (length("security_findings"."session_id") between 1 and 128 and "security_findings"."session_id" ~ '^[^[:space:]]+$'))
     and ("security_findings"."parent_session_id" is null or (length("security_findings"."parent_session_id") between 1 and 128 and "security_findings"."parent_session_id" ~ '^[^[:space:]]+$'))

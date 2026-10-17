@@ -243,7 +243,6 @@ async function main(): Promise<void> {
     };
 
     const app = express();
-    app.use(express.json({ limit: '1mb' }));
     app.use(
       '/worker/security',
       authenticateMachine,

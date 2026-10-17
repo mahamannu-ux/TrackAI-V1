@@ -570,6 +570,58 @@ describe('T20d ingest router', () => {
     assert.equal(settingsCalled, false);
     await bound.close();
   });
+
+  it('unauthenticated request with oversized/malformed body is refused before body parsing', async () => {
+    let persistCalled = false;
+    const app = express();
+    // Do not set managedMachineCredential to simulate unauthenticated request
+    app.use('/worker/security/v2', createSecurityV2Router({
+      authority: fakeAuthority(),
+      persist: async () => {
+        persistCalled = true;
+        return [];
+      },
+      log: () => {},
+    }));
+    const server = createServer(app);
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const url = `http://127.0.0.1:${address.port}/worker/security/v2/records`;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: 'malformed {{{ invalid json',
+      });
+      assert.equal(response.status, 403);
+      const problem = await response.json() as { code: string };
+      assert.equal(problem.code, 'SECURITY_V2_LEASE_REQUIRED');
+      assert.equal(persistCalled, false);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  it('authenticated chunked payload exceeding 4 MiB is refused with 413 RFC 7807 problem', async () => {
+    const bound = await listenRouter(
+      fakeAuthority(),
+      async () => assert.fail('must not persist'),
+      () => {},
+    );
+    // 4.5 MiB payload without Content-Length header or exceeding 4 MiB
+    const largePadding = 'x'.repeat(4.5 * 1024 * 1024);
+    const response = await fetch(bound.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ schema_version: 'trackai.security-upload/2', padding: largePadding }),
+    });
+    assert.equal(response.status, 413);
+    const problem = await response.json() as { code: string; type: string };
+    assert.equal(problem.code, 'SECURITY_V2_PAYLOAD_TOO_LARGE');
+    assert.equal(problem.type, 'https://trackai.dev/problems/SECURITY_V2_PAYLOAD_TOO_LARGE');
+    await bound.close();
+  });
 });
 
 function unavailableAuthority(): SecurityV2Authority {
