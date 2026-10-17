@@ -1,0 +1,19 @@
+apps/api/src/features/security-findings/v2.routes.ts
+  s_df10a58a9e9bbd::t_7fa159d23b7d01 1-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "a240e6f01957a4e706ce6ad2d905fc10af6e64ee",
+  "prompts": {},
+  "sessions": {
+    "s_df10a58a9e9bbd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_eb625df9effekW1zxEtBGbuHKn",
+        "model": "glm-5.3-flash-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
