@@ -14,10 +14,12 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import { requireAdminAction } from '../../core/middleware/admin';
 import { defaultAnswerers, type AnswererRegistry } from './answerers';
+import './answers/register-code';
+import type { QaContext } from './answers/common';
 import { defaultLog, logFailure, problemizeAuth, qaHttp, sendJson, sendProblem, type QaLog } from './http';
 import { QA_QUESTIONS, QA_REGISTRY_VERSION } from './registry';
 import {
-  QaProblem, answerQuestion, checkDrilldownRequest, describeQuestion, findQuestion, pgScopeStore,
+  QaProblem, answerDrilldown, answerQuestion, checkDrilldownRequest, describeQuestion, findQuestion, pgScopeStore,
   type QaScopeStore,
 } from './service';
 import type { QaRole } from './types';
@@ -28,6 +30,8 @@ export interface QaRouterDeps {
   scopes?: QaScopeStore;
   log?: QaLog;
   now?: () => Date;
+  /** Loads the Task2 context for drill-downs; tests inject a synthetic one. */
+  contextLoader?: (tenantId: string) => Promise<QaContext>;
 }
 
 interface Who { tenantId: string; role: QaRole }
@@ -48,6 +52,7 @@ export function createQaRouter(deps: QaRouterDeps = {}): Router {
   const scopes = deps.scopes ?? pgScopeStore;
   const log = deps.log ?? defaultLog;
   const now = deps.now ?? (() => new Date());
+  const contextLoader = deps.contextLoader;
 
   const router = Router();
   router.use(qaHttp);
@@ -88,11 +93,14 @@ export function createQaRouter(deps: QaRouterDeps = {}): Router {
     sendJson(res, envelope);
   }));
 
-  router.get('/questions/:id/drilldown', handle((req, _res, who) => {
+  router.get('/questions/:id/drilldown', handle(async (req, res, who) => {
     checkDrilldownRequest({
       tenantId: who.tenantId, role: who.role, questionId: idParam(req), query: query(req), now: now(),
     });
-    throw new QaProblem('QA_DRILLDOWN_NOT_BUILT');
+    const page = await answerDrilldown({ answerers, scopes, ...(contextLoader ? { contextLoader } : {}) }, {
+      tenantId: who.tenantId, role: who.role, questionId: idParam(req), query: query(req), now: now(),
+    });
+    sendJson(res, page);
   }));
 
   return router;

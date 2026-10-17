@@ -38,6 +38,7 @@ import {
   generationCoverageForScope,
   currentRetainedAiLines,
   isCommittedLineReworkEvidence,
+  lifecycleEvidenceForPullRequest,
   lifecycleEvidenceMatchesPullRequestScope,
 } from './lifecycle';
 
@@ -325,5 +326,85 @@ export function lifecycleForModel(context: Awaited<ReturnType<typeof loadContext
     },
     scope: { modelKey: key },
     evidence: { modelLifecycleEvents: rows.length, commitModelAttributions: committedAttributions.length },
+  };
+}
+
+function date(value: Date | null) {
+  return value?.toISOString() ?? null;
+}
+
+/**
+ * The `GET /pull-requests/:id/intelligence` body, moved unchanged out of
+ * read.routes.ts (Task19b commit 2; founder-approved exception) so Q14 reuses
+ * Task2's chain logic instead of copying it. Returns exactly the object the
+ * route sends today, or null when the PR is not found. The route keeps its 404
+ * and calls this function.
+ */
+export function pullRequestIntelligence(context: Awaited<ReturnType<typeof loadContext>>, pullRequestId: string) {
+  const pullRequest = context.pullRequests.find((row) => row.id === pullRequestId);
+  if (!pullRequest) return null;
+  const prLinks = context.pullRequestCommits.filter((row) => row.pullRequestId === pullRequest.id);
+  const memberships = context.memberships.filter((row) => row.pullRequestId === pullRequest.id);
+  const activeMemberships = memberships.filter((row) => row.active);
+  const commitIds = new Set((memberships.length > 0 ? activeMemberships : prLinks)
+    .map((row) => row.commitId));
+  const commits = context.commits.filter((row) => commitIds.has(row.id));
+  const mergeResult = pullRequest.mergeCommitSha
+    ? context.commits.find((row) => row.repositoryId === pullRequest.repositoryId
+      && row.sha === pullRequest.mergeCommitSha)
+    : null;
+  const sessionIds = new Set(context.commitSessions
+    .filter((row) => commitIds.has(row.commitId)).map((row) => row.sessionId));
+  const usage = context.usage.filter((row) => sessionIds.has(row.sessionId));
+  const costByUnit = Array.from(usage.reduce((map, row) => {
+    if (!row.costUnit || row.costAmount === null) return map;
+    map.set(row.costUnit, (map.get(row.costUnit) ?? 0) + Number(row.costAmount));
+    return map;
+  }, new Map<string, number>())).map(([unit, amount]) => ({ unit, amount }));
+  return {
+    pullRequest: { id: pullRequest.id, title: pullRequest.title, state: pullRequest.state,
+      mergeCommitSha: pullRequest.mergeCommitSha, mergedAt: date(pullRequest.mergedAt) },
+    mergeResult: mergeResult ? { id: mergeResult.id, sha: mergeResult.sha,
+      subject: mergeResult.subject, operationKind: mergeResult.operationKind } : null,
+    commits: commits.map((row) => ({ id: row.id, sha: row.sha, subject: row.subject,
+      match: prLinks.find((link) => link.commitId === row.id) })),
+    sessions: context.sessions.filter((row) => sessionIds.has(row.id)).map((row) => ({
+      id: row.id, externalSessionId: row.externalSessionId, agent: row.tool, models: row.observedModels,
+    })),
+    finalAiLines: currentRetainedAiLines(
+      commits.reduce((sum, row) => sum + audited(context.corrections, 'commit', row.id, 'observedAiLines', row.observedAiLines).auditedValue, 0),
+      context.lifecycleEvents.filter((row) => row.commitId !== null && commitIds.has(row.commitId)
+        && row.stage === 'reworked'),
+    ),
+    finalHumanLines: commits.reduce((sum, row) => sum + audited(context.corrections, 'commit', row.id, 'observedHumanLines', row.observedHumanLines).auditedValue, 0),
+    tokens: {
+      input: usage.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
+      output: usage.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0),
+      reasoning: usage.reduce((sum, row) => sum + (row.reasoningTokens ?? 0), 0),
+      cacheRead: usage.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0),
+      cacheWrite: usage.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0),
+    },
+    costByUnit,
+    membership: {
+      source: memberships.length > 0 ? 'github_pr_commits_api' : 'legacy_inference',
+      current: activeMemberships.length,
+      removedHistorical: memberships.filter((row) => !row.active).length,
+    },
+    lifecycle: calculateLifecycleSummary([
+      ...lifecycleEvidenceForPullRequest(
+        context.lifecycleEvents,
+        pullRequest.id,
+        commitIds,
+      ),
+      ...(pullRequest.state === 'open' ? [{
+        stage: 'in_pr',
+        lineCount: currentRetainedAiLines(
+          commits.reduce((sum, commit) => sum + commit.observedAiLines, 0),
+          context.lifecycleEvents.filter((row) => row.commitId !== null && commitIds.has(row.commitId)
+            && row.stage === 'reworked'),
+        ),
+        evidenceType: 'github_pr_commits_api_current_head',
+      }] : []),
+    ]),
   };
 }
