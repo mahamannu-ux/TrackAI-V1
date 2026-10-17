@@ -251,7 +251,7 @@ describe('audit read API: list filters', () => {
       assert.equal(body.events[0].severity, 'high');
       assert.equal(body.events[1].severity, 'notice');
       assert.equal(body.events[2].severity, 'info');
-      assert.ok(body.events.every(e => e.occurred_at.endsWith('Z') && e.catalog_version === 2));
+      assert.ok(body.events.every(e => e.occurred_at.endsWith('Z') && e.catalog_version === AUDIT_CATALOG_VERSION));
     } finally { await t.close(); }
   });
 
