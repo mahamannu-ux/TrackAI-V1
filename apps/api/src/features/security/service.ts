@@ -80,13 +80,9 @@ export interface CurrentSecuritySettings {
   bundle: CurrentBundle | null;
 }
 
-export async function readSecuritySettings(tenantId: string, options: { executor?: Executor; catalogue?: Catalogue; now?: Date } = {}): Promise<CurrentSecuritySettings> {
-  const catalogue = options.catalogue ?? pinnedCatalogue();
-  const tenant = withTenant((options.executor ?? db) as Database, tenantId);
-  const [rules] = await tenant.select(securityRuleSettingsVersions).orderBy(desc(securityRuleSettingsVersions.version)).limit(1);
-  const [data] = await tenant.select(securityDataSettingsVersions).orderBy(desc(securityDataSettingsVersions.version)).limit(1);
-  const [bundle] = await tenant.select(securityRuleBundles).orderBy(desc(securityRuleBundles.epoch)).limit(1);
-  const lease: LeaseSettings = data ? {
+/** The lease settings a stored lease-settings row holds (also read by lease-store.ts). */
+export function leaseSettingsFromRow(data: typeof securityDataSettingsVersions.$inferSelect): LeaseSettings {
+  return {
     data: {
       schema_version: 'trackai.security-data-settings/1',
       command_previews: data.commandPreviews,
@@ -97,7 +93,16 @@ export async function readSecuritySettings(tenantId: string, options: { executor
     },
     agents: validateAgents(data.agents),
     dayOneScan: data.dayOneScan,
-  } : defaultLeaseSettings();
+  };
+}
+
+export async function readSecuritySettings(tenantId: string, options: { executor?: Executor; catalogue?: Catalogue; now?: Date } = {}): Promise<CurrentSecuritySettings> {
+  const catalogue = options.catalogue ?? pinnedCatalogue();
+  const tenant = withTenant((options.executor ?? db) as Database, tenantId);
+  const [rules] = await tenant.select(securityRuleSettingsVersions).orderBy(desc(securityRuleSettingsVersions.version)).limit(1);
+  const [data] = await tenant.select(securityDataSettingsVersions).orderBy(desc(securityDataSettingsVersions.version)).limit(1);
+  const [bundle] = await tenant.select(securityRuleBundles).orderBy(desc(securityRuleBundles.epoch)).limit(1);
+  const lease = data ? leaseSettingsFromRow(data) : defaultLeaseSettings();
   return {
     ruleSettingsVersion: rules?.version ?? 0,
     rules: rules ? validateRuleSettings(rules.rules, catalogue) : defaultRuleSettings(catalogue),

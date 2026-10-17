@@ -38,6 +38,9 @@ const operator = (actorId: string, targetId: string, details: Record<string, unk
   ({ actorType: 'system_operator', actorId, targetId, details });
 const role = (actorType: AuditActorType, targetId: string, details: Record<string, unknown>): Fixture =>
   ({ actorType, actorId: ADMIN_SUB, targetId, details });
+/** A machine acting on itself (Task20f lease events): actor and default target are the machine. */
+const machine = (machineId: string, details: Record<string, unknown>): Fixture =>
+  ({ actorType: 'machine', actorId: machineId, targetId: machineId, details });
 
 const enrolled = admin(U1, {
   repositoryId: U2, effectiveFrom: ISO, generationSessionEvidenceFrom: ISO, commitNoteEvidenceFrom: ISO,
@@ -166,6 +169,13 @@ const FIXTURES: Record<string, Fixture> = {
     version: 2, epoch: 3, bundle_digest: HEX, rule_settings_version: 2, enabled_rule_count: 44, reason: 'tune',
   }),
   'security.monitor.changed': admin(TENANT, { mode: 'monitor', previous_mode: 'off', version: 2, reason: 'start' }),
+  'fleet.lease.issued': machine(U2, {
+    lease_id: U1, expires_at: '2026-10-20T12:00:00.000Z', mode: 'monitor', bundle_digest: HEX, epoch: 3,
+  }),
+  'fleet.lease.refused': machine(U2, { lease_id: U1, bundle_digest: HEX, refusal: 'EPOCH_REGRESSION' }),
+  'policy.bundle.acknowledged': { ...machine(U2, {
+    machine_id: U2, version: 2, epoch: 3, lease_id: U1, bundle_digest: HEX,
+  }), targetId: U1 },
 };
 
 function eventFor(action: string, fixture = FIXTURES[action]): AuditEvent {
@@ -187,8 +197,8 @@ function codeOf(fn: () => unknown): string | undefined {
 const emitted = AUDIT_CATALOG.filter(entry => entry.status === 'emitted');
 const reserved = AUDIT_CATALOG.filter(entry => entry.status === 'reserved');
 
-test('audit contract: 55 emitted actions, each validates as today\'s emitter writes it', () => {
-  assert.equal(emitted.length, 55);
+test('audit contract: 58 emitted actions, each validates as today\'s emitter writes it', () => {
+  assert.equal(emitted.length, 58);
   assert.deepEqual(Object.keys(FIXTURES).sort(), emitted.map(entry => entry.action).sort(), 'one fixture per emitted action');
   for (const entry of emitted) {
     const event = eventFor(entry.action);
@@ -228,8 +238,9 @@ test('audit contract: entries are well formed', () => {
 
 test('audit contract: severities match the founder-approved table (2026-10-15), plus Task16c audit.events.read and the four Task16e actions', () => {
   const by = (severity: string) => emitted.filter(entry => entry.severity === severity).length;
-  // Task20f adds three high actions (settings, bundle publish, monitor switch).
-  assert.deepEqual([by('high'), by('notice'), by('info')], [30, 12, 13]);
+  // Task20f adds four high actions (settings, bundle publish, monitor switch, lease issued)
+  // and two notice actions (lease refused, bundle acknowledged).
+  assert.deepEqual([by('high'), by('notice'), by('info')], [31, 14, 13]);
 });
 
 test('audit contract: each error code is raised', () => {
@@ -300,8 +311,7 @@ test('audit contract: error messages never carry a details value', () => {
 test('audit contract: every reserved action refuses', () => {
   // audit.events.read was reserved in Task16b and is emitted by Task16c (A16.6).
   const expected = [
-    'artifact.signed', 'attesta.anchor.failed', 'fleet.lease.issued', 'fleet.lease.refused',
-    'policy.bundle.acknowledged', 'policy.bundle.activated', 'security.finding.triaged',
+    'artifact.signed', 'attesta.anchor.failed', 'policy.bundle.activated', 'security.finding.triaged',
   ];
   assert.deepEqual(reserved.map(entry => entry.action).sort(), expected);
   for (const entry of reserved) {
@@ -399,8 +409,12 @@ test('audit contract: every action in the Task16a inventory is in the catalog, a
   // emitted by Task16c, so the catalog holds the inventory plus this one action.
   // Task16e adds four more (audit seals, the verify report and the signed export).
   const task16e = ['audit.trail.sealed', 'audit.trail.verified', 'audit.export.requested', 'audit.export.downloaded'];
-  // Task20f emits three of its stage-1 entries (security settings, bundle publish, monitor switch).
-  const task20f = ['security.settings.changed', 'policy.bundle.published', 'security.monitor.changed'];
+  // Task20f emits its six stage-1 entries (settings, bundle publish, monitor switch; part b:
+  // lease issued, lease refused, bundle acknowledged).
+  const task20f = [
+    'security.settings.changed', 'policy.bundle.published', 'security.monitor.changed',
+    'fleet.lease.issued', 'fleet.lease.refused', 'policy.bundle.acknowledged',
+  ];
   assert.deepEqual([...inventory, 'audit.events.read', ...task16e, ...task20f].sort(), emitted.map(entry => entry.action).sort());
 });
 

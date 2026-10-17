@@ -190,6 +190,7 @@ async function main(): Promise<void> {
   const envelope = await getFleetConfiguration(tenantA, machineA);
   if (!envelope
     || envelope.configurationId !== first.id
+    || envelope.schemaVersion === 3 // Task20f: v3 carries securityLease; this tenant has no v2 monitoring
     || envelope.securityActivation.mode !== 'monitor'
     || envelope.repositoryPolicies.length !== 1
     || envelope.verification.state !== 'unavailable') {

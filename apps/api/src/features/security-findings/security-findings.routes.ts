@@ -6,6 +6,10 @@ import {
 } from './storage-service';
 import { createSecurityActivationHandler } from './activation';
 import { createSecurityV2Router } from './v2.routes';
+import { createSecurityV2Authority } from '../security/authority';
+import { pgSecurityLeaseStore } from '../security/lease-store';
+import { createSecurityLeaseRouter } from '../security/lease.routes';
+import { securitySignerFromEnv } from '../security/signing-env';
 
 interface SecurityFindingRouteRequest {
   body: unknown;
@@ -95,6 +99,19 @@ export function createSecurityFindingsRouter(
   return router;
 }
 
-const securityFindingsRouter = createSecurityFindingsRouter();
+/**
+ * Production v2 wiring (Task20f, D5): the lease store backs both the authority that
+ * gates ingest and the lease, bundle and acknowledgement routes. Leases are signed with
+ * the platform activation_lease key, resolved per signature (fail-closed without one).
+ */
+function productionSecurityV2Dependencies(): Parameters<typeof createSecurityV2Router>[0] {
+  const store = pgSecurityLeaseStore();
+  return {
+    authority: createSecurityV2Authority(store),
+    leaseRoutes: createSecurityLeaseRouter({ store, signer: securitySignerFromEnv('activation_lease') }),
+  };
+}
+
+const securityFindingsRouter = createSecurityFindingsRouter({ v2Dependencies: productionSecurityV2Dependencies() });
 
 export default securityFindingsRouter;

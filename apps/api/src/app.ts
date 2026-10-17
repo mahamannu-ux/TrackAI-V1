@@ -20,6 +20,9 @@ import { tenantMiddleware } from './core/middleware/tenant';
 import { auditRouter } from './features/audit/audit.routes';
 import { qaRouter } from './features/qa/qa.routes';
 
+/** Routing is case-insensitive, so the parser skip is too. */
+const SECURITY_V2_PATH = /^\/worker\/security\/v2(?:\/|$)/i;
+
 type CreateAppOptions = {
   machineAuthentication?: RequestHandler;
 };
@@ -58,8 +61,11 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   // before the global JSON parser. GitHub may send JSON or form-encoded payloads.
   app.use('/api/v1/webhooks', express.raw({ type: '*/*', limit: '2mb' }), scmRouter);
 
-  // Parse regular application JSON after the raw webhook receiver.
-  app.use(express.json({ limit: '5mb' }));
+  // Parse regular application JSON after the raw webhook receiver. Security v2 is
+  // skipped (Task20d decision 3, Task20f D7): its router authenticates the machine,
+  // checks its 4 MiB limit and only then parses, so no unauthenticated body is read.
+  const jsonParser = express.json({ limit: '5mb' });
+  app.use((req, res, next) => (SECURITY_V2_PATH.test(req.path) ? next() : jsonParser(req, res, next)));
 
   // Native Git AI worker uploads share one tenant-bound machine-auth boundary.
   app.use('/worker', machineAuthentication);
