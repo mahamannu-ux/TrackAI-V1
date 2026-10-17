@@ -10,12 +10,9 @@ import {
 } from '../../core/db/schema';
 import {
   calculateLifecycleScopeTotals,
-  calculateLifecycleSummary,
   fallbackSessionName,
   generationEvidenceMetric,
-  currentRetainedAiLines,
   isCommittedLineReworkEvidence,
-  lifecycleEvidenceForPullRequest,
 } from './lifecycle';
 import { parseAuthorshipNote } from './authorship-note';
 import { evidenceFlowEnabled, loadOpenCodeEvidence } from './opencode-evidence';
@@ -25,6 +22,7 @@ import {
   lifecycleForModel,
   lifecycleForTenant,
   loadContext,
+  pullRequestIntelligence,
 } from './task2-lifecycle-read';
 
 const router = Router();
@@ -309,72 +307,9 @@ router.get('/pull-requests/:id/intelligence', async (req, res, next) => {
   const tenantId = tenant(req, res); if (!tenantId) return;
   try {
     const context = await loadContext(tenantId);
-    const pullRequest = context.pullRequests.find((row) => row.id === req.params.id);
-    if (!pullRequest) { res.status(404).json({ error: 'Pull request not found' }); return; }
-    const prLinks = context.pullRequestCommits.filter((row) => row.pullRequestId === pullRequest.id);
-    const memberships = context.memberships.filter((row) => row.pullRequestId === pullRequest.id);
-    const activeMemberships = memberships.filter((row) => row.active);
-    const commitIds = new Set((memberships.length > 0 ? activeMemberships : prLinks)
-      .map((row) => row.commitId));
-    const commits = context.commits.filter((row) => commitIds.has(row.id));
-    const mergeResult = pullRequest.mergeCommitSha
-      ? context.commits.find((row) => row.repositoryId === pullRequest.repositoryId
-        && row.sha === pullRequest.mergeCommitSha)
-      : null;
-    const sessionIds = new Set(context.commitSessions
-      .filter((row) => commitIds.has(row.commitId)).map((row) => row.sessionId));
-    const usage = context.usage.filter((row) => sessionIds.has(row.sessionId));
-    const costByUnit = Array.from(usage.reduce((map, row) => {
-      if (!row.costUnit || row.costAmount === null) return map;
-      map.set(row.costUnit, (map.get(row.costUnit) ?? 0) + Number(row.costAmount));
-      return map;
-    }, new Map<string, number>())).map(([unit, amount]) => ({ unit, amount }));
-    res.json({
-      pullRequest: { id: pullRequest.id, title: pullRequest.title, state: pullRequest.state,
-        mergeCommitSha: pullRequest.mergeCommitSha, mergedAt: date(pullRequest.mergedAt) },
-      mergeResult: mergeResult ? { id: mergeResult.id, sha: mergeResult.sha,
-        subject: mergeResult.subject, operationKind: mergeResult.operationKind } : null,
-      commits: commits.map((row) => ({ id: row.id, sha: row.sha, subject: row.subject,
-        match: prLinks.find((link) => link.commitId === row.id) })),
-      sessions: context.sessions.filter((row) => sessionIds.has(row.id)).map((row) => ({
-        id: row.id, externalSessionId: row.externalSessionId, agent: row.tool, models: row.observedModels,
-      })),
-      finalAiLines: currentRetainedAiLines(
-        commits.reduce((sum, row) => sum + audited(context.corrections, 'commit', row.id, 'observedAiLines', row.observedAiLines).auditedValue, 0),
-        context.lifecycleEvents.filter((row) => row.commitId !== null && commitIds.has(row.commitId)
-          && row.stage === 'reworked'),
-      ),
-      finalHumanLines: commits.reduce((sum, row) => sum + audited(context.corrections, 'commit', row.id, 'observedHumanLines', row.observedHumanLines).auditedValue, 0),
-      tokens: {
-        input: usage.reduce((sum, row) => sum + (row.inputTokens ?? 0), 0),
-        output: usage.reduce((sum, row) => sum + (row.outputTokens ?? 0), 0),
-        reasoning: usage.reduce((sum, row) => sum + (row.reasoningTokens ?? 0), 0),
-        cacheRead: usage.reduce((sum, row) => sum + (row.cacheReadTokens ?? 0), 0),
-        cacheWrite: usage.reduce((sum, row) => sum + (row.cacheWriteTokens ?? 0), 0),
-      },
-      costByUnit,
-      membership: {
-        source: memberships.length > 0 ? 'github_pr_commits_api' : 'legacy_inference',
-        current: activeMemberships.length,
-        removedHistorical: memberships.filter((row) => !row.active).length,
-      },
-      lifecycle: calculateLifecycleSummary([
-        ...lifecycleEvidenceForPullRequest(
-          context.lifecycleEvents,
-          pullRequest.id,
-          commitIds,
-        ),
-        ...(pullRequest.state === 'open' ? [{
-          stage: 'in_pr',
-          lineCount: currentRetainedAiLines(
-            commits.reduce((sum, commit) => sum + commit.observedAiLines, 0),
-            context.lifecycleEvents.filter((row) => row.commitId !== null && commitIds.has(row.commitId)
-              && row.stage === 'reworked'),
-          ),
-          evidenceType: 'github_pr_commits_api_current_head',
-        }] : []),
-      ]),
-    });
+    const intelligence = pullRequestIntelligence(context, req.params.id);
+    if (!intelligence) { res.status(404).json({ error: 'Pull request not found' }); return; }
+    res.json(intelligence);
   } catch (error) { next(error); }
 });
 

@@ -11,7 +11,7 @@ Freezes the TrackAI/Numbat security v2 wire contract, examples and TypeScript in
 |---|---|---|
 | Acceptance | seven upload kinds, settings, bundle, lease, fleet v3, acknowledgements, routes and safe errors | ✅ |
 | Scope | `docs/contracts/security-v2/**`, frozen TS interfaces/stubs and test entry | ✅ |
-| Quality | 41 focused contract tests; 1,061 repository tests; full check, lint and typecheck | ✅ |
+| Quality | 41 focused contract tests; 1,098 repository tests after merging main; full check, lint and typecheck | ✅ |
 | Integration | none: this Task has no database, network or executable Numbat boundary | ✅ not needed |
 | Review | independent review fixed five contract issues and two provenance issues | ✅ `ready to push` |
 
