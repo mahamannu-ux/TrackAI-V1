@@ -74,7 +74,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 9c | Task20c-endpoint-trust-verifier (T20.5; GitAI) | Muse (Codex, then Claude review) | about 0.15× | | Task20d merged (one Muse session at a time) | `docs/prompts/Task20/NEXT_CHAT_Task20c-endpoint-trust-verifier_PROMPT.md` |
 | 9d | Task20d-security-ingest-v2 (T20.7a; status and inventory storage) | Muse (Claude reviews; Codex the migration) | about 0.30× | | Task20b merged (one Muse session at a time) | `docs/prompts/Task20/NEXT_CHAT_Task20d-security-ingest-v2_PROMPT.md` |
 | 9e | Task20e-endpoint-shipper (T20.6a, T20.6b; GitAI) | Codex | about 0.32× | | Task20a and Task20b merged | written after Task20a |
-| 9f | Task20f-security-settings-signing (T20.8; fleet lease reference and retrieval routes) | Claude | about 0.30× | | Task20a merged | written after Task20a |
+| 9f | Task20f-security-settings-signing (T20.8; fleet lease reference and retrieval routes) | Claude | about 0.30× planned; 0.45× split into part a (about 0.25× actual) and part b | | Task20a merged | part a pushed on `task/Task20f-security-settings-signing`; part b prompt next |
 | 9g | Task20g-endpoint-policy-apply (T20.9; GitAI) | Codex | about 0.20× | | Task20c, Task20e, Task20f merged | written later |
 | 9h | Task20h-endpoint-package-install (T20.10, T20.12, T20.13; GitAI) | Codex + founder-live | about 0.35× | | Task20b, Task20g merged | written later |
 | 9i | Task20i-security-reads-console (T20.7b, T20.11, T20.12 views) | Claude design + Muse | about 0.33× | | Task20d, Task20f merged | written later |
@@ -158,7 +158,7 @@ Integration tests prove what only real infrastructure can. They are founder-owne
 | IT-T20b-01 | Task20b | Reproducible Numbat build at the pin; Numbat's own tests pass | GitAI `packaging/numbat/` | Blocking: Task20b merge | ⬜ planned (`TASK20.md` §7) |
 | IT-T20d-01 | Task20d | Ingest v2 on real PostgreSQL: every upload kind, data-settings refusal, replay, Task6.a rows readable, Attesta builder query, Company A/B | `features/security-findings/task20d-ingest-live-verify.ts` | Blocking: Task20d merge | 🟡 agent-verified 2026-10-17 via `scripts/it-db.sh` · ⬜ founder run |
 | IT-T20e-01 | Task20e | Real Numbat records → Endpoint shipper → local API; restart and rotation lose nothing | GitAI tests + `scripts/it-db.sh` | Blocking: Task20e merge | ⬜ planned |
-| IT-T20f-01 | Task20f | Settings → signed bundle and lease (dev signer) → `verifyTrusted`; tampering rejected; audit; Company A/B | `features/security/task20f-signing-live-verify.ts` | Blocking: Task20f merge | ⬜ planned |
+| IT-T20f-01 | Task20f | Settings → signed bundle and lease (dev signer) → `verifyTrusted`; tampering rejected; audit; Company A/B | `features/security/task20f-signing-live-verify.ts` | Blocking: Task20f merge | 🟡 part a (settings, publish, signed bundle, epochs, append-only, A/B) agent-verified 2026-10-17; part b adds leases, routes, ingest |
 | IT-T20f-02 | Task20f, Task15n | Bundle and lease signed with the platform KMS keys | Task15n keys | Blocking: first customer build | ⬜ planned |
 | IT-T20g-01 | Task20g | Intel Mac: bad, expired, replayed bundle or lease never activates; off uploads nothing | founder's Mac | Blocking: Task20g merge | ⬜ planned |
 | IT-T20h-01 | Task20h | Intel Mac: PKG installs Numbat and managed hooks, health check green, offboarding removes them | founder's Mac | Blocking: Task20h merge | ⬜ planned |
