@@ -50,6 +50,20 @@ current data settings. It refuses rather than strips anything not permitted.
 No valid, unexpired lease for this credential refuses the whole upload with
 `SECURITY_V2_LEASE_REQUIRED`.
 
+The upload needs a current valid lease for the credential. An
+authorization-bearing record's `lease_id` may name any verified lease issued to
+this machine, not only the current lease, and its activity time must be at or
+after `issued_at` and before `expires_at`. In upload v2 this check
+applies to a finding's `detected_at`; `security_status.lease_id` is health state,
+not authorization. A future additive kind carrying lease provenance uses its
+`timestamp` or `observed_at`, as applicable. A record outside its named lease's
+machine or time window is rejected with `SECURITY_V2_LEASE_MISMATCH`.
+
+If a record is rejected with `SECURITY_V2_FIELD_NOT_PERMITTED` because a data
+setting was switched off after detection, the Endpoint projects it again under
+the current settings and resubmits it with the same `record_id`. The rejected
+record was not stored, so the resubmission is not a conflict.
+
 ### Idempotency and indicator upserts
 
 The server idempotency key is `(tenant_id, machine_id, record_id)` for every

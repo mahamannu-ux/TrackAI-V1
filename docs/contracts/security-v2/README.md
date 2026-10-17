@@ -85,6 +85,17 @@ retries. The server's idempotency key is
 `(tenant_id, machine_id, record_id)` for every kind; neither identity is added to
 the body or to `record_id`.
 
+An upload needs a current valid lease for its machine credential. An
+authorization-bearing record's `lease_id` may name any verified lease issued to
+that machine, not only its current lease, provided the record's activity time
+is at or after `issued_at` and before `expires_at`. In upload
+v2 this historical provenance check applies to findings (`detected_at`);
+`security_status.lease_id` reports observed health rather than authorizing that
+snapshot. For kinds that gain lease provenance additively, activity time is
+their `timestamp` or `observed_at`, as applicable. A missing machine binding or
+activity time outside the named lease window is rejected with
+`SECURITY_V2_LEASE_MISMATCH`.
+
 Every kind except `indicator` is write-once: identical replay is `duplicate`,
 while reuse with changed content is rejected. Indicators are monotonic upserts,
 as Numbat requires (`numbat@20a5a52:docs/cli.md:192-194`): the same ID with a
@@ -247,6 +258,10 @@ The full versioned data-settings object is embedded in every activation lease.
 The server re-checks each record against the tenant's current settings. It
 refuses a record containing a disallowed field with
 `SECURITY_V2_FIELD_NOT_PERMITTED`; it never silently strips the field.
+If the CISO disabled a setting after a record was detected, the Endpoint
+projects the rejected source record again under the current settings and
+resubmits it with the same `record_id`. Because the rejected record was not
+stored, that resubmission is not a record conflict.
 
 ## Rule bundle and activation lease
 

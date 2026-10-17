@@ -33,6 +33,7 @@ Schemas: `security-upload/2`, `security-data-settings/1`, `security-rule-bundle/
 3. An unavailable permission join needs neither tool-call nor session ID; inventory uses explicit four-state fields and nullable version.
 4. Bundle epoch is monotonic per tenant. Lease bundle digest must match the applied bundle. Both checks fail closed.
 5. A refused acknowledgement uses the frozen refusal-code enum; future codes are additive only.
+6. Upload requires a current lease, but a queued finding may retain any lease issued to that machine when `detected_at` falls within its validity window; a mismatch is a safe per-record refusal. A settings refusal is reprojected under current settings and retried with the same unstored record ID.
 
 ## Deviations from spec
 1. Numbat testdata NDJSON contains the real `cat .env` artifact action but cannot contain hook-only enforcement. The paired finding/enforcement fixtures are deterministic privacy-reduced reconstructions of pinned `TestHookWritesFindingToFileSinkNotStdout`; exact source IDs and joins are reproduced and tested. `NOTICE.md` states this boundary.
@@ -56,7 +57,7 @@ Every valid/invalid manifest case is schema-checked; all object schemas are clos
 | none | Contract-only session | non-blocking | ✅ not applicable |
 
 ## Integration notes
-Task20d must derive tenant/machine only from credentials, implement write-once versus indicator-upsert semantics, settings refusal, safe per-record results, reads and isolation. Task20e must preserve Numbat IDs before minimization and never queue disabled fields. Task20f must sign exact bytes, enforce tenant epoch and bundle digest, issue 72-hour leases refreshed hourly, expose credential-bound retrieval, persist acknowledgements and widen fleet configuration storage to v3.
+Task20d must derive tenant/machine only from credentials, validate historical finding leases against machine and activity window, implement write-once versus indicator-upsert semantics, settings refusal, safe per-record results, reads and isolation. Task20e must preserve Numbat IDs before minimization, reproject settings refusals under the current lease settings and never queue disabled fields. Task20f must sign exact bytes, retain issued leases for provenance checks, enforce tenant epoch and bundle digest, issue 72-hour leases refreshed hourly, expose credential-bound retrieval, persist acknowledgements and widen fleet configuration storage to v3.
 
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Agent turns | Wall-clock |

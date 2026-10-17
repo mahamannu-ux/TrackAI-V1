@@ -30,6 +30,7 @@ value, validation path, or implementation message.
 | `SECURITY_V2_UNKNOWN_FIELD` | 400 | Security request contains an unknown field | Any closed object contains a field outside its allowlist. |
 | `SECURITY_V2_FIELD_NOT_PERMITTED` | 403 | Security field is not permitted | A record carries a field or indicator kind disabled by current tenant data settings. |
 | `SECURITY_V2_LEASE_REQUIRED` | 403 | A valid security lease is required | Upload credential has no verified, unexpired, applicable lease. |
+| `SECURITY_V2_LEASE_MISMATCH` | 403 | Security record does not match its lease | A record names a lease not issued to its machine, or its activity time is outside that lease's validity window. |
 | `SECURITY_V2_PAYLOAD_TOO_LARGE` | 413 | Security payload is too large | Request body, decoded bundle, or decoded rule file exceeds its fixed limit. |
 | `SECURITY_V2_RECORD_CONFLICT` | 409 | Security record conflicts with prior state | A write-once ID changes content or an indicator update is not monotonic. |
 | `SECURITY_V2_NOT_FOUND` | 404 | Security resource was not found | Bundle/lease lookup is absent or belongs to another tenant or machine. |
