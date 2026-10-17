@@ -1,0 +1,25 @@
+apps/api/drizzle/0025_security_v2_ingest.sql
+  s_df10a58a9e9bbd::t_93f3df5b8fdcbc 1-372
+apps/api/drizzle/meta/0025_snapshot.json
+  s_df10a58a9e9bbd::t_795ccbdec75116 1-12082
+apps/api/drizzle/meta/_journal.json
+  s_df10a58a9e9bbd::t_ea4073a3573020 179-185
+apps/api/src/core/db/schema.ts
+  s_df10a58a9e9bbd::t_ec99ff957187c0 473-481,486-487,492,496-533,535-544,559-562,567-572,579-595,597-599,608-761,765-908
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "967b30d09aa7d903778df7948dacd3188ee5e8a3",
+  "prompts": {},
+  "sessions": {
+    "s_df10a58a9e9bbd": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_eb625df9effekW1zxEtBGbuHKn",
+        "model": "glm-5.3-flash-free"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
