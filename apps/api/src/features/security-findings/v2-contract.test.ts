@@ -16,6 +16,10 @@ const CONTRACT_DIR = join(__dirname, '../../../../../docs/contracts/security-v2'
 const FIXTURE_DIR = join(CONTRACT_DIR, 'fixtures');
 const REPOSITORY_DIR = resolve(CONTRACT_DIR, '../../..');
 const NUMBAT_DIR = join(dirname(dirname(REPOSITORY_DIR)), 'numbat');
+const REPLAY_RUN_ID = 'run-20261017T100000.000000000-0123456789abcdef';
+const REPLAY_EVENT_ID = `hook-${REPLAY_RUN_ID}`;
+const REPLAY_FINDING_ID = 'fnd-49e7e870ff96953b2b8e5dd3';
+const REPLAY_ENFORCEMENT_ID = 'enf-8f62f739638bc81b28547bc9';
 const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
 
 interface ManifestCase {
@@ -167,8 +171,8 @@ test('T20a security v2: upload kinds each have valid and invalid coverage', () =
 
 test('T20a security v2: valid upload record IDs use the frozen preimage', () => {
   const sourceKeys: Record<string, string[]> = {
-    finding: ['fnd-65b142e7f953cd8cbbea3c8d'],
-    enforcement: ['enf-9bb4594ebea86e95f2c93163'],
+    finding: [REPLAY_FINDING_ID],
+    enforcement: [REPLAY_ENFORCEMENT_ID],
     indicator: ['run-placeholder', 'domain', 'example.invalid'],
     scan_summary: ['scan-placeholder'],
     permission_event: ['permission-placeholder'],
@@ -190,16 +194,45 @@ test('T20a security v2: valid upload record IDs use the frozen preimage', () => 
 
 test('T20a security v2: adapted source IDs reproduce pinned Numbat algorithms', () => {
   const findingHash = createHash('sha256');
-  for (const part of ['secrets.agent_read_env', '1.3', 'e1']) {
+  for (const part of ['secrets.agent_read_env', '1.3', REPLAY_EVENT_ID]) {
     const bytes = Buffer.from(part, 'utf8');
     const length = Buffer.alloc(8);
     length.writeBigUInt64BE(BigInt(bytes.length));
     findingHash.update(length).update(bytes);
   }
-  assert.equal(`fnd-${findingHash.digest('hex').slice(0, 24)}`, 'fnd-65b142e7f953cd8cbbea3c8d');
+  assert.equal(`fnd-${findingHash.digest('hex').slice(0, 24)}`, REPLAY_FINDING_ID);
 
-  const decisionHash = createHash('sha256').update('run-placeholder\0e1', 'utf8').digest('hex');
-  assert.equal(`enf-${decisionHash.slice(0, 24)}`, 'enf-9bb4594ebea86e95f2c93163');
+  const decisionHash = createHash('sha256')
+    .update(`${REPLAY_RUN_ID}\0${REPLAY_EVENT_ID}`, 'utf8')
+    .digest('hex');
+  assert.equal(`enf-${decisionHash.slice(0, 24)}`, REPLAY_ENFORCEMENT_ID);
+
+  const findingUpload = readJson(join(FIXTURE_DIR, 'valid-finding.json')) as {
+    records: Array<{ record_id: string; source_agent: string; source_type: string }>;
+  };
+  const enforcementUpload = readJson(join(FIXTURE_DIR, 'valid-enforcement.json')) as {
+    records: Array<{ finding_record_ids: string[]; source_agent: string }>;
+  };
+  assert.equal(findingUpload.records[0].source_agent, 'codex');
+  assert.equal(findingUpload.records[0].source_type, 'hook');
+  assert.equal(enforcementUpload.records[0].source_agent, 'codex');
+  assert.deepEqual(
+    enforcementUpload.records[0].finding_record_ids,
+    [findingUpload.records[0].record_id],
+  );
+});
+
+test('T20a security v2: replay preserves the pinned persisted-hook relationship', {
+  skip: !existsSync(join(NUMBAT_DIR, 'cmd/numbat/hook_test.go')),
+}, () => {
+  const hookTest = readFileSync(join(NUMBAT_DIR, 'cmd/numbat/hook_test.go'), 'utf8');
+  const hookSource = readFileSync(join(NUMBAT_DIR, 'cmd/numbat/hook.go'), 'utf8');
+  assert.match(hookTest, /func TestHookWritesFindingToFileSinkNotStdout/);
+  assert.ok(hookTest.includes('"tool_name":"Bash","tool_input":{"command":"cat .env"}'));
+  assert.match(hookTest, /decision\.FindingIDs, \[\]string\{f\.FindingID\}/);
+  assert.match(hookTest, /decision\.ActionEventIDs, f\.CitedEventIDs/);
+  assert.match(hookSource, /events := hook\.MapEvents\(lc, agent, sourceAgent, hookEventID\(run\), payload\)/);
+  assert.match(hookSource, /return "hook-" \+ run/);
 });
 
 test('T20a security v2: valid bundle file digest matches decoded content', () => {
@@ -238,6 +271,9 @@ test('T20a security v2: adapted fixture notice records source, pin, and license'
   assert.match(notice, /20a5a52/);
   assert.match(notice, /Apache License 2\.0/);
   assert.match(notice, /secrets_fixture\.ndjson/);
+  assert.match(notice, /enforcement is hook-only/);
+  assert.match(notice, new RegExp(REPLAY_FINDING_ID));
+  assert.match(notice, new RegExp(REPLAY_ENFORCEMENT_ID));
 });
 
 test('T20a security v2: Task20d validation stubs fail closed', () => {

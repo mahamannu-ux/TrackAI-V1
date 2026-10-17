@@ -1,13 +1,13 @@
 {
   "schemaVersion": "trackai.security-v2-contract-fixtures/1",
   "cases": [
-    { "file": "valid-finding.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Finding projected from Numbat secrets_fixture event e1 and its secrets.agent_read_env match." },
+    { "file": "valid-finding.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Finding projected from a deterministic replay of Numbat's persisted Codex hook test for the cat .env action." },
     { "file": "invalid-finding-tool-input.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Finding refuses forbidden tool_input." },
     { "file": "invalid-finding-evidence-refs.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Finding refuses forbidden evidence_refs." },
     { "file": "invalid-finding-project-path-hash.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Finding refuses forbidden project_path_hash." },
     { "file": "invalid-finding-endpoint-uid.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Finding endpoint refuses forbidden endpoint.uid." },
 
-    { "file": "valid-enforcement.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Enforcement projected from Numbat hook deny output for the same cat .env action." },
+    { "file": "valid-enforcement.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Enforcement projected from the same replayed hook record pair and joined to its finding." },
     { "file": "invalid-enforcement-tool-result.json", "schema": "../security-upload-v2.schema.json", "expectedValid": false, "rationale": "Enforcement refuses forbidden tool_result." },
 
     { "file": "valid-indicator.json", "schema": "../security-upload-v2.schema.json", "expectedValid": true, "rationale": "Indicator accepts the bounded Numbat projection." },
