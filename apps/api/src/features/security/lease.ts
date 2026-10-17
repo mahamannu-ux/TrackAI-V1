@@ -183,7 +183,12 @@ export async function currentOrIssueLease(input: {
     envelope: signed.envelopeBytes,
     keyid: signed.keyid,
   };
-  return store.insertLease(tenantId, lease, bundle.epoch, latest => leaseIsReusable(latest, state, now));
+  // Under the per-machine lock, serve what another fetch stored meanwhile when it is
+  // reusable, newer, or issued under newer settings: a fetch that read the state before an
+  // `off` switch must never become the newest lease after it (independent review, part b).
+  return store.insertLease(tenantId, lease, bundle.epoch, (latest: StoredLease | null) => latest !== null
+    && (latest.issuedAt.getTime() > now.getTime() || latest.dataSettingsVersion > state.dataSettingsVersion
+      || leaseIsReusable(latest, state, now)));
 }
 
 export interface SecurityAcknowledgementV1Input {

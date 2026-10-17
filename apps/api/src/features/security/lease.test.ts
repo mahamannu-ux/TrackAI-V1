@@ -141,6 +141,32 @@ test('lease: reused under 1 h for the same bundle and settings; reissued after 1
   assert.deepEqual(store.audit.filter(row => row.action === 'fleet.lease.issued').map(row => row.details.epoch), [1, 1, 2, 2]);
 });
 
+test('lease: concurrent first fetches store one lease and one audit row; a stale fetch never outranks an off switch', async () => {
+  const { store } = world();
+  const [first, second] = await Promise.all([issue(store, COMPANY_A, MACHINE_X, T0), issue(store, COMPANY_A, MACHINE_X, T0)]);
+  assert.equal(first.id, second.id);
+  assert.equal(store.tenants.get(COMPANY_A)!.leases.length, 1);
+  assert.equal(store.audit.filter(row => row.action === 'fleet.lease.issued').length, 1);
+
+  // A fetch that read "monitor" before the switch finishes after an off lease was stored: it serves the off lease.
+  const stale = world();
+  const realState = stale.store.issuanceState.bind(stale.store);
+  let release!: () => void;
+  const gate = new Promise<void>(done => { release = done; });
+  stale.store.issuanceState = async tenantId => { const state = await realState(tenantId); await gate; return state; };
+  const t2 = new Date(T0.getTime() + 1_000);
+  const slow = issue(stale.store, COMPANY_A, MACHINE_X, t2);
+  await new Promise(done => setImmediate(done));
+  stale.store.issuanceState = realState;
+  stale.store.setData(COMPANY_A, 'off');
+  const off = await issue(stale.store, COMPANY_A, MACHINE_X, T0);
+  release();
+  const served = await slow;
+  assert.equal(off.mode, 'off');
+  assert.equal(served.id, off.id, 'the stale monitor lease is not stored');
+  assert.equal(stale.store.tenants.get(COMPANY_A)!.leases.length, 1);
+});
+
 test('lease: an off lease carries no agents and validates; no bundle or an inactive machine gets nothing', async () => {
   const off = world({ monitor: false });
   const lease = await issue(off.store, COMPANY_A, MACHINE_X, T0);
@@ -420,9 +446,16 @@ test('authority and ingest: records accepted under an issued lease; case 8: expi
     // ...but it stays provenance for a past finding.
     assert.equal((await authority.leaseForMachine(COMPANY_A, MACHINE_X, String(leaseX.lease_id)))?.leaseId, leaseX.lease_id);
 
-    // Off: monitoring switched off; the next fetch issues an off lease, and the older monitor lease never revives.
+    // Off: monitoring switched off stops ingest at once, before the Endpoint fetches its off lease.
     clock = new Date(T0.getTime() + 2 * 3_600_000);
+    store.setData(COMPANY_A, 'monitor', { agents: ['claude-code', 'codex'] });
+    const fresh = decode(Buffer.from(await (await getLease(h, COMPANY_A, MACHINE_X)).arrayBuffer())).payload;
+    assert.ok(await authority.currentLease(COMPANY_A, MACHINE_X, clock));
     store.setData(COMPANY_A, 'off');
+    assert.equal(await authority.currentLease(COMPANY_A, MACHINE_X, clock), null, 'the switch wins over a valid monitor lease');
+    answer = await problem(await upload(h, COMPANY_A, MACHINE_X, [finding(String(fresh.lease_id), clock)]));
+    assert.deepEqual([answer.status, answer.code], [403, 'SECURITY_V2_LEASE_REQUIRED']);
+    // The next fetch issues an off lease, and the older monitor lease never revives.
     const offLease = decode(Buffer.from(await (await getLease(h, COMPANY_A, MACHINE_X)).arrayBuffer())).payload;
     assert.equal(offLease.mode, 'off');
     assert.equal(await authority.currentLease(COMPANY_A, MACHINE_X, clock), null);

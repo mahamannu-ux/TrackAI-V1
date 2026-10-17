@@ -17,7 +17,7 @@ Branch `task/Task20f-security-settings-signing` (base `main` at `67af037`; merge
 | 14 | Admin API `GET`/`PUT /api/admin/security/settings` | ✅ |
 | Quality | `npm test` and `npm run check` pass (see Test coverage) | ✅ |
 | Integration | IT-T20f-01 parts a and b passed in the agent sandbox; Task20d and Task9 live verifies rerun and pass | 🟡 founder run |
-| Review | Independent review subagent (part a: 1 must-fix, 4 should-fix; part b: see Deviations); Codex cross-review next | 🟡 |
+| Review | Independent review subagent: part a 1 must-fix + 4 should-fix, part b 1 must-fix + 4 should-fix, all fixed (Deviations 7–8); Codex cross-review next | 🟡 |
 
 ## Implemented interfaces
 ```text
@@ -51,12 +51,13 @@ Tables: security_rule_settings_versions, security_data_settings_versions (holds 
 5. `0026`'s snapshot absorbs Task20d's `0025` snapshot drift (checked statement by statement).
 6. The catalogue is read from the source tree (`tsc` copies no YAML).
 7. **Part b:** one line in `features/fleet/task9-fleet-live-verify.ts` (not pre-approved) narrows the envelope type for v3; behaviour unchanged. Fleet v3 with signing unavailable answers `503 fleet_unavailable` (a no-lease case answers `409 state_conflict` as D6 says). No new migration. The v2 router's error handler now maps a JSON parse failure to `400 SECURITY_V2_INVALID_BODY` (it answered `500`): after D7 its parser is the only one, so the fix belongs with the parser skip.
+8. **Part b review fixes:** every 4xx body-parser error is `400 SECURITY_V2_INVALID_BODY`; a lease fetch that read the state before an `off` switch serves the newer stored lease instead of inserting a stale monitor lease; `currentLease` also returns null while the tenant's current switch is `off`, so ingest stops at once rather than at the Endpoint's next refresh (a tightening of D5); concurrency is tested in-memory and in IT-T20f-01.
 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
 | 🟡 | Both Attesta signers cap a payload at 1 MiB (the contract allows 4 MiB); overriding about 11 of the largest rules exceeds it and publish answers `413` with nothing written | Task15 owner to raise the caps |
-| 🟡 | Two concurrent first fetches for one machine can each sign; the second insert re-checks under a per-machine lock and serves the first, so only one row is stored (a wasted signature) | none |
+| 🟡 | Two concurrent first fetches for one machine can each sign; the insert re-checks under a per-machine lock and serves the stored lease, so one row is kept (a wasted signature) | none |
 
 ## Test coverage
 - **Part a:** catalogue, compiler golden bytes, signing and `verifyTrusted`, admin guards and problems (see the previous handoff revision in git).
@@ -78,7 +79,7 @@ Whole Task20f: estimate about 0.30× T6, re-estimated 0.45× and split; actual a
 - **D2 Compiler:** an override only for a rule that differs from upstream: upstream bytes, a `# Modified by TrackAI (Task20f) …; Apache-2.0` first line, and the `enabled:`, `severity:`, `version: "<upstream>-trackai.<n>"` lines replaced as text; an identity override when nothing differs; all five agent folders identical; `compiler_version` `task20f.1`.
 - **D3 Signing:** RFC 8785 payload bytes, DSSE through `signVerified`; production keys from the trust inventory per signature, dev keys from `SECURITY_*_CREDENTIAL_ID` + `SECURITY_DEV_*_KEY_FILE`; no key fails closed; never inside a transaction.
 - **D4 Publish and lease:** publish is dry-run first, then compile and sign, then one transaction under the tenant lock; a lease is reused while under 1 h old, unexpired and matching the current bundle digest, data-settings version and mode, otherwise signed, stored and audited.
-- **D5 Authority:** `currentLease` = the newest lease only while not `off` and in its window; `leaseForMachine` = any non-`off` lease of that machine; `currentDataSettings` = the newest row or null.
+- **D5 Authority:** `currentLease` = the newest lease only while not `off`, in its window, and while the tenant's current switch is not `off`; `leaseForMachine` = any non-`off` lease of that machine; `currentDataSettings` = the newest row or null.
 - **D6 Fleet v3:** a v2 configuration created while v2 monitoring is on is stored as version 3; `securityLease` is resolved per fetch; no lease → `409 state_conflict`.
 - **D7 `app.ts`:** the global parser skips `/worker/security/v2`, so the v2 router authenticates and enforces 4 MiB before parsing.
 - **D8 Admin API:** `security_findings.read` for GET, `security.settings.manage` for PUT; AP-1, `no-store`, audited.

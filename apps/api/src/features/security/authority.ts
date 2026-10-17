@@ -15,11 +15,14 @@ export function createSecurityV2Authority(store: SecurityLeaseStore): SecurityV2
     /**
      * Only the machine's newest lease counts, and only while it is not `off` and
      * `issued_at <= now < expires_at`: an older monitor lease never revives after an
-     * `off` lease has been issued.
+     * `off` lease has been issued. The tenant's current switch is checked too, so turning
+     * monitoring off stops ingest at once, not only at the Endpoint's next refresh
+     * (the server is authoritative; independent review, part b).
      */
     async currentLease(tenantId, machineId, now) {
       const newest = await store.newestLease(tenantId, machineId);
       if (!newest || newest.mode === 'off') return null;
+      if ((await store.issuanceState(tenantId)).monitorMode === 'off') return null;
       if (now.getTime() < newest.issuedAt.getTime() || now.getTime() >= newest.expiresAt.getTime()) return null;
       return view(newest);
     },

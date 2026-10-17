@@ -287,7 +287,12 @@ async function main(): Promise<void> {
     const bundle3 = third.body.bundle as { digest: string; epoch: number };
 
     // 11. GET /lease (X): issued lazily, exact stored bytes, signed and verified, bound to the current bundle.
-    const leaseResponse = await machineCall(base, X.credential, 'GET', '/lease');
+    // Two concurrent first fetches: one stored lease (the per-machine lock), the same bytes to both.
+    const [leaseResponse, concurrent] = await Promise.all([
+      machineCall(base, X.credential, 'GET', '/lease'), machineCall(base, X.credential, 'GET', '/lease'),
+    ]);
+    assert.ok(concurrent.bytes.equals(leaseResponse.bytes), 'concurrent fetches share one lease');
+    assert.equal((await db.select().from(securityActivationLeases).where(eq(securityActivationLeases.machineId, X.id))).length, 1);
     assert.equal(leaseResponse.status, 200, leaseResponse.bytes.toString());
     assert.equal(leaseResponse.cacheControl, 'no-store');
     const leaseX = leaseOf(leaseResponse.bytes);
