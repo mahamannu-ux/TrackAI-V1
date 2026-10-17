@@ -304,33 +304,35 @@ ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_result_categor
     ));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_bounded_metadata_task6a_check" CHECK (
     "security_findings"."record_generation" <> 'task6a' or (
-    length("security_findings"."finding_id") between 1 and 128
-    and length("security_findings"."delivery_id") between 1 and 128
-    and length("security_findings"."session_id") between 1 and 128
-    and length("security_findings"."source_event_id") between 1 and 128
+    "security_findings"."repository_id" is not null
+    and "security_findings"."finding_id" is not null and length("security_findings"."finding_id") between 1 and 128
+    and "security_findings"."delivery_id" is not null and length("security_findings"."delivery_id") between 1 and 128
+    and "security_findings"."session_id" is not null and length("security_findings"."session_id") between 1 and 128
+    and "security_findings"."source_event_id" is not null and length("security_findings"."source_event_id") between 1 and 128
     and ("security_findings"."correlation_id" is null or length("security_findings"."correlation_id") between 1 and 128)
-    and length("security_findings"."rule_version") between 1 and 32
-    and length("security_findings"."client_version") between 1 and 64
-    and length("security_findings"."rule_pack_version") between 1 and 64
+    and "security_findings"."rule_version" is not null and length("security_findings"."rule_version") between 1 and 32
+    and "security_findings"."client_version" is not null and length("security_findings"."client_version") between 1 and 64
+    and "security_findings"."rule_pack_version" is not null and length("security_findings"."rule_pack_version") between 1 and 64
   ));--> statement-breakpoint
 ALTER TABLE "security_findings" ADD CONSTRAINT "security_findings_v2_check" CHECK (
     "security_findings"."record_generation" <> 'v2' or (
-    "security_findings"."record_id" ~ '^sha256:[0-9a-f]{64}$'
-    and length("security_findings"."rule_id") between 1 and 128
-    and length("security_findings"."rule_version") between 1 and 64
-    and "security_findings"."rule_severity" in ('info', 'low', 'medium', 'high', 'critical')
-    and length("security_findings"."title") between 1 and 256
-    and length("security_findings"."source_agent") between 1 and 128
-    and "security_findings"."source_type" in ('artifact', 'hook', 'otel')
-    and "security_findings"."confidence" in ('high', 'medium', 'low')
+    "security_findings"."record_id" is not null
+    and "security_findings"."record_id" ~ '^sha256:[0-9a-f]{64}$'
+    and "security_findings"."rule_id" is not null and length("security_findings"."rule_id") between 1 and 128
+    and "security_findings"."rule_version" is not null and length("security_findings"."rule_version") between 1 and 64
+    and "security_findings"."rule_severity" is not null and "security_findings"."rule_severity" in ('info', 'low', 'medium', 'high', 'critical')
+    and "security_findings"."title" is not null and length("security_findings"."title") between 1 and 256
+    and "security_findings"."source_agent" is not null and length("security_findings"."source_agent") between 1 and 128
+    and "security_findings"."source_type" is not null and "security_findings"."source_type" in ('artifact', 'hook', 'otel')
+    and "security_findings"."confidence" is not null and "security_findings"."confidence" in ('high', 'medium', 'low')
     and "security_findings"."detected_at" is not null
     and "security_findings"."occurred_at" = "security_findings"."detected_at"
-    and "security_findings"."numbat_schema_version" = '0.5.0'
-    and "security_findings"."bundle_digest" ~ '^[a-f0-9]{64}$'
-    and length("security_findings"."lease_id") between 1 and 128
+    and "security_findings"."numbat_schema_version" is not null and "security_findings"."numbat_schema_version" = '0.5.0'
+    and "security_findings"."bundle_digest" is not null and "security_findings"."bundle_digest" ~ '^[a-f0-9]{64}$'
+    and "security_findings"."lease_id" is not null and length("security_findings"."lease_id") between 1 and 128
     and "security_findings"."lease_id" ~ '^[^[:space:]]+$'
     and "security_findings"."found_at_rest" is not null
-    and "security_findings"."repository_kind" in ('enrolled', 'not_enrolled')
+    and "security_findings"."repository_kind" is not null and "security_findings"."repository_kind" in ('enrolled', 'not_enrolled')
     and (
       ("security_findings"."repository_kind" = 'enrolled' and "security_findings"."repository_id" is not null)
       or ("security_findings"."repository_kind" = 'not_enrolled' and "security_findings"."repository_id" is null)

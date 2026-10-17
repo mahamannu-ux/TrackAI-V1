@@ -525,7 +525,7 @@ describe('T20d ingest router', () => {
   it('safe errors carry their code and never raw values', async () => {
     const lines: string[] = [];
     const bound = await listenRouter(
-      unavailableAuthority(),
+      fakeAuthority(),
       async () => assert.fail('must not persist'),
       line => lines.push(line),
     );
@@ -537,6 +537,37 @@ describe('T20d ingest router', () => {
     assert.equal(response.status, 400);
     const problem = await response.json() as { code: string };
     assert.equal(problem.code, 'SECURITY_V2_UNKNOWN_FIELD');
+    await bound.close();
+  });
+
+  it('currentLease failure gates before currentDataSettings runs', async () => {
+    let settingsCalled = false;
+    const failingSettingsAuthority: SecurityV2Authority = {
+      async currentLease() {
+        return null;
+      },
+      async leaseForMachine() {
+        return null;
+      },
+      async currentDataSettings() {
+        settingsCalled = true;
+        throw new Error('settings lookup exploded');
+      },
+    };
+    const bound = await listenRouter(
+      failingSettingsAuthority,
+      async () => assert.fail('must not persist'),
+      () => {},
+    );
+    const response = await fetch(bound.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(uploadOf(findingRecord())),
+    });
+    assert.equal(response.status, 403);
+    const problem = await response.json() as { code: string };
+    assert.equal(problem.code, 'SECURITY_V2_LEASE_REQUIRED');
+    assert.equal(settingsCalled, false);
     await bound.close();
   });
 });

@@ -211,12 +211,12 @@ async function handleRecords(
     const receivedAt = new Date();
     // Admission order: a current lease first — its absence refuses the whole
     // request (api.md "POST"). Data settings default to all-off on null.
-    const settings: SecurityDataSettingsV1 | null = await dependencies.authority.currentDataSettings(req.tenantId);
     const lease = await dependencies.authority.currentLease(req.tenantId, req.machineId, receivedAt);
     if (!lease) {
       sendProblem(res, 403, 'SECURITY_V2_LEASE_REQUIRED');
       return;
     }
+    const settings: SecurityDataSettingsV1 | null = await dependencies.authority.currentDataSettings(req.tenantId);
     const results = await dependencies.persist({
       tenantId: req.tenantId,
       machineId: req.machineId,

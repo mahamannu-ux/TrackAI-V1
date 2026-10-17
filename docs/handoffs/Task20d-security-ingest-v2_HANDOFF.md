@@ -15,9 +15,9 @@ Task20d delivers the server ingest side of the frozen security-v2 contract: migr
 | Acceptance | Write-once replay returns `duplicate`; changed field returns `SECURITY_V2_RECORD_CONFLICT` | ✅ |
 | Acceptance | Indicators merge monotonically on `count` and `last_seen`; identity change conflicts | ✅ |
 | Acceptance | Finding previews envelope-encrypted (`encryptEnvelope`); plaintext absent from DB/logs | ✅ |
-| Quality | 1,114 unit tests pass, type check and lint clean | ✅ |
+| Quality | 1,115 unit tests pass, type check and lint clean | ✅ |
 | Integration | IT-T20d-01 (disposable DB live verify) passes; IT-T6-live and IT-T15h-live pass | 🟡 agent-verified · ⬜ founder run |
-| Review | Self-review complete; ready for Codex migration review and Claude session review | 🟡 |
+| Review | Self-review & review fix rounds complete; ready for Codex migration review and Claude session review | 🟡 |
 
 ## Implemented interfaces
 ```ts
@@ -57,6 +57,11 @@ None (custom TrackAI ingest adhering to docs/contracts/security-v2).
 1. `apps/api/src/features/security-findings/storage-service.ts`: cast nullable columns in `rowToCanonicalFinding` for widened `security_findings` table.
 2. `apps/api/src/features/security-findings/security-findings.test.ts`: updated metadata column count and index assertions to reflect the two-generation table structure.
 3. Migration 0025: reordered the `security_findings_tenant_id_id_key` unique constraint before `security_finding_previews` foreign key reference to satisfy PostgreSQL DDL dependency order.
+
+## Review findings addressed
+1. **Finding 1 (Body parser & limit boundary):** The route applies Content-Length pre-check `bodyLimitGuard` (4 MiB) and its own `express.json({ limit: '4mb' })` with an error handler converting `entity.too.large` to RFC 7807 problem `413 SECURITY_V2_PAYLOAD_TOO_LARGE`. `app.ts` remains untouched per prompt §2.4.
+2. **Finding 2 (Authority lookup order):** In `v2.routes.ts`, `currentLease()` now evaluates before `currentDataSettings()`. If no active lease exists or the lookup fails, the request immediately terminates with 403 `SECURITY_V2_LEASE_REQUIRED` without reaching settings lookup or database access.
+3. **Finding 3 (Check constraint null rejection):** In `schema.ts` and migration `0025`, `security_findings_bounded_metadata_task6a_check` and `security_findings_v2_check` explicitly guard all mandatory columns with `IS NOT NULL`, ensuring PostgreSQL 3-valued check logic cannot pass rows with null required keys or bypass `(tenant_id, machine_id, record_id)` uniqueness.
 
 ## Known limitations
 | Status | Limitation | Impact |

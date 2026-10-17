@@ -597,33 +597,35 @@ export const securityFindings = pgTable('security_findings', {
     )`),
   boundedMetadataCheck: check('security_findings_bounded_metadata_task6a_check', sql`
     ${table.recordGeneration} <> 'task6a' or (
-    length(${table.findingId}) between 1 and 128
-    and length(${table.deliveryId}) between 1 and 128
-    and length(${table.sessionId}) between 1 and 128
-    and length(${table.sourceEventId}) between 1 and 128
+    ${table.repositoryId} is not null
+    and ${table.findingId} is not null and length(${table.findingId}) between 1 and 128
+    and ${table.deliveryId} is not null and length(${table.deliveryId}) between 1 and 128
+    and ${table.sessionId} is not null and length(${table.sessionId}) between 1 and 128
+    and ${table.sourceEventId} is not null and length(${table.sourceEventId}) between 1 and 128
     and (${table.correlationId} is null or length(${table.correlationId}) between 1 and 128)
-    and length(${table.ruleVersion}) between 1 and 32
-    and length(${table.clientVersion}) between 1 and 64
-    and length(${table.rulePackVersion}) between 1 and 64
+    and ${table.ruleVersion} is not null and length(${table.ruleVersion}) between 1 and 32
+    and ${table.clientVersion} is not null and length(${table.clientVersion}) between 1 and 64
+    and ${table.rulePackVersion} is not null and length(${table.rulePackVersion}) between 1 and 64
   )`),
   v2Check: check('security_findings_v2_check', sql`
     ${table.recordGeneration} <> 'v2' or (
-    ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
-    and length(${table.ruleId}) between 1 and 128
-    and length(${table.ruleVersion}) between 1 and 64
-    and ${table.ruleSeverity} in ('info', 'low', 'medium', 'high', 'critical')
-    and length(${table.title}) between 1 and 256
-    and length(${table.sourceAgent}) between 1 and 128
-    and ${table.sourceType} in ('artifact', 'hook', 'otel')
-    and ${table.confidence} in ('high', 'medium', 'low')
+    ${table.recordId} is not null
+    and ${table.recordId} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.ruleId} is not null and length(${table.ruleId}) between 1 and 128
+    and ${table.ruleVersion} is not null and length(${table.ruleVersion}) between 1 and 64
+    and ${table.ruleSeverity} is not null and ${table.ruleSeverity} in ('info', 'low', 'medium', 'high', 'critical')
+    and ${table.title} is not null and length(${table.title}) between 1 and 256
+    and ${table.sourceAgent} is not null and length(${table.sourceAgent}) between 1 and 128
+    and ${table.sourceType} is not null and ${table.sourceType} in ('artifact', 'hook', 'otel')
+    and ${table.confidence} is not null and ${table.confidence} in ('high', 'medium', 'low')
     and ${table.detectedAt} is not null
     and ${table.occurredAt} = ${table.detectedAt}
-    and ${table.numbatSchemaVersion} = '0.5.0'
-    and ${table.bundleDigest} ~ '^[a-f0-9]{64}$'
-    and length(${table.leaseId}) between 1 and 128
+    and ${table.numbatSchemaVersion} is not null and ${table.numbatSchemaVersion} = '0.5.0'
+    and ${table.bundleDigest} is not null and ${table.bundleDigest} ~ '^[a-f0-9]{64}$'
+    and ${table.leaseId} is not null and length(${table.leaseId}) between 1 and 128
     and ${table.leaseId} ~ '^[^[:space:]]+$'
     and ${table.foundAtRest} is not null
-    and ${table.repositoryKind} in ('enrolled', 'not_enrolled')
+    and ${table.repositoryKind} is not null and ${table.repositoryKind} in ('enrolled', 'not_enrolled')
     and (
       (${table.repositoryKind} = 'enrolled' and ${table.repositoryId} is not null)
       or (${table.repositoryKind} = 'not_enrolled' and ${table.repositoryId} is null)
