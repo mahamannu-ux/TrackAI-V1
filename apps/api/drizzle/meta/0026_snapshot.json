@@ -1,5 +1,5 @@
 {
-  "id": "0b85fc37-b811-4720-88aa-559f1d8b1b6d",
+  "id": "9271d55b-b408-4552-80ec-6ade6a7ab070",
   "prevId": "2cd96a59-ca33-4c7e-be85-5119df7489ff",
   "version": "7",
   "dialect": "postgresql",
@@ -9455,12 +9455,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "monitor_version": {
-          "name": "monitor_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "envelope": {
           "name": "envelope",
           "type": "bytea",
@@ -9572,7 +9566,7 @@
       "checkConstraints": {
         "security_activation_leases_bounded_check": {
           "name": "security_activation_leases_bounded_check",
-          "value": "\n    \"security_activation_leases\".\"expires_at\" > \"security_activation_leases\".\"issued_at\"\n    and \"security_activation_leases\".\"mode\" in ('off', 'monitor', 'monitor_and_pilot_block')\n    and \"security_activation_leases\".\"data_settings_version\" >= 0\n    and \"security_activation_leases\".\"monitor_version\" >= 0\n    and \"security_activation_leases\".\"keyid\" ~ '^sha256:[a-f0-9]{64}$'\n    and octet_length(\"security_activation_leases\".\"envelope\") between 1 and 65536\n  "
+          "value": "\n    \"security_activation_leases\".\"expires_at\" > \"security_activation_leases\".\"issued_at\"\n    and \"security_activation_leases\".\"mode\" in ('off', 'monitor', 'monitor_and_pilot_block')\n    and \"security_activation_leases\".\"data_settings_version\" >= 0\n    and \"security_activation_leases\".\"keyid\" ~ '^sha256:[a-f0-9]{64}$'\n    and octet_length(\"security_activation_leases\".\"envelope\") between 1 and 65536\n  "
         }
       },
       "isRLSEnabled": false
@@ -9879,6 +9873,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "monitor_mode": {
+          "name": "monitor_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -9938,7 +9938,7 @@
       "checkConstraints": {
         "security_data_settings_versions_bounded_check": {
           "name": "security_data_settings_versions_bounded_check",
-          "value": "\n    \"security_data_settings_versions\".\"version\" >= 1\n    and array_length(\"security_data_settings_versions\".\"agents\", 1) between 1 and 5\n    and \"security_data_settings_versions\".\"agents\" <@ array['claude-code', 'codex', 'cursor', 'gemini-cli', 'copilot']::text[]\n    and length(\"security_data_settings_versions\".\"created_by\") between 1 and 255\n    and length(\"security_data_settings_versions\".\"reason\") between 1 and 1000\n  "
+          "value": "\n    \"security_data_settings_versions\".\"version\" >= 1\n    and array_length(\"security_data_settings_versions\".\"agents\", 1) between 1 and 5\n    and \"security_data_settings_versions\".\"agents\" <@ array['claude-code', 'codex', 'cursor', 'gemini-cli', 'copilot']::text[]\n    and \"security_data_settings_versions\".\"monitor_mode\" in ('off', 'monitor')\n    and length(\"security_data_settings_versions\".\"created_by\") between 1 and 255\n    and length(\"security_data_settings_versions\".\"reason\") between 1 and 1000\n  "
         }
       },
       "isRLSEnabled": false
@@ -11225,6 +11225,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "security_rule_bundles_tenant_rule_settings_fk": {
+          "name": "security_rule_bundles_tenant_rule_settings_fk",
+          "tableFrom": "security_rule_bundles",
+          "tableTo": "security_rule_settings_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "rule_settings_version"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "version"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -11258,7 +11273,7 @@
       "checkConstraints": {
         "security_rule_bundles_bounded_check": {
           "name": "security_rule_bundles_bounded_check",
-          "value": "\n    \"security_rule_bundles\".\"bundle_version\" >= 1\n    and \"security_rule_bundles\".\"epoch\" >= 1\n    and \"security_rule_bundles\".\"rule_settings_version\" >= 0\n    and \"security_rule_bundles\".\"enabled_rule_count\" between 0 and 1024\n    and \"security_rule_bundles\".\"digest\" ~ '^[a-f0-9]{64}$'\n    and \"security_rule_bundles\".\"keyid\" ~ '^sha256:[a-f0-9]{64}$'\n    and \"security_rule_bundles\".\"numbat_pin\" = '20a5a52'\n    and length(\"security_rule_bundles\".\"compiler_version\") between 1 and 64\n    and octet_length(\"security_rule_bundles\".\"envelope\") between 1 and 6291456\n    and length(\"security_rule_bundles\".\"created_by\") between 1 and 255\n  "
+          "value": "\n    \"security_rule_bundles\".\"bundle_version\" >= 1\n    and \"security_rule_bundles\".\"epoch\" >= 1\n    and \"security_rule_bundles\".\"rule_settings_version\" >= 1\n    and \"security_rule_bundles\".\"bundle_version\" = \"security_rule_bundles\".\"rule_settings_version\"\n    and \"security_rule_bundles\".\"enabled_rule_count\" between 0 and 1024\n    and \"security_rule_bundles\".\"digest\" ~ '^[a-f0-9]{64}$'\n    and \"security_rule_bundles\".\"keyid\" ~ '^sha256:[a-f0-9]{64}$'\n    and \"security_rule_bundles\".\"numbat_pin\" = '20a5a52'\n    and length(\"security_rule_bundles\".\"compiler_version\") between 1 and 64\n    and octet_length(\"security_rule_bundles\".\"envelope\") between 1 and 6291456\n    and length(\"security_rule_bundles\".\"created_by\") between 1 and 255\n  "
         }
       },
       "isRLSEnabled": false

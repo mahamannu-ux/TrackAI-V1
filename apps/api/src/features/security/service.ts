@@ -6,10 +6,13 @@
  * Order (AGENTS.md §9 item 18): plan (read) → compile and sign (no transaction, may call
  * KMS) → record (one transaction under the tenant lock, re-checking that nothing moved
  * since the plan; a concurrent publish answers `stale_plan` and the caller retries).
- * The monitor switch is Task6.a's tenant_security_monitor_settings row (Task20f writes it;
- * founder decision 2026-10-17); every other table here is append-only.
+ * The v2 monitor switch is stored on the versioned lease-settings row
+ * (security_data_settings_versions.monitor_mode), never in Task6.a's
+ * tenant_security_monitor_settings: writing that row would also activate the Task6.a
+ * route (AGENTS.md §9 item 11; independent review, 2026-10-17). Every table here is
+ * append-only.
  */
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../core/db';
 import { recordAuditEvent } from '../../core/audit';
 import {
@@ -17,10 +20,12 @@ import {
   securityDataSettingsVersions,
   securityRuleBundles,
   securityRuleSettingsVersions,
-  tenantSecurityMonitorSettings,
 } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
 import { NUMBAT_PIN, pinnedCatalogue, type Catalogue } from './catalogue';
+import { canonicalize } from '../attesta/canonical';
+import { LOCAL_DEV_MAX_PAYLOAD_BYTES } from '../attesta/signer-local-dev';
+import { KMS_MAX_PAYLOAD_BYTES } from '../attesta/signer-kms';
 import { COMPILER_VERSION, compileRules } from './compiler';
 import { bundlePayload, signBundle } from './bundle';
 import {
@@ -41,7 +46,7 @@ import {
   type RuleSettings,
   type SecurityAgent,
 } from './settings';
-import type { SecurityDocumentSigner } from './signing';
+import { SecurityDocumentTooLarge, type SecurityDocumentSigner } from './signing';
 
 type Database = typeof db;
 type Executor = Pick<Database, 'select' | 'insert' | 'update' | 'execute'>;
@@ -67,17 +72,12 @@ export interface CurrentSecuritySettings {
   /** 0 = the default policy, never stored. */
   ruleSettingsVersion: number;
   rules: RuleSettings;
-  /** 0 = the defaults (all off), never stored. */
+  /** 0 = the defaults (all off, monitoring off), never stored. */
   dataSettingsVersion: number;
   lease: LeaseSettings;
+  /** Stored on the lease-settings row, so its version is the data-settings version. */
   monitor: { mode: MonitorMode; version: number };
   bundle: CurrentBundle | null;
-}
-
-/** The effective monitor mode: `monitor` only while the row says so, is not revoked and is in date. */
-export function effectiveMonitorMode(row: typeof tenantSecurityMonitorSettings.$inferSelect | undefined, now: Date): MonitorMode {
-  return row?.mode === 'monitor' && row.revokedAt === null
-    && (row.validUntil === null || row.validUntil.getTime() > now.getTime()) ? 'monitor' : 'off';
 }
 
 export async function readSecuritySettings(tenantId: string, options: { executor?: Executor; catalogue?: Catalogue; now?: Date } = {}): Promise<CurrentSecuritySettings> {
@@ -85,7 +85,6 @@ export async function readSecuritySettings(tenantId: string, options: { executor
   const tenant = withTenant((options.executor ?? db) as Database, tenantId);
   const [rules] = await tenant.select(securityRuleSettingsVersions).orderBy(desc(securityRuleSettingsVersions.version)).limit(1);
   const [data] = await tenant.select(securityDataSettingsVersions).orderBy(desc(securityDataSettingsVersions.version)).limit(1);
-  const [monitor] = await tenant.select(tenantSecurityMonitorSettings).limit(1);
   const [bundle] = await tenant.select(securityRuleBundles).orderBy(desc(securityRuleBundles.epoch)).limit(1);
   const lease: LeaseSettings = data ? {
     data: {
@@ -104,7 +103,7 @@ export async function readSecuritySettings(tenantId: string, options: { executor
     rules: rules ? validateRuleSettings(rules.rules, catalogue) : defaultRuleSettings(catalogue),
     dataSettingsVersion: data?.version ?? 0,
     lease,
-    monitor: { mode: effectiveMonitorMode(monitor, options.now ?? new Date()), version: monitor?.version ?? 0 },
+    monitor: { mode: data?.monitorMode ?? 'off', version: data?.version ?? 0 },
     bundle: bundle ? {
       id: bundle.id,
       bundleVersion: bundle.bundleVersion,
@@ -165,6 +164,11 @@ export interface SecuritySettingsPlan {
   publishesBundle: boolean;
   /** A new rule-settings version is stored (rules changed, or the first bundle from the default policy). */
   writesRuleVersion: boolean;
+  /**
+   * The compiled bundle would exceed the signers' 1 MiB payload cap (both Attesta
+   * adapters today), so applying this plan would answer SECURITY_SETTINGS_TOO_LARGE.
+   */
+  exceedsSignerLimit: boolean;
   next: { ruleSettingsVersion: number; dataSettingsVersion: number; monitorVersion: number; bundleVersion: number | null; epoch: number | null };
   activeMachineCount: number;
 }
@@ -182,17 +186,29 @@ export async function planSecuritySettings(tenantId: string, change: SecuritySet
   const ruleChanges = diffRuleSettings(current.rules, rules);
   const leaseChanged = !sameLeaseSettings(current.lease, lease);
   const monitorChanged = monitorMode !== current.monitor.mode;
+  const writesLeaseVersion = leaseChanged || monitorChanged;
   const publishesBundle = ruleChanges.length > 0 || (current.bundle === null && monitorMode === 'monitor');
   // A bundle always compiles a stored rule-settings version, so the first bundle from the
   // default policy stores the defaults as version 1 (bundle_version = rule-settings version).
   const writesRuleVersion = ruleChanges.length > 0 || (publishesBundle && current.ruleSettingsVersion === 0);
   const ruleSettingsVersion = writesRuleVersion ? current.ruleSettingsVersion + 1 : current.ruleSettingsVersion;
+  const dataSettingsVersion = writesLeaseVersion ? current.dataSettingsVersion + 1 : current.dataSettingsVersion;
+  let exceedsSignerLimit = false;
+  if (publishesBundle) {
+    // Compile now so the dry run reports what the apply would refuse (the PAE header adds under 200 bytes).
+    const catalogue = options.catalogue ?? pinnedCatalogue();
+    const payload = bundlePayload({
+      tenantId, bundleVersion: ruleSettingsVersion, epoch: (current.bundle?.epoch ?? 0) + 1, issuedAt: options.now ?? new Date(),
+      compiled: compileRules(catalogue, rules, ruleSettingsVersion),
+    });
+    exceedsSignerLimit = Buffer.byteLength(canonicalize(payload), 'utf8') + 256 > Math.min(KMS_MAX_PAYLOAD_BYTES, LOCAL_DEV_MAX_PAYLOAD_BYTES);
+  }
   return {
-    current, rules, lease, monitorMode, ruleChanges, leaseChanged, monitorChanged, publishesBundle, writesRuleVersion,
+    current, rules, lease, monitorMode, ruleChanges, leaseChanged, monitorChanged, publishesBundle, writesRuleVersion, exceedsSignerLimit,
     next: {
       ruleSettingsVersion,
-      dataSettingsVersion: leaseChanged ? current.dataSettingsVersion + 1 : current.dataSettingsVersion,
-      monitorVersion: monitorChanged ? current.monitor.version + 1 : current.monitor.version,
+      dataSettingsVersion,
+      monitorVersion: dataSettingsVersion,
       bundleVersion: publishesBundle ? ruleSettingsVersion : current.bundle?.bundleVersion ?? null,
       epoch: publishesBundle ? (current.bundle?.epoch ?? 0) + 1 : current.bundle?.epoch ?? null,
     },
@@ -235,6 +251,7 @@ export async function applySecuritySettings(input: {
     return { changed: false, ruleSettingsVersion: current.ruleSettingsVersion, dataSettingsVersion: current.dataSettingsVersion, monitorVersion: current.monitor.version, bundle: current.bundle };
   }
 
+  if (plan.exceedsSignerLimit) throw new SecurityDocumentTooLarge('the compiled rule bundle exceeds the signer payload cap');
   // Compile and sign outside any transaction (a KMS call may be slow or fail).
   let signed: Awaited<ReturnType<typeof signBundle>> | null = null;
   let enabledRuleCount = 0;
@@ -263,7 +280,7 @@ export async function applySecuritySettings(input: {
         version: next.ruleSettingsVersion, rules: plan.rules, numbatPin: NUMBAT_PIN, createdBy: input.actor.id, reason: input.change.reason,
       });
     }
-    if (plan.leaseChanged) {
+    if (plan.leaseChanged || plan.monitorChanged) {
       await tenant.insert(securityDataSettingsVersions, {
         version: next.dataSettingsVersion,
         commandPreviews: plan.lease.data.command_previews,
@@ -273,15 +290,10 @@ export async function applySecuritySettings(input: {
         userIdentity: plan.lease.data.user_identity,
         agents: plan.lease.agents,
         dayOneScan: plan.lease.dayOneScan,
+        monitorMode: plan.monitorMode,
         createdBy: input.actor.id,
         reason: input.change.reason,
       });
-    }
-    if (plan.monitorChanged) {
-      const [row] = await tenant.select(tenantSecurityMonitorSettings).limit(1);
-      const values = { mode: plan.monitorMode, version: next.monitorVersion, validUntil: null, revokedAt: null, updatedBy: input.actor.id, updatedAt: now };
-      if (row) await tenant.update(tenantSecurityMonitorSettings, values, eq(tenantSecurityMonitorSettings.id, row.id));
-      else await tenant.insert(tenantSecurityMonitorSettings, values);
     }
     let bundle = current.bundle;
     if (signed) {
@@ -369,9 +381,9 @@ export async function bundleEnvelopeByDigest(tenantId: string, digest: string, e
 
 /** The active-machine count, for the publish dry run. */
 export async function activeMachineCount(tenantId: string, executor: Executor = db): Promise<number> {
-  const [row] = await (executor as Database).select({ value: count() }).from(developerMachines)
-    .where(and(eq(developerMachines.tenantId, tenantId), eq(developerMachines.status, 'active')));
-  return Number(row?.value ?? 0);
+  const rows = await withTenant(executor as Database, tenantId)
+    .select(developerMachines, eq(developerMachines.status, 'active'));
+  return rows.length;
 }
 
 export type { SecurityAgent };

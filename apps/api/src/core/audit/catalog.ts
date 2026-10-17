@@ -731,7 +731,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       enabled_rule_count: r('integer'),
       reason: r('reason'),
     },
-    sources: ['features/security/service.ts:329'],
+    sources: ['features/security/service.ts:341'],
   }),
   ...entries(['policy.bundle.activated'], {
     status: 'reserved', owner: 'Task6.b', severity: 'high', actorTypes: ADMIN,
@@ -761,7 +761,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     owner: 'Task20', severity: 'high', actorTypes: SETTINGS_WRITERS,
     targetType: 'tenant_security_settings', targetIdKind: 'tenant',
     details: { mode: r(SECURITY_MODE), previous_mode: r(SECURITY_MODE), version: r('integer'), reason: r('reason') },
-    sources: ['features/security/service.ts:346'],
+    sources: ['features/security/service.ts:358'],
   }),
   ...entries(['security.settings.changed'], {
     owner: 'Task20', severity: 'high', actorTypes: SETTINGS_WRITERS,
@@ -779,7 +779,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       agents: r('string[]'),
       reason: r('reason'),
     },
-    sources: ['features/security/service.ts:310'],
+    sources: ['features/security/service.ts:322'],
   }),
   ...entries(['security.finding.triaged'], {
     status: 'reserved', owner: 'Task6', severity: 'notice', actorTypes: ADMIN,

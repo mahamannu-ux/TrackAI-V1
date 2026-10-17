@@ -27,7 +27,6 @@ CREATE TABLE "security_activation_leases" (
 	"mode" text NOT NULL,
 	"bundle_digest" text NOT NULL,
 	"data_settings_version" integer NOT NULL,
-	"monitor_version" integer NOT NULL,
 	"envelope" "bytea" NOT NULL,
 	"keyid" text NOT NULL,
 	CONSTRAINT "security_activation_leases_tenant_id_id_key" UNIQUE("tenant_id","id"),
@@ -36,7 +35,6 @@ CREATE TABLE "security_activation_leases" (
     "security_activation_leases"."expires_at" > "security_activation_leases"."issued_at"
     and "security_activation_leases"."mode" in ('off', 'monitor', 'monitor_and_pilot_block')
     and "security_activation_leases"."data_settings_version" >= 0
-    and "security_activation_leases"."monitor_version" >= 0
     and "security_activation_leases"."keyid" ~ '^sha256:[a-f0-9]{64}$'
     and octet_length("security_activation_leases"."envelope") between 1 and 65536
   )
@@ -53,6 +51,7 @@ CREATE TABLE "security_data_settings_versions" (
 	"user_identity" boolean NOT NULL,
 	"agents" text[] NOT NULL,
 	"day_one_scan" boolean NOT NULL,
+	"monitor_mode" text NOT NULL,
 	"created_by" text NOT NULL,
 	"reason" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -62,6 +61,7 @@ CREATE TABLE "security_data_settings_versions" (
     "security_data_settings_versions"."version" >= 1
     and array_length("security_data_settings_versions"."agents", 1) between 1 and 5
     and "security_data_settings_versions"."agents" <@ array['claude-code', 'codex', 'cursor', 'gemini-cli', 'copilot']::text[]
+    and "security_data_settings_versions"."monitor_mode" in ('off', 'monitor')
     and length("security_data_settings_versions"."created_by") between 1 and 255
     and length("security_data_settings_versions"."reason") between 1 and 1000
   )
@@ -87,7 +87,8 @@ CREATE TABLE "security_rule_bundles" (
 	CONSTRAINT "security_rule_bundles_bounded_check" CHECK (
     "security_rule_bundles"."bundle_version" >= 1
     and "security_rule_bundles"."epoch" >= 1
-    and "security_rule_bundles"."rule_settings_version" >= 0
+    and "security_rule_bundles"."rule_settings_version" >= 1
+    and "security_rule_bundles"."bundle_version" = "security_rule_bundles"."rule_settings_version"
     and "security_rule_bundles"."enabled_rule_count" between 0 and 1024
     and "security_rule_bundles"."digest" ~ '^[a-f0-9]{64}$'
     and "security_rule_bundles"."keyid" ~ '^sha256:[a-f0-9]{64}$'
@@ -128,6 +129,7 @@ ALTER TABLE "security_activation_leases" ADD CONSTRAINT "security_activation_lea
 ALTER TABLE "security_activation_leases" ADD CONSTRAINT "security_activation_leases_tenant_bundle_fk" FOREIGN KEY ("tenant_id","bundle_digest") REFERENCES "public"."security_rule_bundles"("tenant_id","digest") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "security_data_settings_versions" ADD CONSTRAINT "security_data_settings_versions_tenant_id_sso_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."sso_tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "security_rule_bundles" ADD CONSTRAINT "security_rule_bundles_tenant_id_sso_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."sso_tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "security_rule_bundles" ADD CONSTRAINT "security_rule_bundles_tenant_rule_settings_fk" FOREIGN KEY ("tenant_id","rule_settings_version") REFERENCES "public"."security_rule_settings_versions"("tenant_id","version") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "security_rule_settings_versions" ADD CONSTRAINT "security_rule_settings_versions_tenant_id_sso_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."sso_tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "security_acknowledgements_tenant_lease_idx" ON "security_acknowledgements" USING btree ("tenant_id","lease_id");--> statement-breakpoint
 CREATE INDEX "security_activation_leases_tenant_machine_issued_idx" ON "security_activation_leases" USING btree ("tenant_id","machine_id","issued_at");--> statement-breakpoint

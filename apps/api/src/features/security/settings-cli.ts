@@ -39,6 +39,7 @@ export async function main(argv: string[], out: (line: string) => void = console
   }
   out(`  publishes bundle: ${plan.publishesBundle ? `yes (version ${plan.next.bundleVersion}, epoch ${plan.next.epoch})` : 'no'}`);
   out(`  active machines affected: ${plan.activeMachineCount}`);
+  if (plan.exceedsSignerLimit) out('  REFUSED on apply: the compiled bundle exceeds the 1 MiB signer cap; override fewer rules.');
   if (!argv.includes('--confirm')) {
     out('dry run: nothing written. Re-run with --confirm to publish.');
     return 0;

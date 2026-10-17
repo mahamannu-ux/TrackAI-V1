@@ -2676,7 +2676,12 @@ export const securityRuleSettingsVersions = pgTable('security_rule_settings_vers
   `),
 }));
 
-/** One tenant's data settings plus the other lease inputs (agents, day-one scan), versioned (Task20f). */
+/**
+ * One tenant's lease settings, versioned (Task20f): the five data switches, the agents,
+ * the day-one scan and the v2 monitor switch. The monitor switch lives here, not in
+ * Task6.a's tenant_security_monitor_settings, so turning Numbat monitoring on never
+ * activates the Task6.a route (AGENTS.md §9 item 11).
+ */
 export const securityDataSettingsVersions = pgTable('security_data_settings_versions', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: tenantIdColumn(),
@@ -2688,6 +2693,7 @@ export const securityDataSettingsVersions = pgTable('security_data_settings_vers
   userIdentity: boolean('user_identity').notNull(),
   agents: text('agents').array().notNull(),
   dayOneScan: boolean('day_one_scan').notNull(),
+  monitorMode: text('monitor_mode').$type<'off' | 'monitor'>().notNull(),
   createdBy: text('created_by').notNull(),
   reason: text('reason').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -2698,6 +2704,7 @@ export const securityDataSettingsVersions = pgTable('security_data_settings_vers
     ${table.version} >= 1
     and array_length(${table.agents}, 1) between 1 and 5
     and ${table.agents} <@ array['claude-code', 'codex', 'cursor', 'gemini-cli', 'copilot']::text[]
+    and ${table.monitorMode} in ('off', 'monitor')
     and length(${table.createdBy}) between 1 and 255
     and length(${table.reason}) between 1 and 1000
   `),
@@ -2723,10 +2730,16 @@ export const securityRuleBundles = pgTable('security_rule_bundles', {
   tenantIdIdUnique: unique('security_rule_bundles_tenant_id_id_key').on(table.tenantId, table.id),
   tenantEpochUnique: unique('security_rule_bundles_tenant_epoch_key').on(table.tenantId, table.epoch),
   tenantDigestUnique: unique('security_rule_bundles_tenant_digest_key').on(table.tenantId, table.digest),
+  tenantRuleSettingsForeignKey: foreignKey({
+    name: 'security_rule_bundles_tenant_rule_settings_fk',
+    columns: [table.tenantId, table.ruleSettingsVersion],
+    foreignColumns: [securityRuleSettingsVersions.tenantId, securityRuleSettingsVersions.version],
+  }),
   boundedCheck: check('security_rule_bundles_bounded_check', sql`
     ${table.bundleVersion} >= 1
     and ${table.epoch} >= 1
-    and ${table.ruleSettingsVersion} >= 0
+    and ${table.ruleSettingsVersion} >= 1
+    and ${table.bundleVersion} = ${table.ruleSettingsVersion}
     and ${table.enabledRuleCount} between 0 and 1024
     and ${table.digest} ~ '^[a-f0-9]{64}$'
     and ${table.keyid} ~ '^sha256:[a-f0-9]{64}$'
@@ -2746,8 +2759,8 @@ export const securityActivationLeases = pgTable('security_activation_leases', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   mode: text('mode').$type<'off' | 'monitor' | 'monitor_and_pilot_block'>().notNull(),
   bundleDigest: text('bundle_digest').notNull(),
+  /** The lease-settings version (data switches, agents, day-one scan, monitor mode) it was issued under. */
   dataSettingsVersion: integer('data_settings_version').notNull(),
-  monitorVersion: integer('monitor_version').notNull(),
   envelope: bytea('envelope').notNull(),
   keyid: text('keyid').notNull(),
 }, (table) => ({
@@ -2770,7 +2783,6 @@ export const securityActivationLeases = pgTable('security_activation_leases', {
     ${table.expiresAt} > ${table.issuedAt}
     and ${table.mode} in ('off', 'monitor', 'monitor_and_pilot_block')
     and ${table.dataSettingsVersion} >= 0
-    and ${table.monitorVersion} >= 0
     and ${table.keyid} ~ '^sha256:[a-f0-9]{64}$'
     and octet_length(${table.envelope}) between 1 and 65536
   `),

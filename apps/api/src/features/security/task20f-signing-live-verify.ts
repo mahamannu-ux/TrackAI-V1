@@ -27,10 +27,12 @@ import {
   securityRuleBundles,
   securityRuleSettingsVersions,
   ssoTenants,
+  tenantSecurityMonitorSettings,
 } from '../../core/db/schema';
 import { registerDeveloperMachine } from '../../core/security/machine-security-service';
 import type { DsseEnvelope } from '../attesta/dsse';
 import { createSecuritySettingsAdminRouter } from './admin.routes';
+import { pinnedCatalogue } from './catalogue';
 import { bundleEnvelopeByDigest } from './service';
 import { SecuritySigningUnavailable, type SecurityDocumentSigner } from './signing';
 import { trustFixture } from './testing/trust-fixture';
@@ -127,6 +129,9 @@ async function main(): Promise<void> {
     const bundle1 = published.body.bundle as { epoch: number; digest: string; bundle_version: number };
     assert.deepEqual([published.body.rule_settings_version, published.body.monitor_version, bundle1.bundle_version, bundle1.epoch], [1, 1, 1, 1]);
     assert.deepEqual(await auditActions(tenantA), ['policy.bundle.published', 'security.monitor.changed', 'security.settings.changed']);
+    // The v2 switch never touches Task6.a's activation row (AGENTS.md §9 item 11).
+    const task6a = await db.select().from(tenantSecurityMonitorSettings).where(eq(tenantSecurityMonitorSettings.tenantId, tenantA));
+    assert.equal(task6a.length, 0, 'Task6.a monitor settings untouched');
 
     // 5. The stored bytes are the signed envelope; verifyTrusted accepts them; the digest is SHA-256 of the payload.
     const stored = await bundleEnvelopeByDigest(tenantA, bundle1.digest);
@@ -143,10 +148,12 @@ async function main(): Promise<void> {
     // 6. A data-only change: data settings v1, no new bundle.
     const data = await call(base, 'PUT', tenantA, { dry_run: false, reason: 'paths', data_settings: { file_paths: true }, agents: ['claude-code', 'codex'] });
     assert.equal(data.status, 200);
-    assert.equal(data.body.data_settings_version, 1);
+    // Version 1 was written by the monitor switch; this is version 2, still monitoring.
+    assert.equal(data.body.data_settings_version, 2);
     assert.equal((data.body.bundle as { epoch: number }).epoch, 1);
-    const [dataRow] = await db.select().from(securityDataSettingsVersions).where(eq(securityDataSettingsVersions.tenantId, tenantA));
-    assert.deepEqual([dataRow.filePaths, dataRow.commandPreviews, dataRow.agents], [true, false, ['claude-code', 'codex']]);
+    const [dataRow] = await db.select().from(securityDataSettingsVersions)
+      .where(and(eq(securityDataSettingsVersions.tenantId, tenantA), eq(securityDataSettingsVersions.version, 2)));
+    assert.deepEqual([dataRow.filePaths, dataRow.commandPreviews, dataRow.agents, dataRow.monitorMode], [true, false, ['claude-code', 'codex'], 'monitor']);
 
     // 7. Concurrent publishes: the slow one finds the settings moved and is refused; the epoch only goes up.
     const slow: SecurityDocumentSigner = {
@@ -166,6 +173,15 @@ async function main(): Promise<void> {
     const third = await call(base, 'PUT', tenantA, { dry_run: false, reason: 'retry', rules: { 'exec.agent_runtime_bypass_flags': { enabled: true } } });
     assert.equal((third.body.bundle as { epoch: number }).epoch, 3);
     assert.equal(third.body.rule_settings_version, 3);
+
+    // 7b. Too large for the 1 MiB signer cap: the dry run says so, and the apply refuses and writes nothing.
+    const many = Object.fromEntries(pinnedCatalogue().manifest.rules.slice(0, 40).map(rule => [rule.id, { severity: rule.severity === 'info' ? 'low' : 'info' }]));
+    const bigPlan = await call(base, 'PUT', tenantA, { dry_run: true, reason: 'big', rules: many });
+    assert.equal(bigPlan.body.exceeds_signer_limit, true);
+    const bigApply = await call(base, 'PUT', tenantA, { dry_run: false, reason: 'big', rules: many });
+    assert.equal(bigApply.status, 413);
+    assert.equal(bigApply.body.code, 'SECURITY_SETTINGS_TOO_LARGE');
+    assert.equal((await call(base, 'GET', tenantA)).body.rule_settings_version, 3, 'nothing written');
 
     // 8. Company B sees none of it, and cannot fetch A's bundle by digest.
     const other = await call(base, 'GET', tenantB);
@@ -198,6 +214,8 @@ async function main(): Promise<void> {
     console.log('signing_unavailable=nothing_written');
     console.log('bundle=verifyTrusted_verified_exact_stored_bytes');
     console.log('epoch=monotonic_1_2_3_concurrent_publish_refused');
+    console.log('oversize=flagged_in_dry_run_refused_413_nothing_written');
+    console.log('task6a_activation=untouched');
     console.log('history=append_only');
     console.log('tenant_isolation=company_b_sees_nothing');
   } finally {

@@ -18,7 +18,7 @@ Branch `task/Task20f-security-settings-signing` (base: `main` at `67af037`; merg
 | Scope 14 | Admin API `GET`/`PUT /api/admin/security/settings` | ✅ |
 | Quality | `npm test` 1,135 pass, 0 fail, 2 skipped; `npm run check` passes (typecheck, lint, drizzle check, web build) | ✅ |
 | Integration | IT-T20f-01 part a: `verify:task20f-signing-live` passed once in the agent sandbox | 🟡 founder run; part b extends it |
-| Review | independent review subagent; Codex cross-review after part b | 🟡 |
+| Review | Independent review subagent: 1 must-fix and 4 should-fix, all fixed. The fixes: the monitor switch moved off Task6.a's table; the dry run compiles and flags `exceeds_signer_limit`; the router enforces its own 256 KiB body limit; a bundle is tied to its rule-settings version by a check and a foreign key; the machine count goes through `withTenant()`. Codex cross-review after part b. | 🟡 |
 
 ## Implemented interfaces
 ```text
@@ -37,9 +37,10 @@ Dev keys: SECURITY_POLICY_BUNDLE_CREDENTIAL_ID + SECURITY_DEV_POLICY_BUNDLE_KEY_
 ## Deviations from spec
 1. **Stage-1 entries stayed reserved in the contract PR** and are flipped to emitted here, because an emitted entry must cite its emitting `file:line`. The stage-1 branch also changes `catalog.ts`, `audit-contract.test.ts` and `audit-api.test.ts` (a hard-coded catalogue version), because `catalog.md` is generated from them.
 2. **Data settings are audited as `enabled_data_settings: string[]`**, because the raw-content key scan refuses `command_previews`.
-3. **Shared files, founder-approved 2026-10-17:** `core/security/admin-authorization.ts` (`security.settings.manage`), `core/security/auditor-sweep.test.ts`, one `app.ts` mount line; Task6.a's `tenant_security_monitor_settings` rows are written by the publish (no schema change).
-4. **`0026`'s snapshot absorbs Task20d's `0025` snapshot drift.** Task20d hand-edited 14 `security_findings` checks in the `0025` SQL but not in its snapshot, so `drizzle-kit generate` re-emitted them. I checked that each one is identical to what `0025` applied, removed those statements from `0026`, and kept the corrected snapshot.
-5. **The catalogue is read from the source tree** (`dist/` → `src/features/security/catalogue`), because `tsc` copies no YAML.
+3. **Shared files, founder-approved 2026-10-17:** `core/security/admin-authorization.ts` (`security.settings.manage`), `core/security/auditor-sweep.test.ts`, one `app.ts` mount line.
+4. **The v2 monitor switch is NOT in Task6.a's `tenant_security_monitor_settings`** (this reverses checkpoint-2 question 3, which the founder had approved). The independent review found that Task6.a's activation endpoint and ingest read that row, so writing `monitor` there would also switch on the Task6.a OpenCode route, which AGENTS.md §9 item 11 forbids. The switch is now `monitor_mode` on Task20f's own versioned `security_data_settings_versions` row, and Task6.a's table is never written (the live verify checks this).
+5. **`0026`'s snapshot absorbs Task20d's `0025` snapshot drift.** Task20d hand-edited 14 `security_findings` checks in the `0025` SQL but not in its snapshot, so `drizzle-kit generate` re-emitted them. I checked that each one is identical to what `0025` applied, removed those statements from `0026`, and kept the corrected snapshot.
+6. **The catalogue is read from the source tree** (`dist/` → `src/features/security/catalogue`), because `tsc` copies no YAML.
 
 ## Known limitations
 | Status | Limitation | Impact |
@@ -55,7 +56,7 @@ Dev keys: SECURITY_POLICY_BUNDLE_CREDENTIAL_ID + SECURITY_DEV_POLICY_BUNDLE_KEY_
 - **Mocked:** only the JWT layer in the live verify (an injected authorizer). The guards are covered by the auditor sweep.
 
 ## Integration test impact
-> **FOUNDER:** IT-T20f-01 is blocking for the Task20f merge; part a is in, part b extends the same script. Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: seven `…=` summary lines, under a minute.
+> **FOUNDER:** IT-T20f-01 is blocking for the Task20f merge; part a is in, part b extends the same script. Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: nine `…=` summary lines, under a minute.
 
 `IT_PG_DATABASES=trackai_task20f_signing_live IT_PG_EXPORTS=DATABASE_URL=trackai_task20f_signing_live scripts/it-db.sh npm run verify:task20f-signing-live -w apps/api` covers:
 - defaults;
@@ -64,6 +65,8 @@ Dev keys: SECURITY_POLICY_BUNDLE_CREDENTIAL_ID + SECURITY_DEV_POLICY_BUNDLE_KEY_
 - publish → `verifyTrusted`-verified exact stored bytes;
 - a data-only change (no bundle);
 - epochs 1 → 2 → 3, with a concurrent publish refused as stale;
+- an oversize change flagged by the dry run and refused with `413`;
+- Task6.a's activation row left untouched;
 - append-only triggers;
 - Company A/B;
 - audit rows.
@@ -81,12 +84,12 @@ Every table: `tenant_id` column, unique `(tenant_id, id)`, composite tenant fore
 | Table | Key columns | Notes |
 |---|---|---|
 | `security_rule_settings_versions` | `version` (unique per tenant, from 1), `rules jsonb` (all 51 ids → `{enabled, severity}`), `numbat_pin`, `created_by`, `reason` | Current = highest version. No row → the default policy (44 on, 7 off, upstream severities) as version 0, never stored. |
-| `security_data_settings_versions` | `version`, the five booleans, `agents text[]`, `day_one_scan`, `created_by`, `reason` | Everything a lease carries except the bundle and the mode. No row → all false, all five agents, no day-one scan (version 0). |
-| `security_rule_bundles` | `bundle_version` (= the rule-settings version compiled), `epoch` (per-tenant counter, max+1 under a tenant advisory lock), `digest` (hex SHA-256 of the payload bytes), `envelope bytea` (the exact JSON bytes served), `issued_at`, `compiler_version` | Unique `(tenant_id, epoch)` and `(tenant_id, digest)`; check `epoch >= 1`, payload ≤ 4 MiB. Current = highest epoch. |
-| `security_activation_leases` | `id` = `lease_id` (uuid), `machine_id` (FK `(tenant_id, machine_id)` → `developer_machines`), `issued_at`, `expires_at`, `mode`, `bundle_digest` (FK `(tenant_id, digest)` → bundles), `data_settings_version`, `monitor_version`, `envelope bytea` | Unique `(tenant_id, machine_id, id)` for the acknowledgement FK. History kept forever (lease provenance for findings). |
+| `security_data_settings_versions` | `version`, the five booleans, `agents text[]`, `day_one_scan`, `monitor_mode`, `created_by`, `reason` | Everything a lease carries except the bundle. No row → all false, all five agents, no day-one scan, monitoring off (version 0). |
+| `security_rule_bundles` | `bundle_version` (= the rule-settings version compiled; a check and a foreign key to the settings version enforce it), `epoch` (per-tenant counter, max+1 under a tenant advisory lock), `digest` (hex SHA-256 of the payload bytes), `envelope bytea` (the exact JSON bytes served), `issued_at`, `compiler_version` | Unique `(tenant_id, epoch)` and `(tenant_id, digest)`; check `epoch >= 1`, payload ≤ 4 MiB. Current = highest epoch. |
+| `security_activation_leases` | `id` = `lease_id` (uuid), `machine_id` (FK `(tenant_id, machine_id)` → `developer_machines`), `issued_at`, `expires_at`, `mode`, `bundle_digest` (FK `(tenant_id, digest)` → bundles), `data_settings_version` (it also carries the monitor switch), `envelope bytea` | Unique `(tenant_id, machine_id, id)` for the acknowledgement FK. History kept forever (lease provenance for findings). |
 | `security_acknowledgements` | `lease_id`, `machine_id` (FK `(tenant_id, machine_id, lease_id)` → leases), `bundle_digest`, `result`, `refusal_code`, `received_at` | Check: `refusal_code` null exactly when `applied`. |
 
-The **monitor switch is not a new table.** The lease mode comes from Task6.a's existing `tenant_security_monitor_settings` (`off`/`monitor`, version, `valid_until`, `revoked_at`). Task20f becomes its first API writer (gap G8): a mode change updates that row (version + 1) and writes `security.monitor.changed`. Nothing in that table's schema changes.
+The **monitor switch is `monitor_mode` on the lease-settings row**, never Task6.a's `tenant_security_monitor_settings`, because Task6.a's route reads that table (review fix, 2026-10-17). A mode change writes a new lease-settings version and `security.monitor.changed`.
 
 ### D2. Compiler (pure function, `features/security/compiler.ts`)
 - Input: the pinned catalogue (`catalogue/20a5a52/…` + `manifest.json`), the effective rule settings and their version `n`, and the five agents.
@@ -124,9 +127,9 @@ The **monitor switch is not a new table.** The lease mode comes from Task6.a's e
   - The newest stored lease for this machine is returned unchanged when all of these hold:
     - it is under 1 hour old and not expired;
     - it names the current bundle digest;
-    - it matches the current data-settings version and the current monitor mode and version.
+    - it matches the current data-settings version (which includes the monitor mode).
   - Otherwise a new lease is signed, stored and returned, and `fleet.lease.issued` is written (actor `machine`).
-  - Mode is `monitor` only while the monitor row is `monitor`, not revoked, and inside `valid_until`. `expires_at` = issued + 72 h, capped at `valid_until`. An `off` lease carries `agents: []`.
+  - Mode is the lease-settings row's `monitor_mode`. `expires_at` = issued + 72 h. An `off` lease carries `agents: []`.
   - A tenant with no bundle, or a machine that is not `active`, gets `404 SECURITY_V2_LEASE_NOT_ISSUED`.
 - **`GET /bundles/{sha256}`:** a tenant-bound lookup. Malformed, missing and foreign digests all get the same `404 SECURITY_V2_NOT_FOUND`.
 - **`POST /acknowledgements`:**

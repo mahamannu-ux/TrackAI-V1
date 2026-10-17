@@ -123,6 +123,25 @@ test('admin routes: an invalid body is refused before any database work', async 
   }
 });
 
+test('admin routes: the 256 KiB body limit holds even behind the app-level 5 mb parser', async () => {
+  const pass: RequestHandler = (req, _res, next) => { req.tenantId = '11111111-1111-4111-8111-111111111111'; next(); };
+  const app = express();
+  app.use(express.json({ limit: '5mb' }));
+  app.use('/api/admin/security', createSecuritySettingsAdminRouter({ authorizeRead: pass, authorizeWrite: pass, log: () => undefined }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  try {
+    const body = JSON.stringify({ dry_run: true, reason: 'x'.repeat(300_000) });
+    const response = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/admin/security/settings`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body,
+    });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, 'SECURITY_SETTINGS_INVALID');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('admin routes: GET is guarded by security_findings.read, PUT by security.settings.manage', () => {
   const router = createSecuritySettingsAdminRouter();
   const stack = (router as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: unknown }> } }> }).stack;

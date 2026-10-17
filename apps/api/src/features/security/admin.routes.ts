@@ -58,6 +58,7 @@ const TITLES: Readonly<Record<SecuritySettingsCode, string>> = {
 };
 
 const REQUEST_ID_RE = /^[A-Za-z0-9._-]{1,64}$/;
+const SETTINGS_BODY_LIMIT_BYTES = 262_144;
 
 function requestIdOf(res: Response): string {
   const id = res.locals.securitySettingsRequestId;
@@ -154,6 +155,8 @@ export function planView(plan: SecuritySettingsPlan) {
     data_settings_changed: plan.leaseChanged,
     monitor: { from: plan.current.monitor.mode, to: plan.monitorMode },
     publishes_bundle: plan.publishesBundle,
+    // Applying this plan would answer SECURITY_SETTINGS_TOO_LARGE (the signers' 1 MiB cap).
+    exceeds_signer_limit: plan.exceedsSignerLimit,
     next: {
       rule_settings_version: plan.next.ruleSettingsVersion,
       data_settings_version: plan.next.dataSettingsVersion,
@@ -178,7 +181,17 @@ export function createSecuritySettingsAdminRouter(deps: SecuritySettingsRouterDe
   const signer = deps.signer ?? (() => securitySignerFromEnv('policy_bundle'));
   const router = Router();
   router.use(http);
-  router.use(express.json({ limit: '256kb' }));
+  // The app-level parser (app.ts, 5 mb) has usually parsed the body already, which makes
+  // the router's own express.json a no-op; this guard carries the 256 KiB limit either way.
+  router.use((req, res, next) => {
+    const length = Number(req.get('content-length'));
+    if (Number.isFinite(length) && length > SETTINGS_BODY_LIMIT_BYTES) {
+      sendProblem(res, 'SECURITY_SETTINGS_INVALID');
+      return;
+    }
+    next();
+  });
+  router.use(express.json({ limit: SETTINGS_BODY_LIMIT_BYTES }));
 
   router.get('/settings', problemizeAuth(deps.authorizeRead ?? requireAdminAction('security_findings.read')), async (req, res) => {
     try {
