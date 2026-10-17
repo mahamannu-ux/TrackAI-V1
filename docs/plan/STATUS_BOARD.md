@@ -70,14 +70,14 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7i | Task2-lab-regression: Lifecycle Lab regression check after Task9 and Task17 | Codex | about 0.1× | | Task17 done | to write |
 | 9 | Task20-lead: primer, plan, prompts, reviews (`docs/plan/TASK20.md`) | Claude | about 0.08× (own work) | | primer approved 2026-10-16 | `docs/prompts/Task20/NEXT_CHAT_Task20-lead_PROMPT.md` |
 | 9a | Task20a-security-v2-contract (T20.1) | Codex (Claude reviews) | about 0.12× | about 0.16× | plan PR merged | `docs/prompts/Task20/NEXT_CHAT_Task20a-security-v2-contract_PROMPT.md` |
-| 9b | Task20b-numbat-mirror-build (T20.2–T20.4; GitAI) | Muse + founder-live | about 0.12× | | plan PR merged; mirror fork and tag created | written after the plan PR |
-| 9c | Task20c-endpoint-trust-verifier (T20.5; GitAI) | Muse (Codex reviews) | about 0.15× | | Task20b merged (one Muse session at a time) | written after the plan PR |
-| 9d | Task20d-security-ingest-v2 (T20.7a, T20.7b) | Muse | about 0.33× | | Task20a merged | written after Task20a |
+| 9b | Task20b-numbat-mirror-build (T20.2–T20.4; GitAI) | Muse + founder-live | about 0.12× | | mirror fork and tag created (setup step 2 of its prompt) | `docs/prompts/Task20/NEXT_CHAT_Task20b-numbat-mirror-build_PROMPT.md` |
+| 9c | Task20c-endpoint-trust-verifier (T20.5; GitAI) | Muse (Codex, then Claude review) | about 0.15× | | Task20d merged (one Muse session at a time) | `docs/prompts/Task20/NEXT_CHAT_Task20c-endpoint-trust-verifier_PROMPT.md` |
+| 9d | Task20d-security-ingest-v2 (T20.7a; status and inventory storage) | Muse (Claude reviews; Codex the migration) | about 0.30× | | Task20b merged (one Muse session at a time) | `docs/prompts/Task20/NEXT_CHAT_Task20d-security-ingest-v2_PROMPT.md` |
 | 9e | Task20e-endpoint-shipper (T20.6a, T20.6b; GitAI) | Codex | about 0.32× | | Task20a and Task20b merged | written after Task20a |
 | 9f | Task20f-security-settings-signing (T20.8; fleet lease reference and retrieval routes) | Claude | about 0.30× | | Task20a merged | written after Task20a |
 | 9g | Task20g-endpoint-policy-apply (T20.9; GitAI) | Codex | about 0.20× | | Task20c, Task20e, Task20f merged | written later |
 | 9h | Task20h-endpoint-package-install (T20.10, T20.12, T20.13; GitAI) | Codex + founder-live | about 0.35× | | Task20b, Task20g merged | written later |
-| 9i | Task20i-security-console (T20.11, T20.12 server) | Claude design + Muse | about 0.29× | | Task20d, Task20f merged | written later |
+| 9i | Task20i-security-reads-console (T20.7b, T20.11, T20.12 views) | Claude design + Muse | about 0.33× | | Task20d, Task20f merged | written later |
 | 9j | Task20j-acceptance (T20.14, T20.20) | Codex + founder-live | about 0.17× | | Task20h merged | written later |
 | 9k | Task20k-enforce-pilot (T20.15, later) | Codex + founder-live | about 0.10× | | Task20j passed; root helper; founder's go | later |
 | 9l | Task20l-rule-wave-2 (T20.16, later) | Muse | about 0.08× | | Task20j passed; founder's go | later |
