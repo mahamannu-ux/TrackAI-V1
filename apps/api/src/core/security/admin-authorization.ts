@@ -18,6 +18,10 @@ export const ADMIN_ACTIONS = [
   // Task19a (T19.2): the Q&A routes /api/qa/* (live answers for admins; auditors get
   // verifiable and signed answers only, enforced in features/qa/service.ts).
   'qa.read',
+  // Task20f (T20.8): publish security rule and data settings and the monitor switch
+  // (PUT /api/admin/security/settings). Administrators only; auditors read settings
+  // through security_findings.read.
+  'security.settings.manage',
 ] as const;
 
 export type AdminAction = typeof ADMIN_ACTIONS[number];

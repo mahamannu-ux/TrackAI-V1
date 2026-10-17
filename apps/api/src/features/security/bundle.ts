@@ -12,7 +12,7 @@ import {
 } from '../security-findings/v2-contract';
 import { COMPILER_VERSION, type CompiledRules } from './compiler';
 import { SECURITY_AGENTS } from './settings';
-import { signSecurityDocument, type SecurityDocumentSigner, type SignedSecurityDocument } from './signing';
+import { SecurityDocumentTooLarge, signSecurityDocument, type SecurityDocumentSigner, type SignedSecurityDocument } from './signing';
 
 export function bundlePayload(input: {
   tenantId: string;
@@ -52,6 +52,6 @@ export function bundlePayload(input: {
 export async function signBundle(signer: SecurityDocumentSigner, payload: SecurityRuleBundleV1): Promise<SignedSecurityDocument> {
   if (signer.purpose !== 'policy_bundle') throw new Error('a rule bundle is signed with the policy_bundle key');
   const signed = await signSecurityDocument(signer, payload);
-  if (signed.payload.length > SECURITY_V2_MAX_BUNDLE_BYTES) throw new RangeError('rule bundle payload exceeds 4 MiB');
+  if (signed.payload.length > SECURITY_V2_MAX_BUNDLE_BYTES) throw new SecurityDocumentTooLarge('rule bundle payload exceeds 4 MiB');
   return signed;
 }

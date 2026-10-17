@@ -11,6 +11,7 @@ import {
 import scmRouter from './features/scm/scm.routes';
 import { fleetAdminRouter, fleetWorkerRouter } from './features/fleet/fleet.routes';
 import securityFindingsRouter from './features/security-findings/security-findings.routes';
+import { securitySettingsAdminRouter } from './features/security/admin.routes';
 import telemetryIngestRouter from './features/telemetry/ingest.routes';
 import telemetryReadRouter from './features/telemetry/read.routes';
 import { authenticateJWT } from './core/middleware/auth';
@@ -81,6 +82,7 @@ export function createApp(options: CreateAppOptions = {}): express.Express {
   app.use('/api/admin', adminRouter);
   app.use('/api/admin/evidence', evidenceAdminRouter);
   app.use('/api/admin/fleet', fleetAdminRouter);
+  app.use('/api/admin/security', securitySettingsAdminRouter);
 
   app.use(internalErrorHandler);
 

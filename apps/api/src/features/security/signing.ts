@@ -36,6 +36,19 @@ export class SecuritySigningUnavailable extends Error {
   }
 }
 
+/**
+ * The document is larger than the signer accepts. Today both Attesta adapters cap a
+ * payload at 1 MiB (signer-kms.ts / signer-local-dev.ts) although the bundle contract
+ * allows 4 MiB; the KMS adapter hashes locally, so the cap is the adapter's, not KMS's.
+ * Nothing is written; the change must override fewer rules until Task15 raises the cap.
+ */
+export class SecurityDocumentTooLarge extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityDocumentTooLarge';
+  }
+}
+
 /** The adapter and credential to sign one purpose with, resolved per signature. */
 export interface ResolvedSecuritySigner {
   adapter: SigningAdapter;
@@ -77,7 +90,7 @@ export async function signSecurityDocument(signer: SecurityDocumentSigner, docum
   }
   const limit = resolved.adapter.capabilities().maxPayloadBytes;
   if (bytesToSign.length > limit) {
-    throw new SecuritySigningUnavailable(`the ${signer.purpose} document is ${bytesToSign.length} bytes; the signer accepts at most ${limit}`);
+    throw new SecurityDocumentTooLarge(`the ${signer.purpose} document is ${bytesToSign.length} bytes; the signer accepts at most ${limit}`);
   }
   let signature: Buffer;
   let spki: Buffer;
