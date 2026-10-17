@@ -91,7 +91,11 @@ test('an authenticated security v2 body over 4 MiB gets 413, with or without Con
     const atLimit = await post(`${base}/worker/security/v2/records`, jsonOf(4 * MIB));
     assert.equal(atLimit.status, 400);
     assert.equal(JSON.parse(atLimit.body).code, 'SECURITY_V2_UNKNOWN_FIELD');
-    assert.deepEqual(parsedAtAuth, [false, false, false]);
+    // Malformed JSON is a 400 problem from the router's own parser, not a 500.
+    const malformed = await post(`${base}/worker/security/v2/acknowledgements`, Buffer.from('{"schema_version":'));
+    assert.equal(malformed.status, 400);
+    assert.equal(JSON.parse(malformed.body).code, 'SECURITY_V2_INVALID_BODY');
+    assert.deepEqual(parsedAtAuth, [false, false, false, false]);
   });
 });
 

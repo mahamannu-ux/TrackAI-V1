@@ -185,6 +185,11 @@ export function createSecurityV2Router(
       sendProblem(res as SecurityV2RouteResponse, 413, 'SECURITY_V2_PAYLOAD_TOO_LARGE');
       return;
     }
+    // This router's parser is the only one since app.ts skips the global parser (Task20f D7).
+    if (type === 'entity.parse.failed') {
+      sendProblem(res as SecurityV2RouteResponse, 400, 'SECURITY_V2_INVALID_BODY');
+      return;
+    }
     sendProblem(res as SecurityV2RouteResponse, 500, 'SECURITY_V2_INTERNAL');
   }) as ErrorRequestHandler);
   return router;
