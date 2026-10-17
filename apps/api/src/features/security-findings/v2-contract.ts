@@ -275,6 +275,34 @@ export type SecurityAcknowledgementV1 = {
   | { result: 'refused'; refusal_code: SecurityV2RefusalCode }
 );
 
+export type SecurityV2RecordOutcome = 'accepted' | 'duplicate' | 'rejected';
+
+/** Whole-request validation failure (errors.md): a safe code, never a value. */
+export class SecurityV2ValidationError extends Error {
+  constructor(
+    readonly code: 'SECURITY_V2_INVALID_BODY' | 'SECURITY_V2_UNKNOWN_FIELD' | 'SECURITY_V2_UNSUPPORTED_SCHEMA',
+  ) {
+    super(code);
+    this.name = 'SecurityV2ValidationError';
+  }
+}
+
+/** Per-record data-settings refusal (errors.md): the field names are safe metadata. */
+export class SecurityV2FieldNotPermittedError extends Error {
+  constructor(readonly fields: string[]) {
+    super('SECURITY_V2_FIELD_NOT_PERMITTED');
+    this.name = 'SecurityV2FieldNotPermittedError';
+  }
+}
+
+/** One per-record entry of the upload result (api.md "POST"). */
+export interface SecurityV2RecordResult {
+  record_id: SecurityRecordId;
+  result: SecurityV2RecordOutcome;
+  /** Required only for `rejected`; forbidden for the other two results. */
+  code?: SecurityV2ErrorCode;
+}
+
 export function validateSecurityUploadV2(_value: unknown): SecurityUploadV2 {
   throw new Error('not implemented (Task20d)');
 }
