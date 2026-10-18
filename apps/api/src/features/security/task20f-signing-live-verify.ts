@@ -249,13 +249,12 @@ async function main(): Promise<void> {
     assert.equal((third.body.bundle as { epoch: number }).epoch, 3);
     assert.equal(third.body.rule_settings_version, 3);
 
-    // 7b. Too large for the 1 MiB signer cap: the dry run says so, and the apply refuses and writes nothing.
-    const many = Object.fromEntries(pinnedCatalogue().manifest.rules.slice(0, 40).map(rule => [rule.id, { severity: rule.severity === 'info' ? 'low' : 'info' }]));
+    // 7b. The signer cap is 4 MiB + 1 KiB (Task15op0): even every rule overridden fits, so the dry run says so and writes nothing.
+    // The over-cap refusal itself is proven in signing.test.ts.
+    const many = Object.fromEntries(pinnedCatalogue().manifest.rules.map(rule => [rule.id, { severity: rule.severity === 'info' ? 'low' : 'info' }]));
     const bigPlan = await call(base, 'PUT', tenantA, { dry_run: true, reason: 'big', rules: many });
-    assert.equal(bigPlan.body.exceeds_signer_limit, true);
-    const bigApply = await call(base, 'PUT', tenantA, { dry_run: false, reason: 'big', rules: many });
-    assert.equal(bigApply.status, 413);
-    assert.equal(bigApply.body.code, 'SECURITY_SETTINGS_TOO_LARGE');
+    assert.equal(bigPlan.status, 200);
+    assert.equal(bigPlan.body.exceeds_signer_limit, false);
     assert.equal((await call(base, 'GET', tenantA)).body.rule_settings_version, 3, 'nothing written');
 
     // 8. Company B sees none of it, and cannot fetch A's bundle by digest.
