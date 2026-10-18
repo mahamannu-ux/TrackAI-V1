@@ -172,6 +172,15 @@ export interface SecurityReportStore {
   chainReport(input: ChainSecurityReportInput): Promise<{ reportId: string; seq: number }>;
 }
 
+/** What the two GET routes read (attesta.routes.ts); every call is tenant-bound. */
+export interface SecurityReportReadStore {
+  get(tenantId: string, id: string): Promise<StoredSecurityReport | null>;
+  /** The stored document bytes, or null. */
+  document(tenantId: string, id: string): Promise<string | null>;
+  /** `attesta.security_report.downloaded`. */
+  recordDownload(input: { tenantId: string; actorId: string; actorRole: 'tenant_admin' | 'tenant_auditor'; report: StoredSecurityReport; requestId: string }): Promise<void>;
+}
+
 export interface SecurityReportDeps {
   store: SecurityReportStore;
   resolver: SignerResolver;
@@ -362,10 +371,8 @@ async function readCoverage(tx: SealDbExecutor, scope: SecurityReportScope): Pro
 }
 
 /** `clock` is chainStatement's recorded_at seam (live tests); production uses the default. */
-export function pgSecurityReportStore(db: SealDatabase = coreDb as unknown as SealDatabase, options: { clock?: () => Date } = {}): SecurityReportStore & {
-  get(tenantId: string, id: string): Promise<StoredSecurityReport | null>;
-  document(tenantId: string, id: string): Promise<string | null>;
-} {
+export function pgSecurityReportStore(db: SealDatabase = coreDb as unknown as SealDatabase,
+  options: { clock?: () => Date } = {}): SecurityReportStore & SecurityReportReadStore {
   return {
     async readSnapshot(scope) {
       return db.transaction(async (tx) => {
@@ -478,19 +485,17 @@ export function pgSecurityReportStore(db: SealDatabase = coreDb as unknown as Se
         select report_document from attesta_security_period_reports where tenant_id = ${tenantId}::uuid and id = ${id}::uuid`);
       return strOrNull(r.rows[0]?.report_document);
     },
+
+    async recordDownload(input) {
+      await recordAuditEvent(db, input.tenantId, {
+        action: 'attesta.security_report.downloaded',
+        actorType: input.actorRole,
+        actorId: input.actorId,
+        targetType: 'attesta_security_period_report',
+        targetId: input.report.id,
+        details: { report_digest: input.report.reportDigest, statement_digest: input.report.statementDigest, request_id: input.requestId },
+      });
+    },
   };
 }
 
-/** The downloaded-document audit event (attesta.routes.ts). */
-export async function recordSecurityReportDownload(input: {
-  tenantId: string; actorId: string; actorRole: 'tenant_admin' | 'tenant_auditor'; report: StoredSecurityReport; requestId: string;
-}): Promise<void> {
-  await recordAuditEvent(coreDb, input.tenantId, {
-    action: 'attesta.security_report.downloaded',
-    actorType: input.actorRole,
-    actorId: input.actorId,
-    targetType: 'attesta_security_period_report',
-    targetId: input.report.id,
-    details: { report_digest: input.report.reportDigest, statement_digest: input.report.statementDigest, request_id: input.requestId },
-  });
-}

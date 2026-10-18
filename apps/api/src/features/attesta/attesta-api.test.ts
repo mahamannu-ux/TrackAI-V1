@@ -38,6 +38,7 @@ import { MAX_OPEN_REPORTS, type ReportJobDeps } from './period-report-service';
 import type { AdminAction } from '../../core/security/admin-authorization';
 import { assertTenantBound } from './testing/builder-world';
 import { buildChain, makeStatement, shaOf } from './testing/ledger-fixtures';
+import type { SecurityReportReadStore, StoredSecurityReport } from './security-report-service';
 import { DEFAULT_ANCHOR_WINDOW_MS, verifyChainRows, type ChainReport, type VerifyChainOptions } from './verify-chain';
 
 const A = '00000000-0000-4000-8000-00000000000a';
@@ -205,8 +206,27 @@ function memberships(): Memberships {
 // ---------------------------------------------------------------------------
 // Harness: a real Express app on a free port
 
+/** Stored security period reports by tenant (the CLI builds them; the routes only read). */
+class MemorySecurityReports implements SecurityReportReadStore {
+  rows: Array<StoredSecurityReport & { document: string }> = [];
+  downloads: Array<Parameters<SecurityReportReadStore['recordDownload']>[0]> = [];
+  async get(tenantId: string, id: string): Promise<StoredSecurityReport | null> {
+    const r = this.rows.find((x) => x.tenantId === tenantId && x.id === id);
+    if (!r) return null;
+    const { document: _document, ...stored } = r;
+    return stored;
+  }
+  async document(tenantId: string, id: string): Promise<string | null> {
+    return this.rows.find((x) => x.tenantId === tenantId && x.id === id)?.document ?? null;
+  }
+  async recordDownload(input: Parameters<SecurityReportReadStore['recordDownload']>[0]): Promise<void> {
+    this.downloads.push(input);
+  }
+}
+
 interface Harness {
   url: string;
+  securityReports: MemorySecurityReports;
   store: FakeStore;
   packs: PackJobDeps & { store: MemoryPackStore };
   sink: MemorySink;
@@ -249,7 +269,9 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
   reportStore.repositories.set(B, new Set([REPO_B]));
   const reports: Harness['reports'] = { store: reportStore, resolver: async () => ({ resolve: async () => null }), builderVersion: () => '0.1.0+3c862ef' };
   const startedReports: Harness['startedReports'] = [];
+  const securityReports = new MemorySecurityReports();
   const router = createAttestaRouter({
+    securityReports,
     store, authorize: fakeRequireAdmin(memberships()), authorizeExport: fakeRequireAdmin(memberships(), 'attesta.export'),
     verifier: chainVerifier(verifierCalls, store), keys: noPublishedKeys, packs,
     startPack: (tenantId, packId) => { started.push({ tenantId, packId }); },
@@ -277,7 +299,7 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
   const headersFor = (who: { tenant?: string; sub?: string }) =>
     ({ ...(who.tenant ? { 'x-test-tenant': who.tenant } : {}), ...(who.sub ? { 'x-test-sub': who.sub } : {}) });
   return {
-    url, store, router, logs, verifierCalls, packs: (over.packs ?? packs) as Harness['packs'], sink, started,
+    url, store, router, logs, verifierCalls, securityReports, packs: (over.packs ?? packs) as Harness['packs'], sink, started,
     reports: (over.reports ?? reports) as Harness['reports'], startedReports,
     post: (path, body, who = { tenant: A, sub: 'auditor-a' }, headers = {}) => fetch(url + path, {
       method: 'POST', headers: { 'content-type': 'application/json', ...headersFor(who), ...headers }, body: JSON.stringify(body),
@@ -762,6 +784,8 @@ const EXPECTED_ROUTES = new Set([
   'GET /period-reports/:id',
   'GET /period-reports/:id/document',
   'GET /security-seals/verify',
+  'GET /security-period-reports/:id',
+  'GET /security-period-reports/:id/document',
 ]);
 /**
  * Routes that change anything. The evidence-pack POST creates a job; it is allowed to
@@ -833,6 +857,7 @@ describe('route sweep (AU-1)', () => {
     assert.equal(h.packs.store.audits.length, 0);
     assert.equal(h.reports.store.jobs.length, 0, 'a refused request creates no report job');
     assert.equal(h.reports.store.audits.length, 0);
+    assert.equal(h.securityReports.downloads.length, 0, 'a refused request records no download');
   });
 
   test('every route answers the auditor and the admin (none is admin-only)', async () => {
@@ -1251,6 +1276,62 @@ describe('period-report routes', () => {
       for (let i = 0; i < MAX_OPEN_REPORTS; i++) assert.equal((await h.post('/period-reports', BODY, AA, key(`open-rep-${i}`))).status, 202);
       await expectProblem(await h.post('/period-reports', BODY, AA, key('open-rep-x')), 429, 'ATTESTA_API_RATE_LIMITED');
       assert.equal(h.reports.store.jobs.length, MAX_OPEN_REPORTS);
+    } finally {
+      await h.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security period reports (Task15op-b): the two read routes over a memory store (the build: security-report.test.ts)
+
+describe('security-period-report routes', () => {
+  const REPORT = '55555555-0000-4000-8000-000000000001';
+  const DOC = '{"format":"https://trackai.dev/attesta/security-period-report-document/v1"}';
+  const stored = (tenantId = A) => ({
+    id: REPORT, tenantId, repositoryId: null, periodFrom: '2026-10-13T09:00:00.000Z', periodTo: '2026-10-13T11:00:00.000Z',
+    reportDigest: sha256Prefixed(DOC), statementDigest: `sha256:${'d'.repeat(64)}`, createdAt: '2026-10-13T11:30:00.000Z', document: DOC,
+  });
+
+  test('the status shows scope and digests; the document is served no-store as an attachment and audited; a tampered one is a 500', async () => {
+    const h = await harness();
+    try {
+      h.securityReports.rows.push(stored());
+      const res = await h.get(`/security-period-reports/${REPORT}`, { tenant: A, sub: 'auditor-a' });
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await res.json(), {
+        id: REPORT, scope: { tenant_id: A, repository_id: null, from: '2026-10-13T09:00:00.000Z', to: '2026-10-13T11:00:00.000Z', basis: 'received_at' },
+        report_digest: sha256Prefixed(DOC), statement_digest: `sha256:${'d'.repeat(64)}`, created_at: '2026-10-13T11:30:00.000Z',
+      });
+      assert.equal(h.securityReports.downloads.length, 0, 'the status is not a download');
+      const dl = await h.get(`/security-period-reports/${REPORT}/document`, { tenant: A, sub: 'admin-a' }, { 'X-Request-ID': 'req-sec-report' });
+      assert.equal(dl.status, 200);
+      assert.equal(dl.headers.get('cache-control'), 'no-store');
+      assert.match(dl.headers.get('content-disposition') ?? '', /^attachment; filename="trackai-security-period-report-/);
+      assert.equal(await dl.text(), DOC);
+      assert.deepEqual(h.securityReports.downloads.map((d) => [d.tenantId, d.actorRole, d.report.id, d.requestId]),
+        [[A, 'tenant_admin', REPORT, 'req-sec-report']]);
+      h.securityReports.rows[0].document = `${DOC} `;
+      await expectProblem(await h.get(`/security-period-reports/${REPORT}/document`, { tenant: A, sub: 'auditor-a' }), 500, 'ATTESTA_API_INTERNAL');
+      assert.equal(h.securityReports.downloads.length, 1, 'a refused download is not audited');
+    } finally {
+      await h.close();
+    }
+  });
+
+  test('Company A/B: another tenant\'s report is the same 404 as an unknown one; bad ids and queries are 400', async () => {
+    const h = await harness();
+    try {
+      h.securityReports.rows.push(stored(A));
+      const BB = { tenant: B, sub: 'auditor-b' };
+      for (const path of [`/security-period-reports/${REPORT}`, `/security-period-reports/${REPORT}/document`,
+        '/security-period-reports/55555555-0000-4000-8000-0000000000ff']) {
+        await expectProblem(await h.get(path, BB), 404, 'ATTESTA_API_NOT_FOUND');
+      }
+      assert.equal(h.securityReports.downloads.length, 0);
+      await expectProblem(await h.get('/security-period-reports/not-a-uuid'), 400, 'ATTESTA_API_INVALID_QUERY');
+      await expectProblem(await h.get(`/security-period-reports/${REPORT}?x=1`), 400, 'ATTESTA_API_INVALID_QUERY');
     } finally {
       await h.close();
     }

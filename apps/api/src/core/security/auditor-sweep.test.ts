@@ -121,6 +121,8 @@ const ATTESTA_GUARDED_READS: Record<string, AdminAction> = {
   'GET /api/attesta/evidence-packs/:id/content': 'attesta.export',
   'GET /api/attesta/period-reports/:id': 'attesta.export',
   'GET /api/attesta/period-reports/:id/document': 'attesta.export',
+  'GET /api/attesta/security-period-reports/:id': 'attesta.export',
+  'GET /api/attesta/security-period-reports/:id/document': 'attesta.export',
 };
 
 // Auditor-reachable non-GET routes, with the one-line reason each. Anything
