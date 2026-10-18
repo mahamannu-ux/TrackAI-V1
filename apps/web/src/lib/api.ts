@@ -53,8 +53,16 @@ async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API error: ${response.status}`);
+    const problem = await response.json().catch(() => ({ error: 'Unknown error' })) as Record<string, unknown>;
+    const message = typeof problem?.error === 'string'
+      ? problem.error
+      : `API error: ${response.status}`;
+    throw new ApiProblemError(
+      message,
+      typeof problem?.code === 'string' ? problem.code : null,
+      typeof problem?.request_id === 'string' ? problem.request_id : null,
+      response.status,
+    );
   }
 
   return response.json();
@@ -457,6 +465,163 @@ export async function downloadAdminEvidenceExport(exportJobId: string): Promise<
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+export class ApiProblemError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null,
+    readonly requestId: string | null,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiProblemError';
+  }
+}
+
+export type QaKind = 'live' | 'verifiable' | 'signed';
+export type QaFamily = 'code' | 'security';
+export type QaAuditorFlag = 'yes' | 'partly' | 'no';
+export type QaScopeLevel = 'tenant' | 'repository' | 'pull_request' | 'commit';
+export type QaBuilder = 'T19.3' | 'T19.4' | 'Task19d' | 'A16.13a' | 'A16.13b' | 'Task15i4' | 'Task15p';
+export type QaDimension =
+  | 'model' | 'tool' | 'repository' | 'agent_family' | 'operating_system'
+  | 'rule' | 'rule_category' | 'severity' | 'machine' | 'team';
+export type QaAvailability = 'recorded' | 'partial' | 'unavailable';
+export type QaReasonCode =
+  | 'not_captured_yet' | 'not_monitored' | 'vendor_does_not_report'
+  | 'never_written' | 'partial_linkage' | 'answer_not_built' | 'phase_2';
+export type QaGapId =
+  | 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6' | 'G7'
+  | 'G8' | 'G9' | 'G10' | 'G11' | 'G12' | 'G13';
+export type QaWordingCode =
+  | 'monitor_only_observed' | 'unknown_model_explicit' | 'merged_not_deployed_proxy'
+  | 'churned_unavailable' | 'session_link_partial' | 'requested_not_confirmed'
+  | 'metadata_only';
+export type QaQuestionId = `Q${number}` | `S${number}`;
+export type QaDrilldownScope =
+  | 'repository' | 'pull_request' | 'commit' | 'file' | 'session' | 'finding' | 'statement';
+export type QaValue =
+  | { type: 'count'; count: number }
+  | { type: 'ratio'; numerator: number; denominator: number }
+  | { type: 'duration_ms'; ms: number };
+
+export type QaReason = { code: QaReasonCode; gap?: QaGapId };
+export type QaBreakdownItem = { dimension: QaDimension; key: string; value: QaValue };
+export type QaEvidence = {
+  count: number;
+  statements_root: string;
+  records: Array<{ seq: number; digest: string }>;
+};
+export type QaFigure = {
+  key: string;
+  availability: QaAvailability;
+  reasons: QaReason[];
+  value: QaValue | null;
+  breakdown?: QaBreakdownItem[];
+  evidence?: QaEvidence;
+};
+export type QaScope = {
+  repository_id?: string;
+  pull_request_id?: string;
+  commit_sha?: string;
+  from: string;
+  to: string;
+};
+export type QaDrilldownItem = { scope: QaDrilldownScope; id: string; label: string };
+export type QaEnvelope = {
+  question_id: QaQuestionId;
+  registry_version: number;
+  kind: QaKind;
+  as_of: string;
+  scope: QaScope;
+  availability: QaAvailability;
+  reasons: QaReason[];
+  figures: QaFigure[];
+  previous?: { from: string; to: string; figures: QaFigure[] };
+  wording: QaWordingCode[];
+  drilldown: QaDrilldownItem[];
+  signed_evidence?: {
+    path: '/api/attesta/statements';
+    query: {
+      repository_id?: string;
+      kind?: string;
+      subject_sha?: string;
+      from: string;
+      to: string;
+    };
+  };
+  signed?: { statement_digest: string; predicate_type: string };
+};
+export type QaQuestionKind = {
+  kind: QaKind;
+  builder: QaBuilder | null;
+  built: boolean;
+  open_gaps: QaGapId[];
+};
+export type QaQuestion = {
+  id: QaQuestionId;
+  family: QaFamily;
+  rank: number;
+  phase: 1 | 2;
+  title: string;
+  auditor: QaAuditorFlag;
+  kinds: Array<{ kind: QaKind; builder: QaBuilder | null }>;
+  gaps: QaGapId[];
+  scopes: QaScopeLevel[];
+  dimensions: QaDimension[];
+  compare_previous: boolean;
+  wording: QaWordingCode[];
+};
+export type QaQuestionList = { registry_version: number; items: QaQuestion[] };
+export type QaQuestionDetail = {
+  registry_version: number;
+  question: QaQuestion;
+  answers: QaQuestionKind[];
+};
+export type QaDrilldownPage = { items: QaDrilldownItem[]; next_cursor: string | null };
+export type QaAnswerQuery = {
+  kind: QaKind;
+  from: string;
+  to: string;
+  repository_id?: string;
+  pull_request_id?: string;
+  commit_sha?: string;
+  breakdown?: QaDimension;
+  limit?: number;
+  cursor?: string;
+};
+
+export const getQaQuestions = () => apiFetch<QaQuestionList>('/api/qa/questions');
+export const getQaQuestion = (id: QaQuestionId) => (
+  apiFetch<QaQuestionDetail>(`/api/qa/questions/${encodeURIComponent(id)}`)
+);
+
+export function getQaAnswer(
+  id: QaQuestionId,
+  query: QaAnswerQuery,
+  drilldown: true,
+): Promise<QaDrilldownPage>;
+export function getQaAnswer(
+  id: QaQuestionId,
+  query: QaAnswerQuery,
+  drilldown?: false,
+): Promise<QaEnvelope>;
+export function getQaAnswer(
+  id: QaQuestionId,
+  query: QaAnswerQuery,
+  drilldown = false,
+): Promise<QaEnvelope | QaDrilldownPage> {
+  const parameters = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== '' && (drilldown || key !== 'breakdown')) {
+      parameters.set(key, String(value));
+    }
+  });
+  const suffix = drilldown ? '/drilldown' : '/answer';
+  return apiFetch<QaEnvelope | QaDrilldownPage>(
+    `/api/qa/questions/${encodeURIComponent(id)}${suffix}?${parameters.toString()}`,
+  );
 }
 
 export const registerAdminMachine = (input: {
