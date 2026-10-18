@@ -30,6 +30,7 @@ import { canonicalize, sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
 import {
   AUDIT_SEAL_PREDICATE_TYPE, AttestaLedgerError, IN_TOTO_STATEMENT_TYPE, chainStatement, mapLedgerDatabaseError,
+  statementSigningLimit,
   type LedgerExecutor,
 } from './ledger';
 import { digestsRoot } from './period-report-rules';
@@ -384,7 +385,12 @@ export async function sealTenant(deps: SealPassDeps, tenantId: string, options: 
     if (!signer) return { tenantId, outcome: 'no_key' };
     const payload = Buffer.from(statementCanonical, 'utf8');
     const requestId = `attesta-audit-seal:${tenantId}:${plan.window.from}`;
-    const signed = await signVerified(signer.adapter, pae(IN_TOTO_PAYLOAD_TYPE, payload), {
+    const signedBytes = pae(IN_TOTO_PAYLOAD_TYPE, payload);
+    // Statements stay within 1 MiB even where the signer allows more (ledger.ts).
+    if (signedBytes.length > statementSigningLimit(signer.adapter.capabilities().maxPayloadBytes)) {
+      throw new AuditSealError('ATTESTA_BUILDER_RULE_VIOLATION', 'the seal statement does not fit the statement signing limit');
+    }
+    const signed = await signVerified(signer.adapter, signedBytes, {
       credentialId: signer.credentialId, tenantId, requestId,
     });
     const keyid = sha256Prefixed(signed.publicKeySpkiDer);

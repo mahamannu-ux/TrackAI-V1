@@ -51,6 +51,11 @@ export const MAX_STATEMENT_BYTES = 4 * 1024 * 1024;
  */
 export const ATTESTA_STATEMENT_MAX_SIGNED_BYTES = 1_048_576;
 
+/** The most PAE bytes any Attesta statement may sign with this signer: min(signer cap, 1 MiB). */
+export function statementSigningLimit(signerMaxPayloadBytes: number): number {
+  return Math.min(signerMaxPayloadBytes, ATTESTA_STATEMENT_MAX_SIGNED_BYTES);
+}
+
 export type AttestaStatementKind = 'commit_observed' | 'pr_merged' | 'deployed';
 const STATEMENT_KINDS: readonly AttestaStatementKind[] = ['commit_observed', 'pr_merged', 'deployed'];
 
