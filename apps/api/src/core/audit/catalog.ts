@@ -670,6 +670,34 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     },
     sources: ['features/audit/verify-service.ts:245'],
   }),
+  // --- Task15op (A15.15): security-finding seals and their verify report ---
+  ...entries(['audit.trail.security_findings_sealed'], {
+    owner: 'Task15op', severity: 'info', actorTypes: ['service', 'system_operator'],
+    targetType: 'attesta_security_finding_seal', targetIdKind: 'row',
+    details: {
+      window_from: r('iso_timestamp'),
+      window_to: r('iso_timestamp'),
+      count: r('integer'),
+      task6a_count: r('integer'),
+      v2_count: r('integer'),
+      seal_digest: r('sha256_digest'),
+      request_id: r('string'),
+    },
+    sources: ['features/attesta/security-seal-service.ts:565'],
+  }),
+  ...entries(['audit.trail.security_findings_verified'], {
+    owner: 'Task15op', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    targetType: 'security_findings', targetIdKind: 'tenant',
+    details: {
+      from: r('iso_timestamp'),
+      to: r('iso_timestamp'),
+      ok: r('boolean'),
+      seals_checked: r('integer'),
+      break_count: r('integer'),
+      request_id: r('string'),
+    },
+    sources: ['features/attesta/security-seal-service.ts:818'],
+  }),
   ...entries(['audit.export.requested'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
     targetType: 'audit_export', targetIdKind: 'row',

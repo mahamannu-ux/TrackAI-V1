@@ -51,7 +51,10 @@ import {
   type World,
 } from './testing/evidence-pack-fixtures';
 import { shaOf } from './testing/ledger-fixtures';
-import { AI_PROVENANCE_PREDICATE_TYPE, LEDGER_RECORD_KIND, buildCanonicalRecord } from './ledger';
+import {
+  AI_PROVENANCE_PREDICATE_TYPE, LEDGER_RECORD_KIND, SECURITY_FINDINGS_SEAL_PREDICATE_TYPE, SECURITY_PERIOD_REPORT_PREDICATE_TYPE, buildCanonicalRecord,
+} from './ledger';
+import { buildSecuritySealDocument, buildSecuritySealStatement } from './security-seal-service';
 import {
   applyTenantKeyCommand,
   exportRootDraft,
@@ -1227,4 +1230,98 @@ describe('offline verifier: period_report statements (Task15i4)', () => {
     assert.equal(report.exit_code, 1);
     assert.equal(checkOf(report, 'statements')?.code, 'ATTESTA_VERIFY_FIELD_MISMATCH');
   });
+});
+
+// ---------------------------------------------------------------------------
+// Task15op: security_findings_seal and security_period_report statements in a whole-tenant pack
+// ---------------------------------------------------------------------------
+
+/** A schema-valid tenant-scoped security_period_report statement (all figures empty). */
+function securityReportStatement(tenantId: string, asOf: string): string {
+  const zero = { rows: 0, recorded: 0, partial: 0, unavailable: 0 };
+  const counts = ['findings', 'denied_by_request', 'rule_pack_versions', 'late_arrivals'];
+  const names = ['findings', 'by_severity', 'by_category', 'by_rule', 'by_generation', 'by_repository', 'by_agent', 'by_model',
+    'by_platform', 'outcomes', 'denied_by_request', 'rule_pack_versions', 'late_arrivals'];
+  const empty = sha256Prefixed(Buffer.alloc(0));
+  const scope = { tenant_id: tenantId, repository_id: null, from: at(REC_BASE - 60 * MIN), to: at(REC_BASE - 10 * MIN), basis: 'received_at' };
+  return canonicalize({
+    _type: 'https://in-toto.io/Statement/v1',
+    subject: [{ name: `trackai:tenant/${tenantId}/security-period/${scope.from}..${scope.to}`, digest: { sha256: 'c'.repeat(64) } }],
+    predicateType: SECURITY_PERIOD_REPORT_PREDICATE_TYPE,
+    predicate: {
+      scope,
+      inputs: { seal_count: 0, seals_root: empty, row_count: 0, rows_root: empty, decision_count: 0, decisions_root: empty },
+      figures: Object.fromEntries(names.map((n) => [n, { availability: 'recorded', value: counts.includes(n) ? 0 : [] }])),
+      blocked: { availability: 'unavailable', reason: 'monitor_only_observed' },
+      coverage: { availability: 'unavailable', reason: 'not_captured_yet' },
+      completeness: Object.fromEntries(names.map((n) => [n, zero])),
+      builder: { name: 'trackai-security-report-builder', version: '0.1.0+3c862ef' },
+      as_of: asOf,
+      previous: [],
+    },
+  });
+}
+
+/** Put a signed statement at `seq` as a record with no repository and re-link the chain after it. */
+function withSecurityStatementAt(chain: ReturnType<typeof buildValidChain>, key: Key, seq: number, statementCanonical: string,
+  predicateType: string, recordPatch: Record<string, unknown> = {}) {
+  const payload = Buffer.from(statementCanonical, 'utf8');
+  const sig = cryptoSign('sha256', pae(IN_TOTO_PAYLOAD_TYPE, payload), { key: key.priv, dsaEncoding: 'der' });
+  const envelope: DsseEnvelope = { payload: payload.toString('base64'), payloadType: IN_TOTO_PAYLOAD_TYPE, signatures: [{ keyid: key.keyid, sig: sig.toString('base64') }] };
+  const records = chain.records.map((r) => ({ ...r }));
+  records[seq] = { ...records[seq], repositoryId: null, statementDigest: sha256Prefixed(statementCanonical), statementCanonical, envelope,
+    statementCanonicalAll: statementCanonical, envelopeAll: envelope } as unknown as typeof records[number];
+  let prev = seq === 0 ? GENESIS_PREV_HASH : records[seq - 1].recordHash;
+  for (let i = seq; i < records.length; i++) {
+    const f = JSON.parse(records[i].canonicalRecord);
+    const fields = i === seq
+      ? { ...f, prev_hash: prev, statement_digest: records[i].statementDigest, predicate_type: predicateType,
+          statement_kind: null, subject_sha: null, repository_id: null, ...recordPatch }
+      : { ...f, prev_hash: prev };
+    records[i].prevHash = prev;
+    records[i].canonicalRecord = buildCanonicalRecord(fields);
+    records[i].recordHash = computeRecordHash(records[i].canonicalRecord, prev);
+    prev = records[i].recordHash;
+  }
+  return { ...chain, records };
+}
+
+async function securityPack(w: World, kind: 'seal' | 'report', recordPatch: Record<string, unknown> = {}) {
+  const asOf = at(REC_BASE + 4 * MIN - 1000);
+  let statementCanonical: string;
+  if (kind === 'seal') {
+    const window = { from: `${at(REC_BASE - 60 * MIN).slice(0, 23)}000Z`, to: `${at(REC_BASE - 10 * MIN).slice(0, 23)}000Z` };
+    const doc = buildSecuritySealDocument({ tenantId: A, window, previous: null, rows: [] });
+    statementCanonical = buildSecuritySealStatement({ document: doc.document, documentDigest: doc.digest, asOf, builderVersion: '0.1.0+3c862ef' });
+  } else {
+    statementCanonical = securityReportStatement(A, asOf);
+  }
+  const type = kind === 'seal' ? SECURITY_FINDINGS_SEAL_PREDICATE_TYPE : SECURITY_PERIOD_REPORT_PREDICATE_TYPE;
+  const chain = withSecurityStatementAt(buildValidChain(A, w.k.a1), w.k.a1, 4, statementCanonical, type, recordPatch);
+  const seg = segmentOf(chain, SCOPE_ALL, GEN);
+  const trust = packTrustFrom({ published: await publishedKeysFor(w.store, A), anchors: null, pinnedRootKeyids: w.config.pinnedRootKeyids });
+  const built = buildPack({ packId: PACK_1, tenantId: A, scope: SCOPE_ALL, mode: 'full', segment: { ...seg, anchors: [], batches: [] }, trust });
+  const signature = await signPack(built, w.resolver, A, 'req-1');
+  const download = JSON.parse(`{"pack":${built.text},"signature":${JSON.stringify(signature)}}`) as Download;
+  return verifyEvidencePack(download, { pinnedRootKeyids: [w.k.root.keyid], now: NOW, anchorWindowMs: 24 * 3600_000 });
+}
+
+describe('offline verifier: security seal and security report statements (Task15op)', () => {
+  for (const kind of ['seal', 'report'] as const) {
+    test(`an honest security ${kind} statement passes the statements check; its document is not checkable (exit 2)`, async () => {
+      const w = await trustWorld();
+      const report = await securityPack(w, kind);
+      assert.equal(checkOf(report, 'statements')?.status, 'passed', JSON.stringify(checkOf(report, 'statements')));
+      assert.equal(checkOf(report, 'chain')?.status, 'passed');
+      assert.equal(checkOf(report, 'reports')?.status, 'not_checkable');
+      assert.equal(report.exit_code, 2);
+    });
+
+    test(`a security ${kind} record whose typed copies disagree with its statement is a break`, async () => {
+      const w = await trustWorld();
+      const report = await securityPack(w, kind, { repository_id: R1 });
+      assert.equal(report.exit_code, 1);
+      assert.equal(checkOf(report, 'statements')?.code, 'ATTESTA_VERIFY_FIELD_MISMATCH');
+    });
+  }
 });

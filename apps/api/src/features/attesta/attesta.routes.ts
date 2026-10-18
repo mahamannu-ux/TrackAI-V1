@@ -15,6 +15,8 @@
  *   GET  /period-reports/:id                job status, report and statement digests
  *   GET  /period-reports/:id/document       the signed report document (RFC 8785 bytes), audited
  *
+ *   GET  /security-seals/verify?from&to     the security-finding seal verify report, audited (Task15op-a)
+ *
  * Every route needs `attesta.read`; the evidence-pack and period-report routes also `attesta.export`
  * (both: tenant_admin, tenant_auditor; an auditor's job is to take evidence, and every
  * export and download is audited). Handlers are thin; queries live in read-service.ts
@@ -46,6 +48,10 @@ import {
   parseDigest, parseListQuery, parseSubject, parseVerifyQuery, pgReadStore, publishedKeySource, subjectStatements, verifyRange,
   type AnchorMaterialSource, type AttestaReadStore, type ChainVerifier, type VerifyKeySource,
 } from './read-service';
+import type { SealDatabase } from './audit-seal-service';
+import {
+  parseSecurityVerifyQuery, verifySecuritySeals, type SecurityVerifyInput, type SecurityVerifyReport,
+} from './security-seal-service';
 import { pgTrustStore, type TrustDb } from './trust-inventory';
 import { trustConfigFromEnv } from './trust-resolver';
 import type { AttestaApiCode } from './http';
@@ -70,6 +76,8 @@ export interface AttestaRouterDeps {
   /** Starts a created report job (default: in-process after the 202, setImmediate). */
   startReport?: (tenantId: string, reportId: string) => void;
   anchors?: AnchorMaterialSource;
+  /** The security-finding seal verify report (default: verifySecuritySeals on the real database). */
+  verifySecuritySeals?: (input: SecurityVerifyInput) => Promise<SecurityVerifyReport>;
   now?: () => Date;
   log?: AttestaLog;
 }
@@ -113,6 +121,8 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
   const packs = deps.packs ?? defaultPackJobDeps(process.env, anchors);
   const reports = deps.reports ?? defaultReportJobDeps(process.env);
   const log = deps.log ?? defaultLog;
+  const securityVerify = deps.verifySecuritySeals ?? ((input: SecurityVerifyInput) => verifySecuritySeals(
+    { database: db as unknown as SealDatabase, attesta: { store, verifier, keys, anchors, now } }, input));
   const verifying = new Set<string>();
 
   const router = Router();
@@ -184,6 +194,24 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
         ...range, tenantId: who.tenantId, actorId: who.actorId, actorRole: who.role, requestId: requestIdOf(res),
       });
       sendJson(res, report);
+    } finally {
+      verifying.delete(who.tenantId);
+    }
+  }));
+
+  // --- Security-finding seals (Task15op-a; security-findings-seal.md). attesta.read, like /verify,
+  // and the same one-at-a-time guard per tenant (both recompute in memory).
+  router.get('/security-seals/verify', handle(async (req, res, who) => {
+    const q = parseSecurityVerifyQuery(query(req));
+    if (verifying.has(who.tenantId)) {
+      sendProblem(res, 429, 'ATTESTA_API_RATE_LIMITED', { 'Retry-After': String(VERIFY_RETRY_AFTER_SECONDS) });
+      return;
+    }
+    verifying.add(who.tenantId);
+    try {
+      sendJson(res, await securityVerify({
+        tenantId: who.tenantId, actorId: who.actorId, actorRole: who.role, requestId: requestIdOf(res), query: q,
+      }));
     } finally {
       verifying.delete(who.tenantId);
     }

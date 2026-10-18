@@ -1,0 +1,45 @@
+{
+  "description": "Task15op synthetic security seal fixtures (no customer data): each file, the schema it is checked against and the expected result (security-seal.test.ts).",
+  "cases": [
+    {
+      "file": "valid-seal-document.json",
+      "schema": "document",
+      "valid": true
+    },
+    {
+      "file": "valid-seal-statement.json",
+      "schema": "statement",
+      "valid": true
+    },
+    {
+      "file": "invalid-seal-document-row-title.json",
+      "schema": "document",
+      "valid": false
+    },
+    {
+      "file": "invalid-seal-document-count-over-cap.json",
+      "schema": "document",
+      "valid": false
+    },
+    {
+      "file": "invalid-seal-document-no-generations.json",
+      "schema": "document",
+      "valid": false
+    },
+    {
+      "file": "invalid-seal-statement-audit-subject.json",
+      "schema": "statement",
+      "valid": false
+    },
+    {
+      "file": "invalid-seal-statement-catalog-version.json",
+      "schema": "statement",
+      "valid": false
+    },
+    {
+      "file": "invalid-seal-statement-float-count.json",
+      "schema": "statement",
+      "valid": false
+    }
+  ]
+}

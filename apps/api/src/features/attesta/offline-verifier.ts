@@ -260,6 +260,26 @@ function sealSchemaValidator(): ValidateFunction {
   return sealStatementValidator;
 }
 
+/**
+ * Task15op: security_findings_seal and security_period_report statements are checked against
+ * their own schemas (security-findings-seal.md, security-period-report.md).
+ */
+const SECURITY_SEAL_TYPE = 'https://trackai.dev/attesta/security-findings-seal/v1';
+const SECURITY_REPORT_TYPE = 'https://trackai.dev/attesta/security-period-report/v1';
+const ownSchemaValidators = new Map<string, ValidateFunction>();
+function ownSchemaValidator(file: string): ValidateFunction {
+  const cached = ownSchemaValidators.get(file);
+  if (cached) return cached;
+  const predicate = JSON.parse(readFileSync(join(contractDir(), file), 'utf8')) as Record<string, unknown>;
+  const ajv = new Ajv({ strict: true, allErrors: true, strictTypes: false, strictRequired: false });
+  ajv.addSchema(predicate);
+  const validator = ajv.compile({ $ref: `${String(predicate.$id)}#/definitions/statement` });
+  ownSchemaValidators.set(file, validator);
+  return validator;
+}
+const securitySealSchemaValidator = () => ownSchemaValidator('predicate-security-findings-seal-v1.schema.json');
+const securityReportSchemaValidator = () => ownSchemaValidator('predicate-security-period-report-v1.schema.json');
+
 // ---------------------------------------------------------------------------
 // Copied rules (never import anchor-env or trust-resolver: they pull in server config)
 // ---------------------------------------------------------------------------
@@ -1014,6 +1034,8 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
       statementSchemaValidator();
       reportSchemaValidator();
       sealSchemaValidator();
+      securitySealSchemaValidator();
+      securityReportSchemaValidator();
     } catch {
       statementValidatorOk = false;
     }
@@ -1062,8 +1084,15 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
       // Task16e: an audit seal's schema and typed record copies are checked here; its rows need
       // the audit export (docs/contracts/audit/export.md), not a pack.
       const isSeal = isObj(snapshot) && snapshot.predicateType === AUDIT_SEAL_TYPE;
+      // Task15op: a security seal needs its document and the finding rows (SS2–SS4) and a
+      // security report its document (figures), neither carried by a v1 pack: both make the
+      // reports check not checkable, never passed.
+      const isSecuritySeal = isObj(snapshot) && snapshot.predicateType === SECURITY_SEAL_TYPE;
+      const isSecurityReport = isObj(snapshot) && snapshot.predicateType === SECURITY_REPORT_TYPE;
+      if (isSecuritySeal || isSecurityReport) reportStatements += 1;
       try {
-        const validator = isReport ? reportSchemaValidator() : isSeal ? sealSchemaValidator() : statementSchemaValidator();
+        const validator = isReport ? reportSchemaValidator() : isSeal ? sealSchemaValidator()
+          : isSecuritySeal ? securitySealSchemaValidator() : isSecurityReport ? securityReportSchemaValidator() : statementSchemaValidator();
         if (validator(snapshot) !== true) {
           bump('ATTESTA_VERIFY_SCHEMA_INVALID');
           continue;
@@ -1072,7 +1101,7 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
         bump('ATTESTA_VERIFY_SCHEMA_INVALID');
         continue;
       }
-      if (!isReport && !isSeal && checkStatementRules(snapshot).length > 0) {
+      if (!isReport && !isSeal && !isSecuritySeal && !isSecurityReport && checkStatementRules(snapshot).length > 0) {
         bump('ATTESTA_VERIFY_RULE_VIOLATION');
         continue;
       }
@@ -1080,7 +1109,9 @@ function verify(download: unknown, options: OfflineVerifyOptions): OfflineReport
       // ledger's 0017/0022 guard rule): an exporter that rewrites a record without
       // re-signing its statement is caught here, not just by the chain links.
       const matches = isReport ? recordMatchesReport(record, snapshot)
-        : isSeal ? recordMatchesSeal(record, snapshot, tenantId) : recordMatchesStatement(record, snapshot);
+        : isSeal ? recordMatchesSeal(record, snapshot, tenantId)
+          : isSecuritySeal ? recordMatchesSeal(record, snapshot, tenantId, 'security-findings')
+            : isSecurityReport ? recordMatchesSecurityReport(record, snapshot, tenantId) : recordMatchesStatement(record, snapshot);
       if (!matches) {
         bump('ATTESTA_VERIFY_FIELD_MISMATCH');
         continue;
@@ -1252,7 +1283,7 @@ function recordMatchesReport(record: Obj, snapshot: unknown): boolean {
 
 /** The 0023 guard rule for an audit_seal record: repository, kind, sha and outbox subject null,
  * the predicate's tenant is the pack's, one subject named after that tenant and window with a sha256 digest. */
-function recordMatchesSeal(record: Obj, snapshot: unknown, tenantId: string): boolean {
+function recordMatchesSeal(record: Obj, snapshot: unknown, tenantId: string, path: 'audit' | 'security-findings' = 'audit'): boolean {
   if (!isObj(snapshot) || !Array.isArray(snapshot.subject) || snapshot.subject.length !== 1 || !isObj(snapshot.subject[0])) return false;
   const first = snapshot.subject[0];
   const digest = isObj(first.digest) ? first.digest : null;
@@ -1263,7 +1294,26 @@ function recordMatchesSeal(record: Obj, snapshot: unknown, tenantId: string): bo
     || digest === null || Object.keys(digest).join(',') !== 'sha256' || typeof digest.sha256 !== 'string') return false;
   return record.predicate_type === snapshot.predicateType
     && record.repository_id === null && record.statement_kind === null && record.subject_sha === null && record.outbox_subject_id === null
-    && first.name === `trackai:tenant/${tenantId}/audit/${window.from}..${window.to}`;
+    && first.name === `trackai:tenant/${tenantId}/${path}/${window.from}..${window.to}`;
+}
+
+/** The 0027 guard rule for a security_period_report record: kind, sha and outbox subject null, the
+ * scope's tenant is the pack's, repository_id is the scope's (null for tenant scope), one subject
+ * named after them and the period with a sha256 digest. */
+function recordMatchesSecurityReport(record: Obj, snapshot: unknown, tenantId: string): boolean {
+  if (!isObj(snapshot) || !Array.isArray(snapshot.subject) || snapshot.subject.length !== 1 || !isObj(snapshot.subject[0])) return false;
+  const first = snapshot.subject[0];
+  const digest = isObj(first.digest) ? first.digest : null;
+  const predicate = isObj(snapshot.predicate) ? snapshot.predicate : null;
+  const scope = predicate !== null && isObj(predicate.scope) ? predicate.scope : null;
+  if (scope === null || scope.tenant_id !== tenantId || typeof scope.from !== 'string' || typeof scope.to !== 'string'
+    || (scope.repository_id !== null && typeof scope.repository_id !== 'string')
+    || digest === null || Object.keys(digest).join(',') !== 'sha256' || typeof digest.sha256 !== 'string') return false;
+  const repo = scope.repository_id === null ? '' : `/repository/${String(scope.repository_id)}`;
+  return record.predicate_type === snapshot.predicateType
+    && record.statement_kind === null && record.subject_sha === null && record.outbox_subject_id === null
+    && record.repository_id === scope.repository_id
+    && first.name === `trackai:tenant/${tenantId}${repo}/security-period/${scope.from}..${scope.to}`;
 }
 
 /** Counts recomputed from the pack's own content (never the manifest's claims). */
