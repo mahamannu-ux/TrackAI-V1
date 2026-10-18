@@ -251,6 +251,8 @@ export interface SecuritySealPlanInput {
   rows: readonly SecurityFindingRow[];
   /** `--now`: drop the age rule (an operator about to build a report). */
   now?: boolean;
+  /** The pass just sealed a full chunk: the rest of the backlog is due at once (never an empty window). */
+  backlog?: boolean;
 }
 
 export interface SecuritySealPlan { window: SealWindow; previous: string | null; rows: SecurityFindingRow[] }
@@ -261,7 +263,8 @@ const msOf = (us: string): number => Date.parse(us.slice(0, 23) + 'Z');
  * The cadence (security-findings-seal.md "Windows and cadence"): a first seal from the
  * earliest row; later seals when there are rows and the last seal is ≥ 1 h old, or when it is
  * ≥ 24 h old (an empty window). `now` seals any rows at once, and an empty window when the last
- * `to` is at least a minute behind the cutoff (so a second run is not due). More than
+ * `to` is at least a minute behind the cutoff (so a second run is not due); `backlog` seals the
+ * rows left after a full chunk in the same pass. More than
  * MAX_SECURITY_SEAL_ROWS rows: `to` is the first row that does not fit, so one instant is
  * never split. null when nothing is due.
  */
@@ -271,7 +274,7 @@ export function planSecuritySealWindow(input: SecuritySealPlanInput): SecuritySe
   const rows = input.rows.filter((r) => r.received_at >= from && r.received_at < input.cutoff);
   if (input.last) {
     const due = rows.length > MAX_SECURITY_SEAL_ROWS
-      || (rows.length > 0 && (input.now || input.last.ageMs >= SECURITY_SEAL_MIN_INTERVAL_MS))
+      || (rows.length > 0 && (input.now || input.backlog || input.last.ageMs >= SECURITY_SEAL_MIN_INTERVAL_MS))
       || input.last.ageMs >= SECURITY_SEAL_EMPTY_INTERVAL_MS
       || (input.now === true && msOf(input.cutoff) - msOf(from) >= SECURITY_SEAL_NOW_MIN_GAP_MS);
     if (!due) return null;
@@ -369,7 +372,7 @@ export interface ChainSecuritySealInput {
 export interface SecuritySealStore {
   /** Tenants with at least one finding row (operator pass, across tenants on purpose). */
   tenantsWithFindings(): Promise<string[]>;
-  readSnapshot(tenantId: string, options: { now?: boolean }): Promise<SecuritySealSnapshot>;
+  readSnapshot(tenantId: string, options: { now?: boolean; backlog?: boolean }): Promise<SecuritySealSnapshot>;
   /**
    * One ledger transaction: the last seal is still the plan's previous → chainStatement → the
    * seal row → `audit.trail.security_findings_sealed`. 'stale' when another pass sealed first.
@@ -405,9 +408,9 @@ function codeOf(err: unknown): string {
 
 /** Seal one tenant if a seal is due. `dryRun` reads and plans only. */
 export async function sealSecurityTenant(deps: SecuritySealPassDeps, tenantId: string,
-  options: { dryRun?: boolean; now?: boolean } = {}): Promise<SecuritySealResult> {
+  options: { dryRun?: boolean; now?: boolean; backlog?: boolean } = {}): Promise<SecuritySealResult> {
   try {
-    const snap = await deps.store.readSnapshot(tenantId, { now: options.now });
+    const snap = await deps.store.readSnapshot(tenantId, { now: options.now, backlog: options.backlog });
     if (!snap.plan) return { tenantId, outcome: 'not_due' };
     const plan = snap.plan;
     const built = buildSecuritySealDocument({ tenantId, window: plan.window, previous: plan.previous, rows: plan.rows });
@@ -452,9 +455,9 @@ export async function runSecuritySealPass(deps: SecuritySealPassDeps,
   const out: SecuritySealResult[] = [];
   for (const tenantId of tenants) {
     for (let i = 0; i < MAX_SECURITY_SEALS_PER_PASS; i += 1) {
-      // `now` applies to the first seal only: a backlog's later chunks are due anyway, and an
-      // empty seal right after a full one is not wanted.
-      const r = await sealSecurityTenant(deps, tenantId, { dryRun: options.dryRun, now: options.now && i === 0 });
+      // `now` applies to the first seal only; after a seal in this pass, rows left over are due
+      // at once (the backlog), but an empty seal right after a full one is not wanted.
+      const r = await sealSecurityTenant(deps, tenantId, { dryRun: options.dryRun, now: options.now && i === 0, backlog: i > 0 });
       if (r.outcome !== 'not_due' || i === 0) out.push(r);
       if (r.outcome !== 'sealed') break;
     }
@@ -530,6 +533,7 @@ export function pgSecuritySealStore(db: SealDatabase = coreDb as unknown as Seal
             earliest,
             rows,
             now: options.now,
+            backlog: options.backlog,
           }),
         };
       }, { isolationLevel: 'repeatable read', accessMode: 'read only' });

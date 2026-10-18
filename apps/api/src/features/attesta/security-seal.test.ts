@@ -161,6 +161,9 @@ test('T15op seal: the cadence plans first, hourly, daily-empty, --now and chunke
   assert.equal(planSecuritySealWindow({ cutoff, last, earliest: null, rows, now: true })?.rows.length, 1);
   assert.equal(planSecuritySealWindow({ cutoff, last, earliest: null, rows: [], now: true })?.window.to, cutoff);
   assert.equal(planSecuritySealWindow({ cutoff, last: { ...last, windowTo: '2026-10-18T08:59:30.000000Z' }, earliest: null, rows: [], now: true }), null);
+  // The rest of a backlog after a full chunk is due at once; never an empty window.
+  assert.equal(planSecuritySealWindow({ cutoff, last, earliest: null, rows, backlog: true })?.rows.length, 1);
+  assert.equal(planSecuritySealWindow({ cutoff, last, earliest: null, rows: [], backlog: true }), null);
   // More rows than a seal holds: `to` is the first row that does not fit, a backlog is always due.
   const many = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 5 }, (_, i) => v2Row(i + 1, `2026-10-18T08:${String(10 + Math.floor(i / 1000)).padStart(2, '0')}:00.${String(i % 1000).padStart(3, '0')}000Z`));
   const chunk = planSecuritySealWindow({ cutoff, last, earliest: null, rows: many });
@@ -249,6 +252,7 @@ function memoryStore(rowsByTenant: Map<string, SecurityFindingRow[]>, cutoff: st
         earliest: lastSeal ? null : from,
         rows: from === null ? [] : rows.filter((r) => r.received_at >= from).slice(0, MAX_SECURITY_SEAL_ROWS + 1),
         now: options.now,
+        backlog: options.backlog,
       }) };
     },
     async chainSeal(input) {
@@ -293,6 +297,19 @@ test('T15op seal: the round trip signs one verifiable statement per due window, 
   }
   // Company A's document holds only A's rows.
   assert.deepEqual(JSON.parse(seals.get(A)![0].documentText).rows.map((r: { id: string }) => r.id), [id(1), id(2)]);
+});
+
+test('T15op seal: a backlog over one seal is sealed back to back in one pass (8 000 + 3)', async () => {
+  const many = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 3 }, (_, i) =>
+    v2Row(i + 1, `2026-10-18T06:${String(10 + Math.floor(i / 1000)).padStart(2, '0')}:00.${String(i % 1000).padStart(3, '0')}000Z`));
+  const { store, seals } = memoryStore(new Map([[A, many]]), '2026-10-18T07:00:00.000000Z');
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const resolver = devSignerResolver({ sharedKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), env: {} });
+  const r = await runSecuritySealPass({ store, resolver, builderVersion: BUILDER, actor: { type: 'system_operator', id: 't' }, log: () => undefined });
+  assert.deepEqual(r.map((x) => [x.outcome, x.count]), [['sealed', MAX_SECURITY_SEAL_ROWS], ['sealed', 3]]);
+  const [first, second] = seals.get(A)!;
+  assert.equal(second.plan.previous, first.documentDigest);
+  assert.equal(second.plan.window.from, first.plan.window.to);
 });
 
 test('T15op seal: no key, an over-limit signer and an instant overflow fail closed with their codes', async () => {
