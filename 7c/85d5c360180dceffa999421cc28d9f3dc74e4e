@@ -1,0 +1,19 @@
+apps/api/src/features/security-findings/task20i-reads-live-verify.ts
+  s_3be3302ddaee5c::t_ad8ef1fc2a3290 1-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "7c85d5c360180dceffa999421cc28d9f3dc74e4e",
+  "prompts": {},
+  "sessions": {
+    "s_3be3302ddaee5c": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "04ab36dc-6341-4a08-b7ef-425e8706f795",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
