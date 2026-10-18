@@ -2088,6 +2088,17 @@ export const attestaRecords = pgTable('attesta_records', {
         and ${table.statementKind} is null
         and ${table.subjectSha} is null
         and ${table.outboxSubjectId} is null)
+      or
+      (${table.predicateType} = 'https://trackai.dev/attesta/security-findings-seal/v1'
+        and ${table.repositoryId} is null
+        and ${table.statementKind} is null
+        and ${table.subjectSha} is null
+        and ${table.outboxSubjectId} is null)
+      or
+      (${table.predicateType} = 'https://trackai.dev/attesta/security-period-report/v1'
+        and ${table.statementKind} is null
+        and ${table.subjectSha} is null
+        and ${table.outboxSubjectId} is null)
     )
   `),
 }));
@@ -2544,6 +2555,95 @@ export const attestaAuditSeals = pgTable('attesta_audit_seals', {
     and ${table.sealDigest} ~ '^sha256:[0-9a-f]{64}$'
     and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
     and (${table.previousDigest} is null or ${table.previousDigest} ~ '^sha256:[0-9a-f]{64}$')
+  `),
+}));
+
+/**
+ * Security-finding seals (Task15op, A15.15; docs/contracts/attesta/security-findings-seal.md):
+ * the audit-seal pattern over windows of `security_findings` rows by `received_at`. Written
+ * only in the ledger transaction that chains the seal's statement; append-only (guards in 0027).
+ */
+export const attestaSecurityFindingSeals = pgTable('attesta_security_finding_seals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  windowFrom: text('window_from').notNull(),
+  windowTo: text('window_to').notNull(),
+  rowCount: integer('row_count').notNull(),
+  task6aCount: integer('task6a_count').notNull(),
+  v2Count: integer('v2_count').notNull(),
+  previousDigest: text('previous_digest'),
+  /** The exact RFC 8785 document bytes the statement's subject digest names. */
+  sealDocument: text('seal_document').notNull(),
+  sealDigest: text('seal_digest').notNull(),
+  recordId: uuid('record_id').notNull(),
+  statementDigest: text('statement_digest').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_security_finding_seals_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantFromUnique: unique('attesta_security_finding_seals_tenant_window_from_key').on(table.tenantId, table.windowFrom),
+  tenantDigestUnique: unique('attesta_security_finding_seals_tenant_seal_digest_key').on(table.tenantId, table.sealDigest),
+  tenantRecordUnique: unique('attesta_security_finding_seals_tenant_record_key').on(table.tenantId, table.recordId),
+  // Exactly one first seal per tenant.
+  tenantFirstUnique: uniqueIndex('attesta_security_finding_seals_tenant_first_key').on(table.tenantId)
+    .where(sql`${table.previousDigest} is null`),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_security_finding_seals_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  tenantToIndex: index('attesta_security_finding_seals_tenant_window_to_idx').on(table.tenantId, table.windowTo),
+  shapeCheck: check('attesta_security_finding_seals_shape_check', sql`
+    ${table.windowFrom} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
+    and ${table.windowTo} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
+    and ${table.windowFrom} < ${table.windowTo}
+    and ${table.rowCount} between 0 and 8000
+    and ${table.task6aCount} >= 0 and ${table.v2Count} >= 0
+    and ${table.task6aCount} + ${table.v2Count} = ${table.rowCount}
+    and ${table.sealDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and (${table.previousDigest} is null or ${table.previousDigest} ~ '^sha256:[0-9a-f]{64}$')
+  `),
+}));
+
+/**
+ * Security period reports (Task15op, A15.16; docs/contracts/attesta/security-period-report.md):
+ * one signed report document per row, written in the ledger transaction that chains it;
+ * append-only (guards in 0027). The builder lands in Task15op-b.
+ */
+export const attestaSecurityPeriodReports = pgTable('attesta_security_period_reports', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  /** null for a tenant-scoped report. */
+  repositoryId: uuid('repository_id'),
+  periodFrom: text('period_from').notNull(),
+  periodTo: text('period_to').notNull(),
+  reportDocument: text('report_document').notNull(),
+  reportDigest: text('report_digest').notNull(),
+  recordId: uuid('record_id').notNull(),
+  statementDigest: text('statement_digest').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('attesta_security_period_reports_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantDigestUnique: unique('attesta_security_period_reports_tenant_report_digest_key').on(table.tenantId, table.reportDigest),
+  tenantRecordUnique: unique('attesta_security_period_reports_tenant_record_key').on(table.tenantId, table.recordId),
+  tenantRecordForeignKey: foreignKey({
+    name: 'attesta_security_period_reports_tenant_record_fk',
+    columns: [table.tenantId, table.recordId],
+    foreignColumns: [attestaRecords.tenantId, attestaRecords.id],
+  }),
+  tenantRepositoryForeignKey: foreignKey({
+    name: 'attesta_security_period_reports_tenant_repository_fk',
+    columns: [table.tenantId, table.repositoryId],
+    foreignColumns: [scmRepositories.tenantId, scmRepositories.id],
+  }),
+  tenantPeriodIndex: index('attesta_security_period_reports_tenant_period_idx')
+    .on(table.tenantId, table.periodFrom, table.periodTo),
+  shapeCheck: check('attesta_security_period_reports_shape_check', sql`
+    ${table.periodFrom} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+    and ${table.periodTo} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+    and ${table.periodFrom} < ${table.periodTo}
+    and ${table.reportDigest} ~ '^sha256:[0-9a-f]{64}$'
+    and ${table.statementDigest} ~ '^sha256:[0-9a-f]{64}$'
   `),
 }));
 

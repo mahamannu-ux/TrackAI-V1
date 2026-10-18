@@ -40,6 +40,10 @@ export const AI_PROVENANCE_PREDICATE_TYPE = 'https://trackai.dev/attesta/ai-prov
 export const PERIOD_REPORT_PREDICATE_TYPE = 'https://trackai.dev/attesta/period-report/v1';
 /** The third predicate type (Task16e, audit-seal.md): its subject is a tenant's audit window, no repository. */
 export const AUDIT_SEAL_PREDICATE_TYPE = 'https://trackai.dev/attesta/audit-seal/v1';
+/** Task15op (security-findings-seal.md): a tenant's window of security-finding rows, no repository. */
+export const SECURITY_FINDINGS_SEAL_PREDICATE_TYPE = 'https://trackai.dev/attesta/security-findings-seal/v1';
+/** Task15op (security-period-report.md): a tenant's (or one repository's) security figures for a period. */
+export const SECURITY_PERIOD_REPORT_PREDICATE_TYPE = 'https://trackai.dev/attesta/security-period-report/v1';
 export const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 export const LEDGER_RECORD_KIND = 'statement';
 /** Largest statement the ledger accepts (bytes); signers cap lower (1 MiB local dev). */
@@ -240,7 +244,8 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
   if (!isPlainRecord(parsed)) throw guard('statement must be an object');
   if (parsed._type !== IN_TOTO_STATEMENT_TYPE) throw guard('statement _type is not in-toto Statement v1');
   if (parsed.predicateType !== AI_PROVENANCE_PREDICATE_TYPE && parsed.predicateType !== PERIOD_REPORT_PREDICATE_TYPE
-    && parsed.predicateType !== AUDIT_SEAL_PREDICATE_TYPE) {
+    && parsed.predicateType !== AUDIT_SEAL_PREDICATE_TYPE && parsed.predicateType !== SECURITY_FINDINGS_SEAL_PREDICATE_TYPE
+    && parsed.predicateType !== SECURITY_PERIOD_REPORT_PREDICATE_TYPE) {
     throw guard('unsupported predicateType');
   }
   const subjects = parsed.subject;
@@ -250,6 +255,10 @@ export function deriveStatementColumns(statementCanonical: string): StatementCol
   const subject = subjects[0];
   if (parsed.predicateType === PERIOD_REPORT_PREDICATE_TYPE) return derivePeriodReportColumns(statementCanonical, subject, parsed.predicate);
   if (parsed.predicateType === AUDIT_SEAL_PREDICATE_TYPE) return deriveAuditSealColumns(statementCanonical, subject, parsed.predicate);
+  if (parsed.predicateType === SECURITY_FINDINGS_SEAL_PREDICATE_TYPE) {
+    return deriveAuditSealColumns(statementCanonical, subject, parsed.predicate, SECURITY_FINDINGS_SEAL_PREDICATE_TYPE, 'security-findings');
+  }
+  if (parsed.predicateType === SECURITY_PERIOD_REPORT_PREDICATE_TYPE) return deriveSecurityReportColumns(statementCanonical, subject, parsed.predicate);
   const digest = subject.digest;
   const subjectSha = isPlainRecord(digest) ? digest.gitCommit : undefined;
   if (typeof subjectSha !== 'string' || !SHA_RE.test(subjectSha)) throw guard('subject digest is not a git commit sha');
@@ -324,9 +333,11 @@ function derivePeriodReportColumns(statementCanonical: string, subject: Record<s
 /**
  * audit_seal (Task16e): one subject named after the predicate's tenant and window, with a
  * sha256 digest (0023 guard). `tenantScope` is the predicate's tenant; chainStatement
- * requires it to be the chaining tenant.
+ * requires it to be the chaining tenant. A security_findings_seal (Task15op, 0027 guard) has
+ * the same shape under its own type and subject path.
  */
-function deriveAuditSealColumns(statementCanonical: string, subject: Record<string, unknown>, predicate: unknown): StatementColumns {
+function deriveAuditSealColumns(statementCanonical: string, subject: Record<string, unknown>, predicate: unknown,
+  predicateType: string = AUDIT_SEAL_PREDICATE_TYPE, path: 'audit' | 'security-findings' = 'audit'): StatementColumns {
   if (!isPlainRecord(predicate)) throw guard('statement predicate must be an object');
   if (predicate.statement_kind !== undefined) throw guard('an audit seal has no statement_kind');
   const digest = subject.digest;
@@ -341,13 +352,49 @@ function deriveAuditSealColumns(statementCanonical: string, subject: Record<stri
   if (typeof from !== 'string' || typeof to !== 'string' || !AUDIT_BOUND_RE.test(from) || !AUDIT_BOUND_RE.test(to) || from >= to) {
     throw guard('predicate window bounds are malformed');
   }
-  const name = `trackai:tenant/${tenantId}/audit/${from}..${to}`;
+  const name = `trackai:tenant/${tenantId}/${path}/${from}..${to}`;
   if (subject.name !== name) throw guard('subject name does not match the tenant and window');
   return {
     statementDigest: sha256Prefixed(Buffer.from(statementCanonical, 'utf8')),
-    predicateType: AUDIT_SEAL_PREDICATE_TYPE,
+    predicateType,
     statementKind: null,
     repositoryId: null,
+    subjectSha: null,
+    subjectName: name,
+    previous: previousDigests(predicate.previous),
+    tenantScope: tenantId,
+  };
+}
+
+/**
+ * security_period_report (Task15op, 0027 guard): one subject named after the scope's tenant,
+ * optional repository and period, with a sha256 digest; `repository_id` is the scope's (null
+ * for tenant scope). `tenantScope` must be the chaining tenant.
+ */
+function deriveSecurityReportColumns(statementCanonical: string, subject: Record<string, unknown>, predicate: unknown): StatementColumns {
+  if (!isPlainRecord(predicate)) throw guard('statement predicate must be an object');
+  if (predicate.statement_kind !== undefined) throw guard('a security report has no statement_kind');
+  const digest = subject.digest;
+  if (!isPlainRecord(digest) || !hasExactKeys(digest, ['sha256']) || typeof digest.sha256 !== 'string' || !HEX64_RE.test(digest.sha256)) {
+    throw guard('a security report subject digest must be {sha256}');
+  }
+  const scope = predicate.scope;
+  if (!isPlainRecord(scope)) throw guard('predicate scope must be an object');
+  const { tenant_id: tenantId, repository_id: repositoryId, from, to } = scope;
+  if (typeof tenantId !== 'string' || !UUID_RE.test(tenantId)) throw guard('predicate scope.tenant_id is not a UUID');
+  if (repositoryId !== null && (typeof repositoryId !== 'string' || !UUID_RE.test(repositoryId))) {
+    throw guard('predicate scope.repository_id is neither a UUID nor null');
+  }
+  if (typeof from !== 'string' || typeof to !== 'string' || !PERIOD_BOUND_RE.test(from) || !PERIOD_BOUND_RE.test(to) || from >= to) {
+    throw guard('predicate scope bounds are malformed');
+  }
+  const name = `trackai:tenant/${tenantId}${repositoryId === null ? '' : `/repository/${repositoryId}`}/security-period/${from}..${to}`;
+  if (subject.name !== name) throw guard('subject name does not match the tenant, repository and period');
+  return {
+    statementDigest: sha256Prefixed(Buffer.from(statementCanonical, 'utf8')),
+    predicateType: SECURITY_PERIOD_REPORT_PREDICATE_TYPE,
+    statementKind: null,
+    repositoryId,
     subjectSha: null,
     subjectName: name,
     previous: previousDigests(predicate.previous),
@@ -579,9 +626,10 @@ export async function chainStatement(
   const c = s.columns;
   // A period_report never comes from the outbox (tables.md: outbox_subject_id null).
   if (c.predicateType === PERIOD_REPORT_PREDICATE_TYPE && s.outboxClaim) throw guard('a period report has no outbox claim');
-  if (c.predicateType === AUDIT_SEAL_PREDICATE_TYPE) {
-    if (s.outboxClaim) throw guard('an audit seal has no outbox claim');
-    if (c.tenantScope !== s.tenantId) throw guard('an audit seal names another tenant');
+  if (c.predicateType === AUDIT_SEAL_PREDICATE_TYPE || c.predicateType === SECURITY_FINDINGS_SEAL_PREDICATE_TYPE
+    || c.predicateType === SECURITY_PERIOD_REPORT_PREDICATE_TYPE) {
+    if (s.outboxClaim) throw guard('a seal or a security report has no outbox claim');
+    if (c.tenantScope !== s.tenantId) throw guard('a seal or a security report names another tenant');
   }
 
   // 0. The commit-time guard must run after the envelope and head are written,
@@ -664,10 +712,13 @@ export async function chainStatement(
     where tenant_id = ${s.tenantId} and repository_id = ${c.repositoryId} and predicate_type = ${PERIOD_REPORT_PREDICATE_TYPE}
       and (statement_canonical::jsonb)->'subject'->0->>'name' = ${c.subjectName}
     order by seq`)
-    // audit_seal (Task16e): earlier seals of the same window (never any: a window is sealed once).
+    // audit_seal (Task16e), security_findings_seal and security_period_report (Task15op):
+    // earlier statements of the same type and subject name (never any for a seal: a window is
+    // sealed once; earlier reports of the same scope for a report, P10).
     : await run(tx, sql`/* ledger:previous_seals */
     select statement_digest from attesta_records
-    where tenant_id = ${s.tenantId} and repository_id is null and predicate_type = ${AUDIT_SEAL_PREDICATE_TYPE}
+    where tenant_id = ${s.tenantId} and predicate_type = ${c.predicateType}
+      and repository_id is not distinct from ${c.repositoryId}
       and (statement_canonical::jsonb)->'subject'->0->>'name' = ${c.subjectName}
     order by seq`);
   const current = prevRows.map((r) => String(r.statement_digest));
