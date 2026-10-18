@@ -1,0 +1,23 @@
+apps/api/src/features/security-findings/security-findings.test.ts
+  s_5fb6068fb1556c::t_52350a3e221583 701-702
+apps/api/src/features/security-findings/task6-acceptance-seed.ts
+  s_5fb6068fb1556c::t_bf99c50b63534f 103
+docs/handoffs/Task19e-qa-questions-screen_HANDOFF.md
+  s_5fb6068fb1556c::t_ea068cb0c7ea1a 71-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "484acc80f5e5cd0bc7c925c41cee8f0838fc1c39",
+  "prompts": {},
+  "sessions": {
+    "s_5fb6068fb1556c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_5fb6068fb1556c",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
