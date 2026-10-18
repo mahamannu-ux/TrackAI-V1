@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import Ajv from 'ajv';
 import { canonicalize } from '../attesta/canonical';
-import { LocalDevSigner, generateDevCredential } from '../attesta/signer-local-dev';
+import { LOCAL_DEV_MAX_PAYLOAD_BYTES, LocalDevSigner, generateDevCredential } from '../attesta/signer-local-dev';
 import { ATTESTA_PLATFORM_TENANT_ID } from '../attesta/anchor-contract';
 import { pinnedCatalogue } from './catalogue';
 import { compileRules } from './compiler';
@@ -98,14 +98,16 @@ test('lease documents sign and verify the same way under activation_lease', asyn
 
 test('signing fails closed: over the signer limit, no development key, development key in production', async () => {
   const fixture = trustFixture(NOW);
-  // 40 overrides × 5 agents passes 1 MiB, the Attesta adapters' payload cap (known limitation:
-  // as few as 11 of the largest rules can reach it; the default bundle is about 179 KB).
-  const changes = Object.fromEntries(catalogue.manifest.rules.slice(0, 40).map(rule => [rule.id, { severity: rule.severity === 'info' ? 'low' : 'info' }]));
-  const big = bundlePayload({
+  // The Attesta adapters cap a signed payload at 4 MiB + 1 KiB (Task15op0, PR #80). No settings combination
+  // reaches it (all 51 overrides compile to about 1.3 MB), so the refusal is proven with a document just over the cap.
+  const over = { pad: 'x'.repeat(LOCAL_DEV_MAX_PAYLOAD_BYTES) };
+  await assert.rejects(signSecurityDocument(fixture.signer('policy_bundle'), over), SecurityDocumentTooLarge);
+  const all = Object.fromEntries(catalogue.manifest.rules.map(rule => [rule.id, { severity: rule.severity === 'info' ? 'low' : 'info' }]));
+  const largest = bundlePayload({
     tenantId: TENANT, bundleVersion: 2, epoch: 2, issuedAt: NOW,
-    compiled: compileRules(catalogue, applyRuleChanges(defaultRuleSettings(catalogue), changes), 2),
+    compiled: compileRules(catalogue, applyRuleChanges(defaultRuleSettings(catalogue), all), 2),
   });
-  await assert.rejects(signBundle(fixture.signer('policy_bundle'), big), SecurityDocumentTooLarge);
+  assert.ok((await signBundle(fixture.signer('policy_bundle'), largest)).envelope.signatures.length === 1);
   await assert.rejects(signSecurityDocument(securitySignerFromEnv('policy_bundle', {}), { a: 1 }), SecuritySigningUnavailable);
   const credential = generateDevCredential('dev:task20f-env', ATTESTA_PLATFORM_TENANT_ID);
   const env = { SECURITY_POLICY_BUNDLE_CREDENTIAL_ID: credential.credentialId, SECURITY_DEV_POLICY_BUNDLE_KEY_FILE: '/key.pem' };
