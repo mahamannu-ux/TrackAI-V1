@@ -81,7 +81,7 @@ Each seal's current rows are read up to max(16 000, the seal's count + 8 000), a
 | SS1 | `subject[0].name` = `trackai:tenant/<predicate.tenant_id>/security-findings/<window.from>..<window.to>`; `subject[0].digest.sha256` = SHA-256 of the document bytes; `from` < `to` |
 | SS2 | The document's `tenant_id`, `window`, `count`, `generations`, `rows_root` and `previous` equal the predicate's (`previous_seal`); `tenant_id` = the ledger record's tenant |
 | SS3 | `count` = `rows.length` = `generations.task6a + generations.v2`; `rows` in (`received_at`, `id`) order with unique ids; `rows_root` recomputes |
-| SS4 | With the table at hand: every sealed id exists in the window with the same digest, no other row of the tenant is in the window, and the generation counts match the rows |
+| SS4 | With the table at hand: every sealed id exists in the window with the same digest, and no other row of the tenant is in the window (`missing_row`, `changed_row`, `unsealed_row_in_sealed_window`). The SS3 order, the generation counts and, for more than 8 000 rows, the one-instant rule (all rows share one `received_at` and `to` is that instant + 1 µs) are recomputed from the intact current rows; a seal that breaks them is a `statement_problem`, whatever its signature and root say |
 | SS5 | `previous` is the prior seal's digest and its `to` is this seal's `from`; the first seal has `previous: null` |
 | SS6 | The statement verifies, chains and anchors like any Attesta statement (`envelope.md`, `tables.md`) |
 

@@ -389,7 +389,7 @@ export function parseSecuritySealDocument(seal: StoredSecuritySeal): SecuritySea
   return d;
 }
 
-/** SS4: the current table's rows of a seal's window against the sealed list. */
+/** SS3–SS4: the current table's rows of a seal's window against the sealed list and its invariants. */
 export function checkSecuritySealRows(doc: SecuritySealDocument, sealDigest: string, current: readonly SecurityFindingRow[]): SealBreak[] {
   const out: SealBreak[] = [];
   const now = new Map(current.map((r) => [r.id, r]));
@@ -403,7 +403,44 @@ export function checkSecuritySealRows(doc: SecuritySealDocument, sealDigest: str
   for (const row of current) {
     if (!sealed.has(row.id)) out.push({ kind: 'unsealed_row_in_sealed_window', seal: sealDigest, row_id: row.id });
   }
+  if (!sealedInvariantsHold(doc, now)) out.push({ kind: 'statement_problem', seal: sealDigest });
   return out;
+}
+
+/**
+ * SS3–SS4 recomputed from the current rows (Codex review): a signed seal that lists its rows out
+ * of (received_at, id) order, miscounts the generations, or holds more than
+ * MAX_SECURITY_SEAL_ROWS rows that do not all share one instant (with `to` = that instant + 1 µs)
+ * was not built by the sealer, whatever its root says. Only intact rows (present, same digest)
+ * are used: a missing or changed row is already its own break and its stored values are not
+ * trusted here; the generation recount needs every sealed row intact.
+ */
+function sealedInvariantsHold(doc: SecuritySealDocument, now: ReadonlyMap<string, SecurityFindingRow>): boolean {
+  const intact: SecurityFindingRow[] = [];
+  for (const r of doc.rows) {
+    const row = now.get(r.id);
+    if (row && securityRowDigest(row) === r.digest) intact.push(row);
+  }
+  for (let i = 1; i < intact.length; i += 1) {
+    if (compareSecurityRows(intact[i - 1], intact[i]) >= 0) return false;
+  }
+  if (intact.length === doc.rows.length) {
+    const g = generationsOfSafe(intact);
+    if (!g || g.task6a !== doc.generations.task6a || g.v2 !== doc.generations.v2) return false;
+  }
+  if (doc.count > MAX_SECURITY_SEAL_ROWS && intact.length > 0) {
+    const instant = intact[0].received_at;
+    if (intact.some((r) => r.received_at !== instant) || doc.window.to !== nextMicrosecond(instant)) return false;
+  }
+  return true;
+}
+
+function generationsOfSafe(rows: readonly SecurityFindingRow[]): Generations | null {
+  try {
+    return generationsOf(rows);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

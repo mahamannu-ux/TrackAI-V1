@@ -14,9 +14,9 @@ Task15op-a closes gap G6 for S1. A signed, chained `security_findings_seal` stat
 | Scope | Migration 0027: chain guard and shape check extended to both types, two append-only tables, TRUNCATE refused on `security_findings` | ✅ |
 | Scope | `attesta:security-seal` (dry run, `--confirm`, `--now`, `--tenant`), audited | ✅ |
 | Scope | `GET /api/attesta/security-seals/verify` (missing / changed / late / links / orphans / unsealed tail); `/api/attesta/verify` and the offline verifier accept both types; packs carry seal and report statements | ✅ |
-| Quality | `npm test` 1169/1172 (1 failure, already on `main`: see Known limitations; 2 skipped); type check, lint, `drizzle-kit check` clean | ✅ |
+| Quality | `npm test` 1171 pass, 0 fail, 2 skipped (with `main` at `fbea993`, PR #85 merged in); type check, lint, `drizzle-kit check` clean | ✅ |
 | Integration | IT-T15op-01 passes in the sandbox; IT-T15d, IT-T15i4, IT-T16e, IT-T16e2 and IT-T20d re-run green on 0027 | 🟡 sandbox · ⬜ founder run |
-| Review | Independent review subagent: 2 must-fix, 4 should-fix, all fixed (below); cross-agent review by Codex | 🟡 Codex pending |
+| Review | Independent review subagent: 2 must-fix, 4 should-fix, all fixed; Codex round 1: one must-fix (SS3–SS4 not recomputed from the rows), fixed | 🟡 Codex re-review pending |
 
 ## Implemented interfaces
 ```ts
@@ -60,19 +60,19 @@ verifySecuritySeals(deps, {tenantId, actorId, actorRole, requestId, query: {from
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ **FOUNDER:** | Run IT-T15op-01 (command below) | blocking for this merge |
-| 🟡 | `features/security/signing.test.ts:99` fails on `main` too: Task15op0 raised the signer cap, so 40 overrides no longer exceed it. Outside this scope (Task20f's file) | `npm test` is red until Task20 lowers the test's threshold or uses a bigger bundle; to discuss with the founder |
+| ✅ | ~~`features/security/signing.test.ts:99` failed on `main` after Task15op0 raised the signer cap~~ fixed by Task20f1 (PR #85, 2026-10-18), merged into this branch | none |
 | 🟡 | A tenant pack holding a security seal always exits 2 offline (documents and rows are not in packs) | until an approved pack change carries seal documents |
 | 🟡 | More than 50 000 rows at one millisecond stops that tenant's sealing (alertable log line; the rows stay `unsealed_tail`) | not reachable at today's 500-record upload limit without at least 100 uploads in the same millisecond |
 | 🟡 | `ATTESTA_SECURITY_PERIOD_NOT_SEALED` and `ATTESTA_SECURITY_SEAL_BROKEN` are reserved for the 15op-b builder | n/a here |
 | n/a | Case bundles (S25, Numbat `case build`) | phase 2 |
 
 ## Test coverage
-- **`security-seal.test.ts` (13 tests, dev signer, in-memory store):**
+- **`security-seal.test.ts` (14 tests, dev signer, in-memory store):**
   - an independent Python digest vector, and every column change detected;
   - the document and statement, and the ledger columns for both types;
   - a seal or report naming another tenant refused before any query;
   - the cadence: first, hourly, daily-empty, `--now`, backlog, chunking at 8 000, an instant sealed alone, the 50 000 ceiling;
-  - each tamper class, the pure verify report, the round trip for Company A and B, and a moving cutoff giving no extra seals;
+  - each tamper class, a crafted seal (reordered rows, swapped generation counts, a false one-instant seal) as `statement_problem`, the pure verify report, the round trip for Company A and B, and a moving cutoff giving no extra seals;
   - fixtures.
 - **`offline-verifier.test.ts`:** both types pass the statements check with reports not checkable (exit 2), and mismatched typed columns are a break.
 - **`attesta-api.test.ts`:** the route sweep classifies the new route.

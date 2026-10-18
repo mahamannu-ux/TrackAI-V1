@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 import { canonicalize, sha256Prefixed } from './canonical';
+import { digestsRoot } from './period-report-rules';
 import { IN_TOTO_PAYLOAD_TYPE, pae } from './dsse';
 import {
   ATTESTA_STATEMENT_MAX_SIGNED_BYTES, AttestaLedgerError, SECURITY_FINDINGS_SEAL_PREDICATE_TYPE, SECURITY_PERIOD_REPORT_PREDICATE_TYPE,
@@ -223,6 +224,56 @@ test('T15op seal: every tamper class is found (missing, changed, late insert) an
   assert.equal(parseSecuritySealDocument({ ...s, sealDocument: s.sealDocument.replace('"count":3', '"count":2') }), null);
   assert.equal(parseSecuritySealDocument({ ...s, v2Count: 1, task6aCount: 2 }), null);
   assert.equal(parseSecuritySealDocument({ ...s, tenantId: B }), null, 'a seal moved to Company B no longer parses there');
+});
+
+test('T15op seal: a crafted seal (reordered rows, swapped generation counts, a false one-instant seal) is a statement problem (Codex review)', () => {
+  const rows = [task6aRow(1, '2026-10-18T06:00:00.000000Z'), v2Row(2, '2026-10-18T06:10:00.000000Z'), v2Row(3, '2026-10-18T06:20:00.000000Z')];
+  const honest = stored(A, rows);
+  // Re-sign-able forgeries: the document stays schema-valid and self-consistent (root recomputed).
+  const forge = (mutate: (d: Record<string, any>) => void): ReturnType<typeof stored> => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const d = JSON.parse(honest.sealDocument) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    mutate(d);
+    d.rows_root = digestsRoot(d.rows.map((r: { digest: string }) => r.digest));
+    const text = canonicalize(d);
+    return { ...honest, sealDocument: text, sealDigest: sha256Prefixed(text), task6aCount: d.generations.task6a, v2Count: d.generations.v2,
+      rowCount: d.count, windowTo: d.window.to, doc: { document: d as never, text, digest: sha256Prefixed(text) } };
+  };
+  const kinds = (s: ReturnType<typeof stored>, current: SecurityFindingRow[]) => {
+    const doc = parseSecuritySealDocument(s);
+    assert.ok(doc, 'the forged document parses: only the rows can expose it');
+    return checkSecuritySealRows(doc, s.sealDigest, current).map((b) => b.kind);
+  };
+  assert.deepEqual(kinds(honest, rows), []);
+  assert.deepEqual(kinds(forge((d) => { d.rows = [d.rows[1], d.rows[0], d.rows[2]]; }), rows), ['statement_problem'], 'rows out of (received_at, id) order');
+  assert.deepEqual(kinds(forge((d) => { d.generations = { task6a: 2, v2: 1 }; }), rows), ['statement_problem'], 'generation counts that still sum');
+  // More than 8 000 rows that do not share one instant, claimed as a one-instant seal.
+  const many = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 1 }, (_, i) => v2Row(i + 1, `2026-10-18T06:30:00.${String(i).padStart(6, '0')}Z`));
+  const wide = { from: W.from, to: '2026-10-18T06:30:00.008001Z' };
+  const wideDoc = (() => {
+    const d = { format: 'https://trackai.dev/attesta/security-findings-seal-document/v1', tenant_id: A, window: wide, previous: null,
+      count: many.length, generations: { task6a: 0, v2: many.length }, rows: many.map((r) => ({ id: r.id, digest: securityRowDigest(r) })),
+      rows_root: digestsRoot(many.map((r) => securityRowDigest(r))) };
+    const text = canonicalize(d);
+    return { tenantId: A, windowFrom: wide.from, windowTo: wide.to, rowCount: many.length, task6aCount: 0, v2Count: many.length,
+      previousDigest: null, sealDocument: text, sealDigest: sha256Prefixed(text) };
+  })();
+  const parsedWide = parseSecuritySealDocument(wideDoc);
+  assert.ok(parsedWide);
+  assert.deepEqual(checkSecuritySealRows(parsedWide, wideDoc.sealDigest, many).map((b) => b.kind), ['statement_problem'], 'over the cap, not one instant');
+  // The honest one-instant seal passes.
+  const instant = '2026-10-18T06:30:00.000000Z';
+  const same = many.map((r) => ({ ...r, received_at: instant }));
+  const alone = buildSecuritySealDocument({ tenantId: A, window: { from: W.from, to: nextMicrosecond(instant) }, previous: null, rows: same });
+  assert.deepEqual(checkSecuritySealRows(alone.document, alone.digest, same), []);
+  // In the report the forged seal is not ok, even with every row present and unchanged.
+  const forged = forge((d) => { d.rows = [d.rows[1], d.rows[0], d.rows[2]]; });
+  const statementCanonical = buildSecuritySealStatement({ document: forged.doc.document, documentDigest: forged.sealDigest, asOf: AS_OF, builderVersion: BUILDER });
+  const report = assembleSecurityVerifyReport(parseSecurityVerifyQuery({ from: '2026-10-18T05:00:00Z', to: '2026-10-18T08:00:00Z' }), {
+    seals: [{ ...forged, seq: 0, statementCanonical, recordStatementDigest: sha256Prefixed(statementCanonical), statementDigest: sha256Prefixed(statementCanonical) }],
+    predecessor: null, rowsBySeal: new Map([[forged.sealDigest, rows]]), tail: { from: W.to, count: 0 }, orphans: [], beforeFirst: null,
+  }, { ok: true, checked: 1, problems: new Set() });
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.breaks.map((b) => b.kind), ['statement_problem']);
 });
 
 test('T15op verify: the pure report is ok on an honest snapshot and names links, orphans and back-dated rows', () => {
