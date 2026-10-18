@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import test from 'node:test';
+import Ajv from 'ajv';
 import express, { type RequestHandler, type Router } from 'express';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { fleetConfigurations, fleetMachineStates } from '../../core/db/schema';
@@ -319,6 +322,78 @@ test('schema-v2 envelope separates compatibility from desired release and remain
   assert.equal('targetClientVersion' in envelope, false);
   assert.equal(envelope.repositoryPolicies.length, 1);
   assert.deepEqual(envelope.verification, { required: true, state: 'unavailable' });
+});
+
+function storedV3(overrides: Record<string, unknown> = {}) {
+  return {
+    machineId: machineA,
+    id: configurationA,
+    epoch: 5,
+    generatedAt: now,
+    validUntil: null,
+    schemaVersion: 3,
+    targetClientVersion: '1.6.20',
+    clientMinimumVersion: '1.6.19',
+    clientMaximumVersion: '1.6.20',
+    releaseTag: 'v1.6.20',
+    manifestUrl: 'https://github.com/mahamannu-ux/git-ai/releases/download/v1.6.20/SHA256SUMS',
+    manifestSha256,
+    channel: 'enterprise-latest' as const,
+    ring: null,
+    snapshot: {
+      repositoryPolicies: [{
+        machineId: machineA,
+        repositoryId: '55555555-5555-4555-8555-555555555555',
+        enrollmentId: '66666666-6666-4666-8666-666666666666',
+        grantId: '77777777-7777-4777-8777-777777777777',
+        branchPatterns: ['main'],
+        effectiveFrom: now.toISOString(),
+        effectiveUntil: null,
+      }, {
+        machineId: machineB,
+        repositoryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        enrollmentId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        grantId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        branchPatterns: ['release/*'],
+        effectiveFrom: now.toISOString(),
+        effectiveUntil: null,
+      }],
+      securityActivation: { mode: 'off' as const, version: 0 },
+    },
+    securityLease: {
+      leaseId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      bundleDigest: 'e'.repeat(64),
+      expiresAt: '2026-10-12T10:00:00.000Z',
+    },
+    ...overrides,
+  };
+}
+
+test('schema-v3 envelope (Task20f) replaces securityActivation with securityLease and validates against the contract', () => {
+  const envelope = configurationEnvelope(storedV3());
+  const ajv = new Ajv({ strict: true, strictRequired: false, allErrors: true });
+  ajv.addFormat('date-time', { type: 'string', validate: (value: string) => Number.isFinite(Date.parse(value)) });
+  ajv.addFormat('uri', { type: 'string', validate: (value: string) => { try { new URL(value); return true; } catch { return false; } } });
+  const validate = ajv.compile(JSON.parse(readFileSync(
+    resolve(__dirname, '../../../../../docs/contracts/security-v2/fleet-configuration-v3.schema.json'), 'utf8',
+  )));
+  assert.ok(validate(envelope), JSON.stringify(validate.errors));
+  if (envelope.schemaVersion !== 3) assert.fail('expected schema v3');
+  assert.equal('securityActivation' in envelope, false);
+  assert.deepEqual(envelope.securityLease, storedV3().securityLease);
+  assert.deepEqual(envelope.repositoryPolicies.map(policy => policy.grantId), ['77777777-7777-4777-8777-777777777777']);
+  // A v3 row is never served without its lease, nor without v2's release fields.
+  assert.throws(() => configurationEnvelope(storedV3({ securityLease: null })), /invalid/);
+  assert.throws(() => configurationEnvelope(storedV3({ releaseTag: null })), /invalid/);
+  // v1 and v2 ignore a lease and keep securityActivation.
+  const v2 = configurationEnvelope(storedV3({ schemaVersion: 2 }));
+  assert.equal(v2.schemaVersion, 2);
+  assert.equal('securityLease' in v2, false);
+  const v1 = configurationEnvelope(storedV3({
+    schemaVersion: 1, clientMinimumVersion: null, clientMaximumVersion: null, releaseTag: null, manifestUrl: null, manifestSha256: null,
+  }));
+  assert.equal(v1.schemaVersion, 1);
+  assert.equal('securityLease' in v1, false);
 });
 
 test('worker routes require managed credentials and derive tenant and machine from authentication', async () => {

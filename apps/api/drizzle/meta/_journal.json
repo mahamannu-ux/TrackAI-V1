@@ -183,6 +183,13 @@
       "when": 1792242075332,
       "tag": "0025_security_v2_ingest",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792261982742,
+      "tag": "0026_security_settings_signing",
+      "breakpoints": true
     }
   ]
 }

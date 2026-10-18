@@ -18,6 +18,7 @@ import { evidenceAdminRouter } from '../../features/evidence/evidence.routes';
 import { createFleetAdminRouter } from '../../features/fleet/fleet.routes';
 import { createAttestaRouter } from '../../features/attesta/attesta.routes';
 import { createQaRouter } from '../../features/qa/qa.routes';
+import { createSecuritySettingsAdminRouter } from '../../features/security/admin.routes';
 import { problemizeAuth } from '../../features/attesta/http';
 import { adminActionOf, requireAdminAction } from '../middleware/admin';
 
@@ -31,6 +32,7 @@ const FLEET_ADMIN_MOUNT = '/api/admin/fleet';
 const ATTESTA_MOUNT = '/api/attesta';
 const AUDIT_MOUNT = '/api/audit';
 const QA_MOUNT = '/api/qa';
+const SECURITY_ADMIN_MOUNT = '/api/admin/security';
 
 // Every guarded route on the admin, evidence-admin and fleet routers, mapped to
 // the action its requireAdminAction guard passes (read from the route file). Since
@@ -42,6 +44,9 @@ const QA_MOUNT = '/api/qa';
 const ROUTE_ACTIONS: Record<string, AdminAction> = {
   // --- adminRouter ---
   'GET /api/admin/machines': 'machine.manage',
+  // --- securitySettingsAdminRouter (Task20f; per-route guards) ---
+  'GET /api/admin/security/settings': 'security_findings.read',
+  'PUT /api/admin/security/settings': 'security.settings.manage',
   'GET /api/admin/repository-policies': 'repository.manage',
   'GET /api/admin/backfill-authorizations': 'backfill.manage',
   'GET /api/admin/audit': 'audit.read',
@@ -215,6 +220,7 @@ const SWEPT: StackedRouter[] = [
   { mount: ATTESTA_MOUNT, router: createAttestaRouter(), guard: 'router-level', routerAction: 'attesta.read' },
   { mount: AUDIT_MOUNT, router: auditRouter, guard: 'router-level', routerAction: 'audit.read' },
   { mount: QA_MOUNT, router: createQaRouter(), guard: 'router-level', routerAction: 'qa.read' },
+  { mount: SECURITY_ADMIN_MOUNT, router: createSecuritySettingsAdminRouter(), guard: 'per-route' },
 ];
 
 const STACKED: StackedRoute[] = SWEPT.flatMap(entry => routesOf(entry.router, entry.mount));

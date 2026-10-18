@@ -79,9 +79,28 @@ export interface FleetConfigurationEnvelopeV2 extends FleetConfigurationEnvelope
   desiredRelease: FleetDesiredRelease;
 }
 
+/** security-v2 fleet-configuration-v3: the machine's signed activation lease, by reference. */
+export interface FleetSecurityLeaseReference {
+  leaseId: string;
+  bundleDigest: string;
+  expiresAt: string;
+}
+
+/**
+ * Version 3 (Task20f; security-v2 README "Fleet configuration schema version 3"): v2's
+ * envelope with `securityActivation` replaced by `securityLease`. Written when the
+ * tenant's v2 monitoring is on at creation; the lease is resolved when it is served.
+ */
+export interface FleetConfigurationEnvelopeV3
+  extends Omit<FleetConfigurationEnvelopeV2, 'schemaVersion' | 'securityActivation'> {
+  schemaVersion: 3;
+  securityLease: FleetSecurityLeaseReference;
+}
+
 export type FleetConfigurationEnvelope =
   | FleetConfigurationEnvelopeV1
-  | FleetConfigurationEnvelopeV2;
+  | FleetConfigurationEnvelopeV2
+  | FleetConfigurationEnvelopeV3;
 
 interface FleetAdminConfigurationBase {
   id: string;
@@ -95,7 +114,7 @@ interface FleetAdminConfigurationBase {
 export type FleetAdminConfiguration =
   | (FleetAdminConfigurationBase & { schemaVersion: 1; targetClientVersion: string })
   | (FleetAdminConfigurationBase & {
-    schemaVersion: 2;
+    schemaVersion: 2 | 3;
     clientCompatibility: FleetClientCompatibility;
     desiredRelease: FleetDesiredRelease;
   });
@@ -513,6 +532,8 @@ export function configurationEnvelope(input: {
   channel: FleetChannel;
   ring: string | null;
   snapshot: FleetConfigurationSnapshot;
+  /** Required for version 3, ignored otherwise. */
+  securityLease?: FleetSecurityLeaseReference | null;
 }): FleetConfigurationEnvelope {
   const snapshot = validateFleetConfigurationSnapshot(input.snapshot);
   const common = {
@@ -543,14 +564,12 @@ export function configurationEnvelope(input: {
       verification: common.verification,
     };
   }
-  if (input.schemaVersion === 2
-    && input.clientMinimumVersion
+  const release = input.clientMinimumVersion
     && input.clientMaximumVersion
     && input.releaseTag
     && input.manifestUrl
-    && input.manifestSha256) {
-    return {
-      schemaVersion: 2,
+    && input.manifestSha256
+    ? {
       clientCompatibility: {
         minimumVersion: input.clientMinimumVersion,
         maximumVersion: input.clientMaximumVersion,
@@ -561,6 +580,25 @@ export function configurationEnvelope(input: {
         manifestUrl: input.manifestUrl,
         manifestSha256: input.manifestSha256,
       },
+    }
+    : null;
+  if (input.schemaVersion === 3 && release && input.securityLease) {
+    const { securityActivation: _securityActivation, ...v3Common } = common;
+    return {
+      schemaVersion: 3,
+      ...release,
+      ...v3Common,
+      securityLease: {
+        leaseId: input.securityLease.leaseId,
+        bundleDigest: input.securityLease.bundleDigest,
+        expiresAt: input.securityLease.expiresAt,
+      },
+    };
+  }
+  if (input.schemaVersion === 2 && release) {
+    return {
+      schemaVersion: 2,
+      ...release,
       ...common,
     };
   }

@@ -348,7 +348,7 @@ export const fleetConfigurations = pgTable('fleet_configurations', {
     .on(table.tenantId, table.generatedAt),
   epochCheck: check('fleet_configurations_epoch_check', sql`${table.epoch} >= 1`),
   schemaVersionCheck: check('fleet_configurations_schema_version_check',
-    sql`${table.schemaVersion} in (1, 2)`),
+    sql`${table.schemaVersion} in (1, 2, 3)`),
   releaseContractCheck: check('fleet_configurations_release_contract_check', sql`
     (${table.schemaVersion} = 1
       and ${table.clientMinimumVersion} is null
@@ -356,7 +356,7 @@ export const fleetConfigurations = pgTable('fleet_configurations', {
       and ${table.releaseTag} is null
       and ${table.manifestUrl} is null
       and ${table.manifestSha256} is null)
-    or (${table.schemaVersion} = 2
+    or (${table.schemaVersion} in (2, 3)
       and ${table.clientMinimumVersion} is not null
       and ${table.clientMaximumVersion} is not null
       and ${table.releaseTag} is not null
@@ -2645,3 +2645,173 @@ export type AttestaAnchor = typeof attestaAnchors.$inferSelect;
 export type AttestaPeriodReport = typeof attestaPeriodReports.$inferSelect;
 export type AttestaAuditSeal = typeof attestaAuditSeals.$inferSelect;
 export type AuditExport = typeof auditExports.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Task20f (T20.8): security rule and data settings, signed rule bundles, signed
+// per-machine activation leases and their acknowledgements. Every table is
+// append-only (migration 0026 triggers block UPDATE, DELETE and TRUNCATE), read and
+// written through withTenant(), with RLS and no browser policies.
+
+/** One tenant's rule settings, versioned; the highest version is current (Task20f). */
+export const securityRuleSettingsVersions = pgTable('security_rule_settings_versions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  version: integer('version').notNull(),
+  /** Every pinned rule id → {enabled, severity}; complete, validated by features/security/settings.ts. */
+  rules: jsonb('rules').$type<Record<string, { enabled: boolean; severity: 'info' | 'low' | 'medium' | 'high' | 'critical' }>>().notNull(),
+  numbatPin: text('numbat_pin').notNull(),
+  createdBy: text('created_by').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_rule_settings_versions_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantVersionUnique: unique('security_rule_settings_versions_tenant_version_key').on(table.tenantId, table.version),
+  boundedCheck: check('security_rule_settings_versions_bounded_check', sql`
+    ${table.version} >= 1
+    and ${table.numbatPin} = '20a5a52'
+    and jsonb_typeof(${table.rules}) = 'object'
+    and octet_length(${table.rules}::text) <= 65536
+    and length(${table.createdBy}) between 1 and 255
+    and length(${table.reason}) between 1 and 1000
+  `),
+}));
+
+/**
+ * One tenant's lease settings, versioned (Task20f): the five data switches, the agents,
+ * the day-one scan and the v2 monitor switch. The monitor switch lives here, not in
+ * Task6.a's tenant_security_monitor_settings, so turning Numbat monitoring on never
+ * activates the Task6.a route (AGENTS.md §9 item 11).
+ */
+export const securityDataSettingsVersions = pgTable('security_data_settings_versions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  version: integer('version').notNull(),
+  commandPreviews: boolean('command_previews').notNull(),
+  filePaths: boolean('file_paths').notNull(),
+  urls: boolean('urls').notNull(),
+  hostIdentity: boolean('host_identity').notNull(),
+  userIdentity: boolean('user_identity').notNull(),
+  agents: text('agents').array().notNull(),
+  dayOneScan: boolean('day_one_scan').notNull(),
+  monitorMode: text('monitor_mode').$type<'off' | 'monitor'>().notNull(),
+  createdBy: text('created_by').notNull(),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_data_settings_versions_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantVersionUnique: unique('security_data_settings_versions_tenant_version_key').on(table.tenantId, table.version),
+  boundedCheck: check('security_data_settings_versions_bounded_check', sql`
+    ${table.version} >= 1
+    and array_length(${table.agents}, 1) between 1 and 5
+    and ${table.agents} <@ array['claude-code', 'codex', 'cursor', 'gemini-cli', 'copilot']::text[]
+    and ${table.monitorMode} in ('off', 'monitor')
+    and length(${table.createdBy}) between 1 and 255
+    and length(${table.reason}) between 1 and 1000
+  `),
+}));
+
+/** Signed rule bundles: the exact DSSE envelope bytes and the payload digest (Task20f). */
+export const securityRuleBundles = pgTable('security_rule_bundles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  bundleVersion: integer('bundle_version').notNull(),
+  epoch: integer('epoch').notNull(),
+  ruleSettingsVersion: integer('rule_settings_version').notNull(),
+  /** Hex SHA-256 of the exact decoded payload bytes (never of the envelope). */
+  digest: text('digest').notNull(),
+  envelope: bytea('envelope').notNull(),
+  keyid: text('keyid').notNull(),
+  compilerVersion: text('compiler_version').notNull(),
+  numbatPin: text('numbat_pin').notNull(),
+  enabledRuleCount: integer('enabled_rule_count').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  createdBy: text('created_by').notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_rule_bundles_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantEpochUnique: unique('security_rule_bundles_tenant_epoch_key').on(table.tenantId, table.epoch),
+  tenantDigestUnique: unique('security_rule_bundles_tenant_digest_key').on(table.tenantId, table.digest),
+  tenantRuleSettingsForeignKey: foreignKey({
+    name: 'security_rule_bundles_tenant_rule_settings_fk',
+    columns: [table.tenantId, table.ruleSettingsVersion],
+    foreignColumns: [securityRuleSettingsVersions.tenantId, securityRuleSettingsVersions.version],
+  }),
+  boundedCheck: check('security_rule_bundles_bounded_check', sql`
+    ${table.bundleVersion} >= 1
+    and ${table.epoch} >= 1
+    and ${table.ruleSettingsVersion} >= 1
+    and ${table.bundleVersion} = ${table.ruleSettingsVersion}
+    and ${table.enabledRuleCount} between 0 and 1024
+    and ${table.digest} ~ '^[a-f0-9]{64}$'
+    and ${table.keyid} ~ '^sha256:[a-f0-9]{64}$'
+    and ${table.numbatPin} = '20a5a52'
+    and length(${table.compilerVersion}) between 1 and 64
+    and octet_length(${table.envelope}) between 1 and 6291456
+    and length(${table.createdBy}) between 1 and 255
+  `),
+}));
+
+/** Signed per-machine activation leases, kept forever as provenance (Task20f). `id` is the lease_id. */
+export const securityActivationLeases = pgTable('security_activation_leases', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  mode: text('mode').$type<'off' | 'monitor' | 'monitor_and_pilot_block'>().notNull(),
+  bundleDigest: text('bundle_digest').notNull(),
+  /** The lease-settings version (data switches, agents, day-one scan, monitor mode) it was issued under. */
+  dataSettingsVersion: integer('data_settings_version').notNull(),
+  envelope: bytea('envelope').notNull(),
+  keyid: text('keyid').notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_activation_leases_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineIdUnique: unique('security_activation_leases_tenant_machine_id_key')
+    .on(table.tenantId, table.machineId, table.id),
+  tenantMachineForeignKey: foreignKey({
+    name: 'security_activation_leases_tenant_machine_fk',
+    columns: [table.tenantId, table.machineId],
+    foreignColumns: [developerMachines.tenantId, developerMachines.id],
+  }),
+  tenantBundleForeignKey: foreignKey({
+    name: 'security_activation_leases_tenant_bundle_fk',
+    columns: [table.tenantId, table.bundleDigest],
+    foreignColumns: [securityRuleBundles.tenantId, securityRuleBundles.digest],
+  }),
+  tenantMachineIssuedIndex: index('security_activation_leases_tenant_machine_issued_idx')
+    .on(table.tenantId, table.machineId, table.issuedAt),
+  boundedCheck: check('security_activation_leases_bounded_check', sql`
+    ${table.expiresAt} > ${table.issuedAt}
+    and ${table.mode} in ('off', 'monitor', 'monitor_and_pilot_block')
+    and ${table.dataSettingsVersion} >= 0
+    and ${table.keyid} ~ '^sha256:[a-f0-9]{64}$'
+    and octet_length(${table.envelope}) between 1 and 65536
+  `),
+}));
+
+/** The Endpoint's applied or refused result for one lease and bundle (Task20f). */
+export const securityAcknowledgements = pgTable('security_acknowledgements', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: tenantIdColumn(),
+  machineId: uuid('machine_id').notNull(),
+  leaseId: uuid('lease_id').notNull(),
+  bundleDigest: text('bundle_digest').notNull(),
+  result: text('result').$type<'applied' | 'refused'>().notNull(),
+  refusalCode: text('refusal_code'),
+  receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  tenantIdIdUnique: unique('security_acknowledgements_tenant_id_id_key').on(table.tenantId, table.id),
+  tenantMachineLeaseForeignKey: foreignKey({
+    name: 'security_acknowledgements_tenant_machine_lease_fk',
+    columns: [table.tenantId, table.machineId, table.leaseId],
+    foreignColumns: [securityActivationLeases.tenantId, securityActivationLeases.machineId, securityActivationLeases.id],
+  }),
+  tenantLeaseIndex: index('security_acknowledgements_tenant_lease_idx').on(table.tenantId, table.leaseId),
+  resultCheck: check('security_acknowledgements_result_check', sql`
+    ${table.bundleDigest} ~ '^[a-f0-9]{64}$'
+    and ((${table.result} = 'applied' and ${table.refusalCode} is null)
+      or (${table.result} = 'refused' and ${table.refusalCode} in (
+        'SIGNATURE_REJECTED', 'VERIFICATION_UNAVAILABLE', 'LEASE_EXPIRED', 'MACHINE_MISMATCH',
+        'TENANT_MISMATCH', 'EPOCH_REGRESSION', 'BUNDLE_DIGEST_MISMATCH', 'RULES_CHECK_FAILED',
+        'UNSUPPORTED_SCHEMA')))
+  `),
+}));

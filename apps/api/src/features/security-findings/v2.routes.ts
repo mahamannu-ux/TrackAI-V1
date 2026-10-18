@@ -117,13 +117,18 @@ export interface SecurityV2RouterDependencies {
   authority: SecurityV2Authority;
   persist: SecurityV2Persist;
   log: SecurityV2Log;
+  /**
+   * Task20f's lease, bundle and acknowledgement routes, mounted behind this router's
+   * credential check, headers, body limit and parser. Absent: those paths 404.
+   */
+  leaseRoutes?: Router;
 }
 
 /**
- * Admission order step 2: the fixed 4 MiB body limit. The app-level parser
- * (app.ts, 5 mb) runs first and express.json skips an already-parsed body, so
- * this guard carries the limit; the router's own express.json({ limit }) is the
- * prompt's decision, kept for when the router runs without the app parser.
+ * Admission order step 2: the fixed 4 MiB body limit, from Content-Length before
+ * any byte is read. app.ts skips its global parser for this router (Task20f D7),
+ * so the router's own express.json({ limit: '4mb' }) parses after the credential
+ * check and also bounds a chunked body.
  */
 function bodyLimitGuard(req: Request, res: SecurityV2RouteResponse, next: NextFunction): void {
   const length = Number(req.get('content-length'));
@@ -136,19 +141,19 @@ function bodyLimitGuard(req: Request, res: SecurityV2RouteResponse, next: NextFu
 
 /**
  * The v2 router. Credentials, authority and storage are injected so tests and
- * live verifies run the real router in-process; production uses the unavailable
- * authority (fail-closed) until Task20f supplies the lease store.
+ * live verifies run the real router in-process. Without an authority it is the
+ * unavailable one (fail-closed); the production mount (security-findings.routes.ts)
+ * passes Task20f's lease-store authority.
  */
 export function createSecurityV2Router(
   dependencies: Partial<SecurityV2RouterDependencies> = {},
 ): Router {
   const resolved: SecurityV2RouterDependencies = {
     authority: dependencies.authority ?? unavailableSecurityV2Authority,
-    // Production storage. The unavailable authority answers LEASE_REQUIRED
-    // before storage runs, so this stays unreachable until Task20f's lease
-    // store supplies a real authority.
+    // Production storage; reached only after the authority finds a current lease.
     persist: dependencies.persist ?? persistSecurityV2Upload,
     log: dependencies.log ?? defaultLog,
+    leaseRoutes: dependencies.leaseRoutes,
   };
   const router = Router();
   router.use(securityV2Http);
@@ -170,6 +175,7 @@ export function createSecurityV2Router(
   router.post('/records', (req, res, next) => {
     void handleRecords(req as SecurityV2RouteRequest, res as SecurityV2RouteResponse, next, resolved);
   });
+  if (resolved.leaseRoutes) router.use(resolved.leaseRoutes);
   router.use(((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     void _req;
     void _next;
@@ -177,6 +183,13 @@ export function createSecurityV2Router(
     if (res.headersSent) return;
     if (type === 'entity.too.large') {
       sendProblem(res as SecurityV2RouteResponse, 413, 'SECURITY_V2_PAYLOAD_TOO_LARGE');
+      return;
+    }
+    // This router's parser is the only one since app.ts skips the global parser (Task20f D7):
+    // every client-side body error (malformed JSON, charset, encoding, aborted) is a 400.
+    const status = (error as { status?: number } | null)?.status;
+    if (type === 'entity.parse.failed' || (typeof status === 'number' && status >= 400 && status < 500)) {
+      sendProblem(res as SecurityV2RouteResponse, 400, 'SECURITY_V2_INVALID_BODY');
       return;
     }
     sendProblem(res as SecurityV2RouteResponse, 500, 'SECURITY_V2_INTERNAL');

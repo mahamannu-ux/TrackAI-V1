@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/core/audit/catalog.ts by `npm run audit:catalog -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Catalog version 3. 52 emitted actions (27 high, 12 notice, 13 info) and 10 reserved.
+Catalog version 3. 58 emitted actions (31 high, 14 notice, 13 info) and 4 reserved.
 Rules: `README.md` in this folder. Every action also accepts an optional `request_id: string` (AP-1).
 Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[]` at most 200 items, `counts` an object of non-negative integers, `string_map` an object of strings, `sha256_digest` is `sha256:<64 hex>`.
 
@@ -62,18 +62,18 @@ Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[
 | `audit.trail.verified` | Task16e | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `from: iso_timestamp`<br>`to: iso_timestamp`<br>`ok: boolean`<br>`seals_checked: integer`<br>`break_count: integer`<br>`request_id: string` | emitted |
 | `audit.export.requested` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`replayed: boolean`<br>`request_id: string` | emitted |
 | `audit.export.downloaded` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`export_digest: sha256_digest`<br>`counts: counts`<br>`request_id: string` | emitted |
+| `fleet.lease.issued` | Task20 | high | machine, service | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`expires_at: iso_timestamp`<br>`mode: enum[off, monitor, monitor_and_pilot_block]`<br>`bundle_digest: sha256_hex`<br>`epoch: integer` | emitted |
+| `fleet.lease.refused` | Task20 | notice | machine | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`bundle_digest: sha256_hex`<br>`refusal: enum[SIGNATURE_REJECTED, VERIFICATION_UNAVAILABLE, LEASE_EXPIRED, MACHINE_MISMATCH, TENANT_MISMATCH, EPOCH_REGRESSION, BUNDLE_DIGEST_MISMATCH, RULES_CHECK_FAILED, UNSUPPORTED_SCHEMA]` | emitted |
+| `policy.bundle.published` | Task20 | high | tenant_admin, system_operator | `policy_bundle` | row (uuid) | `version: integer`<br>`epoch: integer`<br>`bundle_digest: sha256_hex`<br>`rule_settings_version: integer`<br>`enabled_rule_count: integer`<br>`reason: reason` | emitted |
+| `policy.bundle.acknowledged` | Task20 | notice | machine | `policy_bundle` | row (uuid) | `machine_id: uuid`<br>`version: integer`<br>`epoch: integer`<br>`lease_id: uuid`<br>`bundle_digest: sha256_hex` | emitted |
+| `security.monitor.changed` | Task20 | high | tenant_admin, system_operator | `tenant_security_settings` | tenant (the tenant id) | `mode: enum[off, monitor, monitor_and_pilot_block]`<br>`previous_mode: enum[off, monitor, monitor_and_pilot_block]`<br>`version: integer`<br>`reason: reason` | emitted |
+| `security.settings.changed` | Task20 | high | tenant_admin, system_operator | `tenant_security_settings` | tenant (the tenant id) | `rule_settings_version: integer`<br>`data_settings_version: integer`<br>`bundle_version: integer`<br>`epoch: integer`<br>`changed_rule_count: integer`<br>`enabled_data_settings: string[]`<br>`day_one_scan: boolean`<br>`agents: string[]`<br>`reason: reason` | emitted |
 
 ## Reserved (refused until the owning Task flips them to emitted)
 
 | Action | Owner | Severity | Actor types | Target type | Target id | Details keys (`?` optional) | Status |
 |---|---|---|---|---|---|---|---|
 | `attesta.anchor.failed` | Task15 | notice | service | `attesta_anchor_batch` | compound: the anchor batch_id text "<tenant_id>:<seq_from>-<seq_to>", not the batch row uuid `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:(0\|[1-9][0-9]{0,15})-(0\|[1-9][0-9]{0,15})$` | `outcome: string`<br>`terminal: boolean`<br>`records: integer` | reserved |
-| `fleet.lease.issued` | Task20 | high | machine, service | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`expires_at: iso_timestamp`<br>`mode: enum[off, monitor, monitor_and_pilot_block]`<br>`bundle_digest: sha256_hex`<br>`epoch: integer` | reserved |
-| `fleet.lease.refused` | Task20 | notice | machine | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`bundle_digest: sha256_hex`<br>`refusal: enum[SIGNATURE_REJECTED, VERIFICATION_UNAVAILABLE, LEASE_EXPIRED, MACHINE_MISMATCH, TENANT_MISMATCH, EPOCH_REGRESSION, BUNDLE_DIGEST_MISMATCH, RULES_CHECK_FAILED, UNSUPPORTED_SCHEMA]` | reserved |
-| `policy.bundle.published` | Task20 | high | tenant_admin, system_operator | `policy_bundle` | row (uuid) | `version: integer`<br>`epoch: integer`<br>`bundle_digest: sha256_hex`<br>`rule_settings_version: integer`<br>`enabled_rule_count: integer`<br>`reason: reason` | reserved |
 | `policy.bundle.activated` | Task6.b | high | tenant_admin | `policy_bundle` | row (uuid) | `version: integer`<br>`reason: reason` | reserved |
-| `policy.bundle.acknowledged` | Task20 | notice | machine | `policy_bundle` | row (uuid) | `machine_id: uuid`<br>`version: integer`<br>`epoch: integer`<br>`lease_id: uuid`<br>`bundle_digest: sha256_hex` | reserved |
 | `artifact.signed` | Task14 | notice | service, system_operator | `artifact` | row (uuid) | `artifact_digest: sha256_digest`<br>`keyid: sha256_digest` | reserved |
-| `security.monitor.changed` | Task20 | high | tenant_admin, system_operator | `tenant_security_settings` | tenant (the tenant id) | `mode: enum[off, monitor, monitor_and_pilot_block]`<br>`previous_mode: enum[off, monitor, monitor_and_pilot_block]`<br>`version: integer`<br>`reason: reason` | reserved |
-| `security.settings.changed` | Task20 | high | tenant_admin, system_operator | `tenant_security_settings` | tenant (the tenant id) | `rule_settings_version: integer`<br>`data_settings_version: integer`<br>`bundle_version: integer`<br>`epoch: integer`<br>`changed_rule_count: integer`<br>`enabled_data_settings: string[]`<br>`day_one_scan: boolean`<br>`agents: string[]`<br>`reason: reason` | reserved |
 | `security.finding.triaged` | Task6 | notice | tenant_admin | `security_finding` | row (uuid) | `triage_state: string`<br>`reason: reason` | reserved |

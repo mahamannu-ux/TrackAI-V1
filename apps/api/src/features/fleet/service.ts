@@ -9,11 +9,15 @@ import {
   machineDeliveryHealthReports,
   machineRepositoryGrants,
   repositoryEnrollments,
+  securityDataSettingsVersions,
   tenantSecurityMonitorSettings,
 } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
 import { classifyClientDeliveryHealthStatus } from '../../core/operations/task4-operations-contract';
 import { revokeDeveloperMachine } from '../../core/security/machine-security-service';
+import { SecurityLeaseNotIssued, currentOrIssueLease } from '../security/lease';
+import { pgSecurityLeaseStore } from '../security/lease-store';
+import { securitySignerFromEnv } from '../security/signing-env';
 import {
   configurationEnvelope,
   type AssignFleetConfigurationInput,
@@ -22,6 +26,7 @@ import {
   type FleetConfigurationEnvelope,
   type FleetConfigurationSnapshot,
   type FleetReport,
+  type FleetSecurityLeaseReference,
 } from './contract';
 
 function adminConfiguration(
@@ -42,14 +47,14 @@ function adminConfiguration(
       ...common,
     };
   }
-  if (configuration.schemaVersion === 2
+  if ((configuration.schemaVersion === 2 || configuration.schemaVersion === 3)
     && configuration.clientMinimumVersion
     && configuration.clientMaximumVersion
     && configuration.releaseTag
     && configuration.manifestUrl
     && configuration.manifestSha256) {
     return {
-      schemaVersion: 2 as const,
+      schemaVersion: configuration.schemaVersion,
       clientCompatibility: {
         minimumVersion: configuration.clientMinimumVersion,
         maximumVersion: configuration.clientMaximumVersion,
@@ -92,9 +97,37 @@ async function activeMachine(tenantId: string, machineId: string) {
   return machine;
 }
 
+/** The machine's current activation lease for a v3 envelope; null when none can be issued. */
+export type FleetSecurityLeaseResolver = (
+  tenantId: string,
+  machineId: string,
+) => Promise<FleetSecurityLeaseReference | null>;
+
+let productionLeaseSigner: ReturnType<typeof securitySignerFromEnv> | undefined;
+
+/**
+ * Production resolver (Task20f, D6): the lease `GET /worker/security/v2/lease` would
+ * serve, issued lazily the same way. A lease lives 72 h and a configuration weeks, so
+ * the reference is resolved when served, never frozen at creation. Signing unavailable
+ * propagates (503 fleet_unavailable), never a stale or unsigned reference.
+ */
+export const resolveFleetSecurityLease: FleetSecurityLeaseResolver = async (tenantId, machineId) => {
+  productionLeaseSigner ??= securitySignerFromEnv('activation_lease');
+  try {
+    const lease = await currentOrIssueLease({
+      store: pgSecurityLeaseStore(), signer: productionLeaseSigner, tenantId, machineId, now: new Date(),
+    });
+    return { leaseId: lease.id, bundleDigest: lease.bundleDigest, expiresAt: lease.expiresAt.toISOString() };
+  } catch (error) {
+    if (error instanceof SecurityLeaseNotIssued) return null;
+    throw error;
+  }
+};
+
 export async function getFleetConfiguration(
   tenantId: string,
   machineId: string,
+  resolveSecurityLease: FleetSecurityLeaseResolver = resolveFleetSecurityLease,
 ): Promise<FleetConfigurationEnvelope | null> {
   await activeMachine(tenantId, machineId);
   const tenant = withTenant(db, tenantId);
@@ -108,7 +141,10 @@ export async function getFleetConfiguration(
     eq(fleetConfigurations.id, state.desiredConfigurationId),
   ).limit(1);
   if (!configuration) conflict();
-  return configurationEnvelope({ ...configuration, machineId });
+  if (configuration.schemaVersion !== 3) return configurationEnvelope({ ...configuration, machineId });
+  const securityLease = await resolveSecurityLease(tenantId, machineId);
+  if (!securityLease) conflict();
+  return configurationEnvelope({ ...configuration, machineId, securityLease });
 }
 
 export async function recordFleetReport(input: {
@@ -242,12 +278,18 @@ export async function createFleetConfiguration(input: {
     }
     const snapshot = await snapshotCurrentPolicy(transaction, input.tenantId, generatedAt);
     const v2 = input.configuration.schemaVersion === 2 ? input.configuration : null;
+    // Task20f (D6): a v2 configuration created while the tenant's security v2 monitoring
+    // is on is stored as version 3, which references the machine's activation lease.
+    // The v2 switch is Task20f's lease-settings row, never Task6.a's monitor table.
+    const [leaseSettings] = v2 ? await tenant.select(securityDataSettingsVersions)
+      .orderBy(desc(securityDataSettingsVersions.version)).limit(1) : [];
+    const schemaVersion = v2 ? (leaseSettings?.monitorMode === 'monitor' ? 3 : 2) : 1;
     const targetClientVersion = input.configuration.schemaVersion === 2
       ? input.configuration.desiredRelease.version
       : input.configuration.targetClientVersion;
     const [configuration] = await tenant.insert(fleetConfigurations, {
       epoch: (latest?.epoch ?? 0) + 1,
-      schemaVersion: input.configuration.schemaVersion ?? 1,
+      schemaVersion,
       generatedAt,
       generatedBy: input.actorId,
       validUntil: input.configuration.validUntil,
