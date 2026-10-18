@@ -70,6 +70,7 @@
     "verify:task16e2-audit-db-role-live": "tsx src/features/audit/task16e2-audit-db-role-live-verify.ts",
     "verify:task19a-qa-live": "tsx src/features/qa/task19a-qa-live-verify.ts",
     "verify:task19b-qa-live": "tsx src/features/qa/task19b-qa-live-verify.ts",
+    "verify:task19c-qa-live": "tsx src/features/qa/task19c-qa-live-verify.ts",
     "verify:task20d-ingest-live": "tsx src/features/security-findings/task20d-ingest-live-verify.ts",
     "verify:task20f-signing-live": "tsx src/features/security/task20f-signing-live-verify.ts",
     "attesta:audit-seal": "tsx src/features/attesta/attesta-audit-seal-cli.ts",
@@ -113,7 +114,7 @@
     "setup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-setup.ts",
     "cleanup:task4-wave2-client-live": "tsx src/features/telemetry/task4-wave2-client-live-cleanup.ts",
     "test:fleet": "node --import tsx --test src/features/fleet/fleet.test.ts",
-    "test": "node --import tsx --test src/app-cors.test.ts src/features/telemetry/telemetry.test.ts src/features/evidence/evidence.test.ts src/features/security-findings/security-findings.test.ts src/features/security-findings/v2-contract.test.ts src/features/security-findings/v2-ingest.test.ts src/features/security/catalogue.test.ts src/features/security/compiler.test.ts src/features/security/signing.test.ts src/features/security/lease.test.ts src/features/security/app-parser.test.ts src/features/security/admin.test.ts src/features/fleet/fleet.test.ts src/core/security/security.test.ts src/core/security/auditor-sweep.test.ts src/core/audit/audit-contract.test.ts src/core/audit/only-writer.test.ts src/core/db/audit-reader.test.ts src/core/db/tenant.test.ts src/core/app.test.ts src/features/attesta/*.test.ts src/features/audit/audit-api.test.ts src/features/audit/offline-export-verifier.test.ts src/features/admin/admin.routes.test.ts src/features/qa/qa-contract.test.ts src/features/qa/qa-api.test.ts src/features/qa/answers/answers-code.test.ts src/features/qa/drilldown.test.ts"
+    "test": "node --import tsx --test src/app-cors.test.ts src/features/telemetry/telemetry.test.ts src/features/evidence/evidence.test.ts src/features/security-findings/security-findings.test.ts src/features/security-findings/v2-contract.test.ts src/features/security-findings/v2-ingest.test.ts src/features/security/catalogue.test.ts src/features/security/compiler.test.ts src/features/security/signing.test.ts src/features/security/lease.test.ts src/features/security/app-parser.test.ts src/features/security/admin.test.ts src/features/fleet/fleet.test.ts src/core/security/security.test.ts src/core/security/auditor-sweep.test.ts src/core/audit/audit-contract.test.ts src/core/audit/only-writer.test.ts src/core/db/audit-reader.test.ts src/core/db/tenant.test.ts src/core/app.test.ts src/features/attesta/*.test.ts src/features/audit/audit-api.test.ts src/features/audit/offline-export-verifier.test.ts src/features/admin/admin.routes.test.ts src/features/qa/qa-contract.test.ts src/features/qa/qa-api.test.ts src/features/qa/answers/answers-code.test.ts src/features/qa/drilldown.test.ts src/features/qa/security-answerers.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-kms": "3.1141.0",
