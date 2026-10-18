@@ -16,8 +16,8 @@ Branch `task/Task20f-security-settings-signing` (base `main` at `67af037`; merge
 | 12–13 | Fleet configuration v3; migration `0026` (five tables, fleet checks `(1, 2, 3)`) | ✅ |
 | 14 | Admin API `GET`/`PUT /api/admin/security/settings` | ✅ |
 | Quality | `npm test` and `npm run check` pass (see Test coverage) | ✅ |
-| Integration | IT-T20f-01 parts a and b passed in the agent sandbox; Task20d and Task9 live verifies rerun and pass | 🟡 founder run |
-| Review | Independent review subagent: all findings fixed (Deviations 7–8). Codex cross-review (2026-10-18): "fix first"; the stale-lease race is fixed (Deviation 9); the 4 MiB signer cap waits on Task15 (Known limitations) | 🟡 |
+| Integration | IT-T20f-01 parts a and b: the founder's run passed (2026-10-18, sixteen lines); Task20d and Task9 live verifies rerun in the sandbox and pass | ✅ |
+| Review | Independent review subagent: all findings fixed (Deviations 7–8). Codex cross-review (2026-10-18): "fix first"; the stale-lease race is fixed (Deviation 9); the 4 MiB signer cap was raised by Task15op0 (PR #80); Codex: ready to push. Merged as PRs #81 and #82 | ✅ |
 
 ## Implemented interfaces
 ```text
@@ -57,7 +57,7 @@ Tables: security_rule_settings_versions, security_data_settings_versions (holds 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ | **Blocking the merge (cross-review, 2026-10-18).** Both Attesta signers cap a payload at 1 MiB (`signer-kms.ts:32`, `signer-local-dev.ts:32`); the frozen contract allows rule bundles up to 4 MiB. Overriding about 11 of the largest rules exceeds 1 MiB, and publish answers `413` with nothing written | Task15-owned (`features/attesta/**` is use-only here). Raising both constants to 4 MiB plus the DSSE header also lets Attesta's builder sign statements up to its own 4 MiB `MAX_STATEMENT_BYTES` (`builder.ts:962`, `ledger.ts:46`), so the Task15 owner decides and tests it (`signer.test.ts:366`, `signer-kms.test.ts:667`). Once it lands, Task20f's dry-run flag and `413` lift with no Task20f code change |
+| ✅ | ~~Both Attesta signers capped a payload at 1 MiB; the contract allows rule bundles up to 4 MiB (cross-review blocker)~~ Resolved 2026-10-18 by Task15op0 (PR #80): both caps are 4 MiB + 1 KiB, with Attesta statements and audit seals kept at 1 MiB | none; Task20f needed no code change |
 | 🟡 | Two concurrent first fetches for one machine can each sign; the insert re-checks under a per-machine lock and serves the stored lease, so one row is kept (a wasted signature) | none |
 
 ## Test coverage
@@ -68,9 +68,9 @@ Tables: security_rule_settings_versions, security_data_settings_versions (holds 
 - **Mocked:** storage in unit tests (in-memory store); the JWT layer in the live verify.
 
 ## Integration test impact
-> **FOUNDER:** IT-T20f-01 is blocking for the Task20f merge. Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: sixteen `…=` summary lines, under a minute.
+> ~~**FOUNDER:** IT-T20f-01 is blocking for the Task20f merge.~~ Done 2026-10-18 (founder run passed). Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: sixteen `…=` summary lines, under a minute.
 
-`IT_PG_DATABASES=trackai_task20f_signing_live IT_PG_EXPORTS=DATABASE_URL=trackai_task20f_signing_live scripts/it-db.sh npm run verify:task20f-signing-live -w apps/api` covers part a (settings, dry run, signing unavailable, publish, epochs, oversize, Task6.a untouched, append-only, A/B) and part b: real machine credentials over HTTP → signed lease verified and reused → bundle by digest → acknowledgement → an upload accepted through the real authority and storage → an expired lease (machine Y) and an `off` lease refused → cases 3–8 → fleet v3 created while monitoring, served with the current lease, database checks holding → append-only leases and acknowledgements → audit rows. Agent-sandbox run: passed 2026-10-17 (🟡). Also rerun here: `verify:task20d-ingest-live`, `verify:task9-fleet-live` (pass). IT-T20f-02 (production KMS keys) waits for Task15n (⬜).
+`IT_PG_DATABASES=trackai_task20f_signing_live IT_PG_EXPORTS=DATABASE_URL=trackai_task20f_signing_live scripts/it-db.sh npm run verify:task20f-signing-live -w apps/api` covers part a (settings, dry run, signing unavailable, publish, epochs, oversize, Task6.a untouched, append-only, A/B) and part b: real machine credentials over HTTP → signed lease verified and reused → bundle by digest → acknowledgement → an upload accepted through the real authority and storage → an expired lease (machine Y) and an `off` lease refused → cases 3–8 → fleet v3 created while monitoring, served with the current lease, database checks holding → append-only leases and acknowledgements → audit rows. Agent-sandbox run: passed 2026-10-17; founder run: passed 2026-10-18 (✅). Also rerun here: `verify:task20d-ingest-live`, `verify:task9-fleet-live` (pass). IT-T20f-02 (production KMS keys) waits for Task15n (⬜).
 
 ## Effort
 Whole Task20f: estimate about 0.30× T6, re-estimated 0.45× and split; actual about 0.45× (part a about 0.25×, part b about 0.20×). Part a ran over on Task20d's snapshot drift, the 1 MiB signer cap and a hard-coded catalogue version; part b ran to plan because the design note had settled D4–D7.
