@@ -129,3 +129,13 @@ Stable codes for logs, `attesta_subjects.last_error_code`, verify reports and RF
 | `ATTESTA_API_CONFLICT` | 409 (an `Idempotency-Key` reused with another scope or mode) |
 
 *Added 2026-10-13 (Task15i2, lead-approved; proposed in the Task15i handoff). Evidence-pack jobs that fail record one of the codes above or `ATTESTA_SIGNER_*` as their `error_code` (`evidence-pack.md`).*
+
+## Security seals and reports (Task15op, `security-findings-seal.md`, `security-period-report.md`)
+
+| Code | When | Retry |
+|---|---|---|
+| `ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW` | more than 8 000 finding rows share one `received_at` instant, so no seal can hold them without splitting the instant | terminal; investigate |
+| `ATTESTA_SECURITY_PERIOD_NOT_SEALED` | a security period report was asked for a period whose end is not yet covered by a seal | retry after the next seal |
+| `ATTESTA_SECURITY_SEAL_BROKEN` | a seal overlapping the report period shows a break (missing, changed or late-inserted row, broken link) | terminal; investigate with the verify report |
+
+*Added 2026-10-18 (Task15op, founder checkpoint). Verify break kinds reuse the audit-seal names (`missing_row`, `changed_row`, `unsealed_row_in_sealed_window`, `broken_previous`, `statement_problem`).*
