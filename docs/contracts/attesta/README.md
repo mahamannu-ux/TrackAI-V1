@@ -19,6 +19,8 @@ Attesta turns Task2's attribution records into signed, tamper-evident statements
 | `fields.md` | Where every predicate field comes from in Task2 (`file:line`), its v1 availability and the question it serves | frozen (the builder's source map) |
 | `mapping.md` | Predicate → CycloneDX and SPDX 3.0 under `trackai:attesta:*` | design note |
 | `period-report.md` | The `period_report` statement (phase 1, built in A15.9) | design, binding |
+| `security-findings-seal.md` + `security-findings-seal-document-v1.schema.json`, `predicate-security-findings-seal-v1.schema.json` | The `security_findings_seal` statement over windows of finding rows (Task15op, A15.15, gap G6) | frozen when merged |
+| `security-period-report.md` + `security-period-report-document-v1.schema.json`, `predicate-security-period-report-v1.schema.json` | The `security_period_report` statement (Task15op, A15.16) | design, binding (schemas frozen when merged) |
 
 "Design, binding" means the later session may add detail but not contradict it without a founder decision recorded here. The cross-field rules (S1–S12) below are implemented once, in `apps/api/src/features/attesta/contract-rules.ts`; the fixture test (`contract-fixtures.test.ts`) checks every fixture against the schemas, those rules and the manifest.
 

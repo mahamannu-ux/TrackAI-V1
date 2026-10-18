@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/core/audit/catalog.ts by `npm run audit:catalog -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Catalog version 3. 58 emitted actions (31 high, 14 notice, 13 info) and 4 reserved.
+Catalog version 3. 60 emitted actions (31 high, 14 notice, 15 info) and 4 reserved.
 Rules: `README.md` in this folder. Every action also accepts an optional `request_id: string` (AP-1).
 Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[]` at most 200 items, `counts` an object of non-negative integers, `string_map` an object of strings, `sha256_digest` is `sha256:<64 hex>`.
 
@@ -60,6 +60,8 @@ Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[
 | `audit.events.read` | Task16c | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `limit: integer`<br>`returned: integer`<br>`filters: string[]` | emitted |
 | `audit.trail.sealed` | Task16e | info | service, system_operator | `attesta_audit_seal` | row (uuid) | `window_from: iso_timestamp`<br>`window_to: iso_timestamp`<br>`count: integer`<br>`seal_digest: sha256_digest`<br>`request_id: string` | emitted |
 | `audit.trail.verified` | Task16e | info | tenant_admin, tenant_auditor | `security_audit_events` | tenant (the tenant id) | `from: iso_timestamp`<br>`to: iso_timestamp`<br>`ok: boolean`<br>`seals_checked: integer`<br>`break_count: integer`<br>`request_id: string` | emitted |
+| `audit.trail.security_findings_sealed` | Task15op | info | service, system_operator | `attesta_security_finding_seal` | row (uuid) | `window_from: iso_timestamp`<br>`window_to: iso_timestamp`<br>`count: integer`<br>`task6a_count: integer`<br>`v2_count: integer`<br>`seal_digest: sha256_digest`<br>`request_id: string` | emitted |
+| `audit.trail.security_findings_verified` | Task15op | info | tenant_admin, tenant_auditor | `security_findings` | tenant (the tenant id) | `from: iso_timestamp`<br>`to: iso_timestamp`<br>`ok: boolean`<br>`seals_checked: integer`<br>`break_count: integer`<br>`request_id: string` | emitted |
 | `audit.export.requested` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`replayed: boolean`<br>`request_id: string` | emitted |
 | `audit.export.downloaded` | Task16e | info | tenant_admin, tenant_auditor | `audit_export` | row (uuid) | `scope_from: iso_timestamp`<br>`scope_to: iso_timestamp`<br>`export_digest: sha256_digest`<br>`counts: counts`<br>`request_id: string` | emitted |
 | `fleet.lease.issued` | Task20 | high | machine, service | `developer_machine` | row (uuid) | `lease_id: uuid`<br>`expires_at: iso_timestamp`<br>`mode: enum[off, monitor, monitor_and_pilot_block]`<br>`bundle_digest: sha256_hex`<br>`epoch: integer` | emitted |

@@ -190,6 +190,13 @@
       "when": 1792261982742,
       "tag": "0026_security_settings_signing",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792323837560,
+      "tag": "0027_attesta_security_seals",
+      "breakpoints": true
     }
   ]
 }

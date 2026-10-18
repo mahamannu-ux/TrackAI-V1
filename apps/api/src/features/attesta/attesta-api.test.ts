@@ -254,7 +254,10 @@ async function harness(over: Partial<AttestaRouterDeps> = {}, store = new FakeSt
     verifier: chainVerifier(verifierCalls, store), keys: noPublishedKeys, packs,
     startPack: (tenantId, packId) => { started.push({ tenantId, packId }); },
     reports, startReport: (tenantId, reportId) => { startedReports.push({ tenantId, reportId }); },
-    anchors: async () => null, now: () => NOW, log: (l) => logs.push(l), ...over,
+    anchors: async () => null, now: () => NOW, log: (l) => logs.push(l),
+    verifySecuritySeals: async (input) => ({ ok: true, from: input.query.from, to: input.query.to, seals_checked: 0, breaks: [],
+      breaks_truncated: false, unsealed_tail: { from: null, count: 0 }, chain: { ok: true, checked: 0 } }),
+    ...over,
   });
   const app = express();
   app.use(express.json());
@@ -758,6 +761,7 @@ const EXPECTED_ROUTES = new Set([
   'POST /period-reports',
   'GET /period-reports/:id',
   'GET /period-reports/:id/document',
+  'GET /security-seals/verify',
 ]);
 /**
  * Routes that change anything. The evidence-pack POST creates a job; it is allowed to
@@ -790,7 +794,8 @@ function concrete(route: string): string {
     .replace(':digest', `sha256:${'c'.repeat(64)}`)
     .replace(':repository_id', REPO_A)
     .replace(':sha', shaOf('sweep'))
-    .replace(':id', '33333333-0000-4000-8000-000000000003');
+    .replace(':id', '33333333-0000-4000-8000-000000000003')
+    + (path === '/security-seals/verify' ? '?from=2026-10-13T10:00:00Z&to=2026-10-13T11:00:00Z' : '');
 }
 
 describe('route sweep (AU-1)', () => {

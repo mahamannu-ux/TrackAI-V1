@@ -154,6 +154,14 @@ const FIXTURES: Record<string, Fixture> = {
   'audit.trail.verified': role('tenant_auditor', TENANT, {
     from: '2026-10-01T00:00:00Z', to: '2026-10-15T00:00:00Z', ok: true, seals_checked: 12, break_count: 0, request_id: 'req-16e',
   }),
+  // Task15op (A15.15): security-finding seals and their verify report.
+  'audit.trail.security_findings_sealed': { actorType: 'system_operator', actorId: 'attesta:security-seal:ops', targetId: U1, details: {
+    window_from: '2026-10-18T06:00:00.000000Z', window_to: '2026-10-18T07:00:00.123456Z', count: 3, task6a_count: 1, v2_count: 2,
+    seal_digest: `sha256:${'a'.repeat(64)}`, request_id: 'attesta-security-seal:t:1',
+  } },
+  'audit.trail.security_findings_verified': role('tenant_auditor', TENANT, {
+    from: '2026-10-01T00:00:00Z', to: '2026-10-15T00:00:00Z', ok: true, seals_checked: 12, break_count: 0, request_id: 'req-15op',
+  }),
   'audit.export.requested': role('tenant_admin', U1, {
     scope_from: '2026-01-01T00:00:00.000Z', scope_to: '2026-10-01T00:00:00.000Z', replayed: false, request_id: 'req-16e',
   }),
@@ -198,7 +206,8 @@ const emitted = AUDIT_CATALOG.filter(entry => entry.status === 'emitted');
 const reserved = AUDIT_CATALOG.filter(entry => entry.status === 'reserved');
 
 test('audit contract: 58 emitted actions, each validates as today\'s emitter writes it', () => {
-  assert.equal(emitted.length, 58);
+  // Task15op adds two (security-finding seals and their verify report).
+  assert.equal(emitted.length, 60);
   assert.deepEqual(Object.keys(FIXTURES).sort(), emitted.map(entry => entry.action).sort(), 'one fixture per emitted action');
   for (const entry of emitted) {
     const event = eventFor(entry.action);
@@ -239,8 +248,8 @@ test('audit contract: entries are well formed', () => {
 test('audit contract: severities match the founder-approved table (2026-10-15), plus Task16c audit.events.read and the four Task16e actions', () => {
   const by = (severity: string) => emitted.filter(entry => entry.severity === severity).length;
   // Task20f adds four high actions (settings, bundle publish, monitor switch, lease issued)
-  // and two notice actions (lease refused, bundle acknowledged).
-  assert.deepEqual([by('high'), by('notice'), by('info')], [31, 14, 13]);
+  // and two notice actions (lease refused, bundle acknowledged). Task15op adds two info actions.
+  assert.deepEqual([by('high'), by('notice'), by('info')], [31, 14, 15]);
 });
 
 test('audit contract: each error code is raised', () => {
@@ -415,7 +424,9 @@ test('audit contract: every action in the Task16a inventory is in the catalog, a
     'security.settings.changed', 'policy.bundle.published', 'security.monitor.changed',
     'fleet.lease.issued', 'fleet.lease.refused', 'policy.bundle.acknowledged',
   ];
-  assert.deepEqual([...inventory, 'audit.events.read', ...task16e, ...task20f].sort(), emitted.map(entry => entry.action).sort());
+  // Task15op emits two (security-finding seals and their verify report).
+  const task15op = ['audit.trail.security_findings_sealed', 'audit.trail.security_findings_verified'];
+  assert.deepEqual([...inventory, 'audit.events.read', ...task16e, ...task20f, ...task15op].sort(), emitted.map(entry => entry.action).sort());
 });
 
 test('audit contract: an emitted row round-trips through event-v1.schema.json', () => {

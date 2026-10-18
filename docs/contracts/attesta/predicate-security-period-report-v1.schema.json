@@ -1,0 +1,546 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trackai.dev/attesta/security-period-report/v1/predicate-security-period-report-v1.schema.json",
+  "title": "TrackAI Attesta security_period_report predicate v1",
+  "description": "FROZEN CONTRACT when merged (Task15op, A15.16). Predicate https://trackai.dev/attesta/security-period-report/v1. The whole in-toto Statement is #/definitions/statement. Rules: security-period-report.md (SR1-SR9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scope",
+    "inputs",
+    "figures",
+    "blocked",
+    "coverage",
+    "completeness",
+    "builder",
+    "as_of",
+    "previous"
+  ],
+  "properties": {
+    "scope": {
+      "$ref": "#/definitions/scope"
+    },
+    "inputs": {
+      "$ref": "#/definitions/inputs"
+    },
+    "figures": {
+      "$ref": "#/definitions/figures"
+    },
+    "blocked": {
+      "$ref": "#/definitions/blocked"
+    },
+    "coverage": {
+      "$ref": "#/definitions/coverage"
+    },
+    "completeness": {
+      "$ref": "#/definitions/completeness"
+    },
+    "builder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "trackai-security-report-builder"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\+[0-9a-f]{7,40}$"
+        }
+      }
+    },
+    "as_of": {
+      "$ref": "#/definitions/ms_timestamp"
+    },
+    "previous": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "$ref": "#/definitions/digest"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "ms_timestamp": {
+      "type": "string",
+      "pattern": "^(19|20|21)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "micro_timestamp": {
+      "type": "string",
+      "pattern": "^(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}|sha256:[0-9a-f]{64})$",
+      "description": "A bucket key: a token (fields.md) or the sha256 fallback of an unrepresentable value."
+    },
+    "partial_reason": {
+      "enum": [
+        "current_machine_state",
+        "not_sealed",
+        "values_hashed_unrepresentable"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "not_captured_yet",
+        "not_applicable",
+        "source_missing"
+      ]
+    },
+    "buckets": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "count"
+        ],
+        "properties": {
+          "key": {
+            "$ref": "#/definitions/key"
+          },
+          "count": {
+            "$ref": "#/definitions/count"
+          }
+        }
+      }
+    },
+    "count_figure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "value"
+          ],
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "partial_reason",
+            "value"
+          ],
+          "properties": {
+            "availability": {
+              "const": "partial"
+            },
+            "partial_reason": {
+              "$ref": "#/definitions/partial_reason"
+            },
+            "value": {
+              "$ref": "#/definitions/count"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "reason"
+          ],
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            },
+            "reason": {
+              "$ref": "#/definitions/reason"
+            }
+          }
+        }
+      ]
+    },
+    "buckets_figure": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "value"
+          ],
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            },
+            "value": {
+              "$ref": "#/definitions/buckets"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "partial_reason",
+            "value"
+          ],
+          "properties": {
+            "availability": {
+              "const": "partial"
+            },
+            "partial_reason": {
+              "$ref": "#/definitions/partial_reason"
+            },
+            "value": {
+              "$ref": "#/definitions/buckets"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "availability",
+            "reason"
+          ],
+          "properties": {
+            "availability": {
+              "const": "unavailable"
+            },
+            "reason": {
+              "$ref": "#/definitions/reason"
+            }
+          }
+        }
+      ]
+    },
+    "completeness_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "recorded",
+        "partial",
+        "unavailable"
+      ],
+      "properties": {
+        "rows": {
+          "$ref": "#/definitions/count"
+        },
+        "recorded": {
+          "$ref": "#/definitions/count"
+        },
+        "partial": {
+          "$ref": "#/definitions/count"
+        },
+        "unavailable": {
+          "$ref": "#/definitions/count"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tenant_id",
+        "repository_id",
+        "from",
+        "to",
+        "basis"
+      ],
+      "description": "Half-open [from, to) over received_at.",
+      "properties": {
+        "tenant_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "repository_id": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from": {
+          "$ref": "#/definitions/ms_timestamp"
+        },
+        "to": {
+          "$ref": "#/definitions/ms_timestamp"
+        },
+        "basis": {
+          "const": "received_at"
+        }
+      }
+    },
+    "blocked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability",
+        "reason"
+      ],
+      "properties": {
+        "availability": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "const": "monitor_only_observed"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "availability",
+        "reason"
+      ],
+      "properties": {
+        "availability": {
+          "const": "unavailable"
+        },
+        "reason": {
+          "const": "not_captured_yet"
+        }
+      }
+    },
+    "figures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "findings",
+        "by_severity",
+        "by_category",
+        "by_rule",
+        "by_generation",
+        "by_repository",
+        "by_agent",
+        "by_model",
+        "by_platform",
+        "outcomes",
+        "denied_by_request",
+        "rule_pack_versions",
+        "late_arrivals"
+      ],
+      "properties": {
+        "findings": {
+          "$ref": "#/definitions/count_figure"
+        },
+        "by_severity": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_category": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_rule": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_generation": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_repository": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_agent": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_model": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "by_platform": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "outcomes": {
+          "$ref": "#/definitions/buckets_figure"
+        },
+        "denied_by_request": {
+          "$ref": "#/definitions/count_figure"
+        },
+        "rule_pack_versions": {
+          "$ref": "#/definitions/count_figure"
+        },
+        "late_arrivals": {
+          "$ref": "#/definitions/count_figure"
+        }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "findings",
+        "by_severity",
+        "by_category",
+        "by_rule",
+        "by_generation",
+        "by_repository",
+        "by_agent",
+        "by_model",
+        "by_platform",
+        "outcomes",
+        "denied_by_request",
+        "rule_pack_versions",
+        "late_arrivals"
+      ],
+      "properties": {
+        "findings": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_severity": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_category": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_rule": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_generation": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_repository": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_agent": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_model": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "by_platform": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "outcomes": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "denied_by_request": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "rule_pack_versions": {
+          "$ref": "#/definitions/completeness_entry"
+        },
+        "late_arrivals": {
+          "$ref": "#/definitions/completeness_entry"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seal_count",
+        "seals_root",
+        "row_count",
+        "rows_root",
+        "decision_count",
+        "decisions_root"
+      ],
+      "properties": {
+        "seal_count": {
+          "$ref": "#/definitions/count"
+        },
+        "seals_root": {
+          "$ref": "#/definitions/digest"
+        },
+        "row_count": {
+          "$ref": "#/definitions/count"
+        },
+        "rows_root": {
+          "$ref": "#/definitions/digest"
+        },
+        "decision_count": {
+          "$ref": "#/definitions/count"
+        },
+        "decisions_root": {
+          "$ref": "#/definitions/digest"
+        }
+      }
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "_type",
+        "subject",
+        "predicateType",
+        "predicate"
+      ],
+      "properties": {
+        "_type": {
+          "const": "https://in-toto.io/Statement/v1"
+        },
+        "subject": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "digest"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^trackai:tenant/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(repository/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/)?security-period/(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z\\.\\.(19|20|21)[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+              },
+              "digest": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sha256"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "predicateType": {
+          "const": "https://trackai.dev/attesta/security-period-report/v1"
+        },
+        "predicate": {
+          "$ref": "#"
+        }
+      }
+    }
+  }
+}
