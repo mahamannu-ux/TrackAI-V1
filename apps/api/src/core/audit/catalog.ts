@@ -131,7 +131,7 @@ export class AuditContractError extends Error {
 // The catalog
 
 /** Goes up when an entry is added or an alias recorded; never for a change of an existing row's meaning. */
-export const AUDIT_CATALOG_VERSION = 2;
+export const AUDIT_CATALOG_VERSION = 3;
 
 const r = (type: AuditDetailType): AuditDetailKey => ({ type, required: true, nullable: false });
 /** Required, may be null: today's emitter writes `null` rather than omitting the key. */
@@ -158,6 +158,15 @@ function entries(actions: readonly string[], spec: Spec): AuditCatalogEntry[] {
   return actions.map(action => ({ status: 'emitted', ...spec, action, aliases: [] }));
 }
 
+/** Task20: who changes security settings (the admin API, or the operator publish CLI). */
+const SETTINGS_WRITERS: readonly AuditActorType[] = ['tenant_admin', 'system_operator'];
+/** security-activation-lease-v2 `mode`; Task20f issues only off and monitor. */
+const SECURITY_MODE = oneOf('off', 'monitor', 'monitor_and_pilot_block');
+/** security-acknowledgement-v1 `refusal_code` (additive only). */
+const LEASE_REFUSAL = oneOf(
+  'SIGNATURE_REJECTED', 'VERIFICATION_UNAVAILABLE', 'LEASE_EXPIRED', 'MACHINE_MISMATCH', 'TENANT_MISMATCH',
+  'EPOCH_REGRESSION', 'BUNDLE_DIGEST_MISMATCH', 'RULES_CHECK_FAILED', 'UNSUPPORTED_SCHEMA',
+);
 const EVIDENCE_FAMILY = oneOf('generation_session', 'commit_note', 'operational');
 const KEY_STATUS = oneOf('registered', 'active', 'retired', 'revoked');
 const PACK_SCOPE: AuditDetailType = {
@@ -686,23 +695,41 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     details: { outcome: r('string'), terminal: r('boolean'), records: r('integer') },
     sources: ['docs/plan/TASK16.md A16.11 (anchor success is recorded in attesta_anchors, not audited)'],
   }),
+  // --- Task20f: security settings, rule bundles and activation leases ------------------
+  // Re-owned and reshaped by Task20f stage 1 while still reserved (README.md "The emitter":
+  // no row exists yet). Task20f flips them to emitted with the emitting file:line.
+  // Lease ids are UUIDs; bundle digests are the bare 64-hex SHA-256 of the signed payload
+  // bytes, as on the wire (docs/contracts/security-v2/README.md "Rule bundle and activation lease").
   ...entries(['fleet.lease.issued'], {
-    status: 'reserved', owner: 'D6.1', severity: 'high', actorTypes: ['machine', 'service'],
+    status: 'reserved', owner: 'Task20', severity: 'high', actorTypes: ['machine', 'service'],
     targetType: 'developer_machine', targetIdKind: 'row',
-    details: { lease_id: r('uuid'), expires_at: r('iso_timestamp'), policy_version: o('integer') },
-    sources: ['docs/plan/TASK16.md A16.11 (D6.1 activation lease)'],
+    details: {
+      lease_id: r('uuid'),
+      expires_at: r('iso_timestamp'),
+      mode: r(SECURITY_MODE),
+      bundle_digest: r('sha256_hex'),
+      epoch: r('integer'),
+    },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: issued lazily on GET /worker/security/v2/lease)'],
   }),
   ...entries(['fleet.lease.refused'], {
-    status: 'reserved', owner: 'D6.1', severity: 'notice', actorTypes: ['machine', 'service'],
+    status: 'reserved', owner: 'Task20', severity: 'notice', actorTypes: ['machine'],
     targetType: 'developer_machine', targetIdKind: 'row',
-    details: { refusal: r('string') },
-    sources: ['docs/plan/TASK16.md A16.11 (D6.1 activation lease)'],
+    details: { lease_id: r('uuid'), bundle_digest: r('sha256_hex'), refusal: r(LEASE_REFUSAL) },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: a refused POST /worker/security/v2/acknowledgements)'],
   }),
   ...entries(['policy.bundle.published'], {
-    status: 'reserved', owner: 'Task6.b', severity: 'high', actorTypes: ADMIN,
+    status: 'reserved', owner: 'Task20', severity: 'high', actorTypes: SETTINGS_WRITERS,
     targetType: 'policy_bundle', targetIdKind: 'row',
-    details: { version: r('integer'), bundle_digest: r('sha256_digest'), reason: r('reason') },
-    sources: ['docs/plan/TASK16.md A16.11 (Task6.b policy bundles)'],
+    details: {
+      version: r('integer'),
+      epoch: r('integer'),
+      bundle_digest: r('sha256_hex'),
+      rule_settings_version: r('integer'),
+      enabled_rule_count: r('integer'),
+      reason: r('reason'),
+    },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: settings publish)'],
   }),
   ...entries(['policy.bundle.activated'], {
     status: 'reserved', owner: 'Task6.b', severity: 'high', actorTypes: ADMIN,
@@ -711,10 +738,16 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     sources: ['docs/plan/TASK16.md A16.11 (Task6.b policy bundles)'],
   }),
   ...entries(['policy.bundle.acknowledged'], {
-    status: 'reserved', owner: 'Task6.b', severity: 'notice', actorTypes: ['machine'],
+    status: 'reserved', owner: 'Task20', severity: 'notice', actorTypes: ['machine'],
     targetType: 'policy_bundle', targetIdKind: 'row',
-    details: { machine_id: r('uuid'), version: r('integer') },
-    sources: ['docs/plan/TASK16.md A16.11 (Task6.b policy bundles)'],
+    details: {
+      machine_id: r('uuid'),
+      version: r('integer'),
+      epoch: r('integer'),
+      lease_id: r('uuid'),
+      bundle_digest: r('sha256_hex'),
+    },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: an applied POST /worker/security/v2/acknowledgements)'],
   }),
   ...entries(['artifact.signed'], {
     status: 'reserved', owner: 'Task14', severity: 'notice', actorTypes: ['service', 'system_operator'],
@@ -723,10 +756,28 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     sources: ['docs/plan/TASK16.md A16.11 (T14.7 artifact signing)'],
   }),
   ...entries(['security.monitor.changed'], {
-    status: 'reserved', owner: 'Task6', severity: 'high', actorTypes: ADMIN,
+    status: 'reserved', owner: 'Task20', severity: 'high', actorTypes: SETTINGS_WRITERS,
     targetType: 'tenant_security_settings', targetIdKind: 'tenant',
-    details: { mode: r(oneOf('off', 'monitor')), previous_mode: r(oneOf('off', 'monitor')), reason: r('reason') },
-    sources: ['docs/plan/CUSTOMER_AUDITOR_QA.md gap G8 (no API writer today)'],
+    details: { mode: r(SECURITY_MODE), previous_mode: r(SECURITY_MODE), version: r('integer'), reason: r('reason') },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: PUT /api/admin/security/settings; gap G8)'],
+  }),
+  ...entries(['security.settings.changed'], {
+    status: 'reserved', owner: 'Task20', severity: 'high', actorTypes: SETTINGS_WRITERS,
+    targetType: 'tenant_security_settings', targetIdKind: 'tenant',
+    details: {
+      rule_settings_version: r('integer'),
+      data_settings_version: r('integer'),
+      bundle_version: r('integer'),
+      epoch: r('integer'),
+      changed_rule_count: r('integer'),
+      // The names of the data-settings switches that are on (a list, not five booleans:
+      // the raw-content key scan refuses a key named after commands).
+      enabled_data_settings: r('string[]'),
+      day_one_scan: r('boolean'),
+      agents: r('string[]'),
+      reason: r('reason'),
+    },
+    sources: ['docs/plan/TASK20.md T20.8 (Task20f: PUT /api/admin/security/settings and the publish CLI)'],
   }),
   ...entries(['security.finding.triaged'], {
     status: 'reserved', owner: 'Task6', severity: 'notice', actorTypes: ADMIN,
