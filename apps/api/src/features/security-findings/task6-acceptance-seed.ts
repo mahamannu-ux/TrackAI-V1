@@ -100,7 +100,7 @@ async function main() {
         'requested', 'available', 'complete', 'not_observed', now(),
         'task6-acceptance', 'task6-acceptance'
       )
-      ON CONFLICT (tenant_id, delivery_id) DO NOTHING
+      ON CONFLICT DO NOTHING
     `, [tenantId, machineId, repositoryId]);
 
     await client.query('COMMIT');

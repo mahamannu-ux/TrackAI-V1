@@ -68,6 +68,8 @@ No database integration test was added; this is a web-only change. The founder w
 
 **FOUNDER:** The web client still requires Supabase-compatible Auth configuration even for local development. For a disposable walkthrough, use the repository's fake Auth server and `scripts/it-db.sh` (which starts a temporary PostgreSQL 16 + pgvector instance on a free port, applies migrations, and removes the database when the API stops). The fake Auth server is not the database, and the placeholder anon key below is only for this local test setup.
 
+The Task6 acceptance seed was updated to avoid targeting a legacy uniqueness constraint removed by Task20 migration 0025. The disposable corpus-plus-auditor seed sequence below has been verified on a fresh database.
+
 Start these in three terminals from the repository root:
 ```bash
 # Terminal 1: local fake Supabase Auth (keep running)
