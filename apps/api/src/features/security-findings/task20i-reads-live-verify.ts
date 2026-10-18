@@ -198,8 +198,13 @@ async function main(): Promise<void> {
       },
       {
         kind: 'indicator', record_id: recordId(), type: 'domain', value: 'tracker.example.internal',
-        count: 3, first_seen: new Date(now.getTime() - 3_600_000).toISOString(),
-        last_seen: new Date(now.getTime() - 1_800_000).toISOString(), source_agent: 'claude-code',
+        count: 3, first_seen: new Date(anchorDetected.getTime() - 600_000).toISOString(),
+        last_seen: new Date(anchorDetected.getTime() + 120_000).toISOString(), source_agent: 'claude-code',
+      },
+      {
+        kind: 'indicator', record_id: recordId(), type: 'url', value: 'https://tracker.example.internal/secret',
+        count: 1, first_seen: new Date(anchorDetected.getTime() - 300_000).toISOString(),
+        last_seen: new Date(anchorDetected.getTime() - 60_000).toISOString(), source_agent: 'claude-code',
       },
       {
         kind: 'indicator', record_id: recordId(), type: 'ipv4', value: '10.0.0.8',
@@ -372,7 +377,7 @@ async function main(): Promise<void> {
     assert.equal(windowed.length, 22, 'twenty v2 plus two task6a in the narrow window');
     console.log('filters=every_filter_selects');
 
-    // 3. Detail: indicators (kind and value only) and nearby enforcement.
+    // 3. Detail: nearby machine indicators (redacted URL) and nearby enforcement.
     const sessionFinding = (await filtered('agent=claude-code&limit=100'))
       .find(item => item.session_id === 'live-session-s1' && item.occurred_at === anchorDetected.toISOString());
     assert.ok(sessionFinding, 'the anchored session finding is listed');
@@ -380,9 +385,12 @@ async function main(): Promise<void> {
     assert.equal(detail.status, 200, JSON.stringify(detail.body));
     const detailBody = detail.body as unknown as SecurityFindingDetail;
     assert.equal(detailBody.finding.id, sessionFinding.id);
-    assert.deepEqual(detailBody.indicators.map(indicator => Object.keys(indicator).sort()), [['type', 'value'], ['type', 'value']]);
+    assert.deepEqual(detailBody.machine_indicators_nearby, [
+      { type: 'domain', value: 'tracker.example.internal', count: 3 },
+      { type: 'url', value: null, count: 1 },
+    ]);
     assert.equal(detailBody.nearby_enforcement.length, 2, 'only the decisions within five minutes');
-    console.log('detail=indicators_and_nearby_enforcement');
+    console.log('detail=machine_indicators_nearby_and_enforcement');
 
     // 4. Company B isolation.
     const bList = await read(tenantB, 'tenant_admin', '/findings?limit=100');

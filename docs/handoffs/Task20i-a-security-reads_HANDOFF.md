@@ -10,7 +10,7 @@ Task20i-a builds the read API the security console (Task20i-b) will call: a find
 | | Item | Status |
 |---|---|---|
 | Acceptance | `GET /findings` with every prompt filter, keyset paging over `(occurred_at desc, id desc)`, `{items, next_cursor}` | ✅ |
-| Acceptance | `GET /findings/{id}` with indicators (kind and value only) and nearby (±5 min, same session and machine) enforcement labelled nearby | ✅ |
+| Acceptance | `GET /findings/{id}` with nearby machine indicators (same machine, ±5 min window, URL/email values null) and nearby (±5 min, same session and machine) enforcement labelled nearby | ✅ |
 | Acceptance | `GET /coverage` with literal `unreported` / `no_lease` / `not_acknowledged` states | ✅ |
 | Scope | Explicit allowlist per route, pinned by unit test; preview table never named (source-scan test) | ✅ |
 | Scope | `security_findings.read` auth (admin and auditor), tenant-bound through `withTenant()`, audited in the same transaction | ✅ |
@@ -18,7 +18,7 @@ Task20i-a builds the read API the security console (Task20i-b) will call: a find
 | Scope | Typed shapes (`SecurityFindingItem`, `SecurityFindingDetail`, `SecurityCoverageRow`, page types) for Task20i-b | ✅ |
 | Quality | 9 new unit tests; full suite 1,223 pass; typecheck and lint clean | ✅ |
 | Integration | IT-T20i-01 passes in the sandbox (182 rows over 4 pages, both generations, A/B, audit rows) | 🟡 agent-verified · ⬜ founder run (blocking for this merge) |
-| Review | Self re-read of the full diff done (two real fixes); cross-agent review by the Task20 lead pending | 🟡 |
+| Review | Self re-read of the full diff (two real fixes); Task20 lead cross-review: fix first (detail indicators), fixed and re-verified | 🟡 review request resent |
 
 ## Implemented interfaces
 ```ts
@@ -31,10 +31,11 @@ export function encodeCoverageCursor(machineId): string;
 export function toFindingItem(row): SecurityFindingItem;
 export const SECURITY_READ_FINDING_COLUMNS; // pinned allowlist (21 keys)
 export interface SecurityFindingItem; // generation-neutral; agent = agent_family|source_agent; model v2-only
-export interface SecurityFindingDetail; // {finding, indicators: [{type, value}], nearby_enforcement: [...]}
+export interface SecurityFindingDetail; // {finding, machine_indicators_nearby: [{type, value|null, count}], nearby_enforcement: [...]}
 export interface SecurityCoverageRow; // platform | 'unreported'; status | 'unreported'; inventory | 'unreported'; lease | 'no_lease'; acknowledgement | 'not_acknowledged'
 export interface SecurityV2ReadStore; // {listFindingsAndAudit, getFindingAndAudit, listCoverageAndAudit}
 export const pgSecurityV2ReadStore: SecurityV2ReadStore;
+export function toNearbyIndicator(row): SecurityReadIndicator; // value shown for domain/ipv4/ipv6/md5/sha1/sha256, null for url/email
 
 // features/security-findings/v2-read.routes.ts
 export function createSecurityV2ReadRouter(deps?: {authorize?, store?, log?}): Router;
@@ -64,10 +65,11 @@ None beyond this repository: router pattern copied from `features/security/admin
 | ⬜ **FOUNDER:** | Run IT-T20i-01 (blocking for this merge): `IT_PG_DATABASES=trackai_task20i_reads_live IT_PG_EXPORTS=DATABASE_URL=trackai_task20i_reads_live scripts/it-db.sh npm run verify:task20i-reads-live -w apps/api` (about a minute; expect nine `…=` summary lines ending `summary=IT-T20i-01_passes`) | Blocks the Task20i-a merge |
 | 🟡 | Audit details carry no route or filter names; richer details need a Task16 audit-contract PR (phase 2, or when a customer asks). Tracked by the Task20 lead; do not open that PR here. | Task20i-b shows no per-route audit trail beyond the frozen shape |
 | 🟡 | The auditor sweep (`core/security/auditor-sweep.test.ts`) does not walk the new router yet; all three routes carry `security_findings.read` (pinned by unit test), which is auditor-allowed. | A sweep-table entry for `/api/admin/security/v2/*` is a small follow-up for the sweep owner |
+| 🟡 | `GET /coverage` runs 6 queries per machine (up to 600 per page in one transaction). Fine for now; batch to one query per table with `machine_id IN page` when fleets grow (Task20 lead note, non-blocking). | Task20i-b or later |
 | 🟡 | No index was added; the findings list filters on `occurred_at` and equality columns. If the findings table grows hot, consider a `(tenant_id, occurred_at desc, id desc)` covering shape. | None today; flagged for the founder |
 
 ## Test coverage
-- **Unit** (`v2-read.test.ts`, 9 tests, in-memory store + real router over HTTP): every filter; paging stability with equal timestamps (7 rows, limit 2, each id once); bad cursor and filter-bound cursor refused; `not_enrolled`; both generations; coverage states `unreported` / `no_lease` / `not_acknowledged` and machine keyset; allowlists pinned (item 21 keys, indicator `{type,value}`, nearby keys); preview table never named in code (comment lines stripped, Task19c pattern); admin and auditor allowed, member refused; problems, `no-store`, `X-Request-ID` echo/mint; the default router guards all three routes with `security_findings.read`; both the v2 and settings routers answer on one app.
+- **Unit** (`v2-read.test.ts`, 9 tests, in-memory store + real router over HTTP): every filter; paging stability with equal timestamps (7 rows, limit 2, each id once); bad cursor and filter-bound cursor refused; `not_enrolled`; both generations; detail with nearby machine indicators (in-window selected, out-of-window and other-machine excluded, URL/email values null) and nearby enforcement; coverage states `unreported` / `no_lease` / `not_acknowledged` and machine keyset; allowlists pinned (item 21 keys, indicator `{type,value,count}`, nearby keys); preview table never named in code (comment lines stripped, Task19c pattern); admin and auditor allowed, member refused; problems, `no-store`, `X-Request-ID` echo/mint; the default router guards all three routes with `security_findings.read`; both the v2 and settings routers answer on one app.
 - **Mocked:** storage in unit tests (in-memory store mirrors the SQL; the live verify proves parity); the JWT layer in the live verify (header authorizer).
 - **Not tested:** volume (hundreds, not thousands, of rows); web console (Task20i-b).
 
@@ -84,7 +86,7 @@ None beyond this repository: router pattern copied from `features/security/admin
 Task20d, Task20f and Task19c suites are untouched and still pass (`npm test`: 1,223 tests).
 
 ## Integration notes
-- **Task20i-b** copies `SecurityFindingItem`, `SecurityFindingDetail`, `SecurityCoverageRow` and the page types from `v2-read.ts` into `apps/web/src/lib/api.ts`; problem codes are `SECURITY_READ_INVALID_QUERY` (400), `SECURITY_READ_FORBIDDEN` (403), `SECURITY_READ_NOT_FOUND` (404, also for another tenant's id), `SECURITY_READ_UNAVAILABLE` (503). Every response carries `no-store` and an `X-Request-ID` echo.
+- **Task20i-b** copies `SecurityFindingItem`, `SecurityFindingDetail` (`finding`, `machine_indicators_nearby: [{type, value|null, count}]` — same machine within ±5 minutes, not linked to the finding — and `nearby_enforcement`), `SecurityCoverageRow` and the page types from `v2-read.ts` into `apps/web/src/lib/api.ts`; problem codes are `SECURITY_READ_INVALID_QUERY` (400), `SECURITY_READ_FORBIDDEN` (403), `SECURITY_READ_NOT_FOUND` (404, also for another tenant's id), `SECURITY_READ_UNAVAILABLE` (503). Every response carries `no-store` and an `X-Request-ID` echo.
 - Honest states: missing status/inventory/platform read as the string `unreported`, missing lease as `no_lease`, missing acknowledgement as `not_acknowledged`; `repository_id` is null for machine-wide (`not_enrolled`) rows, filterable via `repository_id=not_enrolled`.
 - Seeding gotcha found here: `persistSecurityV2Upload` checks the enrollment against `receivedAt`, so a frozen script timestamp older than the enrollment's `effectiveFrom` rejects enrolled findings — pass a fresh `new Date()` as `receivedAt`.
 - Cursor gotcha found here: hashing the resolved default window binds request-time `now` into the cursor and every second page 400s — the cursor binds explicit filters only.

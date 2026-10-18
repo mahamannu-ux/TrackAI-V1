@@ -79,10 +79,12 @@ export const SECURITY_READ_FINDING_COLUMNS = [
   'lease_id', 'found_at_rest', 'phase', 'result_category',
 ] as const satisfies readonly (keyof SecurityFindingItem)[];
 
-/** One indicator as the detail route returns it: kind and value only. */
+/** One indicator near a finding: kind, value (redacted for URL and email) and count. */
 export interface SecurityReadIndicator {
   type: string;
-  value: string;
+  /** Null for `url` and `email`: full values wait for the preview phase. */
+  value: string | null;
+  count: number;
 }
 
 /** One enforcement decision near a finding, labelled nearby, never caused-by. */
@@ -97,8 +99,11 @@ export interface SecurityReadNearbyEnforcement {
 
 export interface SecurityFindingDetail {
   finding: SecurityFindingItem;
-  /** Same machine's indicators, latest first, kind and value only. */
-  indicators: SecurityReadIndicator[];
+  /**
+   * Same machine, seen within ±5 minutes of the finding; not linked to it,
+   * so never read as caused-by. URL and email values are null (preview phase).
+   */
+  machine_indicators_nearby: SecurityReadIndicator[];
   /** Same machine and session within five minutes, labelled nearby. */
   nearby_enforcement: SecurityReadNearbyEnforcement[];
 }
@@ -158,6 +163,22 @@ const MAX_WINDOW_DAYS = 366;
 const NEARBY_MS = 5 * 60 * 1_000;
 const MAX_INDICATORS = 100;
 const MAX_NEARBY = 100;
+
+/** Indicator types whose stored value the detail route returns; URL and email values stay null. */
+const INDICATOR_VALUE_SHOWN = ['domain', 'ipv4', 'ipv6', 'md5', 'sha1', 'sha256'] as const;
+
+/** Maps a stored indicator row to the redacted detail shape. */
+export function toNearbyIndicator(row: {
+  type: string;
+  value: string;
+  count: number;
+}): SecurityReadIndicator {
+  return {
+    type: row.type,
+    value: (INDICATOR_VALUE_SHOWN as readonly string[]).includes(row.type) ? row.value : null,
+    count: row.count,
+  };
+}
 
 /** Maps a full finding row to the allowlisted item. Never reads a preview. */
 export function toFindingItem(row: typeof securityFindings.$inferSelect): SecurityFindingItem {
@@ -555,7 +576,13 @@ export const pgSecurityV2ReadStore: SecurityV2ReadStore = {
         await auditSecurityRead(tx, input.tenantId, input.actorRole, input.actorId, 1, 0);
         return null;
       }
-      const indicators = await tenant.select(securityIndicators, eq(securityIndicators.machineId, row.machineId))
+      const windowStart = new Date(row.occurredAt.getTime() - NEARBY_MS);
+      const windowEnd = new Date(row.occurredAt.getTime() + NEARBY_MS);
+      const indicators = await tenant.select(securityIndicators, and(
+        eq(securityIndicators.machineId, row.machineId),
+        lte(securityIndicators.firstSeen, windowEnd),
+        gte(securityIndicators.lastSeen, windowStart),
+      ))
         .orderBy(desc(securityIndicators.lastSeen), desc(securityIndicators.id))
         .limit(MAX_INDICATORS);
       const nearby = row.sessionId === null ? [] : await tenant.select(securityEnforcementDecisions, and(
@@ -569,7 +596,7 @@ export const pgSecurityV2ReadStore: SecurityV2ReadStore = {
       await auditSecurityRead(tx, input.tenantId, input.actorRole, input.actorId, 1, 1);
       return {
         finding: toFindingItem(row),
-        indicators: indicators.map(indicator => ({ type: indicator.type, value: indicator.value })),
+        machine_indicators_nearby: indicators.map(toNearbyIndicator),
         nearby_enforcement: nearby.map(decision => ({
           id: decision.id,
           decision: decision.decision,

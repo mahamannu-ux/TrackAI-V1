@@ -22,6 +22,7 @@ import {
   parseFindingsQuery,
   SECURITY_READ_FINDING_COLUMNS,
   toFindingItem,
+  toNearbyIndicator,
   type SecurityCoverageRow,
   type SecurityFindingDetail,
   type SecurityFindingItem,
@@ -164,7 +165,7 @@ interface MemoryFinding extends Omit<SecurityFindingItem, 'occurred_at' | 'recei
 
 interface MemoryState {
   findings: MemoryFinding[];
-  indicators: Array<{ machineId: string; type: string; value: string; lastSeen: Date }>;
+  indicators: Array<{ machineId: string; type: string; value: string; count: number; firstSeen: Date; lastSeen: Date }>;
   enforcement: Array<{
     id: string; machineId: string; sessionId: string | null; decision: string; mode: string;
     occurredAt: Date; toolName: string | null;
@@ -243,11 +244,13 @@ function memoryStore(state: MemoryState): SecurityV2ReadStore {
       }
       const detail: SecurityFindingDetail = {
         finding: toJson(found),
-        indicators: state.indicators
-          .filter(indicator => indicator.machineId === found.machine_id)
+        machine_indicators_nearby: state.indicators
+          .filter(indicator => indicator.machineId === found.machine_id
+            && indicator.firstSeen <= new Date(found.occurredAt.getTime() + 5 * 60_000)
+            && indicator.lastSeen >= new Date(found.occurredAt.getTime() - 5 * 60_000))
           .sort((a, b) => b.lastSeen.getTime() - a.lastSeen.getTime())
           .slice(0, 100)
-          .map(indicator => ({ type: indicator.type, value: indicator.value })),
+          .map(toNearbyIndicator),
         nearby_enforcement: found.session_id === null ? [] : state.enforcement
           .filter(decision => decision.machineId === found.machine_id
             && decision.sessionId === found.session_id
@@ -395,15 +398,33 @@ test('Task20i-a: every filter selects, paging is stable with equal timestamps', 
   }
 });
 
-test('Task20i-a: detail returns indicators and nearby enforcement, 404 audits then refuses', async () => {
+test('Task20i-a: detail returns nearby machine indicators and enforcement, 404 audits then refuses', async () => {
   const state = emptyState();
   const machine = randomUUID();
   const found = memoryItem({ machine_id: machine, session_id: 'session-9' });
   const noSession = memoryItem({ machine_id: machine, session_id: null });
   state.findings.push(found, noSession);
   state.indicators.push(
-    { machineId: machine, type: 'domain', value: 'tracker.example.internal', lastSeen: NOW },
-    { machineId: randomUUID(), type: 'domain', value: 'other.example.internal', lastSeen: NOW },
+    {
+      machineId: machine, type: 'domain', value: 'tracker.example.internal', count: 3,
+      firstSeen: new Date(NOW.getTime() - 600_000), lastSeen: new Date(NOW.getTime() + 60_000),
+    },
+    {
+      machineId: machine, type: 'url', value: 'https://tracker.example.internal/secret', count: 1,
+      firstSeen: new Date(NOW.getTime() - 120_000), lastSeen: new Date(NOW.getTime() - 60_000),
+    },
+    {
+      machineId: machine, type: 'email', value: 'someone@example.internal', count: 2,
+      firstSeen: new Date(NOW.getTime() - 60_000), lastSeen: new Date(NOW.getTime() + 120_000),
+    },
+    {
+      machineId: machine, type: 'domain', value: 'stale.example.internal', count: 9,
+      firstSeen: new Date(NOW.getTime() - 3_600_000), lastSeen: new Date(NOW.getTime() - 1_800_000),
+    },
+    {
+      machineId: randomUUID(), type: 'domain', value: 'other.example.internal', count: 1,
+      firstSeen: new Date(NOW.getTime() - 60_000), lastSeen: NOW,
+    },
   );
   state.enforcement.push(
     {
@@ -425,13 +446,21 @@ test('Task20i-a: detail returns indicators and nearby enforcement, 404 audits th
     assert.equal(detail.status, 200);
     const body = detail.body as SecurityFindingDetail;
     assert.equal(body.finding.id, found.id);
-    assert.deepEqual(body.indicators, [{ type: 'domain', value: 'tracker.example.internal' }]);
+    assert.deepEqual(body.machine_indicators_nearby, [
+      { type: 'email', value: null, count: 2 },
+      { type: 'domain', value: 'tracker.example.internal', count: 3 },
+      { type: 'url', value: null, count: 1 },
+    ]);
+    assert.deepEqual(
+      body.machine_indicators_nearby.flatMap(indicator => Object.keys(indicator)),
+      ['type', 'value', 'count', 'type', 'value', 'count', 'type', 'value', 'count'],
+    );
     assert.equal(body.nearby_enforcement.length, 1);
     assert.deepEqual(Object.keys(body.nearby_enforcement[0]!).sort(),
       ['decision', 'id', 'mode', 'occurred_at', 'session_id', 'tool_name']);
     const bare = await get(ctx, `/api/admin/security/v2/findings/${noSession.id}`);
-    assert.deepEqual([(bare.body as SecurityFindingDetail).indicators.length,
-      (bare.body as SecurityFindingDetail).nearby_enforcement.length], [1, 0]);
+    assert.deepEqual([(bare.body as SecurityFindingDetail).machine_indicators_nearby.length,
+      (bare.body as SecurityFindingDetail).nearby_enforcement.length], [3, 0]);
     const missing = await get(ctx, `/api/admin/security/v2/findings/${randomUUID()}`);
     assert.equal(missing.status, 404);
     assert.equal((missing.body as { code: string }).code, 'SECURITY_READ_NOT_FOUND');
