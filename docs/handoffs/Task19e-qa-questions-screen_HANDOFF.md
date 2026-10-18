@@ -64,18 +64,32 @@ None. The UI follows the in-repository `FleetWorkspace` pattern as directed by t
 - Browser role behavior and visual layout are left to the founder walkthrough.
 
 ## Integration test impact
-No database integration test was added; this is a web-only change. The founder walkthrough is non-blocking for the Task19e merge and is the first step of T19.9. Prerequisites: local API environment and the founder's usual auth/test tenant.
+No database integration test was added; this is a web-only change. The founder walkthrough is non-blocking for the Task19e merge and is the first step of T19.9. Prerequisites: Docker with the pgvector image available, or local PostgreSQL 16 with pgvector for the helper's fallback; no hosted Supabase project is needed for the synthetic walkthrough.
 
-**FOUNDER:** Start the app in separate terminals from the repository root:
+**FOUNDER:** The web client still requires Supabase-compatible Auth configuration even for local development. For a disposable walkthrough, use the repository's fake Auth server and `scripts/it-db.sh` (which starts a temporary PostgreSQL 16 + pgvector instance on a free port, applies migrations, and removes the database when the API stops). The fake Auth server is not the database, and the placeholder anon key below is only for this local test setup.
+
+Start these in three terminals from the repository root:
 ```bash
-# Terminal 1: API with the usual local API environment
-npm run dev:api
+# Terminal 1: local fake Supabase Auth (keep running)
+TASK5_EPHEMERAL_DATABASE=1 npm run serve:task5-acceptance-auth -w apps/api
 
-# Terminal 2: web console with the usual web environment
-npm run dev:web
+# Terminal 2: disposable Docker PostgreSQL, seed synthetic admin/auditor access, then start the API.
+# Keep this terminal running; stopping it also removes the throwaway database.
+scripts/it-db.sh sh -c 'TASK5_ACCEPTANCE_PERSIST=1 npm run verify:task5-corpus-live -w apps/api && npm run seed:task6-acceptance -w apps/api && SUPABASE_URL=http://127.0.0.1:54321 FRONTEND_URL="http://localhost:3000,http://127.0.0.1:3000" npm run dev:api'
+
+# Terminal 3: web console, configured to use the local fake Auth server and API
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 \
+NEXT_PUBLIC_SUPABASE_ANON_KEY=task5-local-public-placeholder \
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8080 npm run dev:web
 ```
 
-Then sign in:
+Open `http://localhost:3000/login`, then sign in with the synthetic acceptance users:
+- Admin: `admin@task5.acceptance.invalid` / `task5-acceptance-only`
+- Auditor: `auditor@task5.acceptance.invalid` / `task6-auditor-only`
+
+The local Auth URL and placeholder key fix the missing-environment-variable error; setting them does not configure the API database. The database is disposable and is removed when the API/`scripts/it-db.sh` process stops.
+
+Then check:
 - Admin, S7: partial answer shows its availability and reasons, plus any previous-period breakdown.
 - Admin, S12: unavailable figure values stay unavailable; no zero or empty chart stands in for missing data.
 - Admin, Q3, Q1 and Q4: the top three code questions appear in rank order and filters update the answer URL.
