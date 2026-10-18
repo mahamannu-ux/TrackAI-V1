@@ -1,0 +1,19 @@
+docs/handoffs/Task19e-qa-questions-screen_HANDOFF.md
+  s_fce0a22ef2217f::t_0dc9078366996d 67,69-71,73-78,80-83,86-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "02410359272870e7b25c3c9f3c32786c17a36b4c",
+  "prompts": {},
+  "sessions": {
+    "s_fce0a22ef2217f": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_fce0a22ef2217f",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
