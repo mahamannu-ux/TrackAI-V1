@@ -465,7 +465,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
     owner: 'Task6.a', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
     targetType: 'security_findings', targetIdKind: 'tenant',
     details: { limit: r('integer'), returned: r('integer') },
-    sources: ['features/security-findings/admin-read.ts:73'],
+    sources: ['features/security-findings/admin-read.ts:73', 'features/security-findings/v2-read.ts:460'],
   }),
 
   // --- Task9: fleet (features/fleet/service.ts) ---------------------------------------
