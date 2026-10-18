@@ -86,15 +86,38 @@ export interface SecurityLeaseStore {
   newestLease(tenantId: string, machineId: string): Promise<StoredLease | null>;
   leaseById(tenantId: string, machineId: string, leaseId: string): Promise<StoredLease | null>;
   /**
-   * Store a signed lease unless `keep(newest)` says the machine's newest lease (read
-   * again under the per-machine lock) should be served instead; returns what is served.
+   * Under a lock shared with settings publication (so no publish commits meanwhile) and
+   * the per-machine lock, re-read the tenant's issuance state and the machine's newest
+   * lease, and let `decide` choose: store this signed lease, serve the newest one, or
+   * report the signed state stale. Returns what is served, or null when stale (nothing
+   * written).
    */
   insertLease(tenantId: string, lease: StoredLease, epoch: number,
-    keep: (newest: StoredLease | null) => boolean): Promise<StoredLease>;
+    decide: (newest: StoredLease | null, current: LeaseIssuanceState) => LeaseInsertDecision): Promise<StoredLease | null>;
   bundleByDigest(tenantId: string, digest: string): Promise<StoredBundleRef | null>;
   bundleEnvelope(tenantId: string, digest: string): Promise<Buffer | null>;
   currentDataSettings(tenantId: string): Promise<SecurityDataSettingsV1 | null>;
   recordAcknowledgement(record: AcknowledgementRecord, bundle: StoredBundleRef | null): Promise<void>;
+}
+
+export type LeaseInsertDecision = 'insert' | 'serve' | 'stale';
+
+/** The issuance state a lease was signed under is still the tenant's current one. */
+export function sameIssuanceState(signed: LeaseIssuanceState, current: LeaseIssuanceState): boolean {
+  return signed.bundle?.digest === current.bundle?.digest
+    && signed.dataSettingsVersion === current.dataSettingsVersion
+    && signed.monitorMode === current.monitorMode;
+}
+
+/** How often a lease is re-signed when settings move while it is being signed. */
+const LEASE_ISSUE_ATTEMPTS = 3;
+
+/** Settings kept moving while the lease was being signed (500 SECURITY_V2_INTERNAL; nothing written). */
+export class SecurityLeaseStateMoved extends Error {
+  constructor() {
+    super('state_moved');
+    this.name = 'SecurityLeaseStateMoved';
+  }
 }
 
 /** No lease can be issued: no bundle yet, or the machine is not active (404 LEASE_NOT_ISSUED). */
@@ -163,6 +186,16 @@ export async function currentOrIssueLease(input: {
   if (input.signer.purpose !== 'activation_lease') throw new Error('a lease is signed with the activation_lease key');
   const { store, tenantId, machineId, now } = input;
   if (!await store.machineIsActive(tenantId, machineId)) throw new SecurityLeaseNotIssued('machine_inactive');
+  for (let attempt = 0; attempt < LEASE_ISSUE_ATTEMPTS; attempt += 1) {
+    const served = await issueOnce(input.signer, store, tenantId, machineId, now);
+    if (served) return served;
+  }
+  throw new SecurityLeaseStateMoved();
+}
+
+/** One read → sign → record round; null when the settings moved during signing. */
+async function issueOnce(signer: SecurityDocumentSigner, store: SecurityLeaseStore, tenantId: string, machineId: string,
+  now: Date): Promise<StoredLease | null> {
   const state = await store.issuanceState(tenantId);
   const bundle = state.bundle;
   if (!bundle) throw new SecurityLeaseNotIssued('no_bundle');
@@ -171,7 +204,7 @@ export async function currentOrIssueLease(input: {
 
   const leaseId = randomUUID();
   const payload = leasePayload({ tenantId, machineId, leaseId, issuedAt: now, state: { ...state, bundle } });
-  const signed = await signSecurityDocument(input.signer, payload);
+  const signed = await signSecurityDocument(signer, payload);
   const lease: StoredLease = {
     id: leaseId,
     machineId,
@@ -183,12 +216,14 @@ export async function currentOrIssueLease(input: {
     envelope: signed.envelopeBytes,
     keyid: signed.keyid,
   };
-  // Under the per-machine lock, serve what another fetch stored meanwhile when it is
-  // reusable, newer, or issued under newer settings: a fetch that read the state before an
-  // `off` switch must never become the newest lease after it (independent review, part b).
-  return store.insertLease(tenantId, lease, bundle.epoch, (latest: StoredLease | null) => latest !== null
-    && (latest.issuedAt.getTime() > now.getTime() || latest.dataSettingsVersion > state.dataSettingsVersion
-      || leaseIsReusable(latest, state, now)));
+  // Under the locks: a lease signed for settings that changed meanwhile (an `off` switch
+  // included) is never stored, so it is re-signed for the current state (cross-review fix);
+  // a lease another fetch stored meanwhile is served when it is still reusable or newer.
+  return store.insertLease(tenantId, lease, bundle.epoch, (latest, current) => {
+    if (!sameIssuanceState(state, current)) return 'stale';
+    if (latest && (latest.issuedAt.getTime() > now.getTime() || leaseIsReusable(latest, current, now))) return 'serve';
+    return 'insert';
+  });
 }
 
 export interface SecurityAcknowledgementV1Input {

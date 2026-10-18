@@ -80,9 +80,13 @@ export function memoryLeaseStore(): MemoryLeaseStore {
     async leaseById(tenantId, machineId, leaseId) {
       return of(tenantId).leases.find(lease => lease.id === leaseId && lease.machineId === machineId) ?? null;
     },
-    async insertLease(tenantId, lease, epoch, keep) {
+    async insertLease(tenantId, lease, epoch, decide) {
+      // Read and decide with no await in between (the Postgres store holds its locks here).
+      const current = await this.issuanceState(tenantId);
       const latest = newest(tenantId, lease.machineId);
-      if (latest && keep(latest)) return latest;
+      const decision = decide(latest, current);
+      if (decision === 'stale') return null;
+      if (decision === 'serve' && latest) return latest;
       of(tenantId).leases.push(lease);
       record(tenantId, {
         actorType: 'machine', actorId: lease.machineId, action: 'fleet.lease.issued',

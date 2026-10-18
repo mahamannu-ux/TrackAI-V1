@@ -17,7 +17,7 @@ Branch `task/Task20f-security-settings-signing` (base `main` at `67af037`; merge
 | 14 | Admin API `GET`/`PUT /api/admin/security/settings` | ✅ |
 | Quality | `npm test` and `npm run check` pass (see Test coverage) | ✅ |
 | Integration | IT-T20f-01 parts a and b passed in the agent sandbox; Task20d and Task9 live verifies rerun and pass | 🟡 founder run |
-| Review | Independent review subagent: part a 1 must-fix + 4 should-fix, part b 1 must-fix + 4 should-fix, all fixed (Deviations 7–8); Codex cross-review next | 🟡 |
+| Review | Independent review subagent: all findings fixed (Deviations 7–8). Codex cross-review (2026-10-18): "fix first"; the stale-lease race is fixed (Deviation 9); the 4 MiB signer cap waits on Task15 (Known limitations) | 🟡 |
 
 ## Implemented interfaces
 ```text
@@ -51,12 +51,13 @@ Tables: security_rule_settings_versions, security_data_settings_versions (holds 
 5. `0026`'s snapshot absorbs Task20d's `0025` snapshot drift (checked statement by statement).
 6. The catalogue is read from the source tree (`tsc` copies no YAML).
 7. **Part b:** one line in `features/fleet/task9-fleet-live-verify.ts` (not pre-approved) narrows the envelope type for v3; behaviour unchanged. Fleet v3 with signing unavailable answers `503 fleet_unavailable` (a no-lease case answers `409 state_conflict` as D6 says). No new migration. The v2 router's error handler now maps a JSON parse failure to `400 SECURITY_V2_INVALID_BODY` (it answered `500`): after D7 its parser is the only one, so the fix belongs with the parser skip.
+9. **Cross-review fix (2026-10-18):** a lease insert now takes the settings lock shared (a publish holds it exclusively) plus the per-machine lock, re-reads the issuance state, and discards a lease signed for state that moved; the fetch re-signs (at most three tries, then `500` with nothing written). Tested in-memory (the settings-only `off` race) and in IT-T20f-01 step 17 against the real locks.
 8. **Part b review fixes:** every 4xx body-parser error is `400 SECURITY_V2_INVALID_BODY`; a lease fetch that read the state before an `off` switch serves the newer stored lease instead of inserting a stale monitor lease; `currentLease` also returns null while the tenant's current switch is `off`, so ingest stops at once rather than at the Endpoint's next refresh (a tightening of D5); concurrency is tested in-memory and in IT-T20f-01.
 
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| 🟡 | Both Attesta signers cap a payload at 1 MiB (the contract allows 4 MiB); overriding about 11 of the largest rules exceeds it and publish answers `413` with nothing written | Task15 owner to raise the caps |
+| ⬜ | **Blocking the merge (cross-review, 2026-10-18).** Both Attesta signers cap a payload at 1 MiB (`signer-kms.ts:32`, `signer-local-dev.ts:32`); the frozen contract allows rule bundles up to 4 MiB. Overriding about 11 of the largest rules exceeds 1 MiB, and publish answers `413` with nothing written | Task15-owned (`features/attesta/**` is use-only here). Raising both constants to 4 MiB plus the DSSE header also lets Attesta's builder sign statements up to its own 4 MiB `MAX_STATEMENT_BYTES` (`builder.ts:962`, `ledger.ts:46`), so the Task15 owner decides and tests it (`signer.test.ts:366`, `signer-kms.test.ts:667`). Once it lands, Task20f's dry-run flag and `413` lift with no Task20f code change |
 | 🟡 | Two concurrent first fetches for one machine can each sign; the insert re-checks under a per-machine lock and serves the stored lease, so one row is kept (a wasted signature) | none |
 
 ## Test coverage
@@ -67,7 +68,7 @@ Tables: security_rule_settings_versions, security_data_settings_versions (holds 
 - **Mocked:** storage in unit tests (in-memory store); the JWT layer in the live verify.
 
 ## Integration test impact
-> **FOUNDER:** IT-T20f-01 is blocking for the Task20f merge. Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: fifteen `…=` summary lines, under a minute.
+> **FOUNDER:** IT-T20f-01 is blocking for the Task20f merge. Prerequisites: `scripts/it-db.sh` (Docker or local PostgreSQL 16 + pgvector). Expected: sixteen `…=` summary lines, under a minute.
 
 `IT_PG_DATABASES=trackai_task20f_signing_live IT_PG_EXPORTS=DATABASE_URL=trackai_task20f_signing_live scripts/it-db.sh npm run verify:task20f-signing-live -w apps/api` covers part a (settings, dry run, signing unavailable, publish, epochs, oversize, Task6.a untouched, append-only, A/B) and part b: real machine credentials over HTTP → signed lease verified and reused → bundle by digest → acknowledgement → an upload accepted through the real authority and storage → an expired lease (machine Y) and an `off` lease refused → cases 3–8 → fleet v3 created while monitoring, served with the current lease, database checks holding → append-only leases and acknowledgements → audit rows. Agent-sandbox run: passed 2026-10-17 (🟡). Also rerun here: `verify:task20d-ingest-live`, `verify:task9-fleet-live` (pass). IT-T20f-02 (production KMS keys) waits for Task15n (⬜).
 

@@ -135,13 +135,17 @@ async function main(): Promise<void> {
   };
   // Lease clock: real time, moved back only to issue an already-expired lease (step 14).
   let leaseClock: () => Date = () => new Date();
+  // Lease signer: the fixture key, slowed down only for the settings race (step 17).
+  let leaseSigner: SecurityDocumentSigner = fixture.signer('activation_lease');
   const leaseStore = pgSecurityLeaseStore();
   const app = express();
   app.use('/worker', authenticateMachine);
   app.use('/worker/security', createSecurityFindingsRouter({
     v2Dependencies: {
       authority: createSecurityV2Authority(leaseStore),
-      leaseRoutes: createSecurityLeaseRouter({ store: leaseStore, signer: fixture.signer('activation_lease'), now: () => leaseClock(), log: () => undefined }),
+      leaseRoutes: createSecurityLeaseRouter({
+        store: leaseStore, signer: { purpose: 'activation_lease', resolve: () => leaseSigner.resolve() }, now: () => leaseClock(), log: () => undefined,
+      }),
       log: () => undefined,
     },
   }));
@@ -394,9 +398,22 @@ async function main(): Promise<void> {
     const [v3Row] = await db.select().from(fleetConfigurations).where(eq(fleetConfigurations.id, v3.id));
     assert.equal(v3Row.schemaVersion, 3);
 
-    // 17. Off: the next lease is an off lease with no agents, and uploads stop at once.
+    // 17. Off, racing a lease being signed (cross-review): Y's fetch reads "monitor", monitoring
+    // is switched off while it signs, and Y is served an off lease; no monitor lease is stored.
+    leaseSigner = {
+      purpose: 'activation_lease',
+      resolve: async () => { await new Promise(resolve => setTimeout(resolve, 400)); return fixture.signer('activation_lease').resolve(); },
+    };
+    const yRacing = machineCall(base, Y.credential, 'GET', '/lease');
+    await new Promise(resolve => setTimeout(resolve, 100));
     const offChange = await call(base, 'PUT', tenantA, { dry_run: false, reason: 'pause', monitor_mode: 'off' });
     assert.equal(offChange.status, 200);
+    const yServed = leaseOf((await yRacing).bytes).payload;
+    leaseSigner = fixture.signer('activation_lease');
+    assert.equal(yServed.mode, 'off', 'a lease signed for monitor is never stored after the switch');
+    const yModes = (await db.select().from(securityActivationLeases).where(eq(securityActivationLeases.machineId, Y.id))).map(row => row.mode).sort();
+    assert.deepEqual(yModes, ['monitor', 'off'], 'Y: the expired monitor lease from step 14 and the off lease');
+    // X: the next lease is an off lease with no agents, and uploads stop at once.
     const offLease = leaseOf((await machineCall(base, X.credential, 'GET', '/lease')).bytes).payload;
     assert.deepEqual([offLease.mode, offLease.agents], ['off', []]);
     const offUpload = await machineCall(base, X.credential, 'POST', '/records', findingUnder(leaseX.payload.lease_id, new Date()));
@@ -411,14 +428,14 @@ async function main(): Promise<void> {
       await assert.rejects(db.execute(statement), (error: unknown) => /append-only/.test(String((error as { cause?: Error }).cause?.message)));
     }
     const leaseHistory = await db.select().from(securityActivationLeases).where(eq(securityActivationLeases.tenantId, tenantA));
-    // X's monitor lease (reused by the fleet fetch), Y's expired lease, X's off lease.
-    assert.equal(leaseHistory.length, 3, 'every issued lease is kept');
+    // X's monitor lease (reused by the fleet fetch), Y's expired lease, Y's off lease, X's off lease.
+    assert.equal(leaseHistory.length, 4, 'every issued lease is kept');
 
     // 19. Audit rows (machine actor), and none for Company B.
     const leaseAudit = await db.select().from(securityAuditEvents)
       .where(and(eq(securityAuditEvents.tenantId, tenantA), eq(securityAuditEvents.actorType, 'machine')));
     assert.deepEqual(leaseAudit.map(row => row.action).sort(), [
-      'fleet.lease.issued', 'fleet.lease.issued', 'fleet.lease.issued', 'fleet.lease.refused', 'policy.bundle.acknowledged',
+      'fleet.lease.issued', 'fleet.lease.issued', 'fleet.lease.issued', 'fleet.lease.issued', 'fleet.lease.refused', 'policy.bundle.acknowledged',
     ]);
     const refusedRow = leaseAudit.find(row => row.action === 'fleet.lease.refused')!;
     assert.deepEqual([refusedRow.actorId, (refusedRow.details as { refusal: string }).refusal], [Y.id, 'LEASE_EXPIRED']);
@@ -439,6 +456,7 @@ async function main(): Promise<void> {
     console.log('ingest=accepted_under_lease_refused_expired_off_and_foreign');
     console.log('fleet_v3=created_while_monitoring_served_with_current_lease_db_check_holds');
     console.log('lease_history=append_only');
+    console.log('lease_race=signed_for_monitor_discarded_after_off_switch');
   } finally {
     if (server) await new Promise<void>((resolve, reject) => server?.close(error => (error ? reject(error) : resolve())));
     rmSync(keyDirectory, { recursive: true, force: true });

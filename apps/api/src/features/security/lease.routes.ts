@@ -58,7 +58,8 @@ export function createSecurityLeaseRouter(dependencies: SecurityLeaseRouteDepend
       sendEnvelope(res, lease.envelope);
     } catch (error) {
       if (error instanceof SecurityLeaseNotIssued) return sendProblem(res as V2Response, 404, 'SECURITY_V2_LEASE_NOT_ISSUED');
-      // SecuritySigningUnavailable lands here too: never an unsigned or stale lease.
+      // SecuritySigningUnavailable and SecurityLeaseStateMoved land here too: never an
+      // unsigned or stale lease.
       fail(res as V2Response, 'lease', error);
     }
   });

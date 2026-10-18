@@ -16,7 +16,7 @@ import {
 } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
 import type { SecurityDataSettingsV1 } from '../security-findings/v2-contract';
-import type { SecurityLeaseStore, StoredBundleRef, StoredLease } from './lease';
+import type { LeaseIssuanceState, SecurityLeaseStore, StoredBundleRef, StoredLease } from './lease';
 import { leaseSettingsFromRow } from './service';
 import { defaultLeaseSettings } from './settings';
 
@@ -51,6 +51,19 @@ async function bundleRef(database: Database, tenantId: string, digest: string): 
   return row ? { id: row.id, digest: row.digest, epoch: row.epoch, bundleVersion: row.bundleVersion } : null;
 }
 
+async function issuanceStateWith(database: Database, tenantId: string): Promise<LeaseIssuanceState> {
+  const tenant = withTenant(database, tenantId);
+  const [data] = await tenant.select(securityDataSettingsVersions)
+    .orderBy(desc(securityDataSettingsVersions.version)).limit(1);
+  const [bundle] = await tenant.select(securityRuleBundles).orderBy(desc(securityRuleBundles.epoch)).limit(1);
+  return {
+    bundle: bundle ? { id: bundle.id, digest: bundle.digest, epoch: bundle.epoch, bundleVersion: bundle.bundleVersion } : null,
+    dataSettingsVersion: data?.version ?? 0,
+    monitorMode: data?.monitorMode ?? 'off',
+    settings: data ? leaseSettingsFromRow(data) : defaultLeaseSettings(),
+  };
+}
+
 export function pgSecurityLeaseStore(database: Database = db): SecurityLeaseStore {
   return {
     async machineIsActive(tenantId, machineId) {
@@ -61,18 +74,7 @@ export function pgSecurityLeaseStore(database: Database = db): SecurityLeaseStor
       return Boolean(machine);
     },
 
-    async issuanceState(tenantId) {
-      const tenant = withTenant(database, tenantId);
-      const [data] = await tenant.select(securityDataSettingsVersions)
-        .orderBy(desc(securityDataSettingsVersions.version)).limit(1);
-      const [bundle] = await tenant.select(securityRuleBundles).orderBy(desc(securityRuleBundles.epoch)).limit(1);
-      return {
-        bundle: bundle ? { id: bundle.id, digest: bundle.digest, epoch: bundle.epoch, bundleVersion: bundle.bundleVersion } : null,
-        dataSettingsVersion: data?.version ?? 0,
-        monitorMode: data?.monitorMode ?? 'off',
-        settings: data ? leaseSettingsFromRow(data) : defaultLeaseSettings(),
-      };
-    },
+    issuanceState: (tenantId) => issuanceStateWith(database, tenantId),
 
     newestLease: (tenantId, machineId) => newestLeaseWith(database, tenantId, machineId),
 
@@ -85,12 +87,19 @@ export function pgSecurityLeaseStore(database: Database = db): SecurityLeaseStor
       return row ? storedLease(row) : null;
     },
 
-    async insertLease(tenantId, lease, epoch, keep) {
+    async insertLease(tenantId, lease, epoch, decide) {
       return database.transaction(async transaction => {
         const tx = transaction as unknown as Database;
+        // Shared with every other lease insert, exclusive against a settings publish
+        // (service.ts takes the same key exclusively): no publish commits between the
+        // re-read below and this insert.
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${`security_settings:${tenantId}`}, 0))`);
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`security_lease:${tenantId}:${lease.machineId}`}, 0))`);
+        const current = await issuanceStateWith(tx, tenantId);
         const newest = await newestLeaseWith(tx, tenantId, lease.machineId);
-        if (newest && keep(newest)) return newest;
+        const decision = decide(newest, current);
+        if (decision === 'stale') return null;
+        if (decision === 'serve' && newest) return newest;
         await withTenant(tx, tenantId).insert(securityActivationLeases, {
           id: lease.id,
           machineId: lease.machineId,

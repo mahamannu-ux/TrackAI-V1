@@ -24,6 +24,7 @@ import {
   LEASE_REUSE_MS,
   LEASE_VALIDITY_MS,
   SecurityLeaseNotIssued,
+  SecurityLeaseStateMoved,
   currentOrIssueLease,
   parseAcknowledgement,
 } from './lease';
@@ -148,23 +149,35 @@ test('lease: concurrent first fetches store one lease and one audit row; a stale
   assert.equal(store.tenants.get(COMPANY_A)!.leases.length, 1);
   assert.equal(store.audit.filter(row => row.action === 'fleet.lease.issued').length, 1);
 
-  // A fetch that read "monitor" before the switch finishes after an off lease was stored: it serves the off lease.
-  const stale = world();
-  const realState = stale.store.issuanceState.bind(stale.store);
+  // Settings-only race (cross-review): a fetch reads "monitor", then monitoring is switched
+  // off while it signs, and no other lease is fetched. The monitor lease is never stored;
+  // the fetch re-signs for the current state and serves an off lease.
+  const race = world();
+  const signer = fixture.signer('activation_lease');
   let release!: () => void;
   const gate = new Promise<void>(done => { release = done; });
-  stale.store.issuanceState = async tenantId => { const state = await realState(tenantId); await gate; return state; };
-  const t2 = new Date(T0.getTime() + 1_000);
-  const slow = issue(stale.store, COMPANY_A, MACHINE_X, t2);
+  const slowSigner: SecurityDocumentSigner = { purpose: 'activation_lease', resolve: async () => { await gate; return signer.resolve(); } };
+  let signatures = 0;
+  const counting: SecurityDocumentSigner = { purpose: 'activation_lease', resolve: () => { signatures += 1; return signatures === 1 ? slowSigner.resolve() : signer.resolve(); } };
+  const slow = issue(race.store, COMPANY_A, MACHINE_X, T0, counting);
   await new Promise(done => setImmediate(done));
-  stale.store.issuanceState = realState;
-  stale.store.setData(COMPANY_A, 'off');
-  const off = await issue(stale.store, COMPANY_A, MACHINE_X, T0);
+  race.store.setData(COMPANY_A, 'off');
   release();
   const served = await slow;
-  assert.equal(off.mode, 'off');
-  assert.equal(served.id, off.id, 'the stale monitor lease is not stored');
-  assert.equal(stale.store.tenants.get(COMPANY_A)!.leases.length, 1);
+  assert.equal(served.mode, 'off', 'the lease signed for monitor was discarded');
+  assert.equal(signatures, 2, 're-signed once for the current state');
+  assert.deepEqual(race.store.tenants.get(COMPANY_A)!.leases.map(lease => lease.mode), ['off']);
+  assert.deepEqual(race.store.audit.map(row => row.details.mode), ['off']);
+
+  // Settings that never settle: nothing is stored and the fetch fails (500 at the route).
+  const moving = world();
+  let flips = 0;
+  const flipping: SecurityDocumentSigner = {
+    purpose: 'activation_lease',
+    resolve: async () => { flips += 1; moving.store.setData(COMPANY_A, flips % 2 ? 'off' : 'monitor'); return signer.resolve(); },
+  };
+  await assert.rejects(issue(moving.store, COMPANY_A, MACHINE_X, T0, flipping), SecurityLeaseStateMoved);
+  assert.equal(moving.store.tenants.get(COMPANY_A)!.leases.length, 0);
 });
 
 test('lease: an off lease carries no agents and validates; no bundle or an inactive machine gets nothing', async () => {
