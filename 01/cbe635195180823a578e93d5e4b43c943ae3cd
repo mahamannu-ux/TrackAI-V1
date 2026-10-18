@@ -1,0 +1,23 @@
+apps/web/src/app/dashboard/page.tsx
+  s_bcd518540969cf::t_f6f3e7f007e529 10,33,46,709-720,759-767,775,779-780,797,799
+apps/web/src/app/dashboard/questions-presentation.tsx
+  s_bcd518540969cf::t_6723e7159ccf28 1-239
+apps/web/src/app/dashboard/questions-workspace.tsx
+  s_bcd518540969cf::t_3539d21abec7ed 1-613
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "01cbe635195180823a578e93d5e4b43c943ae3cd",
+  "prompts": {},
+  "sessions": {
+    "s_bcd518540969cf": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_bcd518540969cf",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
