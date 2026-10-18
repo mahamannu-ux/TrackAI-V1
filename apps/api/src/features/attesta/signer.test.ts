@@ -363,5 +363,12 @@ test('capabilities are as specified', () => {
     supportsCredentialListing: true,
   });
   assert.equal(LOCAL_DEV_ADAPTER_NAME, 'local-dev');
-  assert.equal(LOCAL_DEV_MAX_PAYLOAD_BYTES, 1_048_576);
+  assert.equal(LOCAL_DEV_MAX_PAYLOAD_BYTES, 4 * 1024 * 1024 + 1024);
+});
+
+test('signer cap covers a 4 MiB rule bundle while Attesta statements keep 1 MiB (Task15op0)', async () => {
+  const { ATTESTA_STATEMENT_MAX_SIGNED_BYTES } = await import('./ledger');
+  assert.equal(ATTESTA_STATEMENT_MAX_SIGNED_BYTES, 1_048_576);
+  assert.ok(LOCAL_DEV_MAX_PAYLOAD_BYTES >= 4 * 1024 * 1024 + 200);
+  assert.ok(ATTESTA_STATEMENT_MAX_SIGNED_BYTES < LOCAL_DEV_MAX_PAYLOAD_BYTES);
 });

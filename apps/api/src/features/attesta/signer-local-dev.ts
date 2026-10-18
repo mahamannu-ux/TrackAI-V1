@@ -29,7 +29,8 @@ import {
 } from './signer-contract';
 
 export const LOCAL_DEV_ADAPTER_NAME = 'local-dev';
-export const LOCAL_DEV_MAX_PAYLOAD_BYTES = 1_048_576;
+/** 4 MiB + 1 KiB, matching KMS_MAX_PAYLOAD_BYTES (Task20f rule bundles; Attesta statements stay at 1 MiB, ledger.ts). */
+export const LOCAL_DEV_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024 + 1024;
 const DEV_CREDENTIAL_PREFIX = 'dev:';
 
 export interface DevCredentialInput {

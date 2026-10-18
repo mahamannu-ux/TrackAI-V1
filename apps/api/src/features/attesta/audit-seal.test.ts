@@ -234,3 +234,27 @@ test('T16e export: request bounds, sections, counts and the signature against a 
   assert.equal(verify('sha256', pae('application/vnd.trackai.evidence-pack+json', payload), { key: pub, dsaEncoding: 'der' },
     Buffer.from(envelope.signatures[0].sig, 'base64')), false, 'and never as a pack signature');
 });
+
+test('Task15op0: a seal statement over the statement signing limit never reaches the signer', async () => {
+  const { sealTenant } = await import('./audit-seal-service');
+  const { statementSigningLimit, ATTESTA_STATEMENT_MAX_SIGNED_BYTES } = await import('./ledger');
+  assert.equal(statementSigningLimit(4 * 1024 * 1024 + 1024), ATTESTA_STATEMENT_MAX_SIGNED_BYTES);
+  let signCalls = 0;
+  const adapter = {
+    capabilities: () => ({ adapterName: 'tiny', algorithms: ['ES256'], maxPayloadBytes: 64, supportsCredentialListing: false }),
+    sign: async () => { signCalls += 1; throw new Error('must not be called'); },
+  };
+  const result = await sealTenant({
+    store: {
+      readSnapshot: async () => ({ asOf: '2026-10-15T07:10:00.000Z', plan: { window: W, previous: null, rows: [] } }),
+      chainSeal: async () => { throw new Error('must not be called'); },
+    } as never,
+    resolver: { resolve: async () => ({ adapter, credentialId: 'tiny-key' }) } as never,
+    builderVersion: BUILDER,
+    actor: { type: 'service', id: 'test' },
+    log: () => {},
+  }, TENANT);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.code, 'ATTESTA_BUILDER_RULE_VIOLATION');
+  assert.equal(signCalls, 0);
+});

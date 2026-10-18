@@ -34,6 +34,7 @@ import {
 import { sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
 import {
+  statementSigningLimit,
   AttestaLedgerError, chainStatement, mapLedgerDatabaseError,
   type ChainStatementInput, type ChainStatementResult, type LedgerExecutor,
 } from './ledger';
@@ -238,7 +239,8 @@ async function processRow(
       if (released) { result.failed += 1; count('ATTESTA_SIGNER_NO_CREDENTIAL'); } else result.claimLost += 1;
       return;
     }
-    const maxPayloadBytes = signer.adapter.capabilities().maxPayloadBytes;
+    // Statements keep the 1 MiB signing bound even where the signer allows more (ledger.ts).
+    const maxPayloadBytes = statementSigningLimit(signer.adapter.capabilities().maxPayloadBytes);
     // Steps 1–4: one read transaction; as_of is its now().
     const built = await db.transaction(
       (tx) => build(tx, row, { builderVersion: options.builderVersion, maxPayloadBytes }),

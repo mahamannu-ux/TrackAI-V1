@@ -23,7 +23,7 @@ import { db as coreDb } from '../../core/db';
 import { recordAuditEvent } from '../../core/audit';
 import { canonicalize, sha256Prefixed } from './canonical';
 import { IN_TOTO_PAYLOAD_TYPE, pae, type DsseEnvelope } from './dsse';
-import { AttestaLedgerError, chainStatement, mapLedgerDatabaseError, parseSeq, type LedgerExecutor } from './ledger';
+import { AttestaLedgerError, statementSigningLimit, chainStatement, mapLedgerDatabaseError, parseSeq, type LedgerExecutor } from './ledger';
 import {
   AI_PROVENANCE_TYPE, MAX_REPORT_STATEMENTS, PERIOD_REPORT_PREDICATE_TYPE, PeriodReportError, REPORT_SETTLE_MS,
   buildReportStatement, computeReportDocument, reportSubjectName, type ChainRange, type ReportInput, type ReportScope,
@@ -253,7 +253,8 @@ export async function runPeriodReport(deps: ReportJobDeps, tenantId: string, rep
       const signer = await resolver.resolve(tenantId);
       if (!signer) throw new ReportJobError('ATTESTA_SIGNER_NO_CREDENTIAL', 'the tenant has no active statement key');
       const payload = Buffer.from(built.statementCanonical, 'utf8');
-      if (pae(IN_TOTO_PAYLOAD_TYPE, payload).length > signer.adapter.capabilities().maxPayloadBytes) {
+      const limit = statementSigningLimit(signer.adapter.capabilities().maxPayloadBytes);
+      if (pae(IN_TOTO_PAYLOAD_TYPE, payload).length > limit) {
         throw new ReportJobError('ATTESTA_BUILDER_RULE_VIOLATION', 'the report statement does not fit the signer');
       }
       const signed = await signVerified(signer.adapter, pae(IN_TOTO_PAYLOAD_TYPE, payload), {

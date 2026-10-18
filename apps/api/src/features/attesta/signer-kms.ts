@@ -29,7 +29,12 @@ import {
 
 export const KMS_AWS_ADAPTER_NAME = 'kms-aws';
 export const KMS_GCP_ADAPTER_NAME = 'kms-gcp';
-export const KMS_MAX_PAYLOAD_BYTES = 1_048_576;
+/**
+ * 4 MiB + 1 KiB: a 4 MiB security-v2 rule bundle (Task20f) plus its DSSE PAE prefix.
+ * The digest is computed locally (sign below), so this is the adapter's own bound, not the
+ * cloud key service's. Attesta statements keep their own 1 MiB bound (ledger.ts).
+ */
+export const KMS_MAX_PAYLOAD_BYTES = 4 * 1024 * 1024 + 1024;
 export const AWS_CREDENTIAL_PREFIX = 'aws-kms:';
 export const GCP_CREDENTIAL_PREFIX = 'gcp-kms:';
 /** Public keys are cached per credential for at most 5 minutes. */
