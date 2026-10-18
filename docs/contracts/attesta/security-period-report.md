@@ -65,7 +65,7 @@ Added by Claude (Task15op-b-attesta-security-report). Additive: nothing above ch
 3. `ATTESTA_SECURITY_SEAL_BROKEN` on any break, and also when the covering seals leave part of the period outside every seal: the last covering seal ends before `to`; the first starts after `from` although it has a predecessor; or no seal overlaps a period that does not lie wholly before the tenant's first seal. A row received in `[from, min(to, first seal's from))` is in no seal (inserted after sealing) and is a break too.
 4. The Attesta signature and anchor check of the seal records is not repeated (`/api/attesta/verify` covers it).
 
-**Counted rows** are the covering seals' intact rows with `from` ≤ `received_at` < `to` (and, for repository scope, `repository_id` = the scope's). Their seal row digests, in (`received_at`, `id`) order, give `row_count` and `rows_root`. At most 20 000 covering seals and 500 000 counted rows; beyond, `ATTESTA_BUILDER_TOO_LARGE` (split the period).
+**Counted rows** are the covering seals' intact rows with `from` ≤ `received_at` < `to` (and, for repository scope, `repository_id` = the scope's). Their seal row digests, in (`received_at`, `id`) order, give `row_count` and `rows_root`. At most 20 000 covering seals holding at most 500 000 rows in all (checked before any row is read); beyond, `ATTESTA_BUILDER_TOO_LARGE` (split the period).
 
 **Where each row lands.** Every bucket figure holds every counted row, so each sums to `findings` (SR5). Each row's value has a state that completeness counts:
 
@@ -76,9 +76,9 @@ Added by Claude (Task15op-b-attesta-security-report). Additive: nothing above ch
 | `by_agent` | Task6.a `agent_family`, v2 `source_agent`; null: `unknown` | recorded / partial when hashed / unavailable when `unknown` |
 | `by_model` | v2 `model`; null and every Task6.a row: `unknown` | recorded / partial when hashed / unavailable when `unknown` |
 | `by_platform` | Task6.a `operating_system`; v2 the machine's current `fleet_machine_states.platform`; `unavailable` when the value is `unavailable`, missing or not one of `macos`, `linux`, `windows`, `wsl` | Task6.a recorded; v2 partial (current state); `unavailable` unavailable |
-| `outcomes` | Task6.a `phase`; every v2 row: `v2_unclassified` | Task6.a recorded; v2 unavailable |
+| `outcomes` | Task6.a `phase`; every v2 row: `v2_unclassified` | Task6.a recorded, except phase `unavailable` (unavailable); v2 unavailable |
 
-A key that is not a token (`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$`) becomes `sha256:<hex of its UTF-8 bytes>` in every bucket figure (`fields.md` rule 2), and that row is partial.
+A stored value equal to a fixed bucket name (`unknown`, `unavailable`, `not_enrolled`, `v2_unclassified`; an agent that sends the model `unknown`, say) is no value: the row joins that figure's fixed bucket as unavailable, never as recorded data. A key that is not a token (`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$`) becomes `sha256:<hex of its UTF-8 bytes>` in every bucket figure (`fields.md` rule 2), and that row is partial.
 
 **Availability and completeness (SR6).** `completeness` per bucket figure is `{rows, recorded, partial, unavailable}` over the counted rows by the states above. A bucket figure is `unavailable` / `source_missing` (no value) when rows exist and none is recorded or partial; else `partial` when any row is partial (`current_machine_state` for `by_platform`, `values_hashed_unrepresentable` for the others); else `recorded`. An `unknown`, `unavailable` or `v2_unclassified` bucket alone never makes a figure partial: the bucket and completeness say it. `findings`, `rule_pack_versions` (distinct `rule_pack_version`) and `late_arrivals` are always recorded, with completeness `{rows, rows, 0, 0}`. `denied_by_request`: repository scope `unavailable` / `not_applicable`, completeness all 0; tenant scope with no deny `recorded` 0, completeness all 0; with *n* denies `partial` / `not_sealed` *n*, completeness `{n, 0, n, 0}`.
 
@@ -86,7 +86,7 @@ A key that is not a token (`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$`) becomes `sh
 
 `id, machine_id, record_id, decision, mode, rule_ids, deny_rule_id, deny_rule_version, finding_record_ids, tool_name, tool_call_id, session_id, source_agent, occurred_at, received_at`
 
-The document lists `decisions [{id, digest}]` in (`received_at`, `id`) order and `machine_platforms [{machine_id, platform}]` sorted by `machine_id`, for the counted v2 rows' machines. Neither the document nor the statement carries a session id, tool name, title or raw model name.
+The document lists `decisions [{id, digest}]` in (`received_at`, `id`) order and `machine_platforms [{machine_id, platform}]` sorted by `machine_id`, for the counted v2 rows' machines. Neither the document nor the statement carries a session id, tool name or title; a model value appears only as a `by_model` key, verbatim when it is a token, else hashed.
 
 **Idempotency.** A document whose digest a stored report of the same scope already has returns that report (`existing`) and signs nothing; the unique `(tenant_id, report_digest)` key means this also holds when the inputs returned to an earlier state (A, then B, then A again returns the first report, although the latest is B). A new digest chains a report whose `previous` lists every earlier report of the subject name, oldest first; a report chained meanwhile (`ATTESTA_LEDGER_PREVIOUS_STALE`) is rebuilt once from a fresh snapshot.
 
@@ -99,7 +99,7 @@ The document lists `decisions [{id, digest}]` in (`received_at`, `id`) order and
 | SR3 | `seals` in window order, each window overlapping the period, contiguous (`from` = the prior `to`), `seq` ascending, statement and seal digests unique; the last reaches `to`; no seal means no row; `seal_count` and `seals_root` match |
 | SR4 | `row_count`, `rows_root`, `decision_count` and `decisions_root` match the document; `findings` = `row_count`; `denied_by_request` = the decision count (tenant scope); no decision in a repository report; decision ids unique, `machine_platforms` sorted and unique |
 | SR5 | Each bucket figure with a value sums to `row_count`, keys sorted and unique, counts ≥ 1; `late_arrivals` and `rule_pack_versions` within the rows (`rule_pack_versions` > 0 exactly when rows exist) |
-| SR6 | Completeness adds up and every figure's availability follows the rule above; `by_platform` is `current_machine_state` exactly when a listed machine has a platform |
+| SR6 | Completeness adds up and every figure's availability follows the rule above; the fixed buckets that mean "no value" (`unknown` in `by_agent` and `by_model`, `unavailable` in `by_platform`, `unavailable` and `v2_unclassified` in `outcomes`) hold exactly the rows completeness counts as unavailable; `machine_platforms` is non-empty exactly when v2 rows are counted; `by_platform` is `current_machine_state` exactly when a listed machine has a platform |
 | SR7 | `blocked` = `{unavailable, monitor_only_observed}` and `coverage` = `{unavailable, not_captured_yet}` in the document and the predicate (also frozen in the schemas) |
 | SR8 | The predicate's `figures` and `completeness` equal the document's |
 | SR9 | With the database at hand (the builder's snapshot): recomputing the document from the counted rows, the seals, the decisions and the platforms gives the same bytes |

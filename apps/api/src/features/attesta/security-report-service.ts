@@ -339,6 +339,10 @@ async function readCoverage(tx: SealDbExecutor, scope: SecurityReportScope): Pro
   if (refusal === 'ATTESTA_SECURITY_PERIOD_NOT_SEALED') throw new SecurityReportError(refusal, 'security report: the period is not sealed through to');
   if (refusal !== null) throw broken('the covering seals leave a gap');
 
+  // Bounded before any row is read: a repository report still reads every covering seal's rows.
+  if (seals.reduce((n, s) => n + s.rowCount, 0) > MAX_SECURITY_REPORT_ROWS) {
+    throw new SecurityReportError('ATTESTA_BUILDER_TOO_LARGE', 'the covering seals hold too many rows for one report; split the period');
+  }
   let predecessor: { windowTo: string; sealDigest: string } | null | undefined = null;
   if (seals[0] && seals[0].previousDigest !== null) {
     const p = (await tx.execute(sql`/* security-report:predecessor */

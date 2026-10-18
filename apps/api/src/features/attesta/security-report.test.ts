@@ -24,6 +24,11 @@ import {
   type StoredSecurityReport,
 } from './security-report-service';
 import { devSignerResolver } from './signer-resolver';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
+import type { SealDatabase } from './audit-seal-service';
+import { assertTenantBound } from './testing/builder-world';
+import { MAX_SECURITY_REPORT_ROWS, pgSecurityReportStore } from './security-report-service';
 import { A as PA, PACK_1, T0, MIN, at, segmentOf, trustWorld, type ChainRecord } from './testing/evidence-pack-fixtures';
 
 const A = '11111111-1111-4111-8111-111111111111';
@@ -152,6 +157,17 @@ describe('security report: figures', () => {
     assert.equal(empty.rows_root, sha256Prefixed(Buffer.alloc(0)));
   });
 
+  test('a stored value equal to a placeholder bucket is no value (review finding); Task6.a phase unavailable is unavailable', () => {
+    const rows = [task6aRow(1, '2026-10-18T06:10:00.000000Z', { phase: 'unavailable' }),
+      v2Row(2, '2026-10-18T06:20:00.000000Z', { model: 'unknown', source_agent: 'unavailable' })];
+    const d = computeSecurityReportDocument(inputs({ seals: sealsOver(A, rows).map((x) => x.ref), rows: rows.map(reportRowOf), decisions: [] }));
+    assert.deepEqual(d.figures.by_model, { availability: 'unavailable', reason: 'source_missing' });
+    assert.deepEqual(d.completeness.by_model, { rows: 2, recorded: 0, partial: 0, unavailable: 2 });
+    assert.deepEqual(d.figures.by_agent.value, [{ key: 'opencode', count: 1 }, { key: 'unknown', count: 1 }]);
+    assert.deepEqual(d.completeness.by_agent, { rows: 2, recorded: 1, partial: 0, unavailable: 1 });
+    assert.deepEqual(d.figures.outcomes, { availability: 'unavailable', reason: 'source_missing' });
+  });
+
   test('repository scope: only its rows; denied_by_request is not_applicable and refuses decisions', () => {
     const scope = { ...SCOPE, repository_id: REPO };
     const rows = ROWS.filter((r) => r.repository_id === REPO).map(reportRowOf);
@@ -241,6 +257,11 @@ describe('security report: rules SR1–SR9', () => {
     // SR7 is also frozen in the schemas: a "blocked" claim never gets past them.
     assert.deepEqual(forge((d) => { d.blocked = { availability: 'recorded', value: 1 }; }), ['SR_SCHEMA']);
     assert.deepEqual(forge((_d, p) => { p.figures.findings.value = 5; }), ['SR8']);
+    // A placeholder bucket presented as recorded data: completeness no longer matches it (review finding).
+    assert.deepEqual(forge((d, p) => {
+      for (const c of [d.completeness.by_agent, p.completeness.by_agent]) { c.unavailable = 1; c.recorded -= 1; }
+    }), ['SR6']);
+    assert.deepEqual(forge((d) => { d.machine_platforms = []; }), ['SR6'], 'v2 rows counted but no machine listed');
     assert.deepEqual(forge((d, p) => { d.figures.late_arrivals.value = 0; p.figures.late_arrivals.value = 0; }, { withInputs: true }), ['SR9']);
     assert.deepEqual(checkSecurityReport({ statement: {}, documentText: '{"a":1}' }), ['SR_SCHEMA']);
   });
@@ -456,5 +477,76 @@ describe('security report: the offline verifier', () => {
     assert.equal(check('chain')?.status, 'passed', JSON.stringify(check('chain')));
     assert.equal(check('reports')?.status, 'not_checkable');
     assert.equal(report.exit_code, 2);
+  });
+});
+
+describe('security report: the PostgreSQL store', () => {
+  const dialect = new PgDialect();
+  /** Answers the store's tagged queries from the fixtures; every query must be bound to A. */
+  function fakeDb(over: Record<string, Array<Record<string, unknown>>> = {}) {
+    const seals = sealsOver(A, ROWS);
+    const tags: string[] = [];
+    const answer = (tag: string, params: unknown[]): Array<Record<string, unknown>> => {
+      if (over[tag]) return over[tag];
+      switch (tag) {
+        case 'security-report:clock': return [{ as_of: AS_OF }];
+        case 'security-report:latest_seal': return [{ window_to: W2.to }];
+        case 'security-report:first_seal': return [{ window_from: W1.from, seal_digest: seals[0].sealDigest }];
+        case 'security-report:seals': return seals.map((x) => ({ window_from: x.windowFrom, window_to: x.windowTo, row_count: x.rowCount,
+          task6a_count: x.task6aCount, v2_count: x.v2Count, previous_digest: x.previousDigest, seal_document: x.sealDocument,
+          seal_digest: x.sealDigest, statement_digest: x.statementDigest, seq: String(x.seq), statement_canonical: x.statementCanonical,
+          record_statement_digest: x.recordStatementDigest }));
+        case 'security-seal:rows': return ROWS.filter((r) => r.received_at >= String(params[1]) && r.received_at < String(params[2])) as unknown as Array<Record<string, unknown>>;
+        case 'security-report:decisions': return DECISIONS as unknown as Array<Record<string, unknown>>;
+        case 'security-report:platforms': return [{ machine_id: M1, platform: 'macos' }];
+        default: return [];
+      }
+    };
+    interface FakeDb { tags: string[]; execute(q: SQL): Promise<{ rows: Array<Record<string, unknown>> }>; transaction<T>(fn: (tx: FakeDb) => Promise<T>): Promise<T> }
+    const db: FakeDb = {
+      tags,
+      async execute(query: SQL) {
+        const rendered = dialect.sqlToQuery(query);
+        const tag = /\/\* ([a-z-]+:[a-z_]+) \*\//.exec(rendered.sql)?.[1] ?? (rendered.sql.includes('insert into security_audit_events') ? 'audit' : 'untagged');
+        tags.push(tag);
+        assertTenantBound(rendered.sql, rendered.params, A, tag);
+        if (/\b(from|into)\s+[a-z_]+/.test(rendered.sql)) assert.ok(rendered.params.includes(A), `${tag} binds the tenant`);
+        return { rows: answer(tag, rendered.params) };
+      },
+      async transaction<T>(fn: (tx: FakeDb) => Promise<T>) { return fn(db); },
+    };
+    return db;
+  }
+
+  test('readSnapshot, get, document and recordDownload bind every query to the tenant, and the snapshot builds', async () => {
+    const db = fakeDb();
+    const store = pgSecurityReportStore(db as unknown as SealDatabase);
+    const snap = await store.readSnapshot(SCOPE);
+    assert.equal(snap.inputs.rows.length, 4);
+    assert.deepEqual(snap.inputs.platforms, { [M1]: 'macos' });
+    assert.equal(canonicalize(computeSecurityReportDocument(snap.inputs)), canonicalize(computeSecurityReportDocument(inputs())));
+    assert.equal(await store.get(A, id(1)), null);
+    assert.equal(await store.document(A, id(1)), null);
+    await store.recordDownload({ tenantId: A, actorId: 'auditor-a', actorRole: 'tenant_auditor', requestId: 'r',
+      report: { id: id(1), tenantId: A, repositoryId: null, periodFrom: SCOPE.from, periodTo: SCOPE.to, reportDigest: `sha256:${'a'.repeat(64)}`,
+        statementDigest: `sha256:${'b'.repeat(64)}`, createdAt: AS_OF } });
+    for (const tag of ['security-report:clock', 'security-report:seals', 'security-seal:rows', 'security-report:decisions', 'security-report:previous',
+      'security-report:stored', 'security-report:get', 'security-report:document', 'audit']) assert.ok(db.tags.includes(tag), tag);
+  });
+
+  test('refusals from the snapshot: unsettled to, another repository, unsealed, a broken seal, too many sealed rows', async () => {
+    const code = async (db: ReturnType<typeof fakeDb>, scope = SCOPE) =>
+      pgSecurityReportStore(db as unknown as SealDatabase).readSnapshot(scope).then(() => 'ok', (e: { code?: string }) => e.code);
+    assert.equal(await code(fakeDb({ 'security-report:clock': [{ as_of: '2026-10-18T08:05:00.000Z' }] })), 'ATTESTA_API_INVALID_QUERY');
+    assert.equal(await code(fakeDb(), { ...SCOPE, repository_id: REPO }), 'ATTESTA_API_INVALID_QUERY', 'not a repository of this tenant');
+    assert.equal(await code(fakeDb({ 'security-report:latest_seal': [] })), 'ATTESTA_SECURITY_PERIOD_NOT_SEALED');
+    assert.equal(await code(fakeDb({ 'security-seal:rows': [] })), 'ATTESTA_SECURITY_SEAL_BROKEN');
+    const seals = sealsOver(A, ROWS);
+    const over = fakeDb({ 'security-report:seals': seals.map((x, i) => ({ window_from: x.windowFrom, window_to: x.windowTo,
+      row_count: i === 0 ? MAX_SECURITY_REPORT_ROWS : 2, task6a_count: x.task6aCount, v2_count: x.v2Count, previous_digest: x.previousDigest,
+      seal_document: x.sealDocument, seal_digest: x.sealDigest, statement_digest: x.statementDigest, seq: String(x.seq),
+      statement_canonical: x.statementCanonical, record_statement_digest: x.recordStatementDigest })) });
+    assert.equal(await code(over), 'ATTESTA_BUILDER_TOO_LARGE');
+    assert.ok(!over.tags.includes('security-seal:rows'), 'refused before any row is read');
   });
 });

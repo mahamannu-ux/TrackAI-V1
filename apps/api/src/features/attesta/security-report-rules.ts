@@ -206,6 +206,18 @@ export function bucketKey(value: string): { key: string; hashed: boolean } {
 type RowState = 'recorded' | 'partial' | 'unavailable';
 interface Placed { key: string; state: RowState }
 
+/**
+ * The fixed bucket names a row with no value lands in. A stored value equal to one of them (an agent
+ * that sends the model "unknown") is no value either: it joins that bucket as unavailable, never as
+ * recorded data (review finding, AGENTS.md rule 7).
+ */
+export const PLACEHOLDER_KEYS = new Set(['unknown', 'unavailable', 'not_enrolled', 'v2_unclassified']);
+/** Per figure, the placeholder buckets whose counts must equal completeness.unavailable (SR6). */
+const UNAVAILABLE_BUCKETS: Partial<Record<BucketFigureName, readonly string[]>> = {
+  by_agent: ['unknown'], by_model: ['unknown'], by_platform: ['unavailable'], outcomes: ['unavailable', 'v2_unclassified'],
+};
+const known = (value: string | null): value is string => value !== null && !PLACEHOLDER_KEYS.has(value);
+
 const valued = (value: string): Placed => {
   const k = bucketKey(value);
   return { key: k.key, state: k.hashed ? 'partial' : 'recorded' };
@@ -219,12 +231,12 @@ function placeRow(name: BucketFigureName, row: ReportRow, platforms: Readonly<Re
     case 'by_category': return valued(row.rule_category);
     case 'by_rule': return valued(row.rule_id);
     case 'by_generation': return valued(row.record_generation);
-    case 'by_repository': return row.repository_id === null ? { key: 'not_enrolled', state: 'recorded' } : valued(row.repository_id);
+    case 'by_repository': return known(row.repository_id) ? valued(row.repository_id) : { key: 'not_enrolled', state: 'recorded' };
     case 'by_agent': {
       const agent = v2 ? row.source_agent : row.agent_family;
-      return agent === null ? { key: 'unknown', state: 'unavailable' } : valued(agent);
+      return known(agent) ? valued(agent) : { key: 'unknown', state: 'unavailable' };
     }
-    case 'by_model': return v2 && row.model !== null ? valued(row.model) : { key: 'unknown', state: 'unavailable' };
+    case 'by_model': return v2 && known(row.model) ? valued(row.model) : { key: 'unknown', state: 'unavailable' };
     case 'by_platform': {
       if (!v2) {
         const os = row.operating_system;
@@ -233,7 +245,10 @@ function placeRow(name: BucketFigureName, row: ReportRow, platforms: Readonly<Re
       const p = platforms[row.machine_id];
       return typeof p === 'string' && PLATFORMS.has(p) ? { key: p, state: 'partial' } : { key: 'unavailable', state: 'unavailable' };
     }
-    case 'outcomes': return v2 || row.phase === null ? { key: 'v2_unclassified', state: 'unavailable' } : valued(row.phase);
+    case 'outcomes':
+      if (v2) return { key: 'v2_unclassified', state: 'unavailable' };
+      // Task6.a's own `unavailable` phase is a row whose outcome was not observed.
+      return known(row.phase) ? valued(row.phase) : { key: 'unavailable', state: 'unavailable' };
   }
 }
 
@@ -501,6 +516,17 @@ export function checkSecurityReport(input: CheckSecurityReportInput): SecurityRe
   const denied = deniedFigure(repositoryScope, d.decisions.length);
   if (canonicalize(denied.figure) !== canonicalize(d.figures.denied_by_request)
     || canonicalize(denied.completeness) !== canonicalize(d.completeness.denied_by_request)) broken.add('SR6');
+  // The placeholder buckets hold exactly the rows completeness counts as unavailable.
+  for (const name of ROW_FIGURES) {
+    const keys = UNAVAILABLE_BUCKETS[name];
+    const f = d.figures[name];
+    if (!keys || f.value === undefined) continue;
+    const held = f.value.filter((b) => keys.includes(b.key)).reduce((n, b) => n + b.count, 0);
+    if (held !== d.completeness[name].unavailable) broken.add('SR6');
+  }
+  // machine_platforms lists the v2 rows' machines: some exactly when v2 rows were counted.
+  const v2Rows = d.figures.by_generation.value?.find((b) => b.key === 'v2')?.count ?? 0;
+  if ((v2Rows > 0) !== (d.machine_platforms.length > 0)) broken.add('SR6');
   // A platform taken from a machine's current state makes by_platform partial, and only that does.
   const fromState = d.machine_platforms.some((m) => m.platform !== 'unavailable');
   if (fromState !== (d.figures.by_platform.partial_reason === 'current_machine_state')) broken.add('SR6');

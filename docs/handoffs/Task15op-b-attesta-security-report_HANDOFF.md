@@ -12,9 +12,9 @@ One signed set of security figures per tenant (or repository) and period, comput
 | Scope | builder: request, coverage (NOT_SEALED / SEAL_BROKEN), counted rows, figures, document/statement, SR1–SR9, sign then chain in one ledger transaction, idempotent `existing`, `previous` | ✅ |
 | Scope | `npm run attesta:security-report` (dry run default), `GET /api/attesta/security-period-reports/:id` and `/:id/document` | ✅ |
 | Scope | contract detail (SR1–SR9, decision projection, audit actions) in `security-period-report.md`; audit catalog v4 | ✅ |
-| Quality | `npm test` 1194 tests, 1192 pass, 2 skipped (as on `main`); `tsc` clean; `security-report.test.ts` 19 tests | ✅ |
+| Quality | `npm test` 1197 tests, 1195 pass, 2 skipped (as on `main`); `tsc` clean; `security-report.test.ts` 22 tests | ✅ |
 | Integration | IT-T15op-02 (new); IT-T15op-01 and IT-T15i4-03 re-run once | 🟡 agent-verified; ⬜ founder run, blocking this merge |
-| Review | independent review subagent; cross-agent review (Codex) | 🟡 see "Review" below; ⬜ Codex |
+| Review | independent review subagent (1 must-fix, 6 should-fix: 6 fixed, 1 listed as a limitation); cross-agent review (Codex) | ✅ subagent; ⬜ Codex |
 
 ## Implemented interfaces
 ```text
@@ -42,7 +42,8 @@ Pattern only: Task15i4 period report (SushiCorp RP-1 @ 0bd67a5, catalog RP-1), t
 3. **A gap between covering seals is BROKEN** even when no link inside the period shows it (a removed seal); rows before the first seal in the period are BROKEN.
 4. **Idempotency is by document digest across all stored reports of the scope**: inputs that return to an earlier state return that earlier report (the `(tenant_id, report_digest)` key allows nothing else).
 5. **Audit catalog version 3 → 4** (README: "goes up when an entry is added"; Task15op-a added two entries without a bump).
-6. Limits: at most 20 000 covering seals and 500 000 counted rows per report (`ATTESTA_BUILDER_TOO_LARGE`; split the period).
+6. **A stored value equal to a fixed bucket name** (`unknown`, `unavailable`, …) is counted as no value, and Task6.a phase `unavailable` as unavailable (review must-fix and should-fix).
+7. Limits: at most 20 000 covering seals holding at most 500 000 rows per report, checked before any row is read (`ATTESTA_BUILDER_TOO_LARGE`; split the period).
 
 ## Deviations from spec
 - `core/security/auditor-sweep.test.ts` (not pre-approved): two additive rows classifying the new routes as `attesta.export` reads. The sweep fails without them; test-only.
@@ -56,9 +57,10 @@ Pattern only: Task15i4 period report (SushiCorp RP-1 @ 0bd67a5, catalog RP-1), t
 | 🟡 | enforcement decisions are **not sealed** | `denied_by_request` is `partial`/`not_sealed`; a changed decision changes the next report's digest only |
 | 🟡 | evidence packs carry no report documents (`reports: []`) | the offline verifier passes the statement, reports SR1–SR9 as not checkable (exit 2) |
 | 🟡 | one report holds its counted rows in memory (≤ 500 000) and reads one query per covering seal | a very large year needs shorter periods |
+| 🟡 | the report re-checks each covering seal's document, rows, links and ledger statement, but not the seal record's signature or the chain (the contract leaves that to `/api/attesta/verify`) | a table owner who removes a seal and inserts a forged one is caught only by `/api/attesta/verify`; run it before citing a report (IT-T15op-02 does) |
 
 ## Test coverage
-`security-report.test.ts` (no database, dev signer): figures from both generations; `not_enrolled`, `unknown`, `unavailable` buckets; a hashed model; `late_arrivals`; `denied_by_request` tenant and repository; each SR rule refusing a crafted, re-hashed violation (SR7 through the schema); deterministic bytes; >10 000 buckets and a statement over the signer limit (`TOO_LARGE`); `existing`, `previous`, the stale-retry; NOT_SEALED, gaps and broken seals (changed, missing, late row, crafted statement, broken link); Company A/B; the offline verifier on a built statement (exit 2). `attesta-api.test.ts`: both routes in the sweep, no-store, attachment, audit, digest mismatch 500, B's 404, bad ids 400. Not unit-tested: the pg queries (IT-T15op-02 covers them).
+`security-report.test.ts` (no database, dev signer): figures from both generations; `not_enrolled`, `unknown`, `unavailable` buckets; a hashed model; `late_arrivals`; `denied_by_request` tenant and repository; each SR rule refusing a crafted, re-hashed violation (SR7 through the schema); deterministic bytes; >10 000 buckets and a statement over the signer limit (`TOO_LARGE`); `existing`, `previous`, the stale-retry; NOT_SEALED, gaps and broken seals (changed, missing, late row, crafted statement, broken link); Company A/B; the offline verifier on a built statement (exit 2). `attesta-api.test.ts`: both routes in the sweep, no-store, attachment, audit, digest mismatch 500, B's 404, bad ids 400. The pg store's snapshot, get, document and audit queries run against a fake database that asserts every query is tenant-bound and checks the refusals; `chainReport` (ledger) is covered by IT-T15op-02.
 
 ## Integration test impact
 > **FOUNDER:** blocking for this merge. Prerequisites: Docker or local PostgreSQL 16 with pgvector. Expected: `IT-T15op-02=passed`, about 1 minute.
@@ -70,6 +72,9 @@ Pattern only: Task15i4 period report (SushiCorp RP-1 @ 0bd67a5, catalog RP-1), t
 |---|---|---|---|
 | IT-T15op-02 | the report on real PostgreSQL: NOT_SEALED, seal, CLI dry run, tenant + repository reports chained, `/api/attesta/verify` ok, both routes, B's 404, `existing`, platform change → `previous`, tampered row → SEAL_BROKEN, audit events, B isolation | Blocking: Task15op-b merge | 🟡 agent-verified 2026-10-18 · ⬜ founder run |
 | IT-T15op-01, IT-T15i4-03 | regression (shared ledger arm and seal service) | non-blocking | 🟡 agent re-run passed 2026-10-18 |
+
+## Review
+Independent review subagent, fixed: a value equal to a placeholder bucket counted as recorded (must-fix); SR6 now ties placeholder buckets to completeness and `machine_platforms` to v2 rows; Task6.a phase `unavailable` is unavailable; the covering seals' total rows are bounded before reading; a fake-database test checks that every store query is tenant-bound; one contract sentence reworded. Not fixed (by contract): the seal record's signature is not re-checked (Known limitations).
 
 ## Integration notes
 - Seal before reporting: `npm run attesta:security-seal -w apps/api -- --tenant <t> --now --confirm`, then the report with `to` ≤ the seal's cutoff.
