@@ -161,7 +161,7 @@ Revised 2026-10-16 for the Numbat decision. Security gaps close inside Task20's 
 | G5 rejection audit event | `Task4-rejection-audit` |
 | G3 PR reviews | `Task2-pr-reviews` (before production) |
 | G1 repository snapshot | `Task2-repo-snapshot` (+ `-gitai`) |
-| G6 findings signed on their own | 🟡 Task15op-a (2026-10-18): signed seals over windows of finding rows of both generations (`docs/contracts/attesta/security-findings-seal.md`), waiting on the founder's IT-T15op-01 run; the signed figures (security period report) follow in Task15op-b |
+| G6 findings signed on their own | ✅ Task15op-a (merged 2026-10-18, PR #86): signed seals over windows of finding rows of both generations (`docs/contracts/attesta/security-findings-seal.md`), IT-T15op-01 founder passed; the signed figures (security period report) follow in Task15op-b |
 | G7 coverage history | Task20f (lease history), Task20h (the Endpoint reports its security status) and Task20i (stored per machine and day) |
 | G8 monitor writer and audit event | Task20f (security settings writer; event reserved in Task16b) |
 | G9 rule coverage | **Cancelled:** Task20's first wave adopts 44 of Numbat's rules (proved in Task20j) |

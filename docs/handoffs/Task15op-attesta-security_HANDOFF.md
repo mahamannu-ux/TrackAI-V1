@@ -15,8 +15,8 @@ Task15op-a closes gap G6 for S1. A signed, chained `security_findings_seal` stat
 | Scope | `attesta:security-seal` (dry run, `--confirm`, `--now`, `--tenant`), audited | ✅ |
 | Scope | `GET /api/attesta/security-seals/verify` (missing / changed / late / links / orphans / unsealed tail); `/api/attesta/verify` and the offline verifier accept both types; packs carry seal and report statements | ✅ |
 | Quality | `npm test` 1171 pass, 0 fail, 2 skipped (with `main` at `fbea993`, PR #85 merged in); type check, lint, `drizzle-kit check` clean | ✅ |
-| Integration | IT-T15op-01 passes in the sandbox; IT-T15d, IT-T15i4, IT-T16e, IT-T16e2 and IT-T20d re-run green on 0027 | 🟡 sandbox · ⬜ founder run |
-| Review | Independent review subagent: 2 must-fix, 4 should-fix, all fixed; Codex round 1: one must-fix (SS3–SS4 not recomputed from the rows), fixed | 🟡 Codex re-review pending |
+| Integration | IT-T15op-01 founder passed 2026-10-18; IT-T15d, IT-T15i4, IT-T16e, IT-T16e2 and IT-T20d re-run green on 0027 | ✅ |
+| Review | Independent review subagent: 2 must-fix, 4 should-fix, all fixed; Codex round 1: one must-fix (SS3–SS4 not recomputed from the rows), fixed; re-review skipped by the founder (2026-10-18), tests run and merged | ✅ |
 
 ## Implemented interfaces
 ```ts
@@ -59,7 +59,7 @@ verifySecuritySeals(deps, {tenantId, actorId, actorRole, requestId, query: {from
 ## Known limitations
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Run IT-T15op-01 (command below) | blocking for this merge |
+| ✅ | ~~**FOUNDER:** run IT-T15op-01~~ passed 2026-10-18 (PR #86 merged) | none |
 | ✅ | ~~`features/security/signing.test.ts:99` failed on `main` after Task15op0 raised the signer cap~~ fixed by Task20f1 (PR #85, 2026-10-18), merged into this branch | none |
 | 🟡 | A tenant pack holding a security seal always exits 2 offline (documents and rows are not in packs) | until an approved pack change carries seal documents |
 | 🟡 | More than 50 000 rows at one millisecond stops that tenant's sealing (alertable log line; the rows stay `unsealed_tail`) | not reachable at today's 500-record upload limit without at least 100 uploads in the same millisecond |
@@ -86,7 +86,7 @@ verifySecuritySeals(deps, {tenantId, actorId, actorRole, requestId, query: {from
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T15op-01 | Company A: both generations sealed, not due again, an empty linked seal; verify ok and `/api/attesta/verify` ok; delete, change and late insert give exactly the three breaks; TRUNCATE, UPDATE, DELETE and a second first seal refused. Company B: an 8 001-row instant sealed alone, then 8 000 + 3, all linked; no cross-tenant leakage either way. Report ledger arm: tenant and repository scope stored; B's repository, B as tenant, an ignored `previous` and a mismatched row all refused | Blocking: Task15op-a merge | 🟡 agent-verified 2026-10-18 · ⬜ founder run |
+| IT-T15op-01 | Company A: both generations sealed, not due again, an empty linked seal; verify ok and `/api/attesta/verify` ok; delete, change and late insert give exactly the three breaks; TRUNCATE, UPDATE, DELETE and a second first seal refused. Company B: an 8 001-row instant sealed alone, then 8 000 + 3, all linked; no cross-tenant leakage either way. Report ledger arm: tenant and repository scope stored; B's repository, B as tenant, an ignored `previous` and a mismatched row all refused | Blocking: Task15op-a merge | ✅ founder passed 2026-10-18 |
 
 ## Integration notes
 - **Task15op-b:** build the report from `readSecurityRows` over covering seals after `checkSecuritySealRows` passes. Chain it with `chainStatement`; `previous` is enforced. Insert the row in the same transaction, using `attesta_security_period_reports` (the guards already exist). No migration.

@@ -131,7 +131,7 @@ export class AuditContractError extends Error {
 // The catalog
 
 /** Goes up when an entry is added or an alias recorded; never for a change of an existing row's meaning. */
-export const AUDIT_CATALOG_VERSION = 3;
+export const AUDIT_CATALOG_VERSION = 4;
 
 const r = (type: AuditDetailType): AuditDetailKey => ({ type, required: true, nullable: false });
 /** Required, may be null: today's emitter writes `null` rather than omitting the key. */
@@ -697,6 +697,32 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       request_id: r('string'),
     },
     sources: ['features/attesta/security-seal-service.ts:919'],
+  }),
+  // --- Task15op-b (A15.16): the security period report, built by the CLI and downloaded by route ---
+  ...entries(['attesta.security_report.built'], {
+    owner: 'Task15op', severity: 'info', actorTypes: ['service', 'system_operator'],
+    targetType: 'attesta_security_period_report', targetIdKind: 'row',
+    details: {
+      scope_from: r('iso_timestamp'),
+      scope_to: r('iso_timestamp'),
+      repository_id: rn('uuid'),
+      report_digest: r('sha256_digest'),
+      statement_digest: r('sha256_digest'),
+      row_count: r('integer'),
+      seal_count: r('integer'),
+      request_id: r('string'),
+    },
+    sources: ['features/attesta/security-report-service.ts:454'],
+  }),
+  ...entries(['attesta.security_report.downloaded'], {
+    owner: 'Task15op', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
+    targetType: 'attesta_security_period_report', targetIdKind: 'row',
+    details: {
+      report_digest: r('sha256_digest'),
+      statement_digest: r('sha256_digest'),
+      request_id: r('string'),
+    },
+    sources: ['features/attesta/security-report-service.ts:491', 'features/attesta/attesta.routes.ts:403'],
   }),
   ...entries(['audit.export.requested'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,

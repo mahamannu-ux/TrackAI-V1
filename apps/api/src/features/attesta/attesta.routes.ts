@@ -17,7 +17,10 @@
  *
  *   GET  /security-seals/verify?from&to     the security-finding seal verify report, audited (Task15op-a)
  *
- * Every route needs `attesta.read`; the evidence-pack and period-report routes also `attesta.export`
+ *   GET  /security-period-reports/:id           scope, report and statement digests (Task15op-b)
+ *   GET  /security-period-reports/:id/document  the signed security report document (RFC 8785 bytes), audited
+ *
+ * Every route needs `attesta.read`; the evidence-pack, period-report and security-period-report routes also `attesta.export`
  * (both: tenant_admin, tenant_auditor; an auditor's job is to take evidence, and every
  * export and download is audited). Handlers are thin; queries live in read-service.ts
  * and evidence-pack-service.ts. Each route is classified in the route sweep
@@ -52,6 +55,9 @@ import type { SealDatabase } from './audit-seal-service';
 import {
   parseSecurityVerifyQuery, verifySecuritySeals, type SecurityVerifyInput, type SecurityVerifyReport,
 } from './security-seal-service';
+import {
+  pgSecurityReportStore, securityReportDocumentBody, securityReportStatusBody, type SecurityReportReadStore,
+} from './security-report-service';
 import { pgTrustStore, type TrustDb } from './trust-inventory';
 import { trustConfigFromEnv } from './trust-resolver';
 import type { AttestaApiCode } from './http';
@@ -78,6 +84,8 @@ export interface AttestaRouterDeps {
   anchors?: AnchorMaterialSource;
   /** The security-finding seal verify report (default: verifySecuritySeals on the real database). */
   verifySecuritySeals?: (input: SecurityVerifyInput) => Promise<SecurityVerifyReport>;
+  /** The stored security period reports (default: pgSecurityReportStore on the real database). */
+  securityReports?: SecurityReportReadStore;
   now?: () => Date;
   log?: AttestaLog;
 }
@@ -123,6 +131,7 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
   const log = deps.log ?? defaultLog;
   const securityVerify = deps.verifySecuritySeals ?? ((input: SecurityVerifyInput) => verifySecuritySeals(
     { database: db as unknown as SealDatabase, attesta: { store, verifier, keys, anchors, now } }, input));
+  const securityReports = deps.securityReports ?? pgSecurityReportStore(db as unknown as SealDatabase);
   const verifying = new Set<string>();
 
   const router = Router();
@@ -370,6 +379,30 @@ export function createAttestaRouter(deps: AttestaRouterDeps = {}): Router {
       reportId: job.id, details: { request_id: requestIdOf(res), scope: job.scope, report_digest: job.reportDigest, statement_digest: job.statementDigest } });
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Disposition', `attachment; filename="trackai-period-report-${job.id}.json"`);
+    res.status(200).type('application/json').send(body);
+  }));
+
+  // --- Security period reports (Task15op-b; security-period-report.md). The CLI builds them; these
+  // routes read them, behind attesta.export like the period reports.
+
+  router.get('/security-period-reports/:id', exportAuth, handle(async (req, res, who) => {
+    if (Object.keys(query(req)).length > 0) throw new AttestaQueryError('unknown parameter');
+    // Another tenant's id and an unknown id take the same path (one tenant-bound query, the same 404).
+    const report = await securityReports.get(who.tenantId, reportIdOf(req));
+    if (!report) throw new ApiProblem(404, 'ATTESTA_API_NOT_FOUND');
+    sendJson(res, securityReportStatusBody(report));
+  }));
+
+  router.get('/security-period-reports/:id/document', exportAuth, handle(async (req, res, who) => {
+    if (Object.keys(query(req)).length > 0) throw new AttestaQueryError('unknown parameter');
+    const id = reportIdOf(req);
+    const report = await securityReports.get(who.tenantId, id);
+    if (!report) throw new ApiProblem(404, 'ATTESTA_API_NOT_FOUND');
+    // A stored document that does not hash to its digest is a 500, never a download.
+    const body = securityReportDocumentBody(report, await securityReports.document(who.tenantId, id));
+    await securityReports.recordDownload({ tenantId: who.tenantId, actorId: who.actorId, actorRole: who.role, report, requestId: requestIdOf(res) });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Disposition', `attachment; filename="trackai-security-period-report-${report.id}.json"`);
     res.status(200).type('application/json').send(body);
   }));
 
