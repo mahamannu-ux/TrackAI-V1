@@ -698,6 +698,8 @@ test('task6_acceptance fixture is synthetic guarded and covers all three roles',
   assert.match(seedSource, /TASK6_EPHEMERAL_DATABASE !== '1'/);
   assert.match(seedSource, /task6-acceptance-auditor/);
   assert.match(seedSource, /trackai\.exec\.download_pipe_shell/);
+  assert.match(seedSource, /ON CONFLICT DO NOTHING/);
+  assert.doesNotMatch(seedSource, /ON CONFLICT \(tenant_id, delivery_id\)/);
   assert.doesNotMatch(seedSource, /commandText|promptText|rawPayload|customer-secret/);
   assert.match(authSource, /auditor@task5\.acceptance\.invalid/);
   assert.match(authSource, /developer@task5\.acceptance\.invalid/);
