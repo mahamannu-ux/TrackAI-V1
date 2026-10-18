@@ -683,7 +683,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       seal_digest: r('sha256_digest'),
       request_id: r('string'),
     },
-    sources: ['features/attesta/security-seal-service.ts:565'],
+    sources: ['features/attesta/security-seal-service.ts:641'],
   }),
   ...entries(['audit.trail.security_findings_verified'], {
     owner: 'Task15op', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,
@@ -696,7 +696,7 @@ export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
       break_count: r('integer'),
       request_id: r('string'),
     },
-    sources: ['features/attesta/security-seal-service.ts:818'],
+    sources: ['features/attesta/security-seal-service.ts:919'],
   }),
   ...entries(['audit.export.requested'], {
     owner: 'Task16e', severity: 'info', actorTypes: ADMIN_OR_AUDITOR,

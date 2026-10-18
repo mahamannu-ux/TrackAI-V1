@@ -20,18 +20,18 @@ The RFC 8785 (JCS) bytes are stored in `attesta_security_finding_seals.seal_docu
 | `tenant_id` | the tenant (lowercase UUID) |
 | `window` | `{from, to}`: half-open `[from, to)`, compared with **`received_at`**, both the exact microsecond text (`YYYY-MM-DDTHH:MM:SS.ffffffZ`) |
 | `previous` | the previous seal's `seal_digest`, or `null` for the tenant's first seal |
-| `count` | the number of rows (at most 8 000) |
+| `count` | the number of rows (at most 8 000; a seal of one instant alone up to 50 000, below) |
 | `generations` | `{task6a, v2}`: rows per `record_generation`; the sum is `count` |
 | `rows` | `[{id, digest}]` in (`received_at`, `id`) ascending order |
 | `rows_root` | the RFC 6962 root (`merkle.ts`) over the 32 raw bytes of each row digest, in `rows` order; the empty list's root is SHA-256 of the empty string |
 
 **Why `received_at`:** it is set when TrackAI stores the row, so a late upload falls into a later window instead of reopening a sealed one. A finding's own time (`occurred_at`) is in the row digest.
 
-**Row digest** = `"sha256:" + hex(SHA-256(JCS(projection)))`. The projection has exactly these keys for every row, each the **stored column verbatim** (JSON `null` when the column is null; `found_at_rest` a boolean or null; timestamps the exact microsecond text; everything else a string):
+**Row digest** = `"sha256:" + hex(SHA-256(JCS(projection)))`. The projection is **every column of `security_findings` except `tenant_id` (the document's) and the free-text `title` and `tags`**, each the stored value verbatim (JSON `null` when the column is null; `found_at_rest` a boolean or null; `occurred_at`, `received_at` and `detected_at` the exact microsecond text; everything else a string), with exactly these 45 keys for every row of either generation:
 
-`id, record_generation, machine_id, repository_id, repository_kind, rule_id, rule_version, rule_category, rule_severity, effect, agent_family, source_agent, model, session_id, record_id, occurred_at, received_at, rule_pack_version, bundle_digest, lease_id, found_at_rest, phase, timing, result_category, operating_system`
+`id, record_generation, machine_id, repository_id, repository_kind, rule_id, rule_version, rule_category, rule_severity, effect, agent_family, source_agent, source_type, model, model_provider, session_id, parent_session_id, sub_agent_id, record_id, finding_id, delivery_id, source_event_id, correlation_id, occurred_at, received_at, detected_at, rule_pack_version, bundle_digest, lease_id, numbat_schema_version, confidence, found_at_rest, route_id, host_surface, host_mode, capture_channel, native_effect, activation, phase, timing, availability, completeness, result_category, operating_system, client_version`
 
-Metadata only: `title`, `tags`, previews (`security_finding_previews`), delivery and source-event ids and client versions are never in it. `tenant_id` is the document's, and every read is tenant-bound, so a row moved to another tenant shows as `missing_row`. The document carries only ids and digests, so no session id or model name leaves the database in a seal, a statement or an evidence pack.
+So a change to any of them is `changed_row`. **Not protected by a seal:** `title` and `tags` (free text, kept out of every digest input on purpose), and `security_finding_previews` (encrypted previews, a separate table). `tenant_id` is the document's, and every read is tenant-bound, so a row moved to another tenant shows as `missing_row`. The document carries only ids and digests, so no session id, model name or rule text leaves the database in a seal, a statement or an evidence pack.
 
 ## Statement
 
@@ -50,8 +50,8 @@ Metadata only: `title`, `tags`, previews (`security_finding_previews`), delivery
 
 - Windows are contiguous: a seal's `from` is the previous seal's `to`. A tenant's first seal starts at its earliest `received_at`.
 - `to` ≤ database clock − **10 minutes**: `received_at` is stamped by the API process (`v2-storage.ts`), so the margin covers commit lag and clock skew (same assumption as `evidence-pack.md`: API hosts keep their clocks close to the database's).
-- A seal holds at most **8 000** rows, so a document stays about 1 MiB (129 bytes a row). A larger backlog is sealed back to back: `to` is then the `received_at` of the first row that does not fit, so rows sharing one instant are never split; more than 8 000 rows at one instant (at least 16 full 500-record uploads in the same millisecond) is refused with `ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW`.
-- A seal is due when the tenant has unsealed rows before the cutoff **and** its last seal is at least an hour old, or when its last seal is at least 24 hours old (an empty window proves "nothing arrived"). Within one pass, rows left after a full 8 000-row chunk are due at once (the backlog), never as an empty window. `--now` drops the age rule (an operator about to build a report): rows are sealed at once, and an empty window only when the last seal's `to` is at least a minute behind the cutoff, so a second run is not due. A tenant with no finding row has no seal.
+- A seal holds at most **8 000** rows, so a document stays about 1 MiB (129 bytes a row). A larger backlog is sealed back to back: `to` is then the `received_at` of the first row that does not fit, so rows sharing one instant are never split. When the window's **first instant alone** holds more than 8 000 rows (at least 16 full 500-record uploads in the same millisecond), that instant is sealed alone, `[from, instant + 1 µs)`, up to **50 000** rows (a document of about 6.5 MB). Beyond 50 000 the tenant's sealing stops with `ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW` and an alertable log line naming the tenant and the instant (no row content); the rows stay in `unsealed_tail` and are never called verified. Recovery is an operator decision (raise the ceiling in a reviewed change); it is not expected at today's upload limits.
+- A seal is due when the tenant has unsealed rows before the cutoff **and** its last seal is at least an hour old, or when its last seal is at least 24 hours old (an empty window proves "nothing arrived"). Within one pass, the rows left after a seal the row cap cut short are due at once (the backlog), never as an empty window; a seal that reached the cutoff ends the tenant's pass. `--now` drops the age rule (an operator about to build a report): rows are sealed at once, and an empty window only when the last seal's `to` is at least a minute behind the cutoff, so a second run is not due. A tenant with no finding row has no seal.
 - Who seals: `npm run attesta:security-seal -w apps/api` (dry run; `--confirm` to seal; `--tenant <uuid>`, `--now`; actor `system_operator`). The founder schedules it (hourly); it is not in the worker loop (checkpoint 2026-10-18).
 - How: read in one repeatable-read snapshot, sign with the tenant's statement key outside any transaction, then in one ledger transaction re-check the last seal, chain the statement, store the seal row and write `audit.trail.security_findings_sealed`.
 
@@ -72,7 +72,7 @@ The `attesta_audit_seals` columns plus `task6a_count` and `v2_count`. One row pe
   chain: {ok, checked} }
 ```
 
-`ok` is true only with no break and an `ok` Attesta check (signatures checked, no anchor or key-window finding). `unsealed_tail` never makes a report not ok and is never called verified. A seal proves the register was not altered after sealing; it never says a finding was blocked (monitor-only, AGENTS.md rule 7).
+Each seal's current rows are read up to max(16 000, the seal's count + 8 000), and every sealed id is also looked up directly, so a flood of late inserts never makes a sealed row look missing; when that bound is reached, `breaks_truncated` is true (not every late insert is listed). `ok` is true only with no break and an `ok` Attesta check (signatures checked, no anchor or key-window finding). `unsealed_tail` never makes a report not ok and is never called verified. A seal proves the register was not altered after sealing; it never says a finding was blocked (monitor-only, AGENTS.md rule 7).
 
 ## Rules SS1–SS6 (`security-seal-service.ts`)
 
@@ -87,8 +87,8 @@ The `attesta_audit_seals` columns plus `task6a_count` and `v2_count`. One row pe
 
 ## Evidence packs and the offline verifier
 
-A tenant pack (`scope.repository_id` null) lists seal statements in its window under `statements` like any other; a repository pack does not (they name no repository). `reports` stays `[]` (checkpoint 2026-10-18: filling it is a separate, approved change to the frozen pack schema). The offline verifier checks a seal statement against this schema and the record's typed columns; SS2–SS4 need the document and the rows, so it reports them as not checkable (exit 2), never as passed.
+A tenant pack (`scope.repository_id` null) lists seal statements in its window under `statements` like any other; a repository pack does not (they name no repository). `reports` stays `[]` (checkpoint 2026-10-18: filling it is a separate, approved change to the frozen pack schema). The offline verifier checks a seal statement against this schema and the record's typed columns; SS2–SS4 need the document and the rows, so it reports them as not checkable (exit 2), never as passed. Consequence: a tenant pack whose window holds a security seal always exits 2 (an audit seal does not), so with hourly seals a tenant pack never fully passes offline until packs carry seal documents and rows.
 
 ## Provenance
 
-Pattern: Task16e audit-seal / Task15i4 period-report (SushiCorp RP-1); EV-1 reused through Attesta, not re-ported. Deviations from audit seals: the window compares `received_at`; the settle margin is 10 minutes (5 for audit); a seal holds 8 000 rows (50 000 for audit), so a document stays near the 1 MiB statement bound; the document carries `generations` and no catalog version.
+Pattern: Task16e audit-seal / Task15i4 period-report (SushiCorp RP-1); EV-1 reused through Attesta, not re-ported. Deviations from audit seals: the window compares `received_at`; the settle margin is 10 minutes (5 for audit); a seal holds 8 000 rows (50 000 for audit), so a document stays near the 1 MiB statement bound, except a seal of one instant alone (up to 50 000); the document carries `generations` and no catalog version.

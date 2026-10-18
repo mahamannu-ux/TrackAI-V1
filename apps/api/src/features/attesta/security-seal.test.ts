@@ -14,7 +14,7 @@ import {
   buildCanonicalRecord, chainStatement, deriveStatementColumns, type LedgerExecutor,
 } from './ledger';
 import {
-  MAX_SECURITY_SEAL_ROWS, SECURITY_SEAL_EMPTY_INTERVAL_MS, SECURITY_SEAL_MIN_INTERVAL_MS, assembleSecurityVerifyReport,
+  MAX_SECURITY_INSTANT_ROWS, MAX_SECURITY_SEAL_ROWS, SECURITY_ROW_KEYS, SECURITY_SEAL_EMPTY_INTERVAL_MS, nextMicrosecond, SECURITY_SEAL_MIN_INTERVAL_MS, assembleSecurityVerifyReport,
   buildSecuritySealDocument, buildSecuritySealStatement, checkSecuritySealRows, parseSecurityVerifyQuery,
   parseSecuritySealDocument, planSecuritySealWindow, rowFromDb, runSecuritySealPass, sealSecurityTenant, securityRowDigest,
   securitySealValidators, type ChainSecuritySealInput, type SecurityFindingRow, type SecuritySealStore,
@@ -38,7 +38,10 @@ function v2Row(n: number, receivedAt: string, over: Partial<SecurityFindingRow> 
     agent_family: null, source_agent: 'claude-code', model: 'claude-x', session_id: 'sess-1', record_id: `sha256:${'a'.repeat(64)}`,
     occurred_at: '2026-10-18T06:01:02.123000Z', received_at: receivedAt, rule_pack_version: `bundle:${'b'.repeat(16)}`,
     bundle_digest: 'b'.repeat(64), lease_id: 'lease-1', found_at_rest: false, phase: null, timing: null, result_category: null,
-    operating_system: null, ...over,
+    operating_system: null, source_type: 'hook', model_provider: null, parent_session_id: null, sub_agent_id: null,
+    finding_id: null, delivery_id: null, source_event_id: null, correlation_id: null, detected_at: '2026-10-18T06:01:02.123000Z',
+    numbat_schema_version: '0.5.0', confidence: 'high', route_id: null, host_surface: null, host_mode: null, capture_channel: null,
+    native_effect: null, activation: null, availability: null, completeness: null, client_version: null, ...over,
   };
 }
 function task6aRow(n: number, receivedAt: string): SecurityFindingRow {
@@ -47,19 +50,26 @@ function task6aRow(n: number, receivedAt: string): SecurityFindingRow {
     rule_id: 'trackai.exec.reverse_shell', rule_version: '1', rule_category: 'execution', rule_severity: 'critical',
     agent_family: 'opencode', source_agent: null, model: null, record_id: null, rule_pack_version: 'task6a-1',
     bundle_digest: null, lease_id: null, found_at_rest: null, phase: 'requested', timing: 'pre_action', result_category: 'not_observed',
-    operating_system: 'macos',
+    operating_system: 'macos', source_type: null, detected_at: null, numbat_schema_version: null, confidence: null,
+    finding_id: `finding-${n}`, delivery_id: `delivery-${n}`, source_event_id: 'event-1', route_id: 'AC-CLI-03',
+    host_surface: 'terminal', host_mode: 'cli', capture_channel: 'provider-plugin', native_effect: 'observe_only',
+    activation: 'observed', availability: 'available', completeness: 'complete', client_version: '0.1.0',
   };
 }
 
 test('T15op seal: the row digest vector; extra columns never reach it; one microsecond is a different row', () => {
   const r = v2Row(1, '2026-10-18T06:05:00.456789Z');
   // Computed independently (Python json.dumps sort_keys, compact separators, UTF-8).
-  assert.equal(securityRowDigest(r), 'sha256:90a5e7924c4cfd18c1db3bb2bcbedae4c0ef621c9361f374091a90549c08b99b');
+  assert.equal(securityRowDigest(r), 'sha256:5786f0be7d89a4e9a9c06cbcdf62403ffab9a28e0aff4bffa9ff2f49f5e352c9');
   // A title, tags or a preview read by mistake never changes the digest (metadata projection only).
   assert.equal(securityRowDigest({ ...r, title: 'AWS key in .env', tags: ['x'] } as SecurityFindingRow), securityRowDigest(r));
   assert.notEqual(securityRowDigest({ ...r, received_at: '2026-10-18T06:05:00.456790Z' }), securityRowDigest(r));
   assert.notEqual(securityRowDigest({ ...r, rule_severity: 'low' }), securityRowDigest(r));
   assert.notEqual(securityRowDigest({ ...r, found_at_rest: null }), securityRowDigest(r));
+  // Every column but tenant_id, title and tags is sealed (review finding): confidence and detected_at too.
+  assert.notEqual(securityRowDigest({ ...r, confidence: 'low' }), securityRowDigest(r));
+  assert.notEqual(securityRowDigest({ ...r, detected_at: '2026-10-18T06:01:02.123001Z' }), securityRowDigest(r));
+  assert.equal(SECURITY_ROW_KEYS.length, 45);
   assert.throws(() => securityRowDigest({ ...r, received_at: '2026-10-18T06:05:00.456Z' }), /microsecond/);
   // rowFromDb keeps the projection exact (booleans, nulls).
   assert.deepEqual(rowFromDb({ ...r, found_at_rest: true, model: undefined }), { ...r, found_at_rest: true, model: null });
@@ -169,10 +179,25 @@ test('T15op seal: the cadence plans first, hourly, daily-empty, --now and chunke
   const chunk = planSecuritySealWindow({ cutoff, last, earliest: null, rows: many });
   assert.equal(chunk?.rows.length, MAX_SECURITY_SEAL_ROWS);
   assert.equal(chunk?.window.to, many[MAX_SECURITY_SEAL_ROWS].received_at);
-  // Rows sharing one instant are never split: more than a seal holds at one instant is refused.
-  const same = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 1 }, (_, i) => v2Row(i + 1, '2026-10-18T08:30:00.000000Z'));
+  assert.equal(chunk?.chunked, true);
+  assert.equal(first?.chunked, false);
+  // Rows sharing one instant are never split: the planner names the instant, and given that
+  // instant's rows it seals the instant alone, [from, instant + 1 µs), up to the hard ceiling.
+  const instant = '2026-10-18T08:30:00.000000Z';
+  const same = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 1 }, (_, i) => v2Row(i + 1, instant));
   assert.throws(() => planSecuritySealWindow({ cutoff, last, earliest: null, rows: same }),
-    (err: unknown) => (err as { code?: string }).code === 'ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW');
+    (err: unknown) => (err as { code?: string; instant?: string }).code === 'ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW'
+      && (err as { instant?: string }).instant === instant);
+  const alone = planSecuritySealWindow({ cutoff, last: { ...last, windowTo: '2026-10-18T08:20:00.000000Z' }, earliest: null, rows: same,
+    instantRows: [...same, v2Row(99_000, instant)] });
+  assert.deepEqual(alone?.window, { from: '2026-10-18T08:20:00.000000Z', to: '2026-10-18T08:30:00.000001Z' });
+  assert.equal(alone?.rows.length, MAX_SECURITY_SEAL_ROWS + 2);
+  assert.equal(alone?.chunked, true);
+  const tooMany = Array.from({ length: MAX_SECURITY_INSTANT_ROWS + 1 }, (_, i) => ({ ...same[0], id: id(i + 1) }));
+  assert.throws(() => planSecuritySealWindow({ cutoff, last, earliest: null, rows: same, instantRows: tooMany }), /one instant/);
+  assert.equal(nextMicrosecond('2026-10-18T08:30:00.999999Z'), '2026-10-18T08:30:01.000000Z');
+  assert.equal(nextMicrosecond('2026-12-31T23:59:59.999999Z'), '2027-01-01T00:00:00.000000Z');
+  assert.equal(nextMicrosecond('2026-10-18T08:30:00.000123Z'), '2026-10-18T08:30:00.000124Z');
 });
 
 function stored(tenantId: string, rows: SecurityFindingRow[], previous: string | null = null, window = W): StoredSecuritySeal & { doc: ReturnType<typeof buildSecuritySealDocument> } {
@@ -232,12 +257,15 @@ test('T15op verify: the pure report is ok on an honest snapshot and names links,
   // A chain problem on the seal's own record is a statement problem; an unchecked chain is never ok.
   assert.equal(assembleSecurityVerifyReport(q, snap, { ok: false, checked: 2, problems: new Set([s1.sealDigest]) }).breaks[0].kind, 'statement_problem');
   assert.equal(assembleSecurityVerifyReport(q, snap, { ok: false, checked: 2, problems: new Set() }).ok, false);
+  assert.equal(assembleSecurityVerifyReport(q, { ...snap, rowsTruncated: true }, { ok: true, checked: 2, problems: new Set() }).breaks_truncated, true,
+    'a window with more rows than one report reads says the list was cut');
   assert.throws(() => parseSecurityVerifyQuery({ from: '2026-10-18T05:00:00Z', to: '2026-12-18T05:00:00Z' }), /span/);
   assert.throws(() => parseSecurityVerifyQuery({ from: '2026-10-18T05:00:00Z', to: '2026-10-18T06:00:00Z', tenant: B }), /unknown/);
 });
 
 /** An in-memory store: one tenant's rows, the seal rows it chained, the audit events. */
-function memoryStore(rowsByTenant: Map<string, SecurityFindingRow[]>, cutoff: string) {
+function memoryStore(rowsByTenant: Map<string, SecurityFindingRow[]>, cutoffAt: string | (() => string)) {
+  const cutoffOf = typeof cutoffAt === 'string' ? () => cutoffAt : cutoffAt;
   const seals = new Map<string, Array<ChainSecuritySealInput & { createdAtMs: number }>>();
   const store: SecuritySealStore = {
     tenantsWithFindings: async () => [...rowsByTenant.keys()].sort(),
@@ -246,14 +274,22 @@ function memoryStore(rowsByTenant: Map<string, SecurityFindingRow[]>, cutoff: st
       const lastSeal = mine[mine.length - 1];
       const rows = (rowsByTenant.get(tenantId) ?? []).slice().sort((x, y) => (x.received_at < y.received_at ? -1 : x.received_at > y.received_at ? 1 : x.id < y.id ? -1 : 1));
       const from = lastSeal ? lastSeal.plan.window.to : rows[0]?.received_at ?? null;
-      return { asOf: AS_OF, plan: planSecuritySealWindow({
+      const cutoff = cutoffOf();
+      const input = {
         cutoff,
         last: lastSeal ? { windowTo: lastSeal.plan.window.to, digest: lastSeal.documentDigest, ageMs: Date.now() - lastSeal.createdAtMs } : null,
         earliest: lastSeal ? null : from,
-        rows: from === null ? [] : rows.filter((r) => r.received_at >= from).slice(0, MAX_SECURITY_SEAL_ROWS + 1),
+        rows: from === null ? [] : rows.filter((r) => r.received_at >= from && r.received_at < cutoff).slice(0, MAX_SECURITY_SEAL_ROWS + 1),
         now: options.now,
         backlog: options.backlog,
-      }) };
+      };
+      try {
+        return { asOf: AS_OF, plan: planSecuritySealWindow(input) };
+      } catch (err) {
+        const instant = (err as { instant?: string }).instant;
+        if (!instant) throw err;
+        return { asOf: AS_OF, plan: planSecuritySealWindow({ ...input, instantRows: rows.filter((r) => r.received_at === instant) }) };
+      }
     },
     async chainSeal(input) {
       const mine = seals.get(input.tenantId) ?? [];
@@ -312,6 +348,23 @@ test('T15op seal: a backlog over one seal is sealed back to back in one pass (8 
   assert.equal(second.plan.window.from, first.plan.window.to);
 });
 
+test('T15op seal: the pass continues only after a chunked seal, not on a moving cutoff (review finding)', async () => {
+  const rows = [v2Row(1, '2026-10-18T06:10:00.000000Z')];
+  let cutoffMs = Date.parse('2026-10-18T07:00:00.000Z');
+  const store = memoryStore(new Map([[A, rows]]), () => {
+    // Each read sees a later cutoff and one more row just before it, as on a busy tenant.
+    const at = `${new Date(cutoffMs).toISOString().slice(0, 23)}000Z`;
+    rows.push(v2Row(rows.length + 1, at));
+    cutoffMs += 500;
+    return `${new Date(cutoffMs).toISOString().slice(0, 23)}000Z`;
+  });
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const resolver = devSignerResolver({ sharedKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), env: {} });
+  const r = await runSecuritySealPass({ store: store.store, resolver, builderVersion: BUILDER, actor: { type: 'system_operator', id: 't' }, log: () => undefined });
+  assert.deepEqual(r.map((x) => x.outcome), ['sealed'], 'one seal per pass, no string of tiny windows');
+  assert.equal(store.seals.get(A)?.length, 1);
+});
+
 test('T15op seal: no key, an over-limit signer and an instant overflow fail closed with their codes', async () => {
   const rows = [v2Row(1, '2026-10-18T06:00:00.000000Z')];
   const { store } = memoryStore(new Map([[A, rows]]), '2026-10-18T07:00:00.000000Z');
@@ -322,8 +375,15 @@ test('T15op seal: no key, an over-limit signer and an instant overflow fail clos
   assert.deepEqual([r.outcome, r.code], ['failed', 'ATTESTA_BUILDER_TOO_LARGE']);
   const same = Array.from({ length: MAX_SECURITY_SEAL_ROWS + 1 }, (_, i) => v2Row(i + 1, '2026-10-18T06:30:00.000000Z'));
   const overflow = memoryStore(new Map([[A, same]]), '2026-10-18T07:00:00.000000Z');
-  const o = await sealSecurityTenant({ ...base, store: overflow.store, resolver: { resolve: async () => null } }, A);
-  assert.deepEqual([o.outcome, o.code], ['failed', 'ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW']);
+  const o = await sealSecurityTenant({ ...base, store: overflow.store, resolver: { resolve: async () => null } }, A, { dryRun: true });
+  assert.deepEqual([o.outcome, o.count, o.window?.to], ['would_seal', MAX_SECURITY_SEAL_ROWS + 1, '2026-10-18T06:30:00.000001Z'],
+    'an instant over the cap is sealed alone, not refused');
+  const lines: string[] = [];
+  const failing = { ...base, log: (l: string) => lines.push(l), resolver: { resolve: async () => null },
+    store: { ...overflow.store, readSnapshot: async () => { const e = new (await import('./security-seal-service')).SecuritySealError('ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW', 'x'); e.instant = '2026-10-18T06:30:00.000000Z'; throw e; } } };
+  const f = await sealSecurityTenant(failing, A);
+  assert.deepEqual([f.outcome, f.code], ['failed', 'ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW']);
+  assert.match(lines[0], /instant=2026-10-18T06:30:00\.000000Z/, 'an alertable line names the instant, never row content');
 });
 
 test('T15op contract: the security fixtures meet their schemas and expectations', () => {

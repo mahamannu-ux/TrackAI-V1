@@ -2596,7 +2596,7 @@ export const attestaSecurityFindingSeals = pgTable('attesta_security_finding_sea
     ${table.windowFrom} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
     and ${table.windowTo} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
     and ${table.windowFrom} < ${table.windowTo}
-    and ${table.rowCount} between 0 and 8000
+    and ${table.rowCount} between 0 and 50000
     and ${table.task6aCount} >= 0 and ${table.v2Count} >= 0
     and ${table.task6aCount} + ${table.v2Count} = ${table.rowCount}
     and ${table.sealDigest} ~ '^sha256:[0-9a-f]{64}$'

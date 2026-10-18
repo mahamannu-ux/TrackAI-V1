@@ -43,7 +43,7 @@
     },
     "rows": {
       "type": "array",
-      "maxItems": 8000,
+      "maxItems": 50000,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -99,7 +99,8 @@
     "count": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 8000
+      "maximum": 50000,
+      "description": "At most 8 000 rows a seal, except a seal of one instant alone (up to 50 000)."
     },
     "generations": {
       "type": "object",

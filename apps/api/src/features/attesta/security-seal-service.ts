@@ -54,12 +54,19 @@ export const SECURITY_SEAL_EMPTY_INTERVAL_MS = 86_400_000;
 export const SECURITY_SEAL_NOW_MIN_GAP_MS = 60_000;
 /** Seals per tenant in one pass: a backlog of full chunks is sealed back to back. */
 export const MAX_SECURITY_SEALS_PER_PASS = 50;
+/**
+ * One instant is never split, so a seal may exceed MAX_SECURITY_SEAL_ROWS only when every row
+ * shares one received_at (at least 16 full uploads in one millisecond), up to this hard ceiling.
+ */
+export const MAX_SECURITY_INSTANT_ROWS = 50_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const US_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 
 export class SecuritySealError extends Error {
+  /** INSTANT_OVERFLOW: the instant more than a seal's rows share (the store then reads that instant alone). */
+  instant?: string;
   constructor(readonly code: string, message: string) {
     super(message);
     this.name = 'SecuritySealError';
@@ -71,8 +78,9 @@ const internal = (why: string) => new SecuritySealError('ATTESTA_API_INTERNAL', 
 // Pure building blocks
 
 /**
- * One stored finding row as the fixed metadata projection (security-findings-seal.md "Row
- * digest"): each stored column verbatim, null when empty. Exactly these keys are hashed.
+ * One stored finding row as the fixed projection (security-findings-seal.md "Row digest"): every
+ * column of security_findings except tenant_id (the document's) and the free-text title and tags,
+ * each stored value verbatim, null when empty; timestamps as the exact microsecond text.
  */
 export interface SecurityFindingRow {
   id: string;
@@ -87,27 +95,49 @@ export interface SecurityFindingRow {
   effect: string | null;
   agent_family: string | null;
   source_agent: string | null;
+  source_type: string | null;
   model: string | null;
+  model_provider: string | null;
   session_id: string | null;
+  parent_session_id: string | null;
+  sub_agent_id: string | null;
   record_id: string | null;
-  /** The exact microsecond text. */
+  finding_id: string | null;
+  delivery_id: string | null;
+  source_event_id: string | null;
+  correlation_id: string | null;
   occurred_at: string;
-  /** The exact microsecond text. */
   received_at: string;
+  detected_at: string | null;
   rule_pack_version: string;
   bundle_digest: string | null;
   lease_id: string | null;
+  numbat_schema_version: string | null;
+  confidence: string | null;
   found_at_rest: boolean | null;
+  route_id: string | null;
+  host_surface: string | null;
+  host_mode: string | null;
+  capture_channel: string | null;
+  native_effect: string | null;
+  activation: string | null;
   phase: string | null;
   timing: string | null;
+  availability: string | null;
+  completeness: string | null;
   result_category: string | null;
   operating_system: string | null;
+  client_version: string | null;
 }
 
 export const SECURITY_ROW_KEYS = [
-  'id', 'record_generation', 'machine_id', 'repository_id', 'repository_kind', 'rule_id', 'rule_version', 'rule_category',
-  'rule_severity', 'effect', 'agent_family', 'source_agent', 'model', 'session_id', 'record_id', 'occurred_at', 'received_at',
-  'rule_pack_version', 'bundle_digest', 'lease_id', 'found_at_rest', 'phase', 'timing', 'result_category', 'operating_system',
+  'id', 'record_generation', 'machine_id', 'repository_id', 'repository_kind', 'rule_id', 'rule_version',
+  'rule_category', 'rule_severity', 'effect', 'agent_family', 'source_agent', 'source_type', 'model', 'model_provider',
+  'session_id', 'parent_session_id', 'sub_agent_id', 'record_id', 'finding_id', 'delivery_id', 'source_event_id',
+  'correlation_id', 'occurred_at', 'received_at', 'detected_at', 'rule_pack_version', 'bundle_digest', 'lease_id',
+  'numbat_schema_version', 'confidence', 'found_at_rest', 'route_id', 'host_surface', 'host_mode', 'capture_channel',
+  'native_effect', 'activation', 'phase', 'timing', 'availability', 'completeness', 'result_category',
+  'operating_system', 'client_version',
 ] as const satisfies ReadonlyArray<keyof SecurityFindingRow>;
 
 export interface SealWindow { from: string; to: string }
@@ -133,7 +163,9 @@ export function projectionOf(row: SecurityFindingRow): SecurityFindingRow {
 
 /** `"sha256:" + hex(SHA-256(JCS(projection)))`. */
 export function securityRowDigest(row: SecurityFindingRow): string {
-  if (!US_RE.test(row.received_at) || !US_RE.test(row.occurred_at)) throw internal('a timestamp is not the exact microsecond text');
+  if (!US_RE.test(row.received_at) || !US_RE.test(row.occurred_at) || (row.detected_at !== null && !US_RE.test(row.detected_at))) {
+    throw internal('a timestamp is not the exact microsecond text');
+  }
   return sha256Prefixed(canonicalize(projectionOf(row)));
 }
 
@@ -166,7 +198,8 @@ export function buildSecuritySealDocument(input: BuildSecuritySealDocumentInput)
   if (!UUID_RE.test(input.tenantId)) throw internal('tenant id is not a lowercase UUID');
   if (!US_RE.test(window.from) || !US_RE.test(window.to) || window.from >= window.to) throw internal('the window is malformed');
   if (input.previous !== null && !DIGEST_RE.test(input.previous)) throw internal('previous is malformed');
-  if (input.rows.length > MAX_SECURITY_SEAL_ROWS) throw internal('too many rows for one seal');
+  const oneInstant = input.rows.every((r) => r.received_at === input.rows[0].received_at);
+  if (input.rows.length > (oneInstant ? MAX_SECURITY_INSTANT_ROWS : MAX_SECURITY_SEAL_ROWS)) throw internal('too many rows for one seal');
   const rows = input.rows.map((row, i) => {
     if (row.received_at < window.from || row.received_at >= window.to) throw internal('a row lies outside the window');
     if (i > 0 && compareSecurityRows(input.rows[i - 1], row) >= 0) throw internal('rows are not in (received_at, id) order');
@@ -251,11 +284,31 @@ export interface SecuritySealPlanInput {
   rows: readonly SecurityFindingRow[];
   /** `--now`: drop the age rule (an operator about to build a report). */
   now?: boolean;
-  /** The pass just sealed a full chunk: the rest of the backlog is due at once (never an empty window). */
+  /** The pass just sealed a chunk the row cap cut: the rest of the backlog is due at once (never an empty window). */
   backlog?: boolean;
+  /** Every row at the instant an earlier plan reported as overflowing (at most MAX_SECURITY_INSTANT_ROWS + 1). */
+  instantRows?: readonly SecurityFindingRow[];
 }
 
-export interface SecuritySealPlan { window: SealWindow; previous: string | null; rows: SecurityFindingRow[] }
+export interface SecuritySealPlan {
+  window: SealWindow;
+  previous: string | null;
+  rows: SecurityFindingRow[];
+  /** true when `to` was cut before the cutoff by the row cap: the rest of the backlog is due at once. */
+  chunked: boolean;
+}
+
+/** The next microsecond of an exact microsecond text. */
+export function nextMicrosecond(us: string): string {
+  if (!US_RE.test(us)) throw internal('not the exact microsecond text');
+  let ms = Date.parse(`${us.slice(0, 23)}Z`);
+  let micro = Number(us.slice(23, 26)) + 1;
+  if (micro === 1000) {
+    ms += 1;
+    micro = 0;
+  }
+  return `${new Date(ms).toISOString().slice(0, 23)}${String(micro).padStart(3, '0')}Z`;
+}
 
 const msOf = (us: string): number => Date.parse(us.slice(0, 23) + 'Z');
 
@@ -264,9 +317,9 @@ const msOf = (us: string): number => Date.parse(us.slice(0, 23) + 'Z');
  * earliest row; later seals when there are rows and the last seal is ≥ 1 h old, or when it is
  * ≥ 24 h old (an empty window). `now` seals any rows at once, and an empty window when the last
  * `to` is at least a minute behind the cutoff (so a second run is not due); `backlog` seals the
- * rows left after a full chunk in the same pass. More than
- * MAX_SECURITY_SEAL_ROWS rows: `to` is the first row that does not fit, so one instant is
- * never split. null when nothing is due.
+ * rows left after a chunked seal in the same pass. More than MAX_SECURITY_SEAL_ROWS rows: `to`
+ * is the first row that does not fit, so one instant is never split; when the window's first
+ * instant alone holds more, that instant is sealed alone (`instantRows`). null when nothing is due.
  */
 export function planSecuritySealWindow(input: SecuritySealPlanInput): SecuritySealPlan | null {
   const from = input.last ? input.last.windowTo : input.earliest;
@@ -281,16 +334,21 @@ export function planSecuritySealWindow(input: SecuritySealPlanInput): SecuritySe
   } else if (rows.length === 0) {
     return null;
   }
-  let to = input.cutoff;
-  let sealed = rows;
-  if (rows.length > MAX_SECURITY_SEAL_ROWS) {
-    to = rows[MAX_SECURITY_SEAL_ROWS].received_at;
-    sealed = rows.filter((r) => r.received_at < to);
-    if (to <= from || sealed.length === 0) {
-      throw new SecuritySealError('ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW', 'more rows share one instant than one seal holds');
-    }
+  const previous = input.last ? input.last.digest : null;
+  if (rows.length <= MAX_SECURITY_SEAL_ROWS) return { window: { from, to: input.cutoff }, previous, rows, chunked: false };
+  const to = rows[MAX_SECURITY_SEAL_ROWS].received_at;
+  const sealed = rows.filter((r) => r.received_at < to);
+  if (sealed.length > 0) return { window: { from, to }, previous, rows: sealed, chunked: true };
+  // More than a seal's rows at the window's first instant: one instant is never split, so that
+  // instant is sealed alone, up to MAX_SECURITY_INSTANT_ROWS ([from, instant + 1 µs)).
+  const instant = rows[0].received_at;
+  const all = input.instantRows?.filter((r) => r.received_at === instant);
+  if (!all || all.length > MAX_SECURITY_INSTANT_ROWS) {
+    const err = new SecuritySealError('ATTESTA_SECURITY_SEAL_INSTANT_OVERFLOW', 'more rows share one instant than one seal holds');
+    err.instant = instant;
+    throw err;
   }
-  return { window: { from, to }, previous: input.last ? input.last.digest : null, rows: sealed.slice(0, MAX_SECURITY_SEAL_ROWS) };
+  return { window: { from, to: nextMicrosecond(instant) }, previous, rows: [...all], chunked: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +453,8 @@ export interface SecuritySealResult {
   count?: number;
   generations?: Generations;
   window?: SealWindow;
+  /** The seal was cut by the row cap: the pass continues with the backlog. */
+  chunked?: boolean;
   code?: string;
 }
 
@@ -414,7 +474,7 @@ export async function sealSecurityTenant(deps: SecuritySealPassDeps, tenantId: s
     if (!snap.plan) return { tenantId, outcome: 'not_due' };
     const plan = snap.plan;
     const built = buildSecuritySealDocument({ tenantId, window: plan.window, previous: plan.previous, rows: plan.rows });
-    const summary = { count: built.document.count, generations: built.document.generations, window: plan.window };
+    const summary = { count: built.document.count, generations: built.document.generations, window: plan.window, chunked: plan.chunked };
     if (options.dryRun) return { tenantId, outcome: 'would_seal', ...summary };
     const statementCanonical = buildSecuritySealStatement({
       document: built.document, documentDigest: built.digest, asOf: snap.asOf, builderVersion: deps.builderVersion,
@@ -440,7 +500,10 @@ export async function sealSecurityTenant(deps: SecuritySealPassDeps, tenantId: s
     return { tenantId, outcome: 'sealed', ...summary };
   } catch (err) {
     const code = codeOf(err);
-    (deps.log ?? ((line: string) => console.error(line)))(`attesta-security-seal ${code} tenant=${tenantId} cause=${err instanceof Error ? err.name : 'unknown'}`);
+    // An instant over the hard ceiling stops this tenant's sealing until an operator acts: an
+    // alertable line naming the instant (a timestamp, never row content).
+    const instant = err instanceof SecuritySealError && err.instant ? ` instant=${err.instant}` : '';
+    (deps.log ?? ((line: string) => console.error(line)))(`attesta-security-seal ${code} tenant=${tenantId}${instant} cause=${err instanceof Error ? err.name : 'unknown'}`);
     return { tenantId, outcome: 'failed', code };
   }
 }
@@ -455,11 +518,11 @@ export async function runSecuritySealPass(deps: SecuritySealPassDeps,
   const out: SecuritySealResult[] = [];
   for (const tenantId of tenants) {
     for (let i = 0; i < MAX_SECURITY_SEALS_PER_PASS; i += 1) {
-      // `now` applies to the first seal only; after a seal in this pass, rows left over are due
-      // at once (the backlog), but an empty seal right after a full one is not wanted.
+      // `now` applies to the first seal only. The pass continues only after a seal the row cap
+      // cut short: its leftover rows are due at once (the backlog), nothing else is.
       const r = await sealSecurityTenant(deps, tenantId, { dryRun: options.dryRun, now: options.now && i === 0, backlog: i > 0 });
       if (r.outcome !== 'not_due' || i === 0) out.push(r);
-      if (r.outcome !== 'sealed') break;
+      if (r.outcome !== 'sealed' || !r.chunked) break;
     }
   }
   return out;
@@ -474,32 +537,34 @@ const usText = (column: string) => sql.raw(`to_char(${column} at time zone 'UTC'
 export const RECEIVED_AT_US = usText('received_at');
 
 /** Rows of the tenant with from ≤ received_at < to, in (received_at, id) order, as the projection. */
-export async function readSecurityRows(tx: SealDbExecutor, tenantId: string, from: string, to: string, limit: number): Promise<SecurityFindingRow[]> {
+export async function readSecurityRows(tx: SealDbExecutor, tenantId: string, from: string, to: string, limit: number,
+  ids?: readonly string[]): Promise<SecurityFindingRow[]> {
   const r = await tx.execute(sql`/* security-seal:rows */
-    select id::text as id, record_generation, machine_id::text as machine_id, repository_id::text as repository_id,
-           repository_kind, rule_id, rule_version, rule_category, rule_severity, effect, agent_family, source_agent, model,
-           session_id, record_id, ${usText('occurred_at')} as occurred_at, ${RECEIVED_AT_US} as received_at,
-           rule_pack_version, bundle_digest, lease_id, found_at_rest, phase, timing, result_category, operating_system
+    select id::text as id, record_generation, machine_id::text as machine_id, repository_id::text as repository_id, repository_kind,
+           rule_id, rule_version, rule_category, rule_severity, effect, agent_family, source_agent, source_type, model, model_provider,
+           session_id, parent_session_id, sub_agent_id, record_id, finding_id, delivery_id, source_event_id, correlation_id,
+           ${usText('occurred_at')} as occurred_at, ${RECEIVED_AT_US} as received_at, ${usText('detected_at')} as detected_at,
+           rule_pack_version, bundle_digest, lease_id, numbat_schema_version, confidence, found_at_rest, route_id, host_surface,
+           host_mode, capture_channel, native_effect, activation, phase, timing, availability, completeness, result_category,
+           operating_system, client_version
     from security_findings
     where tenant_id = ${tenantId}::uuid and received_at >= ${from}::timestamptz and received_at < ${to}::timestamptz
+      ${ids ? sql`and id = any(${`{${ids.join(',')}}`}::uuid[])` : sql``}
     order by received_at, id limit ${limit}`);
   return r.rows.map(rowFromDb);
 }
 
 export function rowFromDb(x: Record<string, unknown>): SecurityFindingRow {
-  return {
-    id: str(x.id), record_generation: str(x.record_generation), machine_id: str(x.machine_id),
-    repository_id: strOrNull(x.repository_id), repository_kind: strOrNull(x.repository_kind),
-    rule_id: str(x.rule_id), rule_version: str(x.rule_version), rule_category: str(x.rule_category), rule_severity: str(x.rule_severity),
-    effect: strOrNull(x.effect), agent_family: strOrNull(x.agent_family), source_agent: strOrNull(x.source_agent),
-    model: strOrNull(x.model), session_id: strOrNull(x.session_id), record_id: strOrNull(x.record_id),
-    occurred_at: str(x.occurred_at), received_at: str(x.received_at), rule_pack_version: str(x.rule_pack_version),
-    bundle_digest: strOrNull(x.bundle_digest), lease_id: strOrNull(x.lease_id),
-    found_at_rest: typeof x.found_at_rest === 'boolean' ? x.found_at_rest : null,
-    phase: strOrNull(x.phase), timing: strOrNull(x.timing), result_category: strOrNull(x.result_category),
-    operating_system: strOrNull(x.operating_system),
-  };
+  const out: Record<string, unknown> = {};
+  for (const key of SECURITY_ROW_KEYS) {
+    const v = x[key];
+    out[key] = key === 'found_at_rest' ? (typeof v === 'boolean' ? v : null) : REQUIRED_TEXT.has(key) ? str(v) : strOrNull(v);
+  }
+  return out as unknown as SecurityFindingRow;
 }
+
+const REQUIRED_TEXT = new Set<string>(['id', 'record_generation', 'machine_id', 'rule_id', 'rule_version', 'rule_category',
+  'rule_severity', 'occurred_at', 'received_at', 'rule_pack_version']);
 
 export function pgSecuritySealStore(db: SealDatabase = coreDb as unknown as SealDatabase): SecuritySealStore {
   return {
@@ -525,17 +590,24 @@ export function pgSecuritySealStore(db: SealDatabase = coreDb as unknown as Seal
         const cutoff = str(clock.cutoff);
         const from = last ? str(last.window_to) : earliest;
         const rows = from !== null && from < cutoff ? await readSecurityRows(tx, tenantId, from, cutoff, MAX_SECURITY_SEAL_ROWS + 1) : [];
-        return {
-          asOf: str(clock.as_of),
-          plan: planSecuritySealWindow({
-            cutoff,
-            last: last ? { windowTo: str(last.window_to), digest: str(last.seal_digest), ageMs: Number(last.age_ms) } : null,
-            earliest,
-            rows,
-            now: options.now,
-            backlog: options.backlog,
-          }),
+        const input = {
+          cutoff,
+          last: last ? { windowTo: str(last.window_to), digest: str(last.seal_digest), ageMs: Number(last.age_ms) } : null,
+          earliest,
+          rows,
+          now: options.now,
+          backlog: options.backlog,
         };
+        let plan: SecuritySealPlan | null;
+        try {
+          plan = planSecuritySealWindow(input);
+        } catch (err) {
+          if (!(err instanceof SecuritySealError) || !err.instant) throw err;
+          // The window's first instant holds more than a seal's rows: read that instant alone.
+          const instantRows = await readSecurityRows(tx, tenantId, err.instant, nextMicrosecond(err.instant), MAX_SECURITY_INSTANT_ROWS + 1);
+          plan = planSecuritySealWindow({ ...input, instantRows });
+        }
+        return { asOf: str(clock.as_of), plan };
       }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     },
 
@@ -649,6 +721,18 @@ export interface SecurityVerifySnapshot {
   orphans: string[];
   /** Rows received before the tenant's first seal (in no window), with that seal's digest. */
   beforeFirst: { seal: string; rowIds: string[] } | null;
+  /** A window held more rows than one report reads: late inserts beyond the bound are not all listed. */
+  rowsTruncated?: boolean;
+}
+
+/** The sealed row ids of a stored document (an unparsable one has none: it is a statement problem). */
+function sealedIdsOf(sealDocument: string): string[] {
+  try {
+    const d = JSON.parse(sealDocument) as { rows?: Array<{ id?: unknown }> };
+    return (d.rows ?? []).map((r) => r.id).filter((v): v is string => typeof v === 'string' && UUID_RE.test(v));
+  } catch {
+    return [];
+  }
 }
 
 /** The pure part: seals, rows and links → breaks. `chain.problems` are seal digests whose record check failed. */
@@ -686,7 +770,7 @@ export function assembleSecurityVerifyReport(q: SecurityVerifyQuery, snap: Secur
     to: q.to,
     seals_checked: snap.seals.length,
     breaks: breaks.slice(0, MAX_SECURITY_REPORT_BREAKS),
-    breaks_truncated: breaks.length > MAX_SECURITY_REPORT_BREAKS,
+    breaks_truncated: breaks.length > MAX_SECURITY_REPORT_BREAKS || snap.rowsTruncated === true,
     unsealed_tail: snap.tail,
     chain: { ok: chain.ok, checked: chain.checked },
   };
@@ -722,9 +806,22 @@ export async function readSecurityVerifySnapshot(database: SealDatabase, tenantI
     }
     const rowsBySeal = new Map<string, SecurityFindingRow[]>();
     let loaded = 0;
+    let rowsTruncated = false;
     for (const s of windows) {
-      // Twice the seal bound: late inserts beyond that are still reported (as many as fit).
-      const rows = await readSecurityRows(tx, tenantId, s.windowFrom, s.windowTo, 2 * MAX_SECURITY_SEAL_ROWS);
+      // The window's rows up to a bound (late inserts beyond it are reported as far as they fit,
+      // and the report says it was cut), plus every sealed id looked up directly, so a flood of
+      // late rows never makes a sealed row look missing.
+      const limit = Math.max(2 * MAX_SECURITY_SEAL_ROWS, s.rowCount + MAX_SECURITY_SEAL_ROWS);
+      const rows = await readSecurityRows(tx, tenantId, s.windowFrom, s.windowTo, limit);
+      if (rows.length === limit) {
+        rowsTruncated = true;
+        const seen = new Set(rows.map((r) => r.id));
+        const missingIds = sealedIdsOf(s.sealDocument).filter((rowId) => !seen.has(rowId));
+        for (let i = 0; i < missingIds.length; i += 5000) {
+          rows.push(...await readSecurityRows(tx, tenantId, s.windowFrom, s.windowTo, 5000, missingIds.slice(i, i + 5000)));
+        }
+        rows.sort(compareSecurityRows);
+      }
       rowsBySeal.set(s.sealDigest, rows);
       loaded += rows.length;
       if (loaded > MAX_SECURITY_VERIFY_ROWS) throw new AttestaQueryError('too many rows for one report; narrow from/to');
@@ -779,7 +876,7 @@ export async function readSecurityVerifySnapshot(database: SealDatabase, tenantI
         return null;
       }
     }).filter((d): d is string => d !== null);
-    return { seals, predecessor, rowsBySeal, tail: { from: strOrNull(tail.first), count: Number(tail.n ?? 0) }, orphans, beforeFirst };
+    return { seals, predecessor, rowsBySeal, tail: { from: strOrNull(tail.first), count: Number(tail.n ?? 0) }, orphans, beforeFirst, rowsTruncated };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
 }
 

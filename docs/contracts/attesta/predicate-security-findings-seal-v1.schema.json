@@ -102,7 +102,8 @@
     "count": {
       "type": "integer",
       "minimum": 0,
-      "maximum": 8000
+      "maximum": 50000,
+      "description": "At most 8 000 rows a seal, except a seal of one instant alone (up to 50 000)."
     },
     "statement": {
       "type": "object",

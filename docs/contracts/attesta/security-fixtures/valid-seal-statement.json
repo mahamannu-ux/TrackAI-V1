@@ -13,7 +13,7 @@
     },
     "previous": [],
     "previous_seal": null,
-    "rows_root": "sha256:b594625bdd4f52691549178ca7fed67c24e16cc5ad75841e24dcc6a95d4de896",
+    "rows_root": "sha256:ae49a06421c0d6403b5fddd023eca7cfbd9d3bade58df2ab8627506a53fd03b2",
     "tenant_id": "11111111-1111-4111-8111-111111111111",
     "window": {
       "from": "2026-10-18T06:00:00.000000Z",
@@ -24,7 +24,7 @@
   "subject": [
     {
       "digest": {
-        "sha256": "fadf42d7d6379d2a706717009575092ef382201e17a2cf262cfe6f06993835b4"
+        "sha256": "237a1eb03526b6c713bdc20cba3b0f89e38807f884399de752888cc785f23d98"
       },
       "name": "trackai:tenant/11111111-1111-4111-8111-111111111111/security-findings/2026-10-18T06:00:00.000000Z..2026-10-18T07:00:00.000000Z"
     }

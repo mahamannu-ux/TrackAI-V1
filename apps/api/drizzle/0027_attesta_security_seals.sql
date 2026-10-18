@@ -20,7 +20,7 @@ CREATE TABLE "attesta_security_finding_seals" (
     "attesta_security_finding_seals"."window_from" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
     and "attesta_security_finding_seals"."window_to" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'
     and "attesta_security_finding_seals"."window_from" < "attesta_security_finding_seals"."window_to"
-    and "attesta_security_finding_seals"."row_count" between 0 and 8000
+    and "attesta_security_finding_seals"."row_count" between 0 and 50000
     and "attesta_security_finding_seals"."task6a_count" >= 0 and "attesta_security_finding_seals"."v2_count" >= 0
     and "attesta_security_finding_seals"."task6a_count" + "attesta_security_finding_seals"."v2_count" = "attesta_security_finding_seals"."row_count"
     and "attesta_security_finding_seals"."seal_digest" ~ '^sha256:[0-9a-f]{64}$'

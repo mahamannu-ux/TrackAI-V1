@@ -12,9 +12,14 @@
  * trigger off, one row deleted and one changed, and one row inserted late into the sealed
  * window: the report lists exactly those three breaks. TRUNCATE of the findings and of the
  * seals, UPDATE and DELETE of a seal, and a second first seal are refused.
- * Company B: 8 003 rows are sealed in two back-to-back chunks (8 000 + 3); B's report is ok and
+ * Company B: 8 001 rows at one instant are sealed alone, then 8 003 rows in two back-to-back chunks
+ * (8 000 + 3), all in one pass; B's report is ok and
  * never names A's seals or rows; a B seal row pointing at A's record is refused; A's report
  * never names B's.
+ * Security period reports (ledger arm and table of 0027; the builder is Task15op-b): a tenant-scope
+ * and a repository-scope statement chain and store; a scope naming B's repository, a scope naming
+ * B as the tenant, a second same-scope report that ignores the first (`previous`), and a report
+ * row whose repository disagrees with its document are refused.
  *
  * Prints only safe summary lines.
  */
@@ -26,6 +31,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import { sql } from 'drizzle-orm';
 import { db, pool } from '../../core/db';
 import { ATTESTA_PLATFORM_TENANT_ID } from './anchor-contract';
 import { main as keysMain } from './attesta-keys-cli';
@@ -33,6 +39,9 @@ import { main as rootMain } from './attesta-trust-root-cli';
 import { createAttestaRouter } from './attesta.routes';
 import type { SealDatabase } from './audit-seal-service';
 import { canonicalize, sha256Prefixed } from './canonical';
+import { IN_TOTO_PAYLOAD_TYPE, pae } from './dsse';
+import { AttestaLedgerError, SECURITY_PERIOD_REPORT_PREDICATE_TYPE, chainStatement, type LedgerExecutor } from './ledger';
+import { signVerified } from './signer-contract';
 import { MAX_SECURITY_SEAL_ROWS, pgSecuritySealStore, runSecuritySealPass } from './security-seal-service';
 import { keyidOf } from './trust-documents';
 import { pgTrustStore, type TrustDb } from './trust-inventory';
@@ -163,7 +172,7 @@ async function task6aRow(t: Tenant, minsAgo: number, us: number): Promise<string
 }
 
 /** `n` v2 rows from `minsAgo` minutes ago, one microsecond apart; `enrolled` names the tenant's repository. */
-async function v2Rows(t: Tenant, n: number, minsAgo: number, enrolled = false): Promise<string[]> {
+async function v2Rows(t: Tenant, n: number, minsAgo: number, enrolled = false, oneInstant = false): Promise<string[]> {
   const digest = 'b'.repeat(64);
   const r = await pool.query(`insert into security_findings (tenant_id, machine_id, record_generation, record_id, rule_id, rule_version,
        rule_category, rule_severity, title, source_agent, source_type, confidence, detected_at, occurred_at, numbat_schema_version,
@@ -171,10 +180,11 @@ async function v2Rows(t: Tenant, n: number, minsAgo: number, enrolled = false): 
      select $1, $2, 'v2', 'sha256:' || encode(sha256(convert_to($3 || ':' || g::text, 'UTF8')), 'hex'), 'secrets.aws_key', '1.0.0',
        'secrets', 'critical', 'synthetic title', 'claude-code', 'hook', 'high', now() - make_interval(mins => $4 + 1),
        now() - make_interval(mins => $4 + 1), '0.5.0', $5, 'lease-it', false, $6, $7::uuid, 'bundle:' || substr($5, 1, 16), 'monitor',
-       'model-it', 'session-it', now() - make_interval(mins => $4) + make_interval(secs => g::double precision / 1000000)
+       'model-it', 'session-it', date_trunc('milliseconds', now() - make_interval(mins => $4))
+         + make_interval(secs => case when $9::boolean then 0 else g end::double precision / 1000000)
      from generate_series(1, $8::int) as g
      returning id::text as id`,
-  [t.tenantId, t.machineId, randomUUID(), minsAgo, digest, enrolled ? 'enrolled' : 'not_enrolled', enrolled ? t.repositoryId : null, n]);
+  [t.tenantId, t.machineId, randomUUID(), minsAgo, digest, enrolled ? 'enrolled' : 'not_enrolled', enrolled ? t.repositoryId : null, n, oneInstant]);
   return r.rows.map((x: { id: string }) => x.id);
 }
 
@@ -277,28 +287,101 @@ async function companyA(api: Api, w: World): Promise<{ sealDigests: string[]; ro
 
 async function companyB(api: Api, w: World, a: { sealDigests: string[]; rowIds: string[] }): Promise<void> {
   const t = w.b;
+  // 8 001 rows at one instant (more than a seal holds: sealed alone), then 8 003 rows (8 000 + 3).
+  await v2Rows(t, MAX_SECURITY_SEAL_ROWS + 1, 130, false, true);
   await v2Rows(t, MAX_SECURITY_SEAL_ROWS + 3, 120);
   const outcomes = await seal(w, t);
-  check(JSON.stringify(outcomes) === '["sealed","sealed"]', `B: a backlog over one seal is sealed in two chunks: ${JSON.stringify(outcomes)}`);
-  const seals = (await pool.query(`select row_count, previous_digest, seal_digest, window_from, window_to, length(seal_document) as bytes
+  check(JSON.stringify(outcomes) === '["sealed","sealed","sealed"]', `B: the instant alone, then the backlog in two chunks: ${JSON.stringify(outcomes)}`);
+  const all = (await pool.query(`select row_count, previous_digest, seal_digest, window_from, window_to, length(seal_document) as bytes
     from attesta_security_finding_seals where tenant_id = $1 order by window_from`, [t.tenantId])).rows;
-  check(seals.length === 2 && seals[0].row_count === MAX_SECURITY_SEAL_ROWS && seals[1].row_count === 3
+  check(all.length === 3 && all[0].row_count === MAX_SECURITY_SEAL_ROWS + 1 && all[1].window_from === all[0].window_to
+    && all[1].previous_digest === all[0].seal_digest, 'B: one instant of 8 001 rows sealed alone, the next seal linked to it');
+  const seals = all.slice(1);
+  check(seals[0].row_count === MAX_SECURITY_SEAL_ROWS && seals[1].row_count === 3
     && seals[1].previous_digest === seals[0].seal_digest && seals[1].window_from === seals[0].window_to, 'B: 8 000 + 3, contiguous and linked');
   check(seals[0].bytes <= 1_048_576 + 1024, `B: a full seal document stays near 1 MiB (${seals[0].bytes})`);
   check(JSON.stringify(await seal(w, t, true)) === '["not_due"]', 'B: --now right after a seal is not due');
 
   const auditor = token(t, `auditor-${t.label}`);
   const report = await api(verifyPath(), auditor);
-  check(report.status === 200 && report.body.ok === true && report.body.seals_checked === 2, `B: the chunked register verifies: ${report.text.slice(0, 300)}`);
+  check(report.status === 200 && report.body.ok === true && report.body.seals_checked === 3, `B: the chunked register verifies: ${report.text.slice(0, 300)}`);
   check(!a.sealDigests.some((d) => report.text.includes(d)) && !a.rowIds.some((id) => report.text.includes(id)), 'B: the report never names A\'s seals or rows');
   const aReport = await api(verifyPath(), token(w.a, `auditor-${w.a.label}`));
-  check(!seals.some((s) => aReport.text.includes(s.seal_digest)), 'A: the report never names B\'s seals');
+  check(!all.some((s) => aReport.text.includes(s.seal_digest)), 'A: the report never names B\'s seals');
   // A B seal row pointing at A's seal record is refused (composite tenant key and guard).
   await refused(`insert into attesta_security_finding_seals (tenant_id, window_from, window_to, row_count, task6a_count, v2_count,
     previous_digest, seal_document, seal_digest, record_id, statement_digest)
     select $1, s.window_to, '2099-01-01T00:00:00.000000Z', 0, 0, 0, $2, s.seal_document, s.seal_digest, s.record_id, s.statement_digest
     from attesta_security_finding_seals s where s.tenant_id = $3 limit 1`, [t.tenantId, seals[1].seal_digest, w.a.tenantId], 'a B seal on A\'s record');
-  console.log(`b_seals=2 b_rows=${MAX_SECURITY_SEAL_ROWS + 3} b_report=ok company_isolation=ok`);
+  console.log(`b_seals=3 b_rows=${2 * MAX_SECURITY_SEAL_ROWS + 4} b_one_instant=${MAX_SECURITY_SEAL_ROWS + 1} b_report=ok company_isolation=ok`);
+}
+
+/** A minimal security_period_report statement (the ledger checks the scope and subject, not the figures). */
+function reportStatement(scopeTenant: string, repositoryId: string | null, previous: string[] = [], salt = 'c'): string {
+  const scope = { tenant_id: scopeTenant, repository_id: repositoryId, from: '2026-10-01T00:00:00.000Z', to: '2026-10-02T00:00:00.000Z', basis: 'received_at' };
+  return canonicalize({
+    _type: 'https://in-toto.io/Statement/v1',
+    subject: [{ name: `trackai:tenant/${scopeTenant}${repositoryId ? `/repository/${repositoryId}` : ''}/security-period/${scope.from}..${scope.to}`,
+      digest: { sha256: salt.repeat(64) } }],
+    predicateType: SECURITY_PERIOD_REPORT_PREDICATE_TYPE,
+    predicate: { scope, previous: previous.map((digest) => ({ digest })) },
+  });
+}
+
+/** Signs with the tenant's statement key and chains in one transaction; `after` runs inside it. */
+async function chainReport(w: World, t: Tenant, statementCanonical: string, previousSeen: string[] = [],
+  after?: (tx: LedgerExecutor, recordId: string, digest: string) => Promise<void>): Promise<string> {
+  const signer = await w.resolver.resolve(t.tenantId);
+  check(signer, `${t.label}: a statement key`);
+  const payload = Buffer.from(statementCanonical, 'utf8');
+  const signed = await signVerified(signer.adapter, pae(IN_TOTO_PAYLOAD_TYPE, payload), { credentialId: signer.credentialId, tenantId: t.tenantId, requestId: 'it-t15op-report' });
+  const keyid = sha256Prefixed(signed.publicKeySpkiDer);
+  return (db as unknown as SealDatabase).transaction(async (tx) => {
+    const chained = await chainStatement(tx as LedgerExecutor, {
+      tenantId: t.tenantId, statementCanonical, credentialId: signer.credentialId, keyid, signatureDer: signed.signature,
+      envelope: { payload: payload.toString('base64'), payloadType: IN_TOTO_PAYLOAD_TYPE, signatures: [{ keyid, sig: signed.signature.toString('base64') }] },
+      publicKeySpkiDer: signed.publicKeySpkiDer, previousSeen,
+    });
+    if (after) await after(tx as LedgerExecutor, chained.recordId, chained.statementDigest);
+    return chained.statementDigest;
+  });
+}
+
+async function rejects(fn: () => Promise<unknown>, label: string, code?: string): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    if (code) check(err instanceof AttestaLedgerError && err.code === code, `${label}: ${err instanceof AttestaLedgerError ? err.code : 'not a ledger error'}`);
+    return;
+  }
+  throw new Error(`IT-T15op failed: ${label} was not refused`);
+}
+
+async function securityReports(w: World): Promise<void> {
+  const t = w.a;
+  const insertRow = (repositoryId: string | null, docRepository: string | null) => async (tx: LedgerExecutor, recordId: string, statementDigest: string) => {
+    const doc = canonicalize({ format: 'https://trackai.dev/attesta/security-period-report-document/v1', tenant_id: t.tenantId,
+      scope: { tenant_id: t.tenantId, repository_id: docRepository, from: '2026-10-01T00:00:00.000Z', to: '2026-10-02T00:00:00.000Z', basis: 'received_at' } });
+    await tx.execute(sql`insert into attesta_security_period_reports (tenant_id, repository_id, period_from, period_to, report_document,
+      report_digest, record_id, statement_digest) values (${t.tenantId}::uuid, ${repositoryId}::uuid, '2026-10-01T00:00:00.000Z',
+      '2026-10-02T00:00:00.000Z', ${doc}, ${sha256Prefixed(doc)}, ${recordId}::uuid, ${statementDigest})`);
+  };
+  // The subject digest must name the document for the row's guard: build the statement from the document.
+  const docFor = (repositoryId: string | null) => canonicalize({ format: 'https://trackai.dev/attesta/security-period-report-document/v1', tenant_id: t.tenantId,
+    scope: { tenant_id: t.tenantId, repository_id: repositoryId, from: '2026-10-01T00:00:00.000Z', to: '2026-10-02T00:00:00.000Z', basis: 'received_at' } });
+  const withDigest = (statement: string, repositoryId: string | null) => statement.replace(/"sha256":"c{64}"/, `"sha256":"${sha256Prefixed(docFor(repositoryId)).slice(7)}"`);
+  const tenantScope = await chainReport(w, t, withDigest(reportStatement(t.tenantId, null), null), [], insertRow(null, null));
+  await chainReport(w, t, withDigest(reportStatement(t.tenantId, t.repositoryId), t.repositoryId), [], insertRow(t.repositoryId, t.repositoryId));
+  const stored = (await pool.query(`select count(*)::int as n from attesta_security_period_reports where tenant_id = $1`, [t.tenantId])).rows[0].n;
+  check(stored === 2, 'reports: tenant-scope and repository-scope reports chain and store');
+  await rejects(() => chainReport(w, t, reportStatement(t.tenantId, w.b.repositoryId)), 'reports: a scope naming B\'s repository');
+  await rejects(() => chainReport(w, t, reportStatement(w.b.tenantId, null)), 'reports: a scope naming B as the tenant', 'ATTESTA_LEDGER_GUARD_VIOLATION');
+  await rejects(() => chainReport(w, t, reportStatement(t.tenantId, null, [], 'd')), 'reports: a second same-scope report ignoring the first',
+    'ATTESTA_LEDGER_PREVIOUS_STALE');
+  await chainReport(w, t, reportStatement(t.tenantId, null, [tenantScope], 'd'), [tenantScope]);
+  await rejects(() => chainReport(w, t, withDigest(reportStatement(t.tenantId, t.repositoryId, [], 'e'), t.repositoryId), [],
+    insertRow(t.repositoryId, null)), 'reports: a row whose repository disagrees with its document');
+  console.log('reports=tenant_and_repository_scope_stored cross_tenant=refused previous=enforced row_guard=refused');
 }
 
 async function main(): Promise<void> {
@@ -326,6 +409,7 @@ async function main(): Promise<void> {
     const api = client(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
     const a = await companyA(api, w);
     await companyB(api, w, a);
+    await securityReports(w);
     console.log('IT-T15op-01=passed');
   } finally {
     for (const s of servers) await new Promise((r) => s.close(r));
