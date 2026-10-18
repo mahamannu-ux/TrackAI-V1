@@ -606,7 +606,7 @@ test('unknown credential, non-Buffer, empty and oversize payloads are SigningRej
     SigningRejected,
   );
   await assert.rejects(
-    signer.sign(Buffer.alloc(1_048_576 + 1), 'aws-kms:test-key', {
+    signer.sign(Buffer.alloc(4 * 1024 * 1024 + 1024 + 1), 'aws-kms:test-key', {
       requestId: 'r',
       tenantId: 'tenant-a',
     }),
@@ -664,7 +664,7 @@ test('capabilities name the provider', () => {
   assert.equal(awsSigner(key).signer.capabilities().adapterName, 'kms-aws');
   assert.equal(gcpSigner(key).signer.capabilities().adapterName, 'kms-gcp');
   assert.deepEqual(awsSigner(key).signer.capabilities().algorithms, ['ES256']);
-  assert.equal(awsSigner(key).signer.capabilities().maxPayloadBytes, 1_048_576);
+  assert.equal(awsSigner(key).signer.capabilities().maxPayloadBytes, 4 * 1024 * 1024 + 1024);
   assert.equal(awsSigner(key).signer.capabilities().supportsCredentialListing, true);
 });
 

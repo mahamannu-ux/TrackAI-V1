@@ -44,6 +44,12 @@ export const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 export const LEDGER_RECORD_KIND = 'statement';
 /** Largest statement the ledger accepts (bytes); signers cap lower (1 MiB local dev). */
 export const MAX_STATEMENT_BYTES = 4 * 1024 * 1024;
+/**
+ * Attesta statements (all predicate types) are signed only up to 1 MiB of PAE bytes, the bound
+ * the signers had before Task20 raised theirs for rule bundles. Kept so statements, evidence packs
+ * and the offline verifier keep their established size; raising it is a separate Task15 decision.
+ */
+export const ATTESTA_STATEMENT_MAX_SIGNED_BYTES = 1_048_576;
 
 export type AttestaStatementKind = 'commit_observed' | 'pr_merged' | 'deployed';
 const STATEMENT_KINDS: readonly AttestaStatementKind[] = ['commit_observed', 'pr_merged', 'deployed'];
