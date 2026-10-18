@@ -16,7 +16,7 @@ Task19c registers **live** answerers for the security questions that have data t
 | Acceptance | Every envelope passes the frozen schema through the service | ✅ 20-case sweep + all unit tests |
 | Acceptance | Company A/B isolation | ✅ route harness + IT-T19c-01g |
 | Scope | Q11 registered; Q11 removed from Task19b's list (already unbuilt there) | ✅ |
-| Quality | 17 new unit tests; `typecheck` and `lint` clean; full `npm test` 1171/1172 (see Limitations) | ✅ |
+| Quality | 17 new unit tests; `typecheck` and `lint` clean; full `npm test` green except two inherited Attesta timing tests (see Limitations) | ✅ |
 | Integration | IT-T19c-01 added | 🟡 agent-passed 2026-10-18 · ⬜ founder run (non-blocking) |
 | Review | independent diff re-read | ✅ (one prompt-contract conflict resolved, see Deviations) |
 
@@ -56,7 +56,7 @@ None, because the answerers are the same shape as Task19b's in this repo (`featu
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ **FOUNDER:** | run `scripts/it-db.sh npm run verify:task19c-qa-live -w apps/api` | non-blocking; ✅′s IT row |
-| 🟡 | `npm test` has one pre-existing red: `features/security/signing.test.ts:108` (`Missing expected rejection (SecurityDocumentTooLarge)`) | inherited Task20f baseline; reproduces on a clean `main`, unrelated to Task19c |
+| 🟡 | `npm test` under parallel load shows two inherited Attesta **timing** reds (`trust-verify.test.ts` "600 keys parse quickly", "10 000-record chain verifies clean, quickly"); both pass alone (19/19) | machine-speed thresholds (AGENTS.md gotcha 14), untouched by Task19c; the Task20f signing red is fixed on `main` by PR #85 |
 | 🟡 | S6/Q11 use the text session join (G10): a finding's `session_id` matched to `ai_sessions.external_session_id` | wording `session_link_partial`; Task13's key closes it |
 | 🟡 | repository scope cuts findings-based figures; enforcement decisions carry no repository, so a repository-scoped S12 counts denies on machines that raised findings there, and `machines_reporting_status` stays tenant-wide | honest bound, not a contract gap |
 | 🟡 | S8/S9/S17/Q11 default answers are counts; breakdowns only when requested | matches Task19b conventions |
