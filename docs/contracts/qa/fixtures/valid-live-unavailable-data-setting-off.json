@@ -1,0 +1,63 @@
+{
+  "question_id": "S23",
+  "registry_version": 2,
+  "kind": "live",
+  "as_of": "2026-10-19T00:00:00.000Z",
+  "scope": {
+    "from": "2026-10-01T00:00:00.000Z",
+    "to": "2026-10-19T00:00:00.000Z"
+  },
+  "availability": "unavailable",
+  "reasons": [
+    {
+      "code": "data_setting_off"
+    }
+  ],
+  "figures": [
+    {
+      "key": "distinct_domains",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "data_setting_off"
+        }
+      ],
+      "value": null
+    },
+    {
+      "key": "distinct_urls",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "data_setting_off"
+        }
+      ],
+      "value": null
+    },
+    {
+      "key": "distinct_ip_addresses",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "data_setting_off"
+        }
+      ],
+      "value": null
+    },
+    {
+      "key": "indicator_observations",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "data_setting_off"
+        }
+      ],
+      "value": null
+    }
+  ],
+  "wording": [
+    "monitor_only_observed",
+    "metadata_only"
+  ],
+  "drilldown": []
+}

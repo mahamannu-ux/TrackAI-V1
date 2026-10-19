@@ -19,6 +19,8 @@ export const QA_REASON_MESSAGES: Record<string, string> = {
   partial_linkage: 'Some related records cannot be linked with confidence.',
   answer_not_built: 'This answer has not been built yet.',
   phase_2: 'This question is planned for a later phase.',
+  data_setting_off: "Your organization's security data settings keep this information on the developer machine.",
+  zero_denominator: 'No approval decisions were recorded in this period, so the rate is unavailable.',
 };
 
 export const QA_WORDING_MESSAGES: Record<string, string> = {

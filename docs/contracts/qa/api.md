@@ -31,7 +31,7 @@ Pattern from Task16c `features/audit/http.ts`, catalog AP-1 (copied into `featur
 
 | Parameter | Rule |
 |---|---|
-| `id` | `Q1`…`Q20`, `S1`…`S18`; anything else 404 `QA_QUESTION_NOT_FOUND` |
+| `id` | `Q1`…`Q20`, `S1`…`S26`; anything else 404 `QA_QUESTION_NOT_FOUND` |
 | `kind` | required: `live`, `verifiable` or `signed`. Missing or another word: 400 `QA_SCOPE_INVALID`. A kind the question does not offer: 400 `QA_KIND_NOT_OFFERED`. `live` asked by an auditor: 403 `QA_KIND_NOT_ALLOWED` |
 | `repository_id`, `pull_request_id` | lowercase UUIDs; another tenant's id gets the same 404 `QA_SCOPE_NOT_FOUND` as an unknown id, never 403. A pull request that is not in the given repository: 404 |
 | `commit_sha` | 40 or 64 lowercase hex, and requires `repository_id`; a commit not observed in that repository: 404 |

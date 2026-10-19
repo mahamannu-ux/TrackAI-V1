@@ -32,6 +32,7 @@ const CATALOGUE = readFileSync(resolve(REPO, 'docs/plan/CUSTOMER_AUDITOR_QA.md')
  */
 const REGISTRY_DIGESTS: Record<number, string> = {
   1: 'sha256:c6119cc1e67c206bd2548b34db85eb147d662c9a0d6c3f1a03c31f0dc06c6377',
+  2: 'sha256:319b894e4f80b8bfa1e22161c8c75b964c8f5ce6e09c64b59d1993bde9116618',
 };
 
 function registryDigest(): string {
@@ -40,14 +41,16 @@ function registryDigest(): string {
 
 interface CatalogueRow { id: string; rank: number; auditor: string }
 
-/** Both question tables of the catalogue: code rows `| rank | Qn | … |`, security rows `| Sn | … |`. */
+/** Catalogue: code and Numbat rows have an explicit rank; S1–S18 use their id. */
 function catalogueRows(): CatalogueRow[] {
   const rows: CatalogueRow[] = [];
   for (const line of CATALOGUE.split('\n')) {
     const cells = line.split('|').map((c) => c.trim());
     const code = /^\d+$/.test(cells[1] ?? '') && /^Q\d+$/.test(cells[2] ?? '');
+    const numbat = /^\d+$/.test(cells[1] ?? '') && /^S\d+$/.test(cells[2] ?? '');
     const security = /^S\d+$/.test(cells[1] ?? '') && cells.length > 8;
     if (code) rows.push({ id: cells[2], rank: Number(cells[1]), auditor: cells[4].split(/[\s(]/)[0] });
+    if (numbat) rows.push({ id: cells[2], rank: Number(cells[1]), auditor: cells[4].split(/[\s(]/)[0] });
     if (security) rows.push({ id: cells[1], rank: Number(cells[1].slice(1)), auditor: cells[3].split(/[\s(]/)[0] });
   }
   return rows;
@@ -73,12 +76,12 @@ function catalogueGaps(): Map<string, string[]> {
 
 test('qa registry: matches the catalogue (ids, ranks, auditor flags)', () => {
   const rows = catalogueRows();
-  assert.equal(rows.length, 38, 'the catalogue has 38 questions');
+  assert.equal(rows.length, 46, 'the catalogue has 46 questions');
   const fromRegistry = QA_QUESTIONS.map((q) => ({ id: q.id, rank: q.rank, auditor: q.auditor }))
     .sort((a, b) => a.id.localeCompare(b.id));
   assert.deepEqual(fromRegistry, [...rows].sort((a, b) => a.id.localeCompare(b.id)));
   assert.equal(QA_QUESTIONS.filter((q) => q.family === 'code').length, 20);
-  assert.equal(QA_QUESTIONS.filter((q) => q.family === 'security').length, 18);
+  assert.equal(QA_QUESTIONS.filter((q) => q.family === 'security').length, 26);
   for (const q of QA_QUESTIONS) assert.equal(q.family === 'code', q.id.startsWith('Q'), `${q.id} family`);
 });
 
@@ -112,14 +115,15 @@ test('qa registry: entries are well formed', () => {
     if (q.phase === 2) assert.ok(q.kinds.every((x) => x.builder === null), `${q.id}: phase 2 is not scheduled`);
     // Auditor-flagged questions offer an auditor kind (D2); "no" questions offer none.
     const auditorKind = q.kinds.some((x) => x.kind !== 'live');
-    if (q.auditor === 'yes') assert.ok(auditorKind, `${q.id} is auditor-flagged: needs verifiable or signed`);
+    if (q.auditor === 'yes' && !/^S(19|20|21|22|24|26)$/.test(q.id))
+      assert.ok(auditorKind, `${q.id} is auditor-flagged: needs verifiable or signed`);
     if (q.auditor === 'no') assert.ok(!auditorKind, `${q.id} is not for auditors`);
     assert.ok(q.scopes.length > 0, `${q.id} scopes`);
     assert.equal(new Set(q.dimensions).size, q.dimensions.length, `${q.id} dimensions unique`);
   }
   const compare = QA_QUESTIONS.filter((q) => q.compare_previous).map((q) => q.id).sort();
   assert.deepEqual(compare, ['Q20', 'S7']);
-  assert.ok(QA_QUESTIONS.every((q) => q.id === 'Q17' ? q.phase === 2 : q.phase === 1), 'only Q17 is phase 2');
+  assert.ok(QA_QUESTIONS.every((q) => ['Q17', 'S25'].includes(q.id) ? q.phase === 2 : q.phase === 1), 'only Q17 and S25 are phase 2');
 });
 
 test('qa registry: no scope or dimension ever names a person', () => {
@@ -143,7 +147,7 @@ test('qa registry: every security question carries monitor_only_observed', () =>
 
 test('qa registry: gaps agree with the questions and with the catalogue', () => {
   const catalogue = catalogueGaps();
-  assert.deepEqual([...catalogue.keys()], QA_GAPS.map((g) => g.id), 'the catalogue lists G1–G13');
+  assert.deepEqual([...catalogue.keys()], QA_GAPS.map((g) => g.id), 'the catalogue lists G1–G17');
   for (const gap of QA_GAPS) {
     const users = QA_QUESTIONS.filter((q) => q.gaps.includes(gap.id)).map((q) => q.id).sort();
     assert.deepEqual([...gap.questions].sort(), users, `${gap.id}: QA_GAPS.questions vs the entries' gaps`);
@@ -155,12 +159,17 @@ test('qa registry: gaps agree with the questions and with the catalogue', () => 
 // Envelope: schema, fixtures and registry checks
 
 const FIXTURES = resolve(REPO, 'docs/contracts/qa/fixtures');
-const fixture = (name: string): Record<string, any> => JSON.parse(readFileSync(resolve(FIXTURES, `${name}.json`), 'utf8'));
+const fixture = (name: string): Record<string, any> => {
+  const value = JSON.parse(readFileSync(resolve(FIXTURES, `${name}.json`), 'utf8'));
+  // Keep v1 examples frozen; validate their envelope shapes against today's registry.
+  if (name.startsWith('valid-')) value.registry_version = QA_REGISTRY_VERSION;
+  return value;
+};
 
 test('qa envelope: one valid fixture per kind and availability, each passes', () => {
   const names = readdirSync(FIXTURES).filter((n) => n.startsWith('valid-')).map((n) => n.replace(/\.json$/, '')).sort();
   // One per kind × availability, plus Task16 A16.13's per-reason-code fixtures.
-  const reasonFixtures = ['valid-signed-report-not-built', 'valid-verifiable-not-sealed'];
+  const reasonFixtures = ['valid-signed-report-not-built', 'valid-verifiable-not-sealed', 'valid-live-unavailable-data-setting-off'];
   const standard = (['live', 'verifiable', 'signed'] as const).flatMap((kind) =>
     (['partial', 'recorded', 'unavailable'] as const).map((a) => `valid-${kind}-${a}`)).sort();
   assert.deepEqual(names, [...standard, ...reasonFixtures].sort());
@@ -303,7 +312,7 @@ test('qa envelope: the compiled validator works with no docs/ anywhere above it 
       process.stdout.write(JSON.stringify(input.map((e)=>checkEnvelope(e).ok)));`;
     const out = execFileSync(process.execPath, ['-e', script], {
       cwd: dir,
-      input: JSON.stringify(names.map((n) => JSON.parse(readFileSync(resolve(FIXTURES, n), 'utf8')))),
+      input: JSON.stringify(names.map((n) => fixture(n.replace(/\.json$/, '')))),
       env: { ...process.env, NODE_PATH: [resolve(REPO, 'node_modules'), resolve(REPO, 'apps/api/node_modules')].join(delimiter) },
     }).toString();
     assert.deepEqual(JSON.parse(out), names.map((n) => n.startsWith('valid-')));

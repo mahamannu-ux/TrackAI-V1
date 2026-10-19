@@ -355,6 +355,92 @@ export function computeQ11(input: SecurityInput): QaEnvelope {
   return finishSecurity(ctx, [countFigure('findings_in_linked_sessions', findings.length, breakdown)]);
 }
 
+// --- Numbat questions: content-free counts only ---
+
+export function computeS26({ ctx, security }: SecurityInput): QaEnvelope {
+  const events = security.permissionEvents;
+  const byOutcome = (outcome: string) => events.filter((row) => row.outcome === outcome);
+  const count = (key: string, rows: typeof events): QaFigure => countFigure(key, rows.length,
+    ctx.breakdown === 'agent_family'
+      ? [...new Set(rows.map((row) => row.sourceAgent))].sort().map((key) => ({
+        dimension: 'agent_family', key, value: { type: 'count', count: rows.filter((row) => row.sourceAgent === key).length },
+      })) : []);
+  const approved = byOutcome('approved');
+  const denied = byOutcome('denied');
+  const findingSessions = new Set(security.findings
+    .filter((row) => row.generation === 'v2' && row.sessionId !== null)
+    .map((row) => `${row.machineId}\u0000${row.sessionId}`));
+  const joined = new Set(approved
+    .filter((row) => row.sessionId !== null && findingSessions.has(`${row.machineId}\u0000${row.sessionId}`))
+    .map((row) => `${row.machineId}\u0000${row.sessionId}`));
+  return finishSecurity(ctx, [
+    count('permission_requested', byOutcome('requested')),
+    count('permission_approved', approved),
+    count('permission_denied', denied),
+    approved.length + denied.length === 0
+      ? unavailableFigure('approval_rate', [{ code: 'zero_denominator' }])
+      : { key: 'approval_rate', availability: 'recorded', reasons: [],
+        value: { type: 'ratio', numerator: approved.length, denominator: approved.length + denied.length } },
+    partialCountFigure('sessions_with_finding_and_approval', joined.size, [{ code: 'partial_linkage' }]),
+  ]);
+}
+
+/** Settings at the period start plus every change through the end. Missing history is off. */
+function urlsCoverage(security: SecurityContext, from: string, to: string): 'off' | 'partial' | 'on' {
+  const start = Date.parse(from);
+  const end = Date.parse(to);
+  const versions = [...security.dataSettings].filter((row) => row.createdAt.getTime() <= end)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.version - b.version);
+  let current = false;
+  for (const row of versions) {
+    if (row.createdAt.getTime() <= start) current = row.urls;
+  }
+  let everOn = current;
+  let everOff = !current;
+  for (const row of versions) {
+    if (row.createdAt.getTime() <= start) continue;
+    current = row.urls;
+    everOn ||= current;
+    everOff ||= !current;
+  }
+  return !everOn ? 'off' : everOff ? 'partial' : 'on';
+}
+
+export function computeS23({ ctx, security }: SecurityInput): QaEnvelope {
+  const coverage = urlsCoverage(security, ctx.scope.from, ctx.scope.to);
+  const keys = ['distinct_domains', 'distinct_urls', 'distinct_ip_addresses', 'indicator_observations'];
+  if (coverage === 'off') return finishSecurity(ctx,
+    keys.map((key) => unavailableFigure(key, [{ code: 'data_setting_off' }])));
+  const rows = security.indicators;
+  const countDistinct = (types: string[]) => new Set(rows.filter((row) => types.includes(row.type)).map((row) => row.value)).size;
+  const counts = [countDistinct(['domain']), countDistinct(['url']), countDistinct(['ipv4', 'ipv6']),
+    rows.reduce((sum, row) => sum + row.count, 0)];
+  const figures = keys.map((key, index) => {
+    const breakdown = key === 'indicator_observations' && ctx.breakdown === 'agent_family'
+      ? [...new Set(rows.map((row) => row.sourceAgent))].sort().map((agent) => ({
+        dimension: 'agent_family' as const, key: agent,
+        value: { type: 'count' as const, count: rows.filter((row) => row.sourceAgent === agent)
+          .reduce((sum, row) => sum + row.count, 0) },
+      })) : [];
+    return coverage === 'partial'
+      ? partialCountFigure(key, counts[index], [{ code: 'data_setting_off' }], breakdown)
+      : countFigure(key, counts[index], breakdown);
+  });
+  return finishSecurity(ctx, figures);
+}
+
+export function computeS21({ ctx, security }: SecurityInput): QaEnvelope {
+  const findings = security.findings.filter((row) => row.generation === 'v2' && row.ruleId === 'tamper.guardrails_off');
+  const sessions = new Set(findings.filter((row) => row.sessionId !== null)
+    .map((row) => `${row.machineId}\u0000${row.sessionId}`));
+  return finishSecurity(ctx, [
+    countFigure('guardrails_off_findings', findings.length,
+      ctx.breakdown === 'agent_family' ? tally('agent_family', findings, (row) => row.agent ?? 'unknown') : []),
+    countFigure('guardrails_off_sessions', sessions.size),
+    unavailableFigure('bypass_flag_launches', notCaptured('G16')),
+  ]);
+}
+
 // --- Thin answerers ---
 
 /** Loads a tenant's security context for a period; injectable so tests need no database. */
@@ -420,6 +506,9 @@ export function registerSecurityAnswerers(): void {
   registerAnswerer('S15', 'live', securityAnswer(computeS15));
   registerAnswerer('S17', 'live', securityAnswer(computeS17));
   registerAnswerer('S18', 'live', securityAnswer(computeS18));
+  registerAnswerer('S26', 'live', securityAnswer(computeS26));
+  registerAnswerer('S23', 'live', securityAnswer(computeS23));
+  registerAnswerer('S21', 'live', securityAnswer(computeS21));
   registerAnswerer('Q11', 'live', linkedAnswer(computeQ11));
 }
 
