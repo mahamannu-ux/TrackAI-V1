@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ApiProblemError,
   getSecurityFinding,
@@ -13,6 +13,7 @@ import {
 
 type Problem = { message: string; requestId: string | null };
 type Period = '7' | '30' | '90' | 'custom';
+type Generation = NonNullable<SecurityFindingsQuery['generation']>;
 
 const SECURITY_PROBLEM_MESSAGES: Record<string, string> = {
   SECURITY_READ_INVALID_QUERY: 'Review the findings filters; one or more values are invalid.',
@@ -107,6 +108,7 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
   const [detail, setDetail] = useState<SecurityFindingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailProblem, setDetailProblem] = useState<Problem | null>(null);
+  const detailRequest = useRef(0);
   const [period, setPeriod] = useState<Period>('30');
   const [customFrom, setCustomFrom] = useState(() => localInputValue(new Date(Date.now() - 30 * 86_400_000)));
   const [customTo, setCustomTo] = useState(() => localInputValue(new Date()));
@@ -116,7 +118,7 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
   const [agent, setAgent] = useState('');
   const [machineId, setMachineId] = useState('');
   const [repositoryId, setRepositoryId] = useState('');
-  const [generation, setGeneration] = useState('');
+  const [generation, setGeneration] = useState<Generation | ''>('');
   const [activeQuery, setActiveQuery] = useState<SecurityFindingsQuery>({ limit: 50 });
 
   const load = useCallback(async (query: SecurityFindingsQuery, append: boolean) => {
@@ -139,16 +141,25 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
   }, [load]);
 
   async function openFinding(id: string) {
+    const request = ++detailRequest.current;
     setDetail(null);
     setDetailProblem(null);
     setDetailLoading(true);
     try {
-      setDetail(await getSecurityFinding(id));
+      const result = await getSecurityFinding(id);
+      if (detailRequest.current === request) setDetail(result);
     } catch (cause) {
-      setDetailProblem(describeProblem(cause, 'Finding details could not be loaded.'));
+      if (detailRequest.current === request) setDetailProblem(describeProblem(cause, 'Finding details could not be loaded.'));
     } finally {
-      setDetailLoading(false);
+      if (detailRequest.current === request) setDetailLoading(false);
     }
+  }
+
+  function closeDetail() {
+    detailRequest.current += 1;
+    setDetail(null);
+    setDetailLoading(false);
+    setDetailProblem(null);
   }
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
@@ -172,7 +183,7 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
       ...(agent ? { agent } : {}),
       ...(machineId ? { machine_id: machineId } : {}),
       ...(repositoryId ? { repository_id: repositoryId } : {}),
-      ...(generation ? { generation: generation as SecurityFindingsQuery['generation'] } : {}),
+      ...(generation ? { generation } : {}),
     };
     setFiltersProblem(null);
     void load(query, false);
@@ -219,7 +230,10 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
           </select>
         </label>
         <label className="space-y-1 text-xs text-slate-400">Generation
-          <select value={generation} onChange={event => setGeneration(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200">
+          <select value={generation} onChange={event => {
+            const value = event.target.value;
+            setGeneration(value === 'v2' || value === 'task6a' ? value : '');
+          }} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200">
             <option value="">All generations</option><option value="v2">Current format</option><option value="task6a">Older format</option>
           </select>
         </label>
@@ -260,11 +274,11 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
       </div>}
     </div>}
 
-    {(detailLoading || detailProblem || detail) && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) { setDetail(null); setDetailProblem(null); } }}>
+    {(detailLoading || detailProblem || detail) && <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeDetail(); }}>
       <aside role="dialog" aria-modal="true" aria-label="Finding details" className="h-full w-full max-w-2xl overflow-y-auto border-l border-slate-800 bg-slate-950 p-6 shadow-2xl">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div><p className="text-xs uppercase tracking-wider text-violet-300">Finding details</p><h2 className="mt-1 text-xl font-semibold text-white">{detail?.finding.title ?? detail?.finding.rule_id ?? 'Finding'}</h2></div>
-          <button type="button" onClick={() => { setDetail(null); setDetailProblem(null); }} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500">Close</button>
+          <button type="button" onClick={closeDetail} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500">Close</button>
         </div>
         {detailLoading && loadingMessage()}
         <ProblemMessage problem={detailProblem} />

@@ -126,8 +126,8 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function CoverageStatus({ value }: { value: string }) {
-  const healthy = value.toLowerCase() === 'healthy';
-  return <Badge tone={healthy ? 'green' : 'amber'}>{readable(value)}</Badge>;
+  const healthy = value.toLowerCase() === 'ok';
+  return <Badge tone={healthy ? 'green' : 'amber'}>{healthy ? 'Healthy' : readable(value)}</Badge>;
 }
 
 function coverageLease(row: SecurityCoverageRow): { mode: string; expiry: string; epoch: string } {

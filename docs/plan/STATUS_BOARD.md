@@ -77,7 +77,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 9f | Task20f-security-settings-signing (T20.8; fleet lease reference and retrieval routes) | Claude | about 0.30× planned; 0.45× split into part a (about 0.25× actual) and part b (about 0.20× actual) | | Task20a merged | ✅ merged 2026-10-18 (PRs #81 audit contract, #82 Task20f), after Task15op0 (PR #80) raised the signer cap |
 | 9g | Task20g-endpoint-policy-apply (T20.9; GitAI) | Codex | about 0.20× | | Task20c, Task20e, Task20f merged | written later |
 | 9h | Task20h-endpoint-package-install (T20.10, T20.12, T20.13; GitAI) | Codex + founder-live | about 0.35× | | Task20b, Task20g merged | written later |
-| 9i | Task20i-security-reads-console (T20.7b, T20.11, T20.12 views) | Claude design + Muse | about 0.33× | | Task20d, Task20f merged | written later |
+| 9i | Task20i-security-reads-console (T20.7b, T20.11, T20.12 views) | Claude design + Muse | about 0.33× | about 0.33× combined for Task20i-a and Task20i-b | Task20d, Task20f merged; web build/typecheck/lint and 1,223 tests pass; founder walkthrough pending | `Task20i-a-security-reads_HANDOFF.md`; `Task20i-b-security-console_HANDOFF.md` (founder walkthrough pending) |
 | 9j | Task20j-acceptance (T20.14, T20.20) | Codex + founder-live | about 0.17× | | Task20h merged | written later |
 | 9k | Task20k-enforce-pilot (T20.15, later) | Codex + founder-live | about 0.10× | | Task20j passed; root helper; founder's go | later |
 | 9l | Task20l-rule-wave-2 (T20.16, later) | Muse | about 0.08× | | Task20j passed; founder's go | later |
