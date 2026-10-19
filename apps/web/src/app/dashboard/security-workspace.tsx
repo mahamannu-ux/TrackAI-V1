@@ -126,8 +126,19 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function CoverageStatus({ value }: { value: string }) {
-  const healthy = value.toLowerCase() === 'ok';
-  return <Badge tone={healthy ? 'green' : 'amber'}>{healthy ? 'Healthy' : readable(value)}</Badge>;
+  switch (value.toLowerCase()) {
+    case 'ok':
+      return <Badge tone="green">Healthy</Badge>;
+    case 'failed':
+      return <Badge tone="rose">Failed</Badge>;
+    case 'unavailable':
+      return <Badge>Not checked by the Endpoint</Badge>;
+    case 'unreported':
+    case 'not reported':
+      return <Badge>Not reported</Badge>;
+    default:
+      return <Badge tone="amber">{readable(value)}</Badge>;
+  }
 }
 
 function coverageLease(row: SecurityCoverageRow): { mode: string; expiry: string; epoch: string } {
@@ -207,6 +218,7 @@ function CoverageTab() {
             <div className="mt-2 flex flex-wrap gap-2">{health.map(([label, value]) => <div key={label} className="flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-2 text-xs">
               <span className="text-slate-400">{label}</span><CoverageStatus value={value || 'Not reported'} />
             </div>)}</div>
+            <p className="mt-2 text-xs text-slate-500">Agent view is checked by hand in this phase.</p>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
             {acknowledgement?.result === 'applied' && <Badge tone="green">Applied</Badge>}
@@ -329,6 +341,18 @@ function SettingsTab({ role }: { role: Role }) {
     setProblem(null);
     setApplyLoading(true);
     try {
+      const current = await getSecuritySettings();
+      const versionsChanged =
+        current.rule_settings_version !== settings.rule_settings_version ||
+        current.data_settings_version !== settings.data_settings_version ||
+        current.monitor.version !== settings.monitor.version ||
+        (current.bundle?.epoch ?? 0) !== (settings.bundle?.epoch ?? 0);
+      if (versionsChanged) {
+        setPlan(null);
+        setPlanSignature(null);
+        setProblem({ message: SECURITY_PROBLEM_MESSAGES.SECURITY_SETTINGS_CONFLICT, requestId: null });
+        return;
+      }
       const response = await putSecuritySettings(buildSettingsChange(settings, draft, false, reason.trim()));
       if (!('dry_run' in response) || response.dry_run !== false) throw new Error('The settings update returned an unexpected response.');
       setReason('');

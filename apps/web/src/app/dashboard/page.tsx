@@ -769,6 +769,7 @@ export default function DashboardPage() {
     if (nextView === 'questions') parameters.set('view', 'questions');
     else if (nextView === 'security') parameters.set('view', 'security');
     else parameters.delete('view');
+    if (nextView !== 'security') parameters.delete('tab');
     const query = parameters.toString();
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }

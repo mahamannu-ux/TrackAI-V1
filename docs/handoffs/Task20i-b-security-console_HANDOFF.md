@@ -57,7 +57,7 @@ None. The prompt explicitly chose the in-repository Task19e patterns; no catalog
 ## Integration test impact
 No database integration test was added. `IT-T20i-01` belongs to Task20i-a and remains a separate API gate. The Security screen walkthrough is non-blocking for the Task20i-b merge but required to close T20.11. Prerequisite: synthetic findings/coverage rows from the Task20i-a verifier or the founder's development seed.
 
-**FOUNDER:** In the running console, as an administrator: filter Findings, open a finding and check both nearby headings and the hidden URL/email label; open Coverage and confirm literal states and health-layer wording; in Settings, review a draft, apply it with a reason, then change settings in a second browser tab and confirm the conflict message. Sign in as an auditor and confirm Settings has no write controls.
+**FOUNDER:** In the running console, as an administrator: filter Findings, open a finding and check both nearby headings and the hidden URL/email label; open Coverage and confirm literal states and health-layer wording; in Settings, review a draft, apply it with a reason, then make a change in a second browser tab. Return to the first tab and apply its stale draft; confirm the client detects the changed settings versions, clears the review plan and shows “Someone else changed the settings; reload and review again” without sending the stale update. Reload, review and apply again. Sign in as an auditor and confirm Settings has no write controls.
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
@@ -67,6 +67,7 @@ The API live verifier and Task20i-a merge gate are unchanged. Task20j can use th
 
 ## Integration notes
 - Findings and Coverage route shapes are copied from `v2-read.ts`; settings types match `admin.routes.ts` and `service.ts`. Every request uses the shared `apiFetch`.
+- Before applying, the client rereads settings and compares rule, data, monitor and bundle-epoch versions with the draft baseline. A stale draft is rejected locally; the server conflict response remains handled for a race after this check.
 - The Security view is exposed only to active tenant administrators and auditors; server authorization remains authoritative.
 - Build-time Supabase URL and key in the command above are local placeholder values, not credentials.
 

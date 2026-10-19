@@ -99,6 +99,12 @@ function findingPhase(phase: string | null): string {
   return readable(phase);
 }
 
+function enforcementDecision(value: string): string {
+  if (value === 'deny') return 'Denied by request';
+  if (value === 'no_override') return 'No denial requested';
+  return value;
+}
+
 export function FindingsTab({ repositories }: { repositories: Repository[] }) {
   const [items, setItems] = useState<SecurityFindingItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -301,7 +307,7 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
             <h3 className="font-semibold text-white">Enforcement decisions nearby</h3>
             {detail.nearby_enforcement.length ? <ul className="mt-3 space-y-2">
               {detail.nearby_enforcement.map(decision => <li key={decision.id} className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2"><Badge>{readable(decision.decision)}</Badge><span className="text-xs text-slate-500">{displayDate(decision.occurred_at)}</span></div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><Badge>{enforcementDecision(decision.decision)}</Badge><span className="text-xs text-slate-500">{displayDate(decision.occurred_at)}</span></div>
                 <p className="mt-2 text-sm text-slate-300">Mode: {readable(decision.mode)} · Tool: {readable(decision.tool_name)}</p>
               </li>)}
             </ul> : <p className="mt-2 text-sm text-slate-500">No nearby enforcement decisions were returned.</p>}
