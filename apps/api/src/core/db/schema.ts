@@ -1157,6 +1157,8 @@ export const scmPullRequests = pgTable('scm_pull_requests', {
   authorEmail: text('author_email'),
   authorProviderId: text('author_provider_id'),
   authorLogin: text('author_login'),
+  mergedByProviderId: text('merged_by_provider_id'),
+  mergedByLogin: text('merged_by_login'),
   number: integer('number'),
   headRef: text('head_ref'),
   baseRef: text('base_ref'),

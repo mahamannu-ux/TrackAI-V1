@@ -132,6 +132,8 @@ export async function upsertPullRequestObservation(
       authorEmail: pullRequest.authorEmail,
       authorProviderId: pullRequest.authorProviderId,
       authorLogin: pullRequest.authorLogin,
+      mergedByProviderId: pullRequest.mergedByProviderId ?? null,
+      mergedByLogin: pullRequest.mergedByLogin ?? null,
       headRef: pullRequest.headRef,
       baseRef: pullRequest.baseRef,
       headSha: pullRequest.headSha,
@@ -150,6 +152,8 @@ export async function upsertPullRequestObservation(
         authorEmail: pullRequest.authorEmail,
         authorProviderId: pullRequest.authorProviderId,
         authorLogin: pullRequest.authorLogin,
+        mergedByProviderId: sql`coalesce(${pullRequest.mergedByProviderId ?? null}, ${scmPullRequests.mergedByProviderId})`,
+        mergedByLogin: sql`coalesce(${pullRequest.mergedByLogin ?? null}, ${scmPullRequests.mergedByLogin})`,
         number: pullRequest.number,
         headRef: pullRequest.headRef,
         baseRef: pullRequest.baseRef,
@@ -439,6 +443,23 @@ router.post('/:provider', async (req: Request, res: Response) => {
             },
           })
           .returning({ id: scmProviderIdentities.id });
+
+        if (payload.pullRequest.mergedByProviderId && payload.pullRequest.mergedByLogin) {
+          await transaction.insert(scmProviderIdentities).values({
+            tenantId: tenant.id,
+            provider: payload.provider,
+            providerUserId: payload.pullRequest.mergedByProviderId,
+            login: payload.pullRequest.mergedByLogin,
+            displayName: payload.pullRequest.mergedByLogin,
+          }).onConflictDoUpdate({
+            target: [
+              scmProviderIdentities.tenantId,
+              scmProviderIdentities.provider,
+              scmProviderIdentities.providerUserId,
+            ],
+            set: { login: payload.pullRequest.mergedByLogin, updatedAt: new Date() },
+          });
+        }
 
         const [contributor] = await transaction
           .insert(scmContributors)
