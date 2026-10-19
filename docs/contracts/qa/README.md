@@ -23,6 +23,7 @@ Every surface that answers a customer's or an auditor's question uses this contr
 3. **Auditors get verifiable and signed answers only.** The server refuses `kind=live` to `tenant_auditor` (rule 9). Hiding it in the UI is not enough.
 4. **Honest states.**
    - Every figure says `recorded`, `partial` or `unavailable`, with reasons from a closed list. A `not_captured_yet` reason names its gap.
+   - Task16 A16.13 (auditor verifiable/signed answers) added four closed-list codes: `not_sealed_yet` — part of the period is not sealed yet (the settle margin plus the hourly seal), so only the sealed part is counted; `evidence_broken` — a seal or chain check found a break, and the answer is `unavailable`; `report_not_built` — no signed report exists for exactly this scope, and the auditor can request one; `evidence_truncated` — more than 50 000 statements behind one figure, so it is `partial`.
    - An unavailable figure has value `null`, **never 0**. The schema refuses a 0 in its place, and a unit test proves it.
    - A question with no answer built yet still answers: `unavailable`, with `answer_not_built` (or `phase_2`) and its open gaps.
 5. **Integers only.** A value is a count, a ratio (numerator and denominator, never a float) or a duration in milliseconds, within ±(2^53 − 1). A share is computed for display only.
