@@ -1,0 +1,19 @@
+apps/web/src/lib/api.ts
+  s_cd9ced9406d562::t_5ba2fdfef0e332 1174-1374
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "b79bd58fbf5dcb9933a6550691e0445fbda5b767",
+  "prompts": {},
+  "sessions": {
+    "s_cd9ced9406d562": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_cd9ced9406d562",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
