@@ -1,0 +1,19 @@
+apps/api/src/features/qa/security-answerers.ts
+  s_af031ef3d0db12::t_38de150fc150f7 358-443,509-511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "92d905fccf35296e65ac548a185e7aabd6afe95d",
+  "prompts": {},
+  "sessions": {
+    "s_af031ef3d0db12": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a154f9-b484-7ba0-92ba-ad57431b2d16",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
