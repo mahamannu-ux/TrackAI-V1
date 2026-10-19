@@ -8,6 +8,7 @@ import { AuditWorkspace } from './audit-workspace';
 import { EvidenceWorkspace } from './evidence-workspace';
 import { FleetWorkspace } from './fleet-workspace';
 import { QuestionsWorkspace } from './questions-workspace';
+import { SecurityWorkspace } from './security-workspace';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
   getLifecycle,
@@ -30,7 +31,7 @@ import {
   type PullRequest, type Repository, type SessionListItem, type TelemetryModel,
 } from '@/lib/api';
 
-type View = 'workspace' | 'lifecycle' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration' | 'audit' | 'questions';
+type View = 'workspace' | 'lifecycle' | 'sessions' | 'commits' | 'pullRequests' | 'repositories' | 'contributors' | 'administration' | 'audit' | 'questions' | 'security';
 type Detail = { kind: 'session' | 'commit' | 'pullRequest'; data: Record<string, any> } | null;
 
 const navigation: Array<{ id: View; label: string }> = [
@@ -44,6 +45,7 @@ const navigation: Array<{ id: View; label: string }> = [
   { id: 'administration', label: 'Administration' },
   { id: 'audit', label: 'Audit' },
   { id: 'questions', label: 'Questions' },
+  { id: 'security', label: 'Security' },
 ];
 
 function compact(value: number | null) {
@@ -710,10 +712,15 @@ export default function DashboardPage() {
     if (!adminContext) return;
     const canOpenQuestions = adminContext.membership?.status === 'active'
       && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor');
+    const canOpenSecurity = canOpenQuestions;
     const requestedView = new URLSearchParams(window.location.search).get('view');
     if (requestedView === 'questions' && canOpenQuestions) {
       setView('questions');
+    } else if (requestedView === 'security' && canOpenSecurity) {
+      setView('security');
     } else if (!canOpenQuestions && view === 'questions') {
+      setView('workspace');
+    } else if (!canOpenSecurity && view === 'security') {
       setView('workspace');
     }
   }, [adminContext, view]);
@@ -760,6 +767,7 @@ export default function DashboardPage() {
     setView(nextView);
     const parameters = new URLSearchParams(window.location.search);
     if (nextView === 'questions') parameters.set('view', 'questions');
+    else if (nextView === 'security') parameters.set('view', 'security');
     else parameters.delete('view');
     const query = parameters.toString();
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
@@ -772,12 +780,12 @@ export default function DashboardPage() {
   return <div className="min-h-screen bg-slate-950 text-slate-200">
     <aside className="fixed inset-y-0 left-0 w-64 border-r border-slate-800 bg-slate-950 p-5">
       <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500 font-bold text-white">T</div><div><div className="font-semibold text-white">TrackAI</div><div className="text-xs text-slate-500">Telemetry intelligence</div></div></div>
-      <nav className="mt-10 space-y-1">{navigation.filter((item) => item.id !== 'audit' || adminContext?.membership?.status === 'active').filter((item) => item.id !== 'questions' || (adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor'))).map((item) => <button key={item.id} onClick={() => navigateToView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'workspace' ? 'PR · Why · Insights' : item.id === 'lifecycle' ? 'Live' : item.id === 'audit' ? 'Trail' : item.id === 'questions' ? 'Q&A' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : item.id === 'contributors' ? contributors.length : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
+      <nav className="mt-10 space-y-1">{navigation.filter((item) => item.id !== 'audit' || adminContext?.membership?.status === 'active').filter((item) => item.id !== 'questions' || (adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor'))).filter((item) => item.id !== 'security' || (adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor'))).map((item) => <button key={item.id} onClick={() => navigateToView(item.id)} className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${view === item.id ? 'bg-violet-500/15 text-violet-200' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}><span>{item.label}</span><span className="text-xs text-slate-600">{item.id === 'workspace' ? 'PR · Why · Insights' : item.id === 'lifecycle' ? 'Live' : item.id === 'audit' ? 'Trail' : item.id === 'questions' ? 'Q&A' : item.id === 'security' ? 'Rules' : item.id === 'sessions' ? sessions.length : item.id === 'commits' ? commits.length : item.id === 'pullRequests' ? pullRequests.length : item.id === 'repositories' ? repositories.length : item.id === 'contributors' ? contributors.length : adminContext?.membership?.status === 'active' ? adminContext.membership.role === 'tenant_admin' ? 'Admin' : 'Audit' : 'Setup'}</span></button>)}</nav>
       <div className="absolute bottom-5 left-5 right-5 border-t border-slate-800 pt-4"><div className="truncate text-xs text-slate-500">{email}</div><button onClick={signOut} className="mt-2 text-xs text-slate-400 hover:text-white">Sign out</button></div>
     </aside>
     <main className="ml-64 min-h-screen p-8">
-      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}{view !== 'workspace' && view !== 'administration' && view !== 'audit' && view !== 'questions' && <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/>}<button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
-      {view !== 'workspace' && view !== 'administration' && view !== 'audit' && view !== 'questions' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
+      <header className="flex items-start justify-between gap-5"><div><div className="text-sm text-violet-400">{summary?.organizationName ?? 'Workspace'}</div><h1 className="mt-1 text-3xl font-semibold text-white">{navigation.find((row) => row.id === view)?.label}</h1><div className="mt-2 text-xs text-slate-600">Live protected API · refreshes every 15 seconds{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString()}` : ''}</div></div><div className="flex gap-2">{view === 'lifecycle' && <select aria-label="Lifecycle metric scope" value={lifecycleScope} onChange={(event) => setLifecycleScope(event.target.value)} className="max-w-xs rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"><option value="tenant">Entire tenant</option><optgroup label="Repositories">{repositories.map((row) => <option key={row.id} value={`repository:${row.id}`}>{row.name}</option>)}</optgroup><optgroup label="Pull requests">{pullRequests.map((row) => <option key={row.id} value={`pullRequest:${row.id}`}>{row.title}</option>)}</optgroup><optgroup label="Contributors">{contributors.map((row) => <option key={row.id} value={`contributor:${row.id}`}>{row.name}{row.email ? ` · ${row.email}` : ''}</option>)}</optgroup><optgroup label="Models">{models.map((row) => <option key={row.key} value={`model:${row.key}`}>{row.tool} · {row.model ?? 'Unknown model'}</option>)}</optgroup></select>}      {view !== 'workspace' && view !== 'administration' && view !== 'audit' && view !== 'questions' && view !== 'security' && <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter rows…" className="w-64 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-violet-500"/>}<button onClick={() => void refresh(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm hover:border-violet-500">Refresh</button></div></header>
+      {view !== 'workspace' && view !== 'administration' && view !== 'audit' && view !== 'questions' && view !== 'security' && <div className="mt-7 grid grid-cols-4 gap-3"><Metric label="Sessions" value={visibleTotals?.sessions ?? 0}/><Metric label={view === 'lifecycle' ? 'Retained commits' : 'Historical commits'} value={view === 'lifecycle' ? (visibleTotals?.commits ?? 0) : (summary?.historicalCommits ?? summary?.commits ?? 0)}/><Metric label="Final AI lines" value={visibleTotals?.finalAiLines ?? 0}/><Metric label="Human lines" value={visibleTotals?.finalHumanLines ?? 0}/></div>}
       {error && <div className="mt-5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
       <section className="mt-7">
         <div className={view === 'workspace' ? '' : 'hidden'} aria-hidden={view !== 'workspace'}>
@@ -797,6 +805,7 @@ export default function DashboardPage() {
         {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} onOpenAudit={() => navigateToView('audit')} repositories={repositories} />}
         {view === 'audit' && adminContext?.membership?.status === 'active' && <AuditWorkspace role={adminContext.membership.role} repositories={repositories} />}
         {view === 'questions' && adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor') && <QuestionsWorkspace role={adminContext.membership.role} repositories={repositories} pullRequests={pullRequests} />}
+        {view === 'security' && adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor') && <SecurityWorkspace role={adminContext.membership.role} repositories={repositories} />}
       </section>
     </main>
     <DetailDrawer detail={detail} close={() => setDetail(null)} openLinked={(kind, id) => void openDetail(kind, id)} attestaSubject={attestaSubject} />

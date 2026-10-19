@@ -1300,7 +1300,8 @@ export type SecuritySettingsChange = {
   reason: string;
   monitor_mode?: 'off' | 'monitor';
   rules?: Record<string, { enabled?: boolean; severity?: string }>;
-  data_settings?: Partial<SecuritySettingsView['data_settings']>;
+  data_settings?: Partial<Pick<SecuritySettingsView['data_settings'],
+    'command_previews' | 'file_paths' | 'urls' | 'host_identity' | 'user_identity'>>;
   agents?: string[];
   day_one_scan?: boolean;
 };
