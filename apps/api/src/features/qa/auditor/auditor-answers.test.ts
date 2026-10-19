@@ -24,7 +24,7 @@ import { QA_QUESTIONS_BY_ID } from '../registry';
 import { QaProblem, answerQuestion, previousPeriod, type QaScopeStore } from '../service';
 import { QA_PERSON_WORDS, type QaAnswerContext, type QaAnswerer, type QaDimension, type QaEnvelope, type QaKind, type QaQuestionId, type QaScope } from '../types';
 import {
-  codeVerifiableAnswerers, type CodeSource, type ReadWindow, type StoredStatement,
+  codeVerifiableAnswerers, finishAuditor, type CodeSource, type ReadWindow, type StoredStatement,
 } from './code-verifiable';
 import { MAX_EVIDENCE_RECORDS, evidenceOf } from './evidence';
 import { AUDITOR_ANSWERERS, registerAuditorAnswerers } from './register-auditor';
@@ -90,8 +90,13 @@ class MemoryLedger implements CodeSource {
   records: MemRecord[] = [];
   merges = new Map<string, string>();
   private seq = 0;
-  add(tenantId: string, recordedAtMs: string, o: ReportStatementOptions): MemRecord {
-    const canonical = reportStatement(o);
+  add(tenantId: string, recordedAtMs: string, o: ReportStatementOptions, edit?: (statement: Record<string, any>) => void): MemRecord { // eslint-disable-line @typescript-eslint/no-explicit-any
+    let canonical = reportStatement(o);
+    if (edit) {
+      const statement = JSON.parse(canonical);
+      edit(statement);
+      canonical = canonicalize(statement);
+    }
     const rec: MemRecord = {
       tenantId, predicateType: AI_PROVENANCE_TYPE, seq: this.seq++, digest: sha256Prefixed(canonical), recordedAt: us(recordedAtMs),
       kind: o.kind, repositoryId: o.repositoryId, subjectSha: o.sha, canonical,
@@ -234,12 +239,47 @@ describe('Task16h verifiable code answers', () => {
     assert.equal(countOf(e8, 'statements'), 2);
     const q11 = ctxOf('Q11', 'verifiable', { repository_id: R1 });
     const e11 = valid(await answers.Q11(q11), q11);
-    if (e11.figures[0].availability !== 'unavailable') assert.ok(e11.figures[0].reasons.some((r) => r.code === 'partial_linkage'));
+    assert.equal(e11.figures[0].availability, 'partial');
+    assert.ok(e11.figures[0].reasons.some((r) => r.code === 'partial_linkage'));
     const q14 = ctxOf('Q14', 'verifiable', { repository_id: R1, pull_request_id: PR });
     const e14 = valid(await answers.Q14(q14), q14);
     assert.equal(countOf(e14, 'pr_merged_statements'), 1);
     const q16 = ctxOf('Q16', 'verifiable', { repository_id: R1 });
     assert.equal(countOf(valid(await answers.Q16(q16), q16), 'statements_in_scope'), 4);
+  });
+
+  test('a kind with no input is the report\'s recorded 0, at repository and at tenant scope (no false partial)', async () => {
+    const ctx = ctxOf('Q3', 'verifiable', { repository_id: R2 });
+    const e = valid(await answers.Q3(ctx), ctx);
+    assert.equal(fig(e, 'prs_merged').availability, 'recorded');
+    assert.equal(countOf(e, 'prs_merged'), 0, 'R2 merged nothing: a recorded 0, as its signed report says');
+    const tenant = ctxOf('Q3', 'verifiable');
+    const t = valid(await answers.Q3(tenant), tenant);
+    assert.equal(fig(t, 'prs_merged').availability, 'recorded', 'R2 without merges does not make the tenant sum partial');
+    assert.equal(countOf(t, 'prs_merged'), 1);
+    const q9 = ctxOf('Q9', 'verifiable');
+    assert.equal(fig(valid(await answers.Q9(q9), q9), 'production_deployments').availability, 'recorded');
+  });
+
+  test('Q8 counts statements signed late (signed_late is an identity block)', async () => {
+    const late = new MemoryLedger();
+    late.add(A, '2026-10-02T10:00:00.000Z', { kind: 'commit_observed', repositoryId: R1, sha: sha(9), asOf: '2026-10-02T10:00:00.000Z' },
+      (st) => { st.predicate.signed_late = { value: true, reason: 'backfill' }; });
+    late.add(A, '2026-10-03T10:00:00.000Z', { kind: 'commit_observed', repositoryId: R1, sha: sha(9), asOf: '2026-10-03T10:00:00.000Z' },
+      (st) => { st.predicate.signed_late = { value: false, reason: 'none' }; });
+    const ctx = ctxOf('Q8', 'verifiable', { repository_id: R1, commit_sha: sha(9) });
+    const e = valid(await codeVerifiableAnswerers(late).Q8(ctx), ctx);
+    assert.equal(countOf(e, 'statements'), 2);
+    assert.equal(countOf(e, 'signed_late_statements'), 1);
+  });
+
+  test('a figure whose evidence exceeds 50 000 records is partial with evidence_truncated', () => {
+    const records = Array.from({ length: MAX_EVIDENCE_RECORDS + 3 }, (_, i) => ({ seq: i, digest: sha256Prefixed(`r${i}`) }));
+    const ctx = ctxOf('Q16', 'verifiable', { repository_id: R1 });
+    const e = valid(finishAuditor(ctx, [{ key: 'statements_in_scope', availability: 'recorded', reasons: [], value: { type: 'count', count: records.length }, evidence: records }], NOW), ctx);
+    assert.equal(e.figures[0].availability, 'partial');
+    assert.deepEqual(e.figures[0].reasons, [{ code: 'evidence_truncated' }]);
+    assert.equal(e.figures[0].evidence?.count, MAX_EVIDENCE_RECORDS);
   });
 
   test('Q7: breaks are the honest answer, still recorded', async () => {
@@ -313,7 +353,7 @@ class MemorySeals implements SealSource {
       task6a: built.document.generations.task6a, v2: built.document.generations.v2, previous,
       seq: SEAL_DIGEST_SEQ(n), statementDigest: sha256Prefixed(`seal-statement-${n}`) });
   }
-  async findingSeals(tenantId: string, from: string, to: string, limit: number) {
+  async findingSeals(tenantId: string, from: string, to: string, limit: number): Promise<Array<Record<string, unknown>>> {
     return this.seals.filter((s) => s.tenantId === tenantId && s.window.from < us(to) && s.window.to > us(from))
       .slice(0, limit).map((s) => ({
         window_from: s.window.from, window_to: s.window.to, row_count: s.rowCount, task6a_count: s.task6a, v2_count: s.v2,
@@ -372,6 +412,20 @@ describe('Task16h verifiable security answers', () => {
       assert.equal(e.availability, 'unavailable', tamper);
       assert.deepEqual(e.reasons, [{ code: 'evidence_broken' }], tamper);
     }
+  });
+
+  test('a missing middle seal (a gap) or a seal without its ledger record is evidence_broken', async () => {
+    const W3 = { from: '2026-10-10T00:00:00.000000Z', to: '2026-10-12T00:00:00.000000Z' };
+    const ctx = ctxOf('S8', 'verifiable', { to: '2026-10-12T00:00:00.000Z' });
+    const gap = sealWorld();
+    gap.seal(A, W3);
+    gap.seals.splice(1, 1);
+    assert.deepEqual(valid(await securityVerifiableAnswerers(gap).S8(ctx), ctx).reasons, [{ code: 'evidence_broken' }]);
+    const orphan = sealWorld();
+    const base = orphan.findingSeals.bind(orphan);
+    orphan.findingSeals = async (...args) => (await base(...args)).map((r, i) => (i === 0 ? { ...r, seq: null } : r));
+    const c2 = ctxOf('S8', 'verifiable');
+    assert.deepEqual(valid(await securityVerifiableAnswerers(orphan).S8(c2), c2).reasons, [{ code: 'evidence_broken' }]);
   });
 
   test('a period past the last seal is partial with not_sealed_yet; a period with no seal is unavailable', async () => {

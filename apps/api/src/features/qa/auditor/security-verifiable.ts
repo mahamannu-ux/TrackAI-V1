@@ -121,7 +121,11 @@ async function sealedPeriod(src: SealSource, tenantId: string, from: string, to:
     });
     // A seal that cannot be re-parsed against its columns stands for a whole
     // window no one can prove: nothing of the answer survives that.
-    if (doc === null) {
+    // A seal without its ledger record, or one that does not continue the seal
+    // before it (window and previous digest), leaves a window no one can prove.
+    const prior = verified[verified.indexOf(raw) - 1];
+    const gap = prior !== undefined && (str(prior.window_to) !== windowFrom || str(prior.seal_digest) !== raw.previous_digest);
+    if (doc === null || typeof raw.seq !== 'string' || gap) {
       return { kind: 'broken', seals: [], rows: [], partial: false, truncated: false, newestAt: null };
     }
     const limit = rowCount + MAX_SECURITY_SEAL_ROWS;
@@ -132,7 +136,7 @@ async function sealedPeriod(src: SealSource, tenantId: string, from: string, to:
     if (windowRows.length === limit || checkSecuritySealRows(doc, str(raw.seal_digest), windowRows).length > 0) {
       return { kind: 'broken', seals: [], rows: [], partial: false, truncated: false, newestAt: null };
     }
-    seals.push({ seq: typeof raw.seq === 'string' ? Number(raw.seq) : null, statementDigest: str(raw.statement_digest) });
+    seals.push({ seq: Number(raw.seq), statementDigest: str(raw.statement_digest) });
     rows.push(...windowRows.filter((row) => row.received_at >= fromUs && row.received_at < toUs));
   }
   // The exact-µs window texts order like instants: head/tail outside them is
@@ -531,7 +535,8 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
       const truncated = found.rows.length > MAX_SEALS_VERIFIED;
       const seals: AuditSeal[] = [];
       const rows: AuditShape['rows'] = [];
-      for (const raw of found.rows.slice(0, MAX_SEALS_VERIFIED)) {
+      const audited = found.rows.slice(0, MAX_SEALS_VERIFIED);
+      for (const [i, raw] of audited.entries()) {
         const windowFrom = str(raw.window_from);
         const windowTo = str(raw.window_to);
         const rowCount = Number(raw.row_count);
@@ -540,7 +545,9 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
           previousDigest: typeof raw.previous_digest === 'string' ? raw.previous_digest : null,
           sealDocument: str(raw.seal_document), sealDigest: str(raw.seal_digest), tenantId,
         });
-        if (doc === null) {
+        const prior = audited[i - 1];
+        const gap = prior !== undefined && (str(prior.window_to) !== windowFrom || str(prior.seal_digest) !== raw.previous_digest);
+        if (doc === null || gap) {
           return { kind: 'broken' as const, seals: [] as AuditSeal[], rows: [] as AuditShape['rows'], partial: false, truncated: false, newestAt: null };
         }
         // Late audit rows in a sealed window are a break as for findings; the
@@ -563,15 +570,18 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
       return { kind: 'ok' as const, seals, rows, partial, truncated, newestAt };
     });
     // Back on the API role (the role reset ran in withAuditReader's finally):
-    // the seals' ledger positions. A record gone behind the guards gives no
-    // seq, and its seal still figures in the evidence with only its digest.
+    // the seals' ledger positions. A seal whose ledger record is gone proves
+    // nothing: the answer is evidence_broken.
     let seals = inner.seals;
     if (seals.length > 0) {
       const ledger = await tx.execute(sql`select r.id::text as id, r.seq::text as seq
         from attesta_records r where r.tenant_id = ${tenantId}::uuid
           and r.id in (${sql.join(seals.map((s) => sql`${s.recordId}::uuid`), sql.raw(', '))})`);
       const seqById = new Map(ledger.rows.map((r: Record<string, unknown>) => [str(r.id), str(r.seq)]));
-      seals = seals.map((s) => ({ ...s, seq: seqById.has(s.recordId) ? Number(seqById.get(s.recordId)) : null }));
+      if (seals.some((s) => !seqById.has(s.recordId))) {
+        return { kind: 'broken' as const, seals: [] as AuditSeal[], rows: [] as AuditShape['rows'], partial: false, truncated: false, newestAt: null };
+      }
+      seals = seals.map((s) => ({ ...s, seq: Number(seqById.get(s.recordId)) }));
     }
     return { ...inner, seals };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });

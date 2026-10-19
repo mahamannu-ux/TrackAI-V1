@@ -65,7 +65,8 @@ function storedOf(row: Record<string, unknown> | undefined): StoredReport | null
 
 /** The document, when its stored bytes still hash to the stored digest; null otherwise (a break). */
 function parsedDocument<T>(stored: StoredReport): T | null {
-  if (stored.document === '' || sha256Prefixed(stored.document) !== stored.documentDigest) return null;
+  // Bytes that no longer hash to their digest, or a report whose ledger record is gone, prove nothing.
+  if (stored.document === '' || stored.recordedAt === null || sha256Prefixed(stored.document) !== stored.documentDigest) return null;
   try {
     const parsed: unknown = JSON.parse(stored.document);
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed as T : null;

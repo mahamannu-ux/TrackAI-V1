@@ -310,9 +310,10 @@ async function main(): Promise<void> {
     const q3v = ok(await get(app.base, answer('Q3', { kind: 'verifiable', ...scope }), auditorA), '(a) Q3 verifiable');
     for (const [key, name] of [['prs_merged', 'prs_merged'], ['merged_ai_lines', 'merged_ai_lines']] as const) {
       const f = fig(q3v, key);
-      const expected = doc.completeness[name].inputs === 0 ? 'unavailable' : doc.figures[name].availability;
+      const expected = doc.figures[name].availability;
       check(f.availability === expected, `(a) Q3 ${key} availability ${f.availability} = ${expected}`);
       if (f.availability !== 'unavailable') check(f.evidence.statements_root === doc.figures[name].statements_root, `(a) Q3 ${key} root`);
+      if (f.availability !== 'unavailable') check(f.value?.count === doc.figures[name].value, `(a) Q3 ${key} value`);
     }
     console.log(`IT-T16h-01a ok: Q1 ai_lines=${fig(q1, 'ai_lines_changed').value?.count} and Q3 equal the period report computation, evidence roots match`);
 

@@ -21,8 +21,11 @@
  *    `vendor_does_not_report`: the statement's emitter did not report the
  *    field the figure sums (Q1's whole-repository share keeps its G1 code,
  *    Q4's approval its G2);
- *  - a scope whose statement kind never appears in the window figures as
- *    `unavailable`, not as an unobserved 0 (nothing was recorded to count);
+ *  - a figure follows the document's own availability (a kind with no input
+ *    in a window that holds statements is the report's recorded 0); a window
+ *    with no statement at all is `unavailable`, and a tenant sum skips it;
+ *  - Q7 verifies the tenant's chain over the period's seq range (the chain is
+ *    per tenant), at repository scope too;
  *  - Q7's honest-but-incomplete report (signatures or anchors could not be
  *    checked, or the range was capped) is `partial` with `partial_linkage`.
  */
@@ -42,7 +45,7 @@ import {
 import { pgTrustStore, type TrustDb } from '../../attesta/trust-inventory';
 import type { ChainReport } from '../../attesta/verify-chain';
 import { trustConfigFromEnv } from '../../attesta/trust-resolver';
-import { evidenceOf, type EvidenceRecordInput } from './evidence';
+import { evidenceOf, evidenceTruncated, type EvidenceRecordInput } from './evidence';
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from '../registry';
 import type {
   QaAnswerContext, QaAnswerer, QaBreakdownItem, QaDrilldown, QaEnvelope,
@@ -89,14 +92,23 @@ export interface FigureSeed {
 export function finishAuditor(ctx: QaAnswerContext, seeds: FigureSeed[], asOf: string, drilldown: QaDrilldown[] = []): QaEnvelope {
   const question = QA_QUESTIONS_BY_ID.get(ctx.questionId);
   if (!question) throw new Error(`Task16h: unknown question ${ctx.questionId}`);
-  const figures: QaFigure[] = seeds.map((seed): QaFigure => ({
-    key: seed.key,
-    availability: seed.availability,
-    reasons: seed.reasons,
-    value: seed.value,
-    ...(seed.breakdown && seed.breakdown.length > 0 ? { breakdown: seed.breakdown } : {}),
-    ...(seed.availability !== 'unavailable' && seed.evidence ? { evidence: evidenceOf(seed.evidence) } : {}),
-  }));
+  const figures: QaFigure[] = seeds.map((seed): QaFigure => {
+    // More distinct records than one figure may list: the evidence is cut to
+    // the cap, so the figure is partial with evidence_truncated (prompt item 1).
+    const cut = seed.availability !== 'unavailable' && seed.evidence !== undefined
+      && evidenceTruncated(new Set(seed.evidence.map((r) => r.digest)).size);
+    const reasons = cut && !seed.reasons.some((r) => r.code === 'evidence_truncated')
+      ? [...seed.reasons, { code: 'evidence_truncated' as const }]
+      : seed.reasons;
+    return {
+      key: seed.key,
+      availability: cut && seed.availability === 'recorded' ? 'partial' : seed.availability,
+      reasons,
+      value: seed.value,
+      ...(seed.breakdown && seed.breakdown.length > 0 ? { breakdown: seed.breakdown } : {}),
+      ...(seed.availability !== 'unavailable' && seed.evidence ? { evidence: evidenceOf(seed.evidence) } : {}),
+    };
+  });
   const reasons: QaReason[] = [];
   for (const figure of figures) {
     for (const reason of figure.reasons) {
@@ -143,7 +155,16 @@ function settledWindow(ctx: QaAnswerContext): ReportWindow | null {
 export interface ScopeDoc { repositoryId: string; doc: ReportDocument; truncated: boolean }
 
 /** What qualifies every figure of a report-path answer. */
-export interface Flags { truncated: boolean; unsettled: boolean }
+export interface Flags {
+  truncated: boolean;
+  unsettled: boolean;
+  /**
+   * Verifiable answers: a document over no statement at all contributes nothing
+   * (no input → unavailable, prompt item 1; a tenant sum skips that repository).
+   * Signed answers map the stored document as signed, so they leave this unset.
+   */
+  skipEmpty?: boolean;
+}
 
 /**
  * One repository's statements as the signed period report reads them. Above
@@ -197,11 +218,13 @@ async function reportDocs(src: CodeSource, ctx: QaAnswerContext): Promise<{ docs
   if (!win) return null;
   if (ctx.scopeLevel === 'tenant') {
     const { repositories, truncated } = await repositoriesInWindow(src, ctx.tenantId, win.from, win.to);
-    const docs = await Promise.all(repositories.map(async (id): Promise<ScopeDoc> => {
+    // One repeatable-read snapshot at a time: up to 200 at once would hold the pool.
+    const docs: ScopeDoc[] = [];
+    for (const id of repositories) {
       const read = await reportInputs(src, ctx.tenantId, id, win);
-      return { repositoryId: id, doc: docOf(ctx.tenantId, id, win, read.inputs), truncated: read.truncated };
-    }));
-    return { docs, win, flags: { truncated: truncated || docs.some((d) => d.truncated), unsettled: win.unsettled } };
+      docs.push({ repositoryId: id, doc: docOf(ctx.tenantId, id, win, read.inputs), truncated: read.truncated });
+    }
+    return { docs, win, flags: { truncated: truncated || docs.some((d) => d.truncated), unsettled: win.unsettled, skipEmpty: true } };
   }
   const repositoryId = ctx.scope.repository_id as string;
   const read = await reportInputs(src, ctx.tenantId, repositoryId, win);
@@ -216,7 +239,7 @@ async function reportDocs(src: CodeSource, ctx: QaAnswerContext): Promise<{ docs
   return {
     docs: [{ repositoryId, doc: docOf(ctx.tenantId, repositoryId, win, inputs), truncated: read.truncated }],
     win,
-    flags: { truncated: read.truncated, unsettled: win.unsettled },
+    flags: { truncated: read.truncated, unsettled: win.unsettled, skipEmpty: true },
   };
 }
 
@@ -286,10 +309,8 @@ function figureParts(doc: ReportDocument, name: keyof ReportDocument['figures'])
   availability: Reported; value: unknown; records: EvidenceRecordInput[];
 } {
   const figure = doc.figures[name];
-  // A figure whose input kind never appears in a window (`inputs === 0`)
-  // figures as unavailable: nothing was recorded to count, and 0 would claim
-  // otherwise.
-  if (doc.completeness[name].inputs === 0) return { availability: 'unavailable', value: undefined, records: [] };
+  // The document's own availability: a kind with no input in a window that
+  // holds statements is a recorded 0, exactly as the signed report says.
   return {
     availability: figure.availability,
     value: figure.value,
@@ -298,9 +319,10 @@ function figureParts(doc: ReportDocument, name: keyof ReportDocument['figures'])
 }
 
 /** One integer figure across a scope's documents. */
-function aggregateInt(docs: ScopeDoc[], name: keyof ReportDocument['figures']): Agg {
+function aggregateInt(docs: ScopeDoc[], name: keyof ReportDocument['figures'], flags: Flags): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
+    if (flags.skipEmpty && doc.statements.length === 0) continue;
     const parts = figureParts(doc, name);
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -311,9 +333,10 @@ function aggregateInt(docs: ScopeDoc[], name: keyof ReportDocument['figures']): 
 }
 
 /** One line-count figure (lines_changed, merged_lines) across a scope's documents. */
-function aggregateLines(docs: ScopeDoc[], name: keyof ReportDocument['figures']): Agg {
+function aggregateLines(docs: ScopeDoc[], name: keyof ReportDocument['figures'], flags: Flags): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
+    if (flags.skipEmpty && doc.statements.length === 0) continue;
     const parts = figureParts(doc, name);
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -327,9 +350,10 @@ function aggregateLines(docs: ScopeDoc[], name: keyof ReportDocument['figures'])
 }
 
 /** The merged AI lines by tool and model (model keys + per-tool sums), across a scope's documents. */
-function aggregateModels(docs: ScopeDoc[]): Agg {
+function aggregateModels(docs: ScopeDoc[], flags: Flags): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
+    if (flags.skipEmpty && doc.statements.length === 0) continue;
     const parts = figureParts(doc, 'merged_ai_lines_by_model');
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -594,7 +618,7 @@ async function reportAsOf(src: CodeSource, ctx: QaAnswerContext, win: ReportWind
 const G1_FIGURE: FigureSeed = { key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null };
 
 function q1Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
-  const lines = aggregateLines(docs, 'lines_changed');
+  const lines = aggregateLines(docs, 'lines_changed', flags);
   const lineState = qualified(worstOf(lines.availability), flags);
   const { ai, human, unknown } = lines.numbers;
   const denominator = ai + human + unknown;
@@ -623,24 +647,24 @@ function q1Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
 // Q3
 
 function q3Figures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Flags): FigureSeed[] {
-  const prs = aggregateInt(docs, 'prs_merged');
-  const merged = aggregateModels(docs);
-  const mergedLines = aggregateLines(docs, 'merged_lines');
-  const mergedAi = merged.numbers.total;
-  const allMerged = mergedLines.numbers.ai + mergedLines.numbers.human + mergedLines.numbers.unknown;
+  const prs = aggregateInt(docs, 'prs_merged', flags);
+  const mergedAi = aggregateInt(docs, 'merged_ai_lines', flags);
+  const models = aggregateModels(docs, flags);
+  const mergedLines = aggregateLines(docs, 'merged_lines', flags);
   const prsState = qualified(worstOf(prs.availability), flags);
-  const mergedState = qualified(worstOf(merged.availability), flags);
-  const linesAvailability = worstOf(mergedLines.availability);
-  // The share needs both its parts and a non-zero denominator; otherwise it is unavailable, never 0.
-  const shareState = mergedState.availability !== 'unavailable' && linesAvailability !== 'unavailable' && allMerged > 0
-    ? qualified(worstOf([worstOf(merged.availability), linesAvailability]), flags)
-    : qualified('unavailable', flags);
-  // One breakdown item per model key (dimension `model`), or per tool with
-  // its keys summed (dimension `tool`), exactly the requested dimension.
+  const mergedState = qualified(worstOf(mergedAi.availability), flags);
+  // The share is the report's own ratio (ratioFrom over merged_lines): ai over
+  // all merged lines; no merged lines, no share (unavailable, never 0).
+  const { ai, human, unknown } = mergedLines.numbers;
+  const allMerged = ai + human + unknown;
+  const linesState = qualified(worstOf(mergedLines.availability), flags);
+  const shareState = linesState.availability !== 'unavailable' && allMerged > 0 ? linesState : qualified('unavailable', flags);
+  // The breakdown is the report's "merged AI lines by tool and model": one
+  // item per model key (dimension `model`), or per tool with its keys summed.
   const breakdown: QaBreakdownItem[] = [];
-  if (ctx.breakdown === 'model' || ctx.breakdown === 'tool') {
+  if ((ctx.breakdown === 'model' || ctx.breakdown === 'tool') && worstOf(models.availability) !== 'unavailable') {
     const buckets = new Map<string, number>();
-    for (const [key, row] of [...merged.byKey.entries()].sort(byKeyAsc)) {
+    for (const [key, row] of [...models.byKey.entries()].sort(byKeyAsc)) {
       const bucket = ctx.breakdown === 'model' ? key : row.tool;
       buckets.set(bucket, (buckets.get(bucket) ?? 0) + row.aiLines);
     }
@@ -656,15 +680,15 @@ function q3Figures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Flags): Figure
     {
       key: 'merged_ai_lines',
       ...mergedState,
-      value: mergedState.availability === 'unavailable' ? null : count(mergedAi),
-      evidence: [...merged.records],
+      value: mergedState.availability === 'unavailable' ? null : count(mergedAi.numbers.total),
+      evidence: [...mergedAi.records, ...(breakdown.length > 0 ? models.records : [])],
       ...(mergedState.availability !== 'unavailable' && breakdown.length > 0 ? { breakdown } : {}),
     },
     {
       key: 'ai_share_of_merged_lines',
       ...shareState,
-      value: shareState.availability === 'unavailable' ? null : bpRatio(basisPoints(mergedAi, allMerged)),
-      evidence: [...merged.records, ...mergedLines.records],
+      value: shareState.availability === 'unavailable' ? null : bpRatio(basisPoints(ai, allMerged)),
+      evidence: [...mergedLines.records],
     },
   ];
 }
@@ -673,7 +697,7 @@ function q3Figures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Flags): Figure
 // Q9
 
 function q9Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
-  const deployments = aggregateInt(docs, 'production_deployments');
+  const deployments = aggregateInt(docs, 'production_deployments', flags);
   const state = qualified(worstOf(deployments.availability), flags);
   return [
     {
@@ -689,8 +713,8 @@ function q9Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
 // Q13
 
 function q13Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
-  const commits = aggregateInt(docs, 'commits_observed');
-  const lines = aggregateLines(docs, 'lines_changed');
+  const commits = aggregateInt(docs, 'commits_observed', flags);
+  const lines = aggregateLines(docs, 'lines_changed', flags);
   const commitState = qualified(worstOf(commits.availability), flags);
   const lineState = qualified(worstOf(lines.availability), flags);
   const statements = docs.flatMap((d) => d.doc.statements.map((s) => ({ seq: s.seq, digest: s.digest })));
@@ -950,10 +974,10 @@ async function answerQ8v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvel
     ? (firstSeen.value as Record<string, unknown>).at : undefined);
   const seenAt = typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? at : null;
   const durationMs = seenAt ? Date.parse(msTime(latest.recordedAt) as string) - Date.parse(seenAt) : null;
+  // signed_late is an identity block ({value, reason}), not an availability-wrapped field.
   const signedLate = parsed.filter((statement) => {
-    const field = wrappedField(statement.predicate, 'signed_late');
-    return field.availability !== 'unavailable'
-      && (field.value as Record<string, unknown> | undefined)?.value === true;
+    const block = statement.predicate.signed_late;
+    return typeof block === 'object' && block !== null && (block as { value?: unknown }).value === true;
   }).length;
   return finishAuditor(ctx, [
     { key: 'statements', availability, reasons, value: count(rows.length), evidence: parsed.map((s) => ({ seq: s.seq, digest: s.digest })) },
