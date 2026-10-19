@@ -1,0 +1,25 @@
+apps/web/src/app/dashboard/page.tsx
+  s_7c7058aea884da::t_049922e234f2fc 11,34,48,715,719-720,723-724,770,783,787-788,808
+apps/web/src/app/dashboard/security-findings.tsx
+  s_7c7058aea884da::t_a960c151e6b7fa 1-309
+apps/web/src/app/dashboard/security-workspace.tsx
+  s_7c7058aea884da::t_90bd55f180b573 1-474
+apps/web/src/lib/api.ts
+  s_7c7058aea884da::t_328c59a4fa18ef 1303-1304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "619484b5a38a157ad0a4d4b6300174b1a7c6a6fd",
+  "prompts": {},
+  "sessions": {
+    "s_7c7058aea884da": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_7c7058aea884da",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
