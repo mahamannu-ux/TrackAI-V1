@@ -1,0 +1,23 @@
+apps/api/src/features/qa/answers/q15.ts
+  s_f0fcc7adbbc69b::t_02946eb0bc7844 1-65
+apps/api/src/features/telemetry/ingest.routes.ts
+  s_f0fcc7adbbc69b::t_2626265f2db9a1 2-8,19-50,101-107
+docs/contracts/audit/catalog.md
+  s_f0fcc7adbbc69b::t_9f434cf35a30af 5,13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "e729e604a0be3a2266572a200cf1a7ee29417c9b",
+  "prompts": {},
+  "sessions": {
+    "s_f0fcc7adbbc69b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15534-94b0-7a70-8d68-8bd3398b1a5c",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
