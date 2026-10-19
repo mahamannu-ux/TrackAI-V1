@@ -88,7 +88,7 @@ The other five are registered and answer an honest `unavailable` until their dat
    In `qa-contract.test.ts`, extend the parser so rows of the new table take their rank from its Rank column. The test must still compare every registry entry with the catalogue.
 7. **Questions screen (types and one message only):**
    - `apps/web/src/lib/api.ts` (`:488-496`): add `data_setting_off` to `QaReasonCode` and `G14`–`G17` to `QaGapId`;
-   - `apps/web/src/app/dashboard/questions-presentation.tsx` (`QA_REASON_MESSAGES`, `:14-22`): add `data_setting_off: 'Your organization's security data settings keep this information on the developer machine.'`.
+   - `apps/web/src/app/dashboard/questions-presentation.tsx` (`QA_REASON_MESSAGES`, `:14-22`): add `data_setting_off: "Your organization's security data settings keep this information on the developer machine."`.
 
    The screen reads the question list from the API, so the new questions need no other UI change. Run `npm run build -w apps/web`.
 8. **Fixtures:** add `docs/contracts/qa/fixtures/valid-live-unavailable-data-setting-off.json` (S23, `urls` off), validated by the existing fixture test.
