@@ -1,0 +1,25 @@
+apps/api/src/features/qa/qa-contract.test.ts
+  s_af031ef3d0db12::t_d3877fa3cc90be 35,44,50,53,79,84,118-119,126,150,162-167,172,315
+apps/api/src/features/qa/registry.ts
+  s_af031ef3d0db12::t_7c4d6486b2ab0a 20,202-225,245-248
+docs/contracts/qa/questions.md
+  s_af031ef3d0db12::t_7d4ac87f50daa8 5,55-62,81-84
+docs/plan/CUSTOMER_AUDITOR_QA.md
+  s_af031ef3d0db12::t_a4421a6415f56b 7,94-107,266-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "3d466d3030aa463c2667500cb28cc689db18577c",
+  "prompts": {},
+  "sessions": {
+    "s_af031ef3d0db12": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a154f9-b484-7ba0-92ba-ad57431b2d16",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
