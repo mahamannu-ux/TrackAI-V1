@@ -33,13 +33,14 @@ import { withTenant } from '../../../core/db/tenant';
 import { sha256Prefixed } from '../../attesta/canonical';
 import {
   AI_PROVENANCE_TYPE, MAX_REPORT_STATEMENTS, REPORT_SETTLE_MS, basisPoints, computeReportDocument,
-  type LineCounts, type ModelLines, type ReportDocument, type ReportInput,
+  type LineCounts, type ModelLines, type ReportDocument, type ReportInput, type ReportScope,
 } from '../../attesta/period-report-rules';
 import { ReportJobError, pgReportStore, type ReportDatabase } from '../../attesta/period-report-service';
 import {
   MAX_VERIFY_RANGE, anchorMaterialFromEnv, dbChainVerifier, pgReadStore, publishedKeySource, verifyRange,
 } from '../../attesta/read-service';
 import { pgTrustStore, type TrustDb } from '../../attesta/trust-inventory';
+import type { ChainReport } from '../../attesta/verify-chain';
 import { trustConfigFromEnv } from '../../attesta/trust-resolver';
 import { evidenceOf, type EvidenceRecordInput } from './evidence';
 import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from '../registry';
@@ -151,13 +152,13 @@ export interface Flags { truncated: boolean; unsettled: boolean }
  * (`evidence_truncated`, prompt item 1). An unsettled `to` still fails loudly
  * (settledWindow keeps the request clear of it).
  */
-async function reportInputs(tenantId: string, repositoryId: string, win: ReportWindow): Promise<{ inputs: ReportInput[]; truncated: boolean }> {
+async function reportInputs(src: CodeSource, tenantId: string, repositoryId: string, win: ReportWindow): Promise<{ inputs: ReportInput[]; truncated: boolean }> {
   const scope = { repository_id: repositoryId, from: win.from, to: win.to, basis: 'recorded_at' as const };
   try {
-    return { inputs: (await reportStore.readSnapshot(tenantId, scope)).inputs, truncated: false };
+    return { inputs: await src.reportInputs(tenantId, scope), truncated: false };
   } catch (err) {
     if (err instanceof ReportJobError && err.code === 'ATTESTA_API_INVALID_QUERY' && /too many statements/.test(err.message)) {
-      const { rows } = await readStatements(tenantId, { repositoryId }, win.from, win.to);
+      const { rows } = await readStatements(src, tenantId, { repositoryId }, win.from, win.to);
       const inputs = rows.slice(0, MAX_REPORT_STATEMENTS).map((r) => ({ seq: r.seq, digest: r.digest, canonical: r.canonical }));
       return { inputs, truncated: true };
     }
@@ -170,15 +171,19 @@ function docOf(tenantId: string, repositoryId: string, win: ReportWindow, inputs
 }
 
 /** Repositories with ai-provenance statements in the window, ordered; at most MAX_REPOSITORIES. */
-async function repositoriesInWindow(tenantId: string, from: string, to: string): Promise<{ repositories: string[]; truncated: boolean }> {
+async function repositoriesInWindow(src: CodeSource, tenantId: string, from: string, to: string): Promise<{ repositories: string[]; truncated: boolean }> {
+  const repositories = await src.repositoriesWithStatements(tenantId, from, to, MAX_REPOSITORIES + 1);
+  return { repositories: repositories.slice(0, MAX_REPOSITORIES), truncated: repositories.length > MAX_REPOSITORIES };
+}
+
+async function pgRepositories(tenantId: string, from: string, to: string, limit: number): Promise<string[]> {
   const found = await db.execute(sql`select distinct r.repository_id::text as repository_id
     from attesta_records r where r.tenant_id = ${tenantId} and r.predicate_type = ${AI_PROVENANCE_TYPE}
     and r.recorded_at >= ${from}::timestamptz and r.recorded_at <= ${to}::timestamptz
-    order by repository_id limit ${MAX_REPOSITORIES + 1}`);
-  const repositories = found.rows
+    order by repository_id limit ${limit}`);
+  return found.rows
     .map((row: Record<string, unknown>) => row.repository_id)
     .filter((v): v is string => typeof v === 'string');
-  return { repositories: repositories.slice(0, MAX_REPOSITORIES), truncated: repositories.length > MAX_REPOSITORIES };
 }
 
 /**
@@ -187,24 +192,24 @@ async function repositoriesInWindow(tenantId: string, from: string, to: string):
  * PR and commit scopes: the repository's document over that subject's
  * statements only (prompt item 3). Null when nothing of the period is settled.
  */
-async function reportDocs(ctx: QaAnswerContext): Promise<{ docs: ScopeDoc[]; flags: Flags; win: ReportWindow } | null> {
+async function reportDocs(src: CodeSource, ctx: QaAnswerContext): Promise<{ docs: ScopeDoc[]; flags: Flags; win: ReportWindow } | null> {
   const win = settledWindow(ctx);
   if (!win) return null;
   if (ctx.scopeLevel === 'tenant') {
-    const { repositories, truncated } = await repositoriesInWindow(ctx.tenantId, win.from, win.to);
+    const { repositories, truncated } = await repositoriesInWindow(src, ctx.tenantId, win.from, win.to);
     const docs = await Promise.all(repositories.map(async (id): Promise<ScopeDoc> => {
-      const read = await reportInputs(ctx.tenantId, id, win);
+      const read = await reportInputs(src, ctx.tenantId, id, win);
       return { repositoryId: id, doc: docOf(ctx.tenantId, id, win, read.inputs), truncated: read.truncated };
     }));
     return { docs, win, flags: { truncated: truncated || docs.some((d) => d.truncated), unsettled: win.unsettled } };
   }
   const repositoryId = ctx.scope.repository_id as string;
-  const read = await reportInputs(ctx.tenantId, repositoryId, win);
+  const read = await reportInputs(src, ctx.tenantId, repositoryId, win);
   let inputs = read.inputs;
   if (ctx.scopeLevel === 'commit' || ctx.scopeLevel === 'pull_request') {
     const subjectSha = ctx.scopeLevel === 'commit'
       ? ctx.scope.commit_sha as string
-      : await mergeShaOf(ctx.tenantId, ctx.scope.pull_request_id as string);
+      : await src.mergeSha(ctx.tenantId, ctx.scope.pull_request_id as string);
     // An unmerged pull request has no subject: nothing of the repository counts for it.
     inputs = subjectSha === null ? [] : inputs.filter((input) => subjectShaOf(input) === subjectSha);
   }
@@ -216,7 +221,7 @@ async function reportDocs(ctx: QaAnswerContext): Promise<{ docs: ScopeDoc[]; fla
 }
 
 /** The PR's merge commit sha: the subject every stored statement of a merged change carries. */
-async function mergeShaOf(tenantId: string, pullRequestId: string): Promise<string | null> {
+async function pgMergeSha(tenantId: string, pullRequestId: string): Promise<string | null> {
   const rows = await withTenant(db, tenantId).select(scmPullRequests, eq(scmPullRequests.id, pullRequestId));
   return typeof rows[0]?.mergeCommitSha === 'string' ? rows[0].mergeCommitSha : null;
 }
@@ -342,7 +347,7 @@ function aggregateModels(docs: ScopeDoc[]): Agg {
 // ---------------------------------------------------------------------------
 // Reading stored statements directly (Q4, Q7, Q8, Q11, Q14, Q16)
 
-interface StoredStatement {
+export interface StoredStatement {
   seq: number;
   digest: string;
   /** UTC microseconds, `Z`; never round-tripped through a Date. */
@@ -353,7 +358,7 @@ interface StoredStatement {
   canonical: string;
 }
 
-interface ReadWindow {
+export interface ReadWindow {
   repositoryId?: string;
   subjectSha?: string[];
   kind?: string;
@@ -378,7 +383,7 @@ function whereOf(tenantId: string, window: ReadWindow, from: string, to: string,
 }
 
 /** The newest record's recorded_at for a window (ai-provenance when a predicate type is given); null when none. */
-async function newestRecordedAt(tenantId: string, window: ReadWindow, from: string, to: string, predicateType?: string): Promise<string | null> {
+async function pgNewestRecordedAt(tenantId: string, window: ReadWindow, from: string, to: string, predicateType?: string): Promise<string | null> {
   const found = await db.execute(sql`select ${sql.raw(`to_char(max(r.recorded_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`)} as at
     from attesta_records r where ${sql.join(whereOf(tenantId, window, from, to, predicateType), sql` and `)}`);
   const row = found.rows[0] ?? {};
@@ -386,7 +391,7 @@ async function newestRecordedAt(tenantId: string, window: ReadWindow, from: stri
 }
 
 /** The window's min and max seq over the tenant's records, for Q7's chain range (every record, not only statements). */
-async function seqRangeOf(tenantId: string, from: string, to: string): Promise<{ fromSeq: number; toSeq: number } | null> {
+async function pgSeqRange(tenantId: string, from: string, to: string): Promise<{ fromSeq: number; toSeq: number } | null> {
   const found = await db.execute(sql`select (select min(r.seq)::text from attesta_records r
       where r.tenant_id = ${tenantId} and r.recorded_at >= ${from}::timestamptz and r.recorded_at <= ${to}::timestamptz) as from_seq,
     (select max(r.seq)::text from attesta_records r
@@ -397,7 +402,7 @@ async function seqRangeOf(tenantId: string, from: string, to: string): Promise<{
 }
 
 /** The rows of one ledger range (seq and digest), `seq` ascending: the evidence for Q7's figures. */
-async function seqRows(tenantId: string, fromSeq: number, toSeq: number): Promise<EvidenceRecordInput[]> {
+async function pgSeqRows(tenantId: string, fromSeq: number, toSeq: number): Promise<EvidenceRecordInput[]> {
   const found = await db.execute(sql`select r.seq::text as seq, r.statement_digest as statement_digest
     from attesta_records r where r.tenant_id = ${tenantId} and r.seq >= ${fromSeq} and r.seq <= ${toSeq}
     order by r.seq`);
@@ -413,13 +418,13 @@ async function seqRows(tenantId: string, fromSeq: number, toSeq: number): Promis
  * tail keeps the answer honest: truncated means at least one statement in the
  * window was not read, so the figures are partial with `evidence_truncated`.
  */
-async function readStatements(tenantId: string, window: ReadWindow, from: string, to: string): Promise<{ rows: StoredStatement[]; truncated: boolean }> {
+async function pgStatements(tenantId: string, window: ReadWindow, from: string, to: string, limit: number): Promise<StoredStatement[]> {
   const found = await db.execute(sql`select r.seq::text as seq, r.statement_digest as statement_digest,
       to_char(r.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as recorded_at,
       r.statement_kind as statement_kind, r.repository_id::text as repository_id, r.subject_sha as subject_sha,
       r.statement_canonical as statement_canonical
     from attesta_records r where ${sql.join(whereOf(tenantId, window, from, to, AI_PROVENANCE_TYPE), sql` and `)}
-    order by r.seq limit ${MAX_STATEMENTS_READ + 1}`);
+    order by r.seq limit ${limit}`);
   const rows = found.rows.map((r: Record<string, unknown>): StoredStatement => ({
     seq: Number(r.seq),
     digest: typeof r.statement_digest === 'string' ? r.statement_digest : '',
@@ -429,6 +434,11 @@ async function readStatements(tenantId: string, window: ReadWindow, from: string
     subjectSha: typeof r.subject_sha === 'string' ? r.subject_sha : null,
     canonical: typeof r.statement_canonical === 'string' ? r.statement_canonical : '',
   }));
+  return rows;
+}
+
+async function readStatements(src: CodeSource, tenantId: string, window: ReadWindow, from: string, to: string): Promise<{ rows: StoredStatement[]; truncated: boolean }> {
+  const rows = await src.statements(tenantId, window, from, to, MAX_STATEMENTS_READ + 1);
   return { rows: rows.slice(0, MAX_STATEMENTS_READ), truncated: rows.length > MAX_STATEMENTS_READ };
 }
 
@@ -546,39 +556,39 @@ function latestPerSubject(parsed: Parsed[]): Parsed[] {
 }
 
 /** A direct answer's own read window, from the request's scope. */
-async function directWindow(ctx: QaAnswerContext): Promise<{ window: ReadWindow; subjects: string[] }> {
+async function directWindow(src: CodeSource, ctx: QaAnswerContext): Promise<{ window: ReadWindow; subjects: string[] }> {
   const repositoryId = ctx.scope.repository_id;
   if (ctx.scopeLevel === 'commit') return { window: { repositoryId, subjectSha: [ctx.scope.commit_sha as string] }, subjects: [ctx.scope.commit_sha as string] };
   if (ctx.scopeLevel === 'pull_request') {
-    const mergeSha = await mergeShaOf(ctx.tenantId, ctx.scope.pull_request_id as string);
+    const mergeSha = await src.mergeSha(ctx.tenantId, ctx.scope.pull_request_id as string);
     return { window: mergeSha ? { repositoryId, subjectSha: [mergeSha] } : { repositoryId, subjectSha: [] }, subjects: mergeSha ? [mergeSha] : [] };
   }
   return { window: repositoryId ? { repositoryId } : {}, subjects: [] };
 }
 
 /** Every answer's as_of: the newest record of its own window; the query time when the window holds none. */
-async function asOfFor(ctx: QaAnswerContext, window: ReadWindow = {}): Promise<string> {
-  return msTime(await newestRecordedAt(ctx.tenantId, window, ctx.scope.from, ctx.scope.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
+async function asOfFor(src: CodeSource, ctx: QaAnswerContext, window: ReadWindow = {}): Promise<string> {
+  return msTime(await src.newestRecordedAt(ctx.tenantId, window, ctx.scope.from, ctx.scope.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
 }
 
 // ---------------------------------------------------------------------------
 // Q1
 
-export const answerQ1: QaAnswerer = (ctx) => answerQ1v(ctx);
-export const answerQ3: QaAnswerer = (ctx) => answerQ3v(ctx);
-export const answerQ4: QaAnswerer = (ctx) => answerQ4v(ctx);
-export const answerQ7: QaAnswerer = (ctx) => answerQ7v(ctx);
-export const answerQ8: QaAnswerer = (ctx) => answerQ8v(ctx);
-export const answerQ9: QaAnswerer = (ctx) => answerQ9v(ctx);
-export const answerQ11: QaAnswerer = (ctx) => answerQ11v(ctx);
-export const answerQ13: QaAnswerer = (ctx) => answerQ13v(ctx);
-export const answerQ14: QaAnswerer = (ctx) => answerQ14v(ctx);
-export const answerQ16: QaAnswerer = (ctx) => answerQ16v(ctx);
+export const answerQ1: QaAnswerer = (ctx) => answerQ1v(pgCodeSource, ctx);
+export const answerQ3: QaAnswerer = (ctx) => answerQ3v(pgCodeSource, ctx);
+export const answerQ4: QaAnswerer = (ctx) => answerQ4v(pgCodeSource, ctx);
+export const answerQ7: QaAnswerer = (ctx) => answerQ7v(pgCodeSource, ctx);
+export const answerQ8: QaAnswerer = (ctx) => answerQ8v(pgCodeSource, ctx);
+export const answerQ9: QaAnswerer = (ctx) => answerQ9v(pgCodeSource, ctx);
+export const answerQ11: QaAnswerer = (ctx) => answerQ11v(pgCodeSource, ctx);
+export const answerQ13: QaAnswerer = (ctx) => answerQ13v(pgCodeSource, ctx);
+export const answerQ14: QaAnswerer = (ctx) => answerQ14v(pgCodeSource, ctx);
+export const answerQ16: QaAnswerer = (ctx) => answerQ16v(pgCodeSource, ctx);
 
 /** A report-path answer's as_of: the newest ai-provenance record of the settled window it counted. */
-async function reportAsOf(ctx: QaAnswerContext, win: ReportWindow): Promise<string> {
+async function reportAsOf(src: CodeSource, ctx: QaAnswerContext, win: ReportWindow): Promise<string> {
   const repositoryId = ctx.scopeLevel === 'tenant' ? undefined : ctx.scope.repository_id;
-  return msTime(await newestRecordedAt(ctx.tenantId, repositoryId ? { repositoryId } : {}, win.from, win.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
+  return msTime(await src.newestRecordedAt(ctx.tenantId, repositoryId ? { repositoryId } : {}, win.from, win.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
 }
 
 const G1_FIGURE: FigureSeed = { key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null };
@@ -741,8 +751,8 @@ export function reportFigures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Fla
   }
 }
 
-async function reportAnswer(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const read = await reportDocs(ctx);
+async function reportAnswer(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const read = await reportDocs(src, ctx);
   if (!read) {
     const keys = REPORT_FIGURE_KEYS[ctx.questionId as keyof typeof REPORT_FIGURE_KEYS];
     // Q1's G1 figure is unavailable for its own reason, settled or not.
@@ -750,7 +760,7 @@ async function reportAnswer(ctx: QaAnswerContext): Promise<QaEnvelope> {
       ? unsettledAnswer(ctx, keys.filter((key) => key !== G1_FIGURE.key), [G1_FIGURE])
       : unsettledAnswer(ctx, keys);
   }
-  return finishAuditor(ctx, reportFigures(ctx, read.docs, read.flags), await reportAsOf(ctx, read.win));
+  return finishAuditor(ctx, reportFigures(ctx, read.docs, read.flags), await reportAsOf(src, ctx, read.win));
 }
 
 const answerQ1v = reportAnswer;
@@ -763,8 +773,8 @@ const answerQ13v = reportAnswer;
 
 const noop = async () => {};
 
-async function answerQ7v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const range = await seqRangeOf(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerQ7v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const range = await src.seqRange(ctx.tenantId, ctx.scope.from, ctx.scope.to);
   if (!range || range.toSeq < range.fromSeq) {
     return finishAuditor(ctx, [
       { key: 'statements_checked', availability: 'unavailable', reasons: notReported, value: null },
@@ -777,22 +787,8 @@ async function answerQ7v(ctx: QaAnswerContext): Promise<QaEnvelope> {
   const truncated = toSeq < range.toSeq;
   // A verifiable answer writes no audit row (prompt item 6): the verify and
   // its verifier wiring are Attesta's own, only the audit sink is a no-op.
-  const now = () => new Date();
-  const report = await verifyRange({
-    store: { ...pgReadStore(), recordVerifyAudit: noop },
-    verifier: dbChainVerifier(),
-    keys: publishedKeySource(() => pgTrustStore(db as unknown as TrustDb), () => trustConfigFromEnv(process.env), now),
-    anchors: anchorMaterialFromEnv(),
-    now,
-  }, {
-    tenantId: ctx.tenantId,
-    actorId: ctx.tenantId,
-    actorRole: ctx.role,
-    requestId: `qa:${ctx.questionId}`,
-    fromSeq: range.fromSeq,
-    toSeq,
-  });
-  const rows = await seqRows(ctx.tenantId, report.range.from_seq, report.range.to_seq);
+  const report = await src.verify(ctx, range.fromSeq, toSeq);
+  const rows = await src.seqRows(ctx.tenantId, report.range.from_seq, report.range.to_seq);
   const incomplete = truncated || report.signatures === 'not_checked' || report.anchors.status === 'not_checked';
   // The verified figures stay recorded when the report is complete: the break
   // count is the honest answer even with breaks. When part of the verify
@@ -806,15 +802,84 @@ async function answerQ7v(ctx: QaAnswerContext): Promise<QaEnvelope> {
   return finishAuditor(ctx, [
     { key: 'statements_checked', availability, reasons, value: count(report.checked), evidence: rows },
     { key: 'breaks', availability, reasons, value: count(report.breaks.length), evidence: rows },
-  ], msTime(await newestRecordedAt(ctx.tenantId, {}, ctx.scope.from, ctx.scope.to)) ?? ctx.now);
+  ], msTime(await src.newestRecordedAt(ctx.tenantId, {}, ctx.scope.from, ctx.scope.to)) ?? ctx.now);
+}
+
+/** Attesta's own verify (the /api/attesta/verify wiring), with a no-op audit sink: a verifiable answer writes no audit row (prompt item 6). */
+async function pgVerify(ctx: QaAnswerContext, fromSeq: number, toSeq: number): Promise<ChainReport> {
+  const now = () => new Date();
+  return verifyRange({
+    store: { ...pgReadStore(), recordVerifyAudit: noop },
+    verifier: dbChainVerifier(),
+    keys: publishedKeySource(() => pgTrustStore(db as unknown as TrustDb), () => trustConfigFromEnv(process.env), now),
+    anchors: anchorMaterialFromEnv(),
+    now,
+  }, {
+    tenantId: ctx.tenantId,
+    actorId: ctx.tenantId,
+    actorRole: ctx.role,
+    requestId: `qa:${ctx.questionId}`,
+    fromSeq,
+    toSeq,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The data source: PostgreSQL in the app; the unit tests pass an in-memory one
+
+/** Everything the code answers read. Every call is tenant-bound. */
+export interface CodeSource {
+  /** The period report's own input read (readSnapshot); throws as it does (ReportJobError). */
+  reportInputs(tenantId: string, scope: ReportScope): Promise<ReportInput[]>;
+  /** Repositories with ai-provenance statements recorded in [from, to], ordered, at most `limit`. */
+  repositoriesWithStatements(tenantId: string, from: string, to: string, limit: number): Promise<string[]>;
+  /** The pull request's merge commit sha, or null (unmerged, or not the tenant's). */
+  mergeSha(tenantId: string, pullRequestId: string): Promise<string | null>;
+  /** Stored records in the window (ai-provenance only), seq ascending, at most `limit`. */
+  statements(tenantId: string, window: ReadWindow, from: string, to: string, limit: number): Promise<StoredStatement[]>;
+  /** The newest recorded_at (µs text) of the window's records (of `predicateType` when given), or null. */
+  newestRecordedAt(tenantId: string, window: ReadWindow, from: string, to: string, predicateType?: string): Promise<string | null>;
+  /** The min and max seq of every tenant record in [from, to], or null. */
+  seqRange(tenantId: string, from: string, to: string): Promise<{ fromSeq: number; toSeq: number } | null>;
+  /** (seq, statement digest) of the tenant's records fromSeq..toSeq, seq ascending. */
+  seqRows(tenantId: string, fromSeq: number, toSeq: number): Promise<EvidenceRecordInput[]>;
+  /** Attesta's chain verify over fromSeq..toSeq, writing no audit row. */
+  verify(ctx: QaAnswerContext, fromSeq: number, toSeq: number): Promise<ChainReport>;
+}
+
+export const pgCodeSource: CodeSource = {
+  reportInputs: async (tenantId, scope) => (await reportStore.readSnapshot(tenantId, scope)).inputs,
+  repositoriesWithStatements: pgRepositories,
+  mergeSha: pgMergeSha,
+  statements: pgStatements,
+  newestRecordedAt: pgNewestRecordedAt,
+  seqRange: pgSeqRange,
+  seqRows: pgSeqRows,
+  verify: pgVerify,
+};
+
+/** The ten verifiable code answerers over one data source (the tests' seam). */
+export function codeVerifiableAnswerers(src: CodeSource): Record<'Q1' | 'Q3' | 'Q4' | 'Q7' | 'Q8' | 'Q9' | 'Q11' | 'Q13' | 'Q14' | 'Q16', QaAnswerer> {
+  return {
+    Q1: (ctx) => answerQ1v(src, ctx),
+    Q3: (ctx) => answerQ3v(src, ctx),
+    Q4: (ctx) => answerQ4v(src, ctx),
+    Q7: (ctx) => answerQ7v(src, ctx),
+    Q8: (ctx) => answerQ8v(src, ctx),
+    Q9: (ctx) => answerQ9v(src, ctx),
+    Q11: (ctx) => answerQ11v(src, ctx),
+    Q13: (ctx) => answerQ13v(src, ctx),
+    Q14: (ctx) => answerQ14v(src, ctx),
+    Q16: (ctx) => answerQ16v(src, ctx),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Q4, Q8, Q11, Q14, Q16: the stored statements themselves
 
-async function answerQ4v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const { window } = await directWindow(ctx);
-  const { rows, truncated } = await readStatements(ctx.tenantId, { ...window, kind: 'commit_observed' }, ctx.scope.from, ctx.scope.to);
+async function answerQ4v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const { window } = await directWindow(src, ctx);
+  const { rows, truncated } = await readStatements(src, ctx.tenantId, { ...window, kind: 'commit_observed' }, ctx.scope.from, ctx.scope.to);
   const commits = latestPerSubject(rows.map(parseStatement));
   if (commits.length === 0) {
     return finishAuditor(ctx, [
@@ -860,13 +925,13 @@ async function answerQ4v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     },
     // Approval capture does not exist yet: G2, honestly unavailable.
     { key: 'approved_at_the_time', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G2' }], value: null },
-  ], await asOfFor(ctx, window));
+  ], await asOfFor(src, ctx, window));
 }
 
-async function answerQ8v(ctx: QaAnswerContext): Promise<QaEnvelope> {
+async function answerQ8v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
   // Q8 is commit-scoped by the registry, so the window is always the one sha.
-  const { window } = await directWindow(ctx);
-  const { rows, truncated } = await readStatements(ctx.tenantId, window, ctx.scope.from, ctx.scope.to);
+  const { window } = await directWindow(src, ctx);
+  const { rows, truncated } = await readStatements(src, ctx.tenantId, window, ctx.scope.from, ctx.scope.to);
   if (rows.length === 0) {
     return finishAuditor(ctx, [
       { key: 'statements', availability: 'unavailable', reasons: notReported, value: null },
@@ -900,12 +965,12 @@ async function answerQ8v(ctx: QaAnswerContext): Promise<QaEnvelope> {
       evidence: [{ seq: latest.seq, digest: latest.digest }],
     },
     { key: 'signed_late_statements', availability, reasons, value: count(signedLate), evidence: parsed.map((s) => ({ seq: s.seq, digest: s.digest })) },
-  ], await asOfFor(ctx, window));
+  ], await asOfFor(src, ctx, window));
 }
 
-async function answerQ11v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const { window } = await directWindow(ctx);
-  const { rows, truncated } = await readStatements(ctx.tenantId, { ...window, kind: 'commit_observed' }, ctx.scope.from, ctx.scope.to);
+async function answerQ11v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const { window } = await directWindow(src, ctx);
+  const { rows, truncated } = await readStatements(src, ctx.tenantId, { ...window, kind: 'commit_observed' }, ctx.scope.from, ctx.scope.to);
   const commits = latestPerSubject(rows.map(parseStatement))
     .map((commit) => ({ commit, findings: findingsOf(commit) }))
     .filter(({ findings }) => findings.total !== null);
@@ -939,11 +1004,11 @@ async function answerQ11v(ctx: QaAnswerContext): Promise<QaEnvelope> {
       evidence: commits.map(({ commit }) => ({ seq: commit.seq, digest: commit.digest })),
       ...(breakdown.length > 0 ? { breakdown } : {}),
     },
-  ], await asOfFor(ctx, window));
+  ], await asOfFor(src, ctx, window));
 }
 
-async function answerQ14v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const mergeSha = await mergeShaOf(ctx.tenantId, ctx.scope.pull_request_id as string);
+async function answerQ14v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const mergeSha = await src.mergeSha(ctx.tenantId, ctx.scope.pull_request_id as string);
   if (!mergeSha) {
     // An unmerged pull request: no chain to show, every figure honestly says so.
     return finishAuditor(ctx, [
@@ -952,7 +1017,7 @@ async function answerQ14v(ctx: QaAnswerContext): Promise<QaEnvelope> {
       { key: 'deployed_statements', availability: 'unavailable', reasons: notReported, value: null },
     ], ctx.now);
   }
-  const { rows, truncated } = await readStatements(ctx.tenantId, { subjectSha: [mergeSha] }, ctx.scope.from, ctx.scope.to);
+  const { rows, truncated } = await readStatements(src, ctx.tenantId, { subjectSha: [mergeSha] }, ctx.scope.from, ctx.scope.to);
   const prId = ctx.scope.pull_request_id as string;
   const prMerged = latestPerSubject(rows
     .filter((row) => row.kind === 'pr_merged' && pullRequestIdOf(parseStatement(row)) === prId)
@@ -971,13 +1036,13 @@ async function answerQ14v(ctx: QaAnswerContext): Promise<QaEnvelope> {
   // have a commit_observed statement in the period, one per commit (the
   // latest statement per subject).
   const withStatements = sourceShas.length > 0
-    ? latestPerSubject((await readStatements(ctx.tenantId, {
+    ? latestPerSubject((await readStatements(src, ctx.tenantId, {
       repositoryId: mergeStatement.repositoryId,
       subjectSha: sourceShas,
       kind: 'commit_observed',
     }, ctx.scope.from, ctx.scope.to)).rows.map(parseStatement))
     : [];
-  const asOf = await asOfFor(ctx, { subjectSha: [mergeSha] });
+  const asOf = await asOfFor(src, ctx, { subjectSha: [mergeSha] });
   const drilldown: QaDrilldown[] = sourceShas.map((sha) => ({ scope: 'commit' as const, id: sha, label: sha }));
   return finishAuditor(ctx, [
     {
@@ -1004,9 +1069,9 @@ async function answerQ14v(ctx: QaAnswerContext): Promise<QaEnvelope> {
   ], asOf, drilldown);
 }
 
-async function answerQ16v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const { window } = await directWindow(ctx);
-  const { rows, truncated } = await readStatements(ctx.tenantId, window, ctx.scope.from, ctx.scope.to);
+async function answerQ16v(src: CodeSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const { window } = await directWindow(src, ctx);
+  const { rows, truncated } = await readStatements(src, ctx.tenantId, window, ctx.scope.from, ctx.scope.to);
   if (rows.length === 0) {
     return finishAuditor(ctx, [
       { key: 'statements_in_scope', availability: 'unavailable', reasons: notReported, value: null },
@@ -1020,5 +1085,5 @@ async function answerQ16v(ctx: QaAnswerContext): Promise<QaEnvelope> {
       value: count(rows.length),
       evidence: rows.map((s) => ({ seq: s.seq, digest: s.digest })),
     },
-  ], await asOfFor(ctx, window));
+  ], await asOfFor(src, ctx, window));
 }

@@ -78,7 +78,6 @@ const notCaptured = (gap: QaGapId): QaReason => ({ code: 'not_captured_yet', gap
 const MAX_SEALS_VERIFIED = 1000;
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-const usText = (column: string) => sql.raw(`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`);
 
 interface VerifiedShape {
   kind: 'ok' | 'no_seals' | 'broken';
@@ -99,19 +98,10 @@ interface VerifiedShape {
  * still a tamper inside a sealed window) and cuts the figure rows to the
  * answer's range afterwards.
  */
-async function sealedPeriod(tenantId: string, from: string, to: string): Promise<VerifiedShape> {
+async function sealedPeriod(src: SealSource, tenantId: string, from: string, to: string): Promise<VerifiedShape> {
   const fromUs = usOf(from);
   const toUs = usOf(to);
-  const found = await db.execute(sql`select ${usText('s.window_from')} as window_from,
-      ${usText('s.window_to')} as window_to, s.row_count::int as row_count, s.task6a_count::int as task6a_count,
-      s.v2_count::int as v2_count, s.previous_digest as previous_digest, s.seal_document as seal_document,
-      s.seal_digest as seal_digest, s.statement_digest as statement_digest, s.record_id::text as record_id,
-      r.seq::text as seq
-    from attesta_security_finding_seals s
-    left join attesta_records r on r.tenant_id = s.tenant_id and r.id = s.record_id
-    where s.tenant_id = ${tenantId}::uuid
-      and s.window_from::timestamptz < ${to}::timestamptz and s.window_to::timestamptz > ${from}::timestamptz
-    order by s.window_from limit ${MAX_SEALS_VERIFIED + 1}`);
+  const found = { rows: await src.findingSeals(tenantId, from, to, MAX_SEALS_VERIFIED + 1) };
   if (found.rows.length === 0) {
     return { kind: 'no_seals', seals: [], rows: [], partial: false, truncated: false, newestAt: null };
   }
@@ -135,7 +125,7 @@ async function sealedPeriod(tenantId: string, from: string, to: string): Promise
       return { kind: 'broken', seals: [], rows: [], partial: false, truncated: false, newestAt: null };
     }
     const limit = rowCount + MAX_SECURITY_SEAL_ROWS;
-    const windowRows = await readSecurityRows(db, tenantId, windowFrom, windowTo, limit);
+    const windowRows = await src.findingRows(tenantId, windowFrom, windowTo, limit);
     // Hitting the bound means more rows now than the seal lists (or a flood so
     // large the read was cut): the sealed-window invariant says unsealed rows
     // are a break, and a cut read cannot be told apart from one.
@@ -158,6 +148,40 @@ async function sealedPeriod(tenantId: string, from: string, to: string): Promise
     newestAt: rows.reduce<string | null>((newest, row) => (newest === null || row.received_at > newest ? row.received_at : newest), null),
   };
 }
+
+/** What the security answers read. Every call is tenant-bound. */
+export interface SealSource {
+  /**
+   * The security-finding seals overlapping [from, to), window_from ascending, at most `limit`:
+   * window texts in exact µs, the stored seal columns, and the seal's ledger seq (text, or null).
+   */
+  findingSeals(tenantId: string, from: string, to: string, limit: number): Promise<Array<Record<string, unknown>>>;
+  /** The finding rows now in one seal window, as the sealer reads them (readSecurityRows). */
+  findingRows(tenantId: string, windowFrom: string, windowTo: string, limit: number): Promise<SealedRow[]>;
+  /** S15: the audit seals and rows of [from, to), each row checked against its seal. */
+  auditPeriod(tenantId: string, from: string, to: string): Promise<AuditShape>;
+}
+
+/** The seal windows are stored as exact µs text (the sealer's own form), so they are selected as is. */
+async function pgFindingSeals(tenantId: string, from: string, to: string, limit: number): Promise<Array<Record<string, unknown>>> {
+  const found = await db.execute(sql`select s.window_from as window_from,
+      s.window_to as window_to, s.row_count::int as row_count, s.task6a_count::int as task6a_count,
+      s.v2_count::int as v2_count, s.previous_digest as previous_digest, s.seal_document as seal_document,
+      s.seal_digest as seal_digest, s.statement_digest as statement_digest, s.record_id::text as record_id,
+      r.seq::text as seq
+    from attesta_security_finding_seals s
+    left join attesta_records r on r.tenant_id = s.tenant_id and r.id = s.record_id
+    where s.tenant_id = ${tenantId}::uuid
+      and s.window_from::timestamptz < ${to}::timestamptz and s.window_to::timestamptz > ${from}::timestamptz
+    order by s.window_from limit ${limit}`);
+  return found.rows;
+}
+
+export const pgSealSource: SealSource = {
+  findingSeals: pgFindingSeals,
+  findingRows: (tenantId, windowFrom, windowTo, limit) => readSecurityRows(db, tenantId, windowFrom, windowTo, limit),
+  auditPeriod: (tenantId, from, to) => auditSealPeriod(tenantId, from, to),
+};
 
 /** The verified attesta rows, mapped to Task19's metadata allowlist (never a preview column). */
 function qaFindingOf(row: SealedRow): SecurityFindingRow {
@@ -221,7 +245,8 @@ function verifiedEnvelope(ctx: QaAnswerContext, shape: VerifiedShape, seeds: See
           : seed.reasons,
         value: seed.value,
         ...(seed.breakdown && seed.breakdown.length > 0 ? { breakdown: seed.breakdown } : {}),
-        evidence: evidenceOf(evidenceRecords),
+        // Evidence backs a value; an unavailable figure has none to back.
+        ...(seed.availability !== 'unavailable' ? { evidence: evidenceOf(evidenceRecords) } : {}),
       };
     });
   const reasons: QaReason[] = [];
@@ -297,20 +322,20 @@ const plainCount = (seed: Pick<Seed, 'key'>, n: number, breakdown: QaBreakdownIt
 // ---------------------------------------------------------------------------
 // Registered answers
 
-export const answerS1: QaAnswerer = (ctx) => answerS1v(ctx);
-export const answerS7: QaAnswerer = (ctx) => answerS7v(ctx);
-export const answerS8: QaAnswerer = (ctx) => answerS8v(ctx);
-export const answerS9: QaAnswerer = (ctx) => answerS9v(ctx);
-export const answerS10: QaAnswerer = (ctx) => answerS10v(ctx);
-export const answerS11: QaAnswerer = (ctx) => answerS11v(ctx);
-export const answerS12: QaAnswerer = (ctx) => answerS12v(ctx);
-export const answerS15: QaAnswerer = (ctx) => answerS15v(ctx);
+export const answerS1: QaAnswerer = (ctx) => answerS1v(pgSealSource, ctx);
+export const answerS7: QaAnswerer = (ctx) => answerS7v(pgSealSource, ctx);
+export const answerS8: QaAnswerer = (ctx) => answerS8v(pgSealSource, ctx);
+export const answerS9: QaAnswerer = (ctx) => answerS9v(pgSealSource, ctx);
+export const answerS10: QaAnswerer = (ctx) => answerS10v(pgSealSource, ctx);
+export const answerS11: QaAnswerer = (ctx) => answerS11v(pgSealSource, ctx);
+export const answerS12: QaAnswerer = (ctx) => answerS12v(pgSealSource, ctx);
+export const answerS15: QaAnswerer = (ctx) => answerS15v(pgSealSource, ctx);
 
 // S1: the register of high or critical findings (a new compute: the registry's
 // S1 figure list differs from the live answer_not_built default).
 
-async function answerS1v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS1v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const severe = scoped(ctx, load.rows).filter((row) => row.ruleSeverity === 'high' || row.ruleSeverity === 'critical');
   const breakdown =
     ctx.breakdown === 'rule' ? tally('rule', severe, (row) => row.ruleId)
@@ -341,11 +366,11 @@ function findingsFigure(ctx: QaAnswerContext, rows: SecurityFindingRow[]): Seed 
   return plainCount({ key: 'findings' }, rows.length, breakdown);
 }
 
-async function answerS7v(ctx: QaAnswerContext): Promise<QaEnvelope> {
+async function answerS7v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
   const { from, to } = previousPeriod(ctx.scope);
   const [current, previous] = await Promise.all([
-    sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to),
-    sealedPeriod(ctx.tenantId, from, to),
+    sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to),
+    sealedPeriod(src, ctx.tenantId, from, to),
   ]);
   const envelope = verifiedEnvelope(ctx, current, [findingsFigure(ctx, current.rows)]);
   if (previous.kind === 'ok') {
@@ -376,8 +401,8 @@ async function answerS7v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 
 // S8: agents and models (pure metadata of the verified rows).
 
-async function answerS8v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS8v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const findings = scoped(ctx, load.rows);
   const breakdown =
     ctx.breakdown === 'agent_family' ? tally('agent_family', findings, (row) => row.agent ?? 'unknown')
@@ -394,8 +419,8 @@ async function answerS8v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 // field, so it is not part of the seals: the operating_system buckets read
 // `unavailable` over the sealed evidence, the rule_category totals are computed.
 
-async function answerS9v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS9v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const breakdown = ctx.breakdown === 'rule_category'
     ? tally('rule_category', load.rows, (row) => row.ruleCategory)
     : ctx.breakdown === 'operating_system'
@@ -408,8 +433,8 @@ async function answerS9v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 // seal covers the reporting status: those two figures are unavailable rather
 // than zeros read from an empty array (the honest-state rule).
 
-async function answerS10v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS10v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const findings = scoped(ctx, load.rows);
   const versions = new Set(findings.map((row) => row.rulePackVersion));
   const machineBreakdown = ctx.breakdown === 'machine'
@@ -424,8 +449,8 @@ async function answerS10v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 
 // S11: requested actions versus confirmed observed results (Task6.a phases).
 
-async function answerS11v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS11v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const findings = scoped(ctx, load.rows);
   const requested = findings.filter((row) => row.generation === 'task6a' && row.phase === 'requested');
   const observed = findings.filter((row) => row.generation === 'task6a' && row.phase === 'observed_result');
@@ -443,8 +468,8 @@ async function answerS11v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 // decisions: the request count is unavailable here rather than an unobserved 0,
 // and the policy versions come from the verified rows' rule packs.
 
-async function answerS12v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const load = await sealedPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS12v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const load = await sealedPeriod(src, ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const findings = scoped(ctx, load.rows);
   const versions = new Set(findings.map((row) => row.rulePackVersion));
   const repositoryBreakdown = ctx.breakdown === 'repository'
@@ -460,7 +485,7 @@ async function answerS12v(ctx: QaAnswerContext): Promise<QaEnvelope> {
 // ---------------------------------------------------------------------------
 // S15: the audit trail, under the auditor database role (prompt item 7)
 
-interface AuditSeal {
+export interface AuditSeal {
   recordId: string;
   statementDigest: string;
   windowFrom: string;
@@ -468,7 +493,7 @@ interface AuditSeal {
   seq: number | null;
 }
 
-interface AuditShape {
+export interface AuditShape {
   kind: 'ok' | 'no_seals' | 'broken';
   seals: AuditSeal[];
   rows: Array<{ row: StoredAuditRow; seal: AuditSeal }>;
@@ -492,8 +517,8 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
   const toUs = usOf(to);
   return db.transaction(async (tx) => {
     const inner = await withAuditReader(tx, tenantId, async (reader) => {
-      const found = await reader.execute(sql`select ${usText('s.window_from')} as window_from,
-          ${usText('s.window_to')} as window_to, s.row_count::int as row_count,
+      const found = await reader.execute(sql`select s.window_from as window_from,
+          s.window_to as window_to, s.row_count::int as row_count,
           s.previous_digest as previous_digest, s.seal_document as seal_document, s.seal_digest as seal_digest,
           s.statement_digest as statement_digest, s.record_id::text as record_id
         from attesta_audit_seals s
@@ -557,8 +582,8 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
  * of the prompt is impossible under the frozen registry (S15 declares no
  * dimensions), so no breakdown is emitted (handoff, contract-forced).
  */
-async function answerS15v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const shape = await auditSealPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
+async function answerS15v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const shape = await src.auditPeriod(ctx.tenantId, ctx.scope.from, ctx.scope.to);
   const seeds: AuditSeed[] = [
     { key: 'security_findings_reads', availability: 'recorded', reasons: [], value: count(shape.rows.filter(({ row }) => row.action === 'security_findings.read').length) },
     { key: 'raw_evidence_reveals', availability: 'recorded', reasons: [], value: count(shape.rows.filter(({ row }) => row.action === 'evidence.raw.read').length) },
@@ -575,4 +600,18 @@ async function answerS15v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     },
     seeds,
   );
+}
+
+/** The eight verifiable security answerers over one data source (the tests' seam). */
+export function securityVerifiableAnswerers(src: SealSource): Record<'S1' | 'S7' | 'S8' | 'S9' | 'S10' | 'S11' | 'S12' | 'S15', QaAnswerer> {
+  return {
+    S1: (ctx) => answerS1v(src, ctx),
+    S7: (ctx) => answerS7v(src, ctx),
+    S8: (ctx) => answerS8v(src, ctx),
+    S9: (ctx) => answerS9v(src, ctx),
+    S10: (ctx) => answerS10v(src, ctx),
+    S11: (ctx) => answerS11v(src, ctx),
+    S12: (ctx) => answerS12v(src, ctx),
+    S15: (ctx) => answerS15v(src, ctx),
+  };
 }

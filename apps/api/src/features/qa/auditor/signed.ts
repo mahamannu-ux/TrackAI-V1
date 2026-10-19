@@ -45,7 +45,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const usText = (column: string) => sql.raw(`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`);
 
 /** One stored report: its document bytes, their digest, and the signed statement that names them. */
-interface StoredReport {
+export interface StoredReport {
   document: string;
   documentDigest: string;
   statementDigest: string;
@@ -91,7 +91,7 @@ function signedEnvelope(ctx: QaAnswerContext, seeds: FigureSeed[], stored: Store
 // ---------------------------------------------------------------------------
 // Code (Q1, Q3, Q9, Q13): the Task15i4 period report
 
-async function codeReport(tenantId: string, repositoryId: string, from: string, to: string): Promise<StoredReport | null> {
+async function pgCodeReport(tenantId: string, repositoryId: string, from: string, to: string): Promise<StoredReport | null> {
   const found = await db.execute(sql`select p.report_document, p.report_digest, p.statement_digest,
       ${usText('r.recorded_at')} as recorded_at
     from attesta_period_reports p
@@ -103,7 +103,7 @@ async function codeReport(tenantId: string, repositoryId: string, from: string, 
   return storedOf(found.rows[0]);
 }
 
-async function answerCodeSigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
+async function answerCodeSigned(src: SignedSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
   const keys = REPORT_FIGURE_KEYS[ctx.questionId as keyof typeof REPORT_FIGURE_KEYS];
   if (!keys) throw new Error(`Task16h: ${ctx.questionId} has no signed code answer`);
   // Q1's whole-repository share is G1 whatever the report says.
@@ -114,7 +114,7 @@ async function answerCodeSigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
   // The code period report is per repository: no other scope has one.
   if (ctx.scopeLevel !== 'repository') return unavailableAnswer(ctx, reportKeys, NOT_BUILT_REPORT, g1);
   const repositoryId = ctx.scope.repository_id as string;
-  const stored = await codeReport(ctx.tenantId, repositoryId, ctx.scope.from, ctx.scope.to);
+  const stored = await src.codeReport(ctx.tenantId, repositoryId, ctx.scope.from, ctx.scope.to);
   if (!stored) return unavailableAnswer(ctx, reportKeys, NOT_BUILT_REPORT, g1);
   const doc = parsedDocument<ReportDocument>(stored);
   if (!doc || !doc.figures || !doc.completeness || !Array.isArray(doc.statements)) {
@@ -127,7 +127,7 @@ async function answerCodeSigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
 // ---------------------------------------------------------------------------
 // Security (S1, S7–S12): the Task15op-b security period report
 
-async function securityReport(tenantId: string, repositoryId: string | null, from: string, to: string): Promise<StoredReport | null> {
+async function pgSecurityReport(tenantId: string, repositoryId: string | null, from: string, to: string): Promise<StoredReport | null> {
   const found = await db.execute(sql`select p.report_document, p.report_digest, p.statement_digest,
       ${usText('r.recorded_at')} as recorded_at
     from attesta_security_period_reports p
@@ -259,11 +259,11 @@ function securityDocOf(stored: StoredReport): SecurityReportDocument | null {
   return doc && typeof doc.figures === 'object' && doc.figures !== null ? doc : null;
 }
 
-async function answerSecuritySigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
+async function answerSecuritySigned(src: SignedSource, ctx: QaAnswerContext): Promise<QaEnvelope> {
   const keys = SECURITY_FIGURE_KEYS[ctx.questionId];
   if (!keys) throw new Error(`Task16h: ${ctx.questionId} has no signed security answer`);
   const repositoryId = ctx.scope.repository_id ?? null;
-  const stored = await securityReport(ctx.tenantId, repositoryId, ctx.scope.from, ctx.scope.to);
+  const stored = await src.securityReport(ctx.tenantId, repositoryId, ctx.scope.from, ctx.scope.to);
   let envelope: QaEnvelope;
   if (!stored) envelope = unavailableAnswer(ctx, keys, NOT_BUILT_REPORT);
   else {
@@ -276,7 +276,7 @@ async function answerSecuritySigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
   // S7 compares with the previous period: that period's own exact report, or
   // report_not_built for it alone (it never drags the current answer down).
   const previous = previousPeriod(ctx.scope);
-  const prevStored = await securityReport(ctx.tenantId, repositoryId, previous.from, previous.to);
+  const prevStored = await src.securityReport(ctx.tenantId, repositoryId, previous.from, previous.to);
   const prevDoc = prevStored ? securityDocOf(prevStored) : null;
   const prevFigures: QaFigure[] = prevDoc
     ? securityFigures(ctx, prevDoc).map((seed): QaFigure => ({
@@ -292,7 +292,20 @@ async function answerSecuritySigned(ctx: QaAnswerContext): Promise<QaEnvelope> {
 }
 
 // ---------------------------------------------------------------------------
-// Registered answers
+// Registered answers, and the data source (PostgreSQL in the app, in-memory in the tests)
 
-export const answerCodeSignedQ: QaAnswerer = (ctx) => answerCodeSigned(ctx);
-export const answerSecuritySignedQ: QaAnswerer = (ctx) => answerSecuritySigned(ctx);
+/** The stored reports the signed answers read. Every call is tenant-bound; null when none matches exactly. */
+export interface SignedSource {
+  codeReport(tenantId: string, repositoryId: string, from: string, to: string): Promise<StoredReport | null>;
+  securityReport(tenantId: string, repositoryId: string | null, from: string, to: string): Promise<StoredReport | null>;
+}
+
+export const pgSignedSource: SignedSource = { codeReport: pgCodeReport, securityReport: pgSecurityReport };
+
+export const answerCodeSignedQ: QaAnswerer = (ctx) => answerCodeSigned(pgSignedSource, ctx);
+export const answerSecuritySignedQ: QaAnswerer = (ctx) => answerSecuritySigned(pgSignedSource, ctx);
+
+/** The signed answerers over one data source (the tests' seam). */
+export function signedAnswerers(src: SignedSource): { code: QaAnswerer; security: QaAnswerer } {
+  return { code: (ctx) => answerCodeSigned(src, ctx), security: (ctx) => answerSecuritySigned(src, ctx) };
+}
