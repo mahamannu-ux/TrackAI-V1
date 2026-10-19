@@ -1,0 +1,25 @@
+apps/web/src/app/dashboard/page.tsx
+  s_f7ed9cb27ca4e3::t_a13beb61afb784 772
+apps/web/src/app/dashboard/security-findings.tsx
+  s_f7ed9cb27ca4e3::t_b602241aac1dd9 102-107,310
+apps/web/src/app/dashboard/security-workspace.tsx
+  s_f7ed9cb27ca4e3::t_a66b51be3c6fe0 129-141,221,344-355
+docs/handoffs/Task20i-b-security-console_HANDOFF.md
+  s_f7ed9cb27ca4e3::t_0c5835937cb4b0 60,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "f4b484bf4eb845fe40fecd54aad161bc92545eda",
+  "prompts": {},
+  "sessions": {
+    "s_f7ed9cb27ca4e3": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_f7ed9cb27ca4e3",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
