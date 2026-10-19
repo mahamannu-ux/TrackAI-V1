@@ -116,9 +116,10 @@ async function sealedPeriod(tenantId: string, from: string, to: string): Promise
     return { kind: 'no_seals', seals: [], rows: [], partial: false, truncated: false, newestAt: null };
   }
   const truncated = found.rows.length > MAX_SEALS_VERIFIED;
+  const verified = found.rows.slice(0, MAX_SEALS_VERIFIED);
   const seals: VerifiedShape['seals'] = [];
   const rows: SealedRow[] = [];
-  for (const raw of found.rows) {
+  for (const raw of verified) {
     const windowFrom = str(raw.window_from);
     const windowTo = str(raw.window_to);
     const rowCount = Number(raw.row_count);
@@ -146,8 +147,8 @@ async function sealedPeriod(tenantId: string, from: string, to: string): Promise
   }
   // The exact-µs window texts order like instants: head/tail outside them is
   // unsealed and makes the answer partial.
-  const head = seals.length > 0 && str((found.rows[0] as { window_from: string }).window_from) > fromUs;
-  const tail = str((found.rows[found.rows.length - 1] as { window_to: string }).window_to) < toUs;
+  const head = str((verified[0] as { window_from: string }).window_from) > fromUs;
+  const tail = str((verified[verified.length - 1] as { window_to: string }).window_to) < toUs;
   return {
     kind: 'ok',
     seals,
@@ -216,7 +217,7 @@ function verifiedEnvelope(ctx: QaAnswerContext, shape: VerifiedShape, seeds: See
         key: seed.key,
         availability: coveragePartial ? 'partial' : seed.availability,
         reasons: coveragePartial
-          ? [...new Set([SEALED, ...(shape.truncated ? [TRUNCATED] : []), ...seed.reasons])]
+          ? [...seed.reasons, ...(shape.partial ? [SEALED] : []), ...(shape.truncated ? [TRUNCATED] : [])]
           : seed.reasons,
         value: seed.value,
         ...(seed.breakdown && seed.breakdown.length > 0 ? { breakdown: seed.breakdown } : {}),
@@ -505,7 +506,7 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
       const truncated = found.rows.length > MAX_SEALS_VERIFIED;
       const seals: AuditSeal[] = [];
       const rows: AuditShape['rows'] = [];
-      for (const raw of found.rows) {
+      for (const raw of found.rows.slice(0, MAX_SEALS_VERIFIED)) {
         const windowFrom = str(raw.window_from);
         const windowTo = str(raw.window_to);
         const rowCount = Number(raw.row_count);
@@ -545,7 +546,7 @@ async function auditSealPeriod(tenantId: string, from: string, to: string): Prom
         from attesta_records r where r.tenant_id = ${tenantId}::uuid
           and r.id in (${sql.join(seals.map((s) => sql`${s.recordId}::uuid`), sql.raw(', '))})`);
       const seqById = new Map(ledger.rows.map((r: Record<string, unknown>) => [str(r.id), str(r.seq)]));
-      seals = seals.map((s) => ({ ...s, seq: Number(seqById.get(s.recordId) ?? '0') || null }));
+      seals = seals.map((s) => ({ ...s, seq: seqById.has(s.recordId) ? Number(seqById.get(s.recordId)) : null }));
     }
     return { ...inner, seals };
   }, { isolationLevel: 'repeatable read', accessMode: 'read only' });

@@ -32,10 +32,10 @@ import { scmPullRequests } from '../../../core/db/schema';
 import { withTenant } from '../../../core/db/tenant';
 import { sha256Prefixed } from '../../attesta/canonical';
 import {
-  AI_PROVENANCE_TYPE, PeriodReportError, basisPoints, computeReportDocument,
+  AI_PROVENANCE_TYPE, MAX_REPORT_STATEMENTS, REPORT_SETTLE_MS, basisPoints, computeReportDocument,
   type LineCounts, type ModelLines, type ReportDocument, type ReportInput,
 } from '../../attesta/period-report-rules';
-import { pgReportStore, type ReportDatabase } from '../../attesta/period-report-service';
+import { ReportJobError, pgReportStore, type ReportDatabase } from '../../attesta/period-report-service';
 import {
   MAX_VERIFY_RANGE, anchorMaterialFromEnv, dbChainVerifier, pgReadStore, publishedKeySource, verifyRange,
 } from '../../attesta/read-service';
@@ -72,12 +72,6 @@ const bpRatio = (bp: number): QaValue => ({ type: 'ratio', numerator: bp, denomi
 
 /** The interpretation reason (file comment): the emitter did not report the field. */
 const notReported: QaReason[] = [{ code: 'vendor_does_not_report' }];
-
-/** Figure reasons for a mapped figure (a non-recorded figure names why; a recorded one names nothing). */
-function figureReasons(availability: Reported, truncated: boolean): QaReason[] {
-  const base = availability === 'recorded' ? [] : notReported;
-  return truncated ? [...base, { code: 'evidence_truncated' }] : base;
-}
 
 // ---------------------------------------------------------------------------
 // The envelope
@@ -126,27 +120,53 @@ function finishAuditor(ctx: QaAnswerContext, seeds: FigureSeed[], asOf: string, 
 // The report path (Q1, Q3, Q9, Q13): the same computation the period report runs
 
 const reportStore = pgReportStore(db as unknown as ReportDatabase);
-interface ScopeDoc { repositoryId: string; doc: ReportDocument | null }
+
+/** Clock skew allowed between the API and the database when clamping to the settled part. */
+const SETTLE_SKEW_MS = 60_000;
 
 /**
- * One repository's report document, as the signed period report computes it.
- * The settle rule and the input cap are readSnapshot's: an unsettled `to`
- * surfaces as the route's 503 QA_UNAVAILABLE (that is the design as given),
- * and a scope with more statements than a document may sum gives
- * `doc: null`, which the answers report as `evidence_truncated`.
+ * The part of the request's period the report computation may read. readSnapshot
+ * refuses a `to` inside the settle margin; the Questions screen's default `to`
+ * is "now", so the verifiable answer counts only the settled part and says so
+ * (`not_sealed_yet`, contract rule 4) instead of failing the request.
  */
-async function repositoryDoc(tenantId: string, repositoryId: string, from: string, to: string): Promise<ScopeDoc> {
-  const scope = { repository_id: repositoryId, from, to, basis: 'recorded_at' as const };
-  let inputs: ReportInput[];
+interface ReportWindow { from: string; to: string; unsettled: boolean }
+
+function settledWindow(ctx: QaAnswerContext): ReportWindow | null {
+  const limitMs = Date.parse(ctx.now) - REPORT_SETTLE_MS - SETTLE_SKEW_MS;
+  if (Date.parse(ctx.scope.to) <= limitMs) return { from: ctx.scope.from, to: ctx.scope.to, unsettled: false };
+  if (limitMs < Date.parse(ctx.scope.from)) return null;
+  return { from: ctx.scope.from, to: new Date(limitMs).toISOString(), unsettled: true };
+}
+
+interface ScopeDoc { repositoryId: string; doc: ReportDocument; truncated: boolean }
+
+/** What qualifies every figure of a report-path answer. */
+interface Flags { truncated: boolean; unsettled: boolean }
+
+/**
+ * One repository's statements as the signed period report reads them. Above
+ * MAX_REPORT_STATEMENTS readSnapshot refuses the scope; the answer then counts
+ * the first MAX_REPORT_STATEMENTS statements in seq order and says so
+ * (`evidence_truncated`, prompt item 1). An unsettled `to` still fails loudly
+ * (settledWindow keeps the request clear of it).
+ */
+async function reportInputs(tenantId: string, repositoryId: string, win: ReportWindow): Promise<{ inputs: ReportInput[]; truncated: boolean }> {
+  const scope = { repository_id: repositoryId, from: win.from, to: win.to, basis: 'recorded_at' as const };
   try {
-    inputs = (await reportStore.readSnapshot(tenantId, scope)).inputs;
+    return { inputs: (await reportStore.readSnapshot(tenantId, scope)).inputs, truncated: false };
   } catch (err) {
-    if (err instanceof PeriodReportError && err.code === 'ATTESTA_API_INVALID_QUERY') {
-      return { repositoryId, doc: null };
+    if (err instanceof ReportJobError && err.code === 'ATTESTA_API_INVALID_QUERY' && /too many statements/.test(err.message)) {
+      const { rows } = await readStatements(tenantId, { repositoryId }, win.from, win.to);
+      const inputs = rows.slice(0, MAX_REPORT_STATEMENTS).map((r) => ({ seq: r.seq, digest: r.digest, canonical: r.canonical }));
+      return { inputs, truncated: true };
     }
     throw err;
   }
-  return { repositoryId, doc: computeReportDocument({ tenantId, scope, inputs }) };
+}
+
+function docOf(tenantId: string, repositoryId: string, win: ReportWindow, inputs: ReportInput[]): ReportDocument {
+  return computeReportDocument({ tenantId, scope: { repository_id: repositoryId, from: win.from, to: win.to, basis: 'recorded_at' }, inputs });
 }
 
 /** Repositories with ai-provenance statements in the window, ordered; at most MAX_REPOSITORIES. */
@@ -158,18 +178,41 @@ async function repositoriesInWindow(tenantId: string, from: string, to: string):
   const repositories = found.rows
     .map((row: Record<string, unknown>) => row.repository_id)
     .filter((v): v is string => typeof v === 'string');
-  return { repositories, truncated: repositories.length > MAX_REPOSITORIES };
+  return { repositories: repositories.slice(0, MAX_REPOSITORIES), truncated: repositories.length > MAX_REPOSITORIES };
 }
 
-/** Tenant scope: one document per repository with statements. Every other scope: that scope's repository. */
-async function scopeDocs(ctx: QaAnswerContext): Promise<{ docs: ScopeDoc[]; repoTruncated: boolean }> {
+/**
+ * The documents behind a report-path answer. Tenant scope: one per repository
+ * with statements (at most MAX_REPOSITORIES); repository scope: that one;
+ * PR and commit scopes: the repository's document over that subject's
+ * statements only (prompt item 3). Null when nothing of the period is settled.
+ */
+async function reportDocs(ctx: QaAnswerContext): Promise<{ docs: ScopeDoc[]; flags: Flags; win: ReportWindow } | null> {
+  const win = settledWindow(ctx);
+  if (!win) return null;
   if (ctx.scopeLevel === 'tenant') {
-    const { repositories, truncated } = await repositoriesInWindow(ctx.tenantId, ctx.scope.from, ctx.scope.to);
-    const docs = await Promise.all(repositories.map((id) => repositoryDoc(ctx.tenantId, id, ctx.scope.from, ctx.scope.to)));
-    return { docs, repoTruncated: truncated };
+    const { repositories, truncated } = await repositoriesInWindow(ctx.tenantId, win.from, win.to);
+    const docs = await Promise.all(repositories.map(async (id): Promise<ScopeDoc> => {
+      const read = await reportInputs(ctx.tenantId, id, win);
+      return { repositoryId: id, doc: docOf(ctx.tenantId, id, win, read.inputs), truncated: read.truncated };
+    }));
+    return { docs, win, flags: { truncated: truncated || docs.some((d) => d.truncated), unsettled: win.unsettled } };
   }
   const repositoryId = ctx.scope.repository_id as string;
-  return { docs: [await repositoryDoc(ctx.tenantId, repositoryId, ctx.scope.from, ctx.scope.to)], repoTruncated: false };
+  const read = await reportInputs(ctx.tenantId, repositoryId, win);
+  let inputs = read.inputs;
+  if (ctx.scopeLevel === 'commit' || ctx.scopeLevel === 'pull_request') {
+    const subjectSha = ctx.scopeLevel === 'commit'
+      ? ctx.scope.commit_sha as string
+      : await mergeShaOf(ctx.tenantId, ctx.scope.pull_request_id as string);
+    // An unmerged pull request has no subject: nothing of the repository counts for it.
+    inputs = subjectSha === null ? [] : inputs.filter((input) => subjectShaOf(input) === subjectSha);
+  }
+  return {
+    docs: [{ repositoryId, doc: docOf(ctx.tenantId, repositoryId, win, inputs), truncated: read.truncated }],
+    win,
+    flags: { truncated: read.truncated, unsettled: win.unsettled },
+  };
 }
 
 /** The PR's merge commit sha: the subject every stored statement of a merged change carries. */
@@ -193,24 +236,27 @@ function subjectShaOf(input: ReportInput): string | null {
   return typeof subject?.digest?.gitCommit === 'string' ? subject.digest.gitCommit : null;
 }
 
-/** PR and commit report scopes: the document over that subject's statements only (prompt item 3). */
-async function subjectScopeDocs(ctx: QaAnswerContext): Promise<ScopeDoc[]> {
-  const repositoryId = ctx.scope.repository_id as string;
-  const subjectSha = ctx.scopeLevel === 'commit'
-    ? ctx.scope.commit_sha as string
-    : await mergeShaOf(ctx.tenantId, ctx.scope.pull_request_id as string);
-  const scope = { repository_id: repositoryId, from: ctx.scope.from, to: ctx.scope.to, basis: 'recorded_at' as const };
-  let inputs: ReportInput[];
-  try {
-    inputs = (await reportStore.readSnapshot(ctx.tenantId, scope)).inputs;
-  } catch (err) {
-    if (err instanceof PeriodReportError && err.code === 'ATTESTA_API_INVALID_QUERY') {
-      return [{ repositoryId, doc: null }];
-    }
-    throw err;
-  }
-  const filtered = inputs.filter((input) => subjectShaOf(input) === subjectSha);
-  return [{ repositoryId, doc: computeReportDocument({ tenantId: ctx.tenantId, scope, inputs: filtered }) }];
+/**
+ * A mapped figure's availability and reasons under the answer's flags: a
+ * truncated or partly unsettled count is `partial` with its reason (contract
+ * rule 4), never `recorded`; an unavailable figure stays unavailable.
+ */
+function qualified(availability: Reported, flags: Flags): { availability: Reported; reasons: QaReason[] } {
+  const base = availability === 'recorded' ? [] : notReported;
+  if (availability === 'unavailable') return { availability, reasons: base };
+  const extra: QaReason[] = [
+    ...(flags.unsettled ? [{ code: 'not_sealed_yet' as const }] : []),
+    ...(flags.truncated ? [{ code: 'evidence_truncated' as const }] : []),
+  ];
+  return { availability: extra.length > 0 ? 'partial' : availability, reasons: [...base, ...extra] };
+}
+
+/** Every figure of a report-path answer when no part of the period is settled yet. */
+function unsettledAnswer(ctx: QaAnswerContext, keys: string[], extra: FigureSeed[] = []): QaEnvelope {
+  return finishAuditor(ctx, [
+    ...keys.map((key): FigureSeed => ({ key, availability: 'unavailable', reasons: [{ code: 'not_sealed_yet' }], value: null })),
+    ...extra,
+  ], ctx.now);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +296,6 @@ function figureParts(doc: ReportDocument, name: keyof ReportDocument['figures'])
 function aggregateInt(docs: ScopeDoc[], name: keyof ReportDocument['figures']): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
-    if (!doc) continue;
     const parts = figureParts(doc, name);
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -264,7 +309,6 @@ function aggregateInt(docs: ScopeDoc[], name: keyof ReportDocument['figures']): 
 function aggregateLines(docs: ScopeDoc[], name: keyof ReportDocument['figures']): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
-    if (!doc) continue;
     const parts = figureParts(doc, name);
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -281,7 +325,6 @@ function aggregateLines(docs: ScopeDoc[], name: keyof ReportDocument['figures'])
 function aggregateModels(docs: ScopeDoc[]): Agg {
   const agg = emptyAgg();
   for (const { doc } of docs) {
-    if (!doc) continue;
     const parts = figureParts(doc, 'merged_ai_lines_by_model');
     agg.availability.push(parts.availability);
     if (parts.availability === 'unavailable') continue;
@@ -324,8 +367,11 @@ function whereOf(tenantId: string, window: ReadWindow, from: string, to: string,
   ];
   if (predicateType) where.push(sql`r.predicate_type = ${predicateType}`);
   if (window.repositoryId) where.push(sql`r.repository_id = ${window.repositoryId}`);
-  if (window.subjectSha && window.subjectSha.length > 0) {
-    where.push(sql`r.subject_sha in (${sql.join(window.subjectSha.map((sha) => sql`${sha}`), sql`, `)})`);
+  if (window.subjectSha) {
+    // An empty subject list matches nothing (an unmerged pull request has no subject), never everything.
+    where.push(window.subjectSha.length > 0
+      ? sql`r.subject_sha in (${sql.join(window.subjectSha.map((sha) => sql`${sha}`), sql`, `)})`
+      : sql`false`);
   }
   if (window.kind) where.push(sql`r.statement_kind = ${window.kind}`);
   return where;
@@ -529,52 +575,61 @@ export const answerQ13: QaAnswerer = (ctx) => answerQ13v(ctx);
 export const answerQ14: QaAnswerer = (ctx) => answerQ14v(ctx);
 export const answerQ16: QaAnswerer = (ctx) => answerQ16v(ctx);
 
+/** A report-path answer's as_of: the newest ai-provenance record of the settled window it counted. */
+async function reportAsOf(ctx: QaAnswerContext, win: ReportWindow): Promise<string> {
+  const repositoryId = ctx.scopeLevel === 'tenant' ? undefined : ctx.scope.repository_id;
+  return msTime(await newestRecordedAt(ctx.tenantId, repositoryId ? { repositoryId } : {}, win.from, win.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
+}
+
 async function answerQ1v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const { docs, repoTruncated } = await scopeDocs(ctx);
-  const truncated = repoTruncated || docs.some((d) => d.doc === null);
+  const g1: FigureSeed = { key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null };
+  const read = await reportDocs(ctx);
+  if (!read) return unsettledAnswer(ctx, ['ai_lines_changed', 'human_lines_changed', 'unknown_lines_changed', 'ai_share_of_changed_lines'], [g1]);
+  const { docs, flags } = read;
   const lines = aggregateLines(docs, 'lines_changed');
-  const availability = worstOf(lines.availability);
+  const lineState = qualified(worstOf(lines.availability), flags);
   const { ai, human, unknown } = lines.numbers;
   const denominator = ai + human + unknown;
-  const share: QaValue | null = denominator > 0 && availability !== 'unavailable'
-    ? bpRatio(basisPoints(ai, denominator))
-    : null;
+  const available = lineState.availability !== 'unavailable';
   const seeds: FigureSeed[] = ([
     ['ai_lines_changed', count(ai)],
     ['human_lines_changed', count(human)],
     ['unknown_lines_changed', count(unknown)],
   ] as Array<[string, QaValue]>).map(([key, value]): FigureSeed => ({
-    key, availability, reasons: figureReasons(availability, truncated), value, evidence: [...lines.records],
+    key, ...lineState, value: available ? value : null, evidence: [...lines.records],
   }));
-  // The share is a different figure with its own availability: null only when unavailable.
-  const shareAvailability: Reported = share === null ? 'unavailable' : availability;
+  // The share is a different figure with its own availability: no lines, no share.
+  const shareState = available && denominator > 0 ? lineState : qualified('unavailable', flags);
   seeds.push({
     key: 'ai_share_of_changed_lines',
-    availability: shareAvailability,
-    reasons: figureReasons(shareAvailability, truncated),
-    value: share,
+    ...shareState,
+    value: shareState.availability === 'unavailable' ? null : bpRatio(basisPoints(ai, denominator)),
     evidence: [...lines.records],
   });
   // The whole-repository share is not a report figure: G1, honestly unavailable.
-  seeds.push({ key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null });
-  return finishAuditor(ctx, seeds, await asOfFor(ctx));
+  seeds.push(g1);
+  return finishAuditor(ctx, seeds, await reportAsOf(ctx, read.win));
 }
 
 // ---------------------------------------------------------------------------
 // Q3
 
 async function answerQ3v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const { docs, repoTruncated } = await scopeDocs(ctx);
-  const truncated = repoTruncated || docs.some((d) => d.doc === null);
+  const read = await reportDocs(ctx);
+  if (!read) return unsettledAnswer(ctx, ['prs_merged', 'merged_ai_lines', 'ai_share_of_merged_lines']);
+  const { docs, flags } = read;
   const prs = aggregateInt(docs, 'prs_merged');
   const merged = aggregateModels(docs);
   const mergedLines = aggregateLines(docs, 'merged_lines');
   const mergedAi = merged.numbers.total;
   const allMerged = mergedLines.numbers.ai + mergedLines.numbers.human + mergedLines.numbers.unknown;
-  const share: QaValue | null = allMerged > 0 ? bpRatio(basisPoints(mergedAi, allMerged)) : null;
-  const shareAvailability: Reported = share === null
-    ? worstOf(merged.availability)
-    : worstOf(merged.availability.filter((a) => a !== 'unavailable'));
+  const prsState = qualified(worstOf(prs.availability), flags);
+  const mergedState = qualified(worstOf(merged.availability), flags);
+  const linesAvailability = worstOf(mergedLines.availability);
+  // The share needs both its parts and a non-zero denominator; otherwise it is unavailable, never 0.
+  const shareState = mergedState.availability !== 'unavailable' && linesAvailability !== 'unavailable' && allMerged > 0
+    ? qualified(worstOf([worstOf(merged.availability), linesAvailability]), flags)
+    : qualified('unavailable', flags);
   // One breakdown item per model key (dimension `model`), or per tool with
   // its keys summed (dimension `tool`), exactly the requested dimension.
   const breakdown: QaBreakdownItem[] = [];
@@ -586,97 +641,87 @@ async function answerQ3v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     }
     for (const [key, lines_] of [...buckets.entries()].sort(byKeyAsc)) breakdown.push({ dimension: ctx.breakdown, key, value: count(lines_) });
   }
-  const prsAvailability = worstOf(prs.availability);
-  const mergedAvailability = worstOf(merged.availability);
   return finishAuditor(ctx, [
     {
       key: 'prs_merged',
-      availability: prsAvailability,
-      reasons: figureReasons(prsAvailability, truncated),
-      value: prsAvailability === 'unavailable' ? null : count(prs.numbers.total),
+      ...prsState,
+      value: prsState.availability === 'unavailable' ? null : count(prs.numbers.total),
       evidence: [...prs.records],
     },
     {
       key: 'merged_ai_lines',
-      availability: mergedAvailability,
-      reasons: figureReasons(mergedAvailability, truncated),
-      value: mergedAvailability === 'unavailable' ? null : count(mergedAi),
+      ...mergedState,
+      value: mergedState.availability === 'unavailable' ? null : count(mergedAi),
       evidence: [...merged.records],
-      ...(mergedAvailability !== 'unavailable' && breakdown.length > 0 ? { breakdown } : {}),
+      ...(mergedState.availability !== 'unavailable' && breakdown.length > 0 ? { breakdown } : {}),
     },
     {
       key: 'ai_share_of_merged_lines',
-      availability: shareAvailability,
-      reasons: figureReasons(shareAvailability, truncated),
-      value: share,
-      evidence: [...mergedLines.records],
+      ...shareState,
+      value: shareState.availability === 'unavailable' ? null : bpRatio(basisPoints(mergedAi, allMerged)),
+      evidence: [...merged.records, ...mergedLines.records],
     },
-  ], await asOfFor(ctx));
+  ], await reportAsOf(ctx, read.win));
 }
 
 // ---------------------------------------------------------------------------
 // Q9
 
 async function answerQ9v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const docs = ctx.scopeLevel === 'pull_request'
-    ? await subjectScopeDocs(ctx)
-    : (await scopeDocs(ctx)).docs;
-  const truncated = docs.some((d) => d.doc === null);
-  const deployments = aggregateInt(docs, 'production_deployments');
-  const availability = worstOf(deployments.availability);
+  const read = await reportDocs(ctx);
+  if (!read) return unsettledAnswer(ctx, ['production_deployments']);
+  const deployments = aggregateInt(read.docs, 'production_deployments');
+  const state = qualified(worstOf(deployments.availability), read.flags);
   return finishAuditor(ctx, [
     {
       key: 'production_deployments',
-      availability,
-      reasons: figureReasons(availability, truncated),
-      value: availability === 'unavailable' ? null : count(deployments.numbers.total),
+      ...state,
+      value: state.availability === 'unavailable' ? null : count(deployments.numbers.total),
       evidence: [...deployments.records],
     },
-  ], await asOfFor(ctx));
+  ], await reportAsOf(ctx, read.win));
 }
 
 // ---------------------------------------------------------------------------
 // Q13
 
 async function answerQ13v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const docs = ctx.scopeLevel === 'commit'
-    ? await subjectScopeDocs(ctx)
-    : (await scopeDocs(ctx)).docs;
-  const truncated = docs.some((d) => d.doc === null);
+  const read = await reportDocs(ctx);
+  if (!read) return unsettledAnswer(ctx, ['commits_observed', 'unknown_lines_changed', 'inputs_partial', 'inputs_unavailable']);
+  const { docs, flags } = read;
   const commits = aggregateInt(docs, 'commits_observed');
-  const unknownLines = aggregateLines(docs, 'lines_changed');
-  const availability = worstOf(commits.availability);
-  const statements = docs.flatMap((d) =>
-    (d.doc?.statements ?? []).map((s: { seq: number; digest: string }) => ({ seq: s.seq, digest: s.digest })));
+  const lines = aggregateLines(docs, 'lines_changed');
+  const commitState = qualified(worstOf(commits.availability), flags);
+  const lineState = qualified(worstOf(lines.availability), flags);
+  const statements = docs.flatMap((d) => d.doc.statements.map((s) => ({ seq: s.seq, digest: s.digest })));
   const { inputs, partial, unavailable } = docs.reduce(
     (sum, d) => {
-      const c = d.doc?.completeness.lines_changed;
-      return !c ? sum : { inputs: sum.inputs + c.inputs, partial: sum.partial + c.partial, unavailable: sum.unavailable + c.unavailable };
+      const c = d.doc.completeness.lines_changed;
+      return { inputs: sum.inputs + c.inputs, partial: sum.partial + c.partial, unavailable: sum.unavailable + c.unavailable };
     },
     { inputs: 0, partial: 0, unavailable: 0 },
   );
   // The completeness counts are over every statement in the window, so their
   // own evidence is the window's statement list as a whole; they read recorded
   // 0 honestly (that is a real count), unavailable only with no statements.
-  const completenessAvailability: Reported = inputs === 0 ? 'unavailable' : 'recorded';
+  const completeness = qualified(inputs === 0 ? 'unavailable' : 'recorded', flags);
+  const completenessValue = (n: number) => (completeness.availability === 'unavailable' ? null : count(n));
   return finishAuditor(ctx, [
     {
       key: 'commits_observed',
-      availability,
-      reasons: figureReasons(availability, truncated),
-      value: availability === 'unavailable' ? null : count(commits.numbers.total),
+      ...commitState,
+      value: commitState.availability === 'unavailable' ? null : count(commits.numbers.total),
       evidence: [...commits.records],
     },
     {
       key: 'unknown_lines_changed',
-      availability,
-      reasons: figureReasons(availability, truncated),
-      value: availability === 'unavailable' ? null : count(unknownLines.numbers.unknown),
-      evidence: [...unknownLines.records],
+      ...lineState,
+      value: lineState.availability === 'unavailable' ? null : count(lines.numbers.unknown),
+      evidence: [...lines.records],
     },
-    { key: 'inputs_partial', availability: completenessAvailability, reasons: figureReasons(completenessAvailability, truncated), value: count(partial), evidence: statements },
-    { key: 'inputs_unavailable', availability: completenessAvailability, reasons: figureReasons(completenessAvailability, truncated), value: count(unavailable), evidence: statements },
-  ], await asOfFor(ctx));
+    { key: 'inputs_partial', ...completeness, value: completenessValue(partial), evidence: statements },
+    { key: 'inputs_unavailable', ...completeness, value: completenessValue(unavailable), evidence: statements },
+  ], await reportAsOf(ctx, read.win));
 }
 
 // ---------------------------------------------------------------------------
@@ -888,14 +933,15 @@ async function answerQ14v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     sources.delete(mergeSha);
     sourceShas = [...sources].sort();
   }
-  // The PR's source commits with a statement, at any time: the lineage is in
-  // the pr_merged statement, the statements exist outside the window.
+  // The PR's source commits (from the pr_merged statement's lineage) that
+  // have a commit_observed statement in the period, one per commit (the
+  // latest statement per subject).
   const withStatements = sourceShas.length > 0
-    ? (await readStatements(ctx.tenantId, {
+    ? latestPerSubject((await readStatements(ctx.tenantId, {
       repositoryId: mergeStatement.repositoryId,
       subjectSha: sourceShas,
       kind: 'commit_observed',
-    }, ctx.scope.from, ctx.scope.to)).rows
+    }, ctx.scope.from, ctx.scope.to)).rows.map(parseStatement))
     : [];
   const asOf = await asOfFor(ctx, { subjectSha: [mergeSha] });
   const drilldown: QaDrilldown[] = sourceShas.map((sha) => ({ scope: 'commit' as const, id: sha, label: sha }));
