@@ -76,7 +76,7 @@ const notReported: QaReason[] = [{ code: 'vendor_does_not_report' }];
 // ---------------------------------------------------------------------------
 // The envelope
 
-interface FigureSeed {
+export interface FigureSeed {
   key: string;
   availability: Reported;
   reasons: QaReason[];
@@ -85,7 +85,7 @@ interface FigureSeed {
   evidence?: EvidenceRecordInput[];
 }
 
-function finishAuditor(ctx: QaAnswerContext, seeds: FigureSeed[], asOf: string, drilldown: QaDrilldown[] = []): QaEnvelope {
+export function finishAuditor(ctx: QaAnswerContext, seeds: FigureSeed[], asOf: string, drilldown: QaDrilldown[] = []): QaEnvelope {
   const question = QA_QUESTIONS_BY_ID.get(ctx.questionId);
   if (!question) throw new Error(`Task16h: unknown question ${ctx.questionId}`);
   const figures: QaFigure[] = seeds.map((seed): QaFigure => ({
@@ -139,10 +139,10 @@ function settledWindow(ctx: QaAnswerContext): ReportWindow | null {
   return { from: ctx.scope.from, to: new Date(limitMs).toISOString(), unsettled: true };
 }
 
-interface ScopeDoc { repositoryId: string; doc: ReportDocument; truncated: boolean }
+export interface ScopeDoc { repositoryId: string; doc: ReportDocument; truncated: boolean }
 
 /** What qualifies every figure of a report-path answer. */
-interface Flags { truncated: boolean; unsettled: boolean }
+export interface Flags { truncated: boolean; unsettled: boolean }
 
 /**
  * One repository's statements as the signed period report reads them. Above
@@ -581,11 +581,9 @@ async function reportAsOf(ctx: QaAnswerContext, win: ReportWindow): Promise<stri
   return msTime(await newestRecordedAt(ctx.tenantId, repositoryId ? { repositoryId } : {}, win.from, win.to, AI_PROVENANCE_TYPE)) ?? ctx.now;
 }
 
-async function answerQ1v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const g1: FigureSeed = { key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null };
-  const read = await reportDocs(ctx);
-  if (!read) return unsettledAnswer(ctx, ['ai_lines_changed', 'human_lines_changed', 'unknown_lines_changed', 'ai_share_of_changed_lines'], [g1]);
-  const { docs, flags } = read;
+const G1_FIGURE: FigureSeed = { key: 'ai_share_of_repository', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G1' }], value: null };
+
+function q1Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
   const lines = aggregateLines(docs, 'lines_changed');
   const lineState = qualified(worstOf(lines.availability), flags);
   const { ai, human, unknown } = lines.numbers;
@@ -607,17 +605,14 @@ async function answerQ1v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     evidence: [...lines.records],
   });
   // The whole-repository share is not a report figure: G1, honestly unavailable.
-  seeds.push(g1);
-  return finishAuditor(ctx, seeds, await reportAsOf(ctx, read.win));
+  seeds.push(G1_FIGURE);
+  return seeds;
 }
 
 // ---------------------------------------------------------------------------
 // Q3
 
-async function answerQ3v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const read = await reportDocs(ctx);
-  if (!read) return unsettledAnswer(ctx, ['prs_merged', 'merged_ai_lines', 'ai_share_of_merged_lines']);
-  const { docs, flags } = read;
+function q3Figures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Flags): FigureSeed[] {
   const prs = aggregateInt(docs, 'prs_merged');
   const merged = aggregateModels(docs);
   const mergedLines = aggregateLines(docs, 'merged_lines');
@@ -641,7 +636,7 @@ async function answerQ3v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     }
     for (const [key, lines_] of [...buckets.entries()].sort(byKeyAsc)) breakdown.push({ dimension: ctx.breakdown, key, value: count(lines_) });
   }
-  return finishAuditor(ctx, [
+  return [
     {
       key: 'prs_merged',
       ...prsState,
@@ -661,34 +656,29 @@ async function answerQ3v(ctx: QaAnswerContext): Promise<QaEnvelope> {
       value: shareState.availability === 'unavailable' ? null : bpRatio(basisPoints(mergedAi, allMerged)),
       evidence: [...merged.records, ...mergedLines.records],
     },
-  ], await reportAsOf(ctx, read.win));
+  ];
 }
 
 // ---------------------------------------------------------------------------
 // Q9
 
-async function answerQ9v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const read = await reportDocs(ctx);
-  if (!read) return unsettledAnswer(ctx, ['production_deployments']);
-  const deployments = aggregateInt(read.docs, 'production_deployments');
-  const state = qualified(worstOf(deployments.availability), read.flags);
-  return finishAuditor(ctx, [
+function q9Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
+  const deployments = aggregateInt(docs, 'production_deployments');
+  const state = qualified(worstOf(deployments.availability), flags);
+  return [
     {
       key: 'production_deployments',
       ...state,
       value: state.availability === 'unavailable' ? null : count(deployments.numbers.total),
       evidence: [...deployments.records],
     },
-  ], await reportAsOf(ctx, read.win));
+  ];
 }
 
 // ---------------------------------------------------------------------------
 // Q13
 
-async function answerQ13v(ctx: QaAnswerContext): Promise<QaEnvelope> {
-  const read = await reportDocs(ctx);
-  if (!read) return unsettledAnswer(ctx, ['commits_observed', 'unknown_lines_changed', 'inputs_partial', 'inputs_unavailable']);
-  const { docs, flags } = read;
+function q13Figures(docs: ScopeDoc[], flags: Flags): FigureSeed[] {
   const commits = aggregateInt(docs, 'commits_observed');
   const lines = aggregateLines(docs, 'lines_changed');
   const commitState = qualified(worstOf(commits.availability), flags);
@@ -706,7 +696,7 @@ async function answerQ13v(ctx: QaAnswerContext): Promise<QaEnvelope> {
   // 0 honestly (that is a real count), unavailable only with no statements.
   const completeness = qualified(inputs === 0 ? 'unavailable' : 'recorded', flags);
   const completenessValue = (n: number) => (completeness.availability === 'unavailable' ? null : count(n));
-  return finishAuditor(ctx, [
+  return [
     {
       key: 'commits_observed',
       ...commitState,
@@ -721,8 +711,52 @@ async function answerQ13v(ctx: QaAnswerContext): Promise<QaEnvelope> {
     },
     { key: 'inputs_partial', ...completeness, value: completenessValue(partial), evidence: statements },
     { key: 'inputs_unavailable', ...completeness, value: completenessValue(unavailable), evidence: statements },
-  ], await reportAsOf(ctx, read.win));
+  ];
 }
+
+// ---------------------------------------------------------------------------
+// The report-path answers, and the figures signed.ts maps from a stored report
+
+/** The figure keys of each report-path question, in envelope order. */
+export const REPORT_FIGURE_KEYS: Record<'Q1' | 'Q3' | 'Q9' | 'Q13', string[]> = {
+  Q1: ['ai_lines_changed', 'human_lines_changed', 'unknown_lines_changed', 'ai_share_of_changed_lines', 'ai_share_of_repository'],
+  Q3: ['prs_merged', 'merged_ai_lines', 'ai_share_of_merged_lines'],
+  Q9: ['production_deployments'],
+  Q13: ['commits_observed', 'unknown_lines_changed', 'inputs_partial', 'inputs_unavailable'],
+};
+
+/**
+ * A report-path question's figures over report documents (the item 3
+ * mapping). The verifiable answers pass the documents they computed; the
+ * signed answers (signed.ts) pass the one stored, signed document with no
+ * flags, so both kinds map figures the same way.
+ */
+export function reportFigures(ctx: QaAnswerContext, docs: ScopeDoc[], flags: Flags): FigureSeed[] {
+  switch (ctx.questionId) {
+    case 'Q1': return q1Figures(docs, flags);
+    case 'Q3': return q3Figures(ctx, docs, flags);
+    case 'Q9': return q9Figures(docs, flags);
+    case 'Q13': return q13Figures(docs, flags);
+    default: throw new Error(`Task16h: ${ctx.questionId} is not a report-path question`);
+  }
+}
+
+async function reportAnswer(ctx: QaAnswerContext): Promise<QaEnvelope> {
+  const read = await reportDocs(ctx);
+  if (!read) {
+    const keys = REPORT_FIGURE_KEYS[ctx.questionId as keyof typeof REPORT_FIGURE_KEYS];
+    // Q1's G1 figure is unavailable for its own reason, settled or not.
+    return ctx.questionId === 'Q1'
+      ? unsettledAnswer(ctx, keys.filter((key) => key !== G1_FIGURE.key), [G1_FIGURE])
+      : unsettledAnswer(ctx, keys);
+  }
+  return finishAuditor(ctx, reportFigures(ctx, read.docs, read.flags), await reportAsOf(ctx, read.win));
+}
+
+const answerQ1v = reportAnswer;
+const answerQ3v = reportAnswer;
+const answerQ9v = reportAnswer;
+const answerQ13v = reportAnswer;
 
 // ---------------------------------------------------------------------------
 // Q7: the chain verify over the scope's seq range
