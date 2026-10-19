@@ -1,0 +1,19 @@
+docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md
+  s_af031ef3d0db12::t_35efbfdfb1cf0d 30,40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "15534ad1d3e15052de3f82bf855a8e0a6b0b2f25",
+  "prompts": {},
+  "sessions": {
+    "s_af031ef3d0db12": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a154f9-b484-7ba0-92ba-ad57431b2d16",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
