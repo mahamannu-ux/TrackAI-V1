@@ -163,6 +163,8 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
   const [line, setLine] = useState('');
   const [fileOptions, setFileOptions] = useState<QaDrilldownItem[]>([]);
   const [fileProblem, setFileProblem] = useState<Problem | null>(null);
+  const [fileCursor, setFileCursor] = useState<string | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [breakdown, setBreakdown] = useState<QaDimension | ''>('');
   const [urlReady, setUrlReady] = useState(false);
   const [answer, setAnswer] = useState<QaEnvelope | null>(null);
@@ -276,6 +278,7 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
       || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(commitSha)) {
       setFileOptions([]);
       setFileProblem(null);
+      setFileCursor(null);
       return;
     }
     let active = true;
@@ -286,14 +289,35 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
     }, true).then(page => {
       if (!active) return;
       setFileOptions(page.items.filter(item => item.scope === 'file'));
+      setFileCursor(page.next_cursor);
       setFileProblem(null);
     }).catch(cause => {
       if (!active) return;
       setFileOptions([]);
+      setFileCursor(null);
       setFileProblem(describeProblem(cause, 'Files are unavailable.'));
     });
     return () => { active = false; };
   }, [selectedQuestionId, isAuditor, scope, repositoryId, commitSha]);
+  const loadMoreFiles = async () => {
+    if (!fileCursor || filesLoading) return;
+    setFilesLoading(true);
+    try {
+      const to = new Date();
+      const page = await getQaAnswer('Q2', {
+        kind: 'live', repository_id: repositoryId, commit_sha: commitSha,
+        from: new Date(to.getTime() - 30 * 86_400_000).toISOString(), to: to.toISOString(),
+        cursor: fileCursor,
+      }, true);
+      setFileOptions(current => [...current, ...page.items.filter(item => item.scope === 'file')]);
+      setFileCursor(page.next_cursor);
+      setFileProblem(null);
+    } catch (cause) {
+      setFileProblem(describeProblem(cause, 'More files are unavailable.'));
+    } finally {
+      setFilesLoading(false);
+    }
+  };
   const filteredQuestions = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (questionList?.items ?? [])
@@ -558,6 +582,10 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
                     {fileOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
                   </select>
                   {fileProblem && <span className="mt-1 block text-xs text-amber-300">{fileProblem.message}</span>}
+                  {fileCursor && <button type="button" onClick={() => void loadMoreFiles()}
+                    disabled={filesLoading} className="mt-1 text-xs text-violet-300 hover:text-violet-200 disabled:opacity-50">
+                    {filesLoading ? 'Loading files…' : 'Load more files'}
+                  </button>}
                 </Field>
                 <Field label="Line number">
                   <input type="number" min="1" max="1000000" step="1" value={line}

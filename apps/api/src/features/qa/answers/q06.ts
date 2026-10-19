@@ -20,6 +20,8 @@ export function computeQ6({ context, ctx }: ComputeInput): QaEnvelope {
       merged_by_someone_else: selected.filter((pr) => pr.mergedByProviderId
         && pr.mergedByProviderId !== pr.authorProviderId).length,
       merger_unknown: selected.filter((pr) => !pr.mergedByProviderId).length,
+      // Task19g defines this key as commits with a known commit author. A
+      // separate Git committer identity is not captured in scm_commits.
       committer_known: context.commits.filter((commit) => ids.has(commit.id) && commit.authorEmail).length,
     };
   };

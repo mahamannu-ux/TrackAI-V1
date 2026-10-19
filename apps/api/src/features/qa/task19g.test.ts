@@ -71,6 +71,13 @@ test('rejection details map all four reasons and contain digests only', () => {
   assert.equal(details.repository_digests.length, 1);
   assert.match(details.repository_digests[0], /^[a-f0-9]{64}$/);
   assert.doesNotMatch(JSON.stringify(details), /github|Example|Repo|https|\/|\\/);
+  const many: GitAiMetricsBatch = { v: 1, events: Array.from({ length: 21 }, (_, index) => ({
+    t: index + 1, e: 1, v: {}, a: { '1': `https://github.com/example/repo-${index}` },
+  })) };
+  const capped = rejectionAuditDetails(many, many.events.map((_, index) => ({
+    index, error: messages[2],
+  })));
+  assert.equal(capped.repository_digests.length, 20);
 });
 
 const context = row<QaContext>({
@@ -123,6 +130,17 @@ test('Q15 is partial before capture, then recorded; Company B has no A rows', as
     { type: 'count', count: 2 });
   const other = await answerQuestion({ answerers, scopes }, { ...request, tenantId: tenantB });
   assert.equal(other.availability, 'partial');
+  const historical = await answerQuestion({ answerers, scopes }, { ...request,
+    query: { ...request.query, from: '2026-10-17T00:00:00.000Z',
+      to: '2026-10-18T00:00:00.000Z' } });
+  assert.equal(historical.availability, 'partial');
+  assert.equal(historical.figures.find((figure) => figure.key === 'rejected_uploads')?.value, null);
+  rows = [row({ ...rows[0], details: { event_count: 2, reason_counts: { grant_inactive: 2 },
+    repository_digests: Array.from({ length: 20 }, (_, index) => index.toString(16).padStart(64, '0')) } })];
+  const truncated = await answerQuestion({ answerers, scopes }, { ...request,
+    query: { ...request.query, from: now.toISOString() } });
+  assert.equal(truncated.figures.find((figure) => figure.key === 'rejected_repositories')?.availability, 'partial');
+  assert.equal(truncated.reasons[0]?.code, 'evidence_truncated');
 });
 
 test('Q2 exact, rewritten, unknown, and non-GitHub answers validate without exposing path', async () => {

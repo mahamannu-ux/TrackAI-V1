@@ -42,7 +42,8 @@ async function tokenFor(tenantId: string, owner: string, signal: AbortSignal): P
       'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'TrackAI',
     },
   });
-  if (!response.ok) return null;
+  if (response.status === 401 || response.status === 403 || response.status === 404) return null;
+  if (!response.ok) throw new Error('GitHub installation token request failed');
   const data = await response.json() as { token?: string; expires_at?: string };
   if (!data.token || !data.expires_at) return null;
   tokens.set(key, { value: data.token, expiresAt: Date.parse(data.expires_at) });
@@ -54,16 +55,18 @@ export async function githubBlame(input: BlameInput): Promise<BlameResult> {
   const repository = githubRepository(input.repositoryUrl);
   if (!repository) return { status: 'provider_unavailable' };
   const key = JSON.stringify([input.tenantId, input.repositoryId, input.commitSha, input.fileId]);
-  const cached = cache.get(key);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { status: 'ok', originSha: cached.ranges.find((range) =>
-      range.start <= input.line && range.end >= input.line)?.sha ?? null };
-  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
+    // Resolve current managed installation state before using a cached blame
+    // result; a locally revoked credential must invalidate access immediately.
     const token = await tokenFor(input.tenantId, repository.owner, controller.signal);
     if (!token) return { status: 'missing_installation' };
+    const cached = cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { status: 'ok', originSha: cached.ranges.find((range) =>
+        range.start <= input.line && range.end >= input.line)?.sha ?? null };
+    }
     const response = await fetch('https://api.github.com/graphql', {
       method: 'POST', signal: controller.signal,
       headers: {

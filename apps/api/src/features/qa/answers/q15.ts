@@ -11,7 +11,13 @@ type Rejection = typeof securityAuditEvents.$inferSelect;
 export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[]): QaEnvelope {
   const rows = allRows.filter((row) => row.occurredAt >= new Date(ctx.scope.from)
     && row.occurredAt <= new Date(ctx.scope.to));
-  const priorCapture = allRows.length > 0;
+  const firstCapture = allRows.reduce<Date | null>((first, row) =>
+    !first || row.occurredAt < first ? row.occurredAt : first, null);
+  const covered = firstCapture !== null && new Date(ctx.scope.from) >= firstCapture;
+  const digestsTruncated = rows.some((row) => {
+    const details = row.details as Record<string, unknown>;
+    return Array.isArray(details.repository_digests) && details.repository_digests.length >= 20;
+  });
   const byMachine = (key: string, selected: Rejection[]) => {
     if (ctx.breakdown !== 'machine') return undefined;
     const ids = [...new Set(selected.map((row) => row.actorId))].sort();
@@ -40,8 +46,14 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     if (ctx.breakdown === 'repository' || ctx.scope.repository_id) return {
       key, availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null,
     };
-    if (!priorCapture) return {
-      key, availability: 'partial', reasons: [{ code: 'not_captured_yet', gap: 'G5' }], value: null,
+    if (!covered) return {
+      key, availability: 'partial', reasons: [{ code: 'not_captured_yet', gap: 'G5' }],
+      value: rows.length ? { type: 'count', count: count(key, rows) } : null,
+    };
+    if (key === 'rejected_repositories' && digestsTruncated) return {
+      key, availability: 'partial', reasons: [{ code: 'evidence_truncated' }],
+      value: { type: 'count', count: count(key, rows) },
+      ...(ctx.breakdown === 'machine' ? { breakdown: byMachine(key, rows) } : {}),
     };
     return {
       key, availability: 'recorded', reasons: [], value: { type: 'count', count: count(key, rows) },
@@ -49,11 +61,13 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     };
   });
   const unavailable = ctx.breakdown === 'repository' || Boolean(ctx.scope.repository_id);
-  const partial = !priorCapture && !unavailable;
+  const partial = !covered && !unavailable;
+  const truncated = !partial && !unavailable && digestsTruncated;
   return {
     question_id: 'Q15', registry_version: QA_REGISTRY_VERSION, kind: 'live', as_of: ctx.now,
-    scope: ctx.scope, availability: unavailable ? 'unavailable' : partial ? 'partial' : 'recorded',
-    reasons: unavailable ? [{ code: 'answer_not_built' }] : partial ? [{ code: 'not_captured_yet', gap: 'G5' }] : [],
+    scope: ctx.scope, availability: unavailable ? 'unavailable' : partial || truncated ? 'partial' : 'recorded',
+    reasons: unavailable ? [{ code: 'answer_not_built' }] : partial
+      ? [{ code: 'not_captured_yet', gap: 'G5' }] : truncated ? [{ code: 'evidence_truncated' }] : [],
     figures, wording: [], drilldown: [],
   };
 }
