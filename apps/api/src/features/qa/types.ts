@@ -43,6 +43,10 @@ export const QA_REASON_CODES = [
   'partial_linkage', // the session text join (G10)
   'answer_not_built',
   'phase_2',
+  'not_sealed_yet', // A16.13: the seal lag, only the sealed part is counted
+  'evidence_broken', // A16.13: a seal or chain break; the answer is unavailable
+  'report_not_built', // A16.13: no signed report for exactly this scope
+  'evidence_truncated', // A16.13: more than 50 000 statements; the figure is partial
 ] as const;
 export type QaReasonCode = typeof QA_REASON_CODES[number];
 
