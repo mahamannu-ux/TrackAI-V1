@@ -24,7 +24,7 @@ Pattern from Task16c `features/audit/http.ts`, catalog AP-1 (copied into `featur
 |---|---|
 | `GET /api/qa/questions` | `{registry_version, items}`: every registry entry (`questions.md`), rank order, code family first |
 | `GET /api/qa/questions/{id}` | `{registry_version, question, answers}`: the entry, and per kind it offers `{kind, builder, built, open_gaps}` (`built` is whether an answerer is registered) |
-| `GET /api/qa/questions/{id}/answer?kind=&repository_id=&pull_request_id=&commit_sha=&from=&to=&breakdown=` | One envelope (`answer-v1.schema.json`), 200 |
+| `GET /api/qa/questions/{id}/answer?kind=&repository_id=&pull_request_id=&commit_sha=&file_id=&line=&from=&to=&breakdown=` | One envelope (`answer-v1.schema.json`), 200 |
 | `GET /api/qa/questions/{id}/drilldown?kind=&repository_id=&pull_request_id=&commit_sha=&from=&to=&limit=&cursor=` | Defined now, built in Task19b: 501 `QA_DRILLDOWN_NOT_BUILT` until then. When built: `{items: [{scope, id, label}], next_cursor}`, the same item shape as the envelope's `drilldown` |
 
 ### Answer parameters
@@ -35,6 +35,7 @@ Pattern from Task16c `features/audit/http.ts`, catalog AP-1 (copied into `featur
 | `kind` | required: `live`, `verifiable` or `signed`. Missing or another word: 400 `QA_SCOPE_INVALID`. A kind the question does not offer: 400 `QA_KIND_NOT_OFFERED`. `live` asked by an auditor: 403 `QA_KIND_NOT_ALLOWED` |
 | `repository_id`, `pull_request_id` | lowercase UUIDs; another tenant's id gets the same 404 `QA_SCOPE_NOT_FOUND` as an unknown id, never 403. A pull request that is not in the given repository: 404 |
 | `commit_sha` | 40 or 64 lowercase hex, and requires `repository_id`; a commit not observed in that repository: 404 |
+| `file_id`, `line` | Q2 live answer only: `file_id` is a `scm_commit_files` UUID and `line` is an integer 1..1,000,000. Both are required with `commit_sha`. Another tenant's file, or one outside that commit, gets 404 `QA_SCOPE_NOT_FOUND`. Every other question refuses these parameters with 400 `QA_SCOPE_INVALID`. The commit drill-down lists file ids with neutral labels `file 1`, `file 2`, and so on. Paths stay on the server. |
 | scope level | the most specific id given: `commit_sha` → `commit`, `pull_request_id` → `pull_request`, `repository_id` → `repository`, none → `tenant`. A level the question does not accept (`questions.md`): 400 `QA_SCOPE_INVALID` |
 | `from`, `to` | RFC 3339 with an explicit `Z` or offset; normalized to UTC milliseconds in the envelope. Defaults: `to` = the query time, `from` = `to` − 30 days. `from` > `to`, or more than 366 days apart: 400 `QA_SCOPE_INVALID` |
 | `breakdown` | optional; one of the question's `dimensions`; otherwise 400 `QA_SCOPE_INVALID` |

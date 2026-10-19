@@ -6,7 +6,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../core/db';
-import { scmCommits, scmPullRequests, scmRepositories } from '../../core/db/schema';
+import { scmCommitFiles, scmCommits, scmPullRequests, scmRepositories } from '../../core/db/schema';
 import { withTenant } from '../../core/db/tenant';
 import { loadContext } from '../telemetry/task2-lifecycle-read';
 import type { AnswererRegistry } from './answerers';
@@ -33,7 +33,7 @@ const SHA_RE = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 const CURSOR_RE = /^[A-Za-z0-9_-]{1,512}$/;
 
-const ANSWER_PARAMS = ['kind', 'repository_id', 'pull_request_id', 'commit_sha', 'from', 'to', 'breakdown'] as const;
+const ANSWER_PARAMS = ['kind', 'repository_id', 'pull_request_id', 'commit_sha', 'file_id', 'line', 'from', 'to', 'breakdown'] as const;
 const DRILLDOWN_PARAMS = ['kind', 'repository_id', 'pull_request_id', 'commit_sha', 'from', 'to', 'limit', 'cursor'] as const;
 
 /** A request the service refuses, with its problem code. */
@@ -50,6 +50,7 @@ export interface QaScopeStore {
   /** The pull request's repository, or null when it is not the tenant's. */
   pullRequestRepository(tenantId: string, pullRequestId: string): Promise<string | null>;
   commitExists(tenantId: string, repositoryId: string, sha: string): Promise<boolean>;
+  fileInCommit?(tenantId: string, repositoryId: string, sha: string, fileId: string): Promise<boolean>;
 }
 
 export const pgScopeStore: QaScopeStore = {
@@ -66,6 +67,14 @@ export const pgScopeStore: QaScopeStore = {
       scmCommits, and(eq(scmCommits.repositoryId, repositoryId), eq(scmCommits.sha, sha)),
     );
     return rows.length > 0;
+  },
+  async fileInCommit(tenantId, repositoryId, sha, fileId) {
+    const commits = await withTenant(db, tenantId).select(scmCommits,
+      and(eq(scmCommits.repositoryId, repositoryId), eq(scmCommits.sha, sha)));
+    if (!commits[0]) return false;
+    const files = await withTenant(db, tenantId).select(scmCommitFiles,
+      and(eq(scmCommitFiles.id, fileId), eq(scmCommitFiles.commitId, commits[0].id)));
+    return files.length > 0;
   },
 };
 
@@ -113,14 +122,23 @@ export interface ParsedScope {
 }
 
 /** The ids and the period; the scope level is the most specific id given. */
-export function parseScope(query: Query, question: QaQuestion, now: Date): ParsedScope {
+export function parseScope(query: Query, question: QaQuestion, now: Date, drilldown = false): ParsedScope {
   const repositoryId = single(query, 'repository_id');
   const pullRequestId = single(query, 'pull_request_id');
   const commitSha = single(query, 'commit_sha');
+  const fileId = single(query, 'file_id');
+  const lineText = single(query, 'line');
   if (repositoryId !== undefined && !UUID_RE.test(repositoryId)) throw new QaProblem('QA_SCOPE_INVALID', 'repository_id');
   if (pullRequestId !== undefined && !UUID_RE.test(pullRequestId)) throw new QaProblem('QA_SCOPE_INVALID', 'pull_request_id');
   if (commitSha !== undefined && (!SHA_RE.test(commitSha) || repositoryId === undefined)) {
     throw new QaProblem('QA_SCOPE_INVALID', 'commit_sha');
+  }
+  if (question.id !== 'Q2' && (fileId !== undefined || lineText !== undefined))
+    throw new QaProblem('QA_SCOPE_INVALID', 'file_scope');
+  if (question.id === 'Q2' && !drilldown) {
+    if (!fileId || !UUID_RE.test(fileId) || !lineText || !/^[1-9][0-9]{0,6}$/.test(lineText)
+      || Number(lineText) > 1_000_000 || !commitSha)
+      throw new QaProblem('QA_SCOPE_INVALID', 'file_scope');
   }
   const fromText = single(query, 'from');
   const toText = single(query, 'to');
@@ -135,6 +153,8 @@ export function parseScope(query: Query, question: QaQuestion, now: Date): Parse
     ...(repositoryId !== undefined ? { repository_id: repositoryId } : {}),
     ...(pullRequestId !== undefined ? { pull_request_id: pullRequestId } : {}),
     ...(commitSha !== undefined ? { commit_sha: commitSha } : {}),
+    ...(fileId !== undefined ? { file_id: fileId } : {}),
+    ...(lineText !== undefined ? { line: Number(lineText) } : {}),
     from: new Date(from).toISOString(),
     to: new Date(to).toISOString(),
   };
@@ -162,6 +182,10 @@ export async function checkScopeExists(store: QaScopeStore, tenantId: string, sc
     }
     if (scope.commit_sha && scope.repository_id
       && !(await store.commitExists(tenantId, scope.repository_id, scope.commit_sha))) {
+      throw new QaProblem('QA_SCOPE_NOT_FOUND');
+    }
+    if (scope.file_id && scope.commit_sha && scope.repository_id
+      && !(await store.fileInCommit?.(tenantId, scope.repository_id, scope.commit_sha, scope.file_id))) {
       throw new QaProblem('QA_SCOPE_NOT_FOUND');
     }
   } catch (err) {
@@ -253,7 +277,7 @@ export function checkDrilldownRequest(request: AnswerRequest): void {
   const question = findQuestion(request.questionId);
   parseKind(request.query, question, request.role);
   onlyKnown(request.query, DRILLDOWN_PARAMS);
-  parseScope(request.query, question, request.now);
+  parseScope(request.query, question, request.now, true);
   const limit = single(request.query, 'limit');
   if (limit !== undefined && (!/^\d{1,3}$/.test(limit) || Number(limit) < 1 || Number(limit) > DRILLDOWN_MAX_LIMIT)) {
     throw new QaProblem('QA_SCOPE_INVALID', 'limit');
@@ -275,7 +299,7 @@ export async function answerDrilldown(
   const question = findQuestion(request.questionId);
   const kind = parseKind(request.query, question, request.role);
   onlyKnown(request.query, DRILLDOWN_PARAMS);
-  const { level, scope } = parseScope(request.query, question, request.now);
+  const { level, scope } = parseScope(request.query, question, request.now, true);
   await checkScopeExists(deps.scopes, request.tenantId, scope);
   if (!DRILLDOWN_BUILT_QUESTIONS.includes(request.questionId)) {
     throw new QaProblem('QA_DRILLDOWN_NOT_BUILT');

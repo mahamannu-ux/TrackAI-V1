@@ -710,9 +710,32 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
         }
       },
       "else": {
-        "properties": {
-          "value": {
-            "$ref": "#/definitions/value"
+        "if": {
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "value": {
+              "$ref": "#/definitions/value"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/value"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       }
@@ -746,6 +769,14 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
         },
         "to": {
           "$ref": "#/definitions/time"
+        },
+        "file_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
         }
       }
     },

@@ -706,9 +706,32 @@
         }
       },
       "else": {
-        "properties": {
-          "value": {
-            "$ref": "#/definitions/value"
+        "if": {
+          "properties": {
+            "availability": {
+              "const": "recorded"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "value": {
+              "$ref": "#/definitions/value"
+            }
+          }
+        },
+        "else": {
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/value"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       }
@@ -742,6 +765,14 @@
         },
         "to": {
           "$ref": "#/definitions/time"
+        },
+        "file_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
         }
       }
     },

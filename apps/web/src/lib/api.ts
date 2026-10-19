@@ -525,6 +525,8 @@ export type QaScope = {
   repository_id?: string;
   pull_request_id?: string;
   commit_sha?: string;
+  file_id?: string;
+  line?: number;
   from: string;
   to: string;
 };
@@ -587,6 +589,8 @@ export type QaAnswerQuery = {
   repository_id?: string;
   pull_request_id?: string;
   commit_sha?: string;
+  file_id?: string;
+  line?: number;
   breakdown?: QaDimension;
   limit?: number;
   cursor?: string;
