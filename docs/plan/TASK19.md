@@ -97,6 +97,14 @@ Columns:
 | 16 | S16 | ⬜ ⬜ ⬜ | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
 | 17 | S17 | 🟡 ⬜ n/a | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
 | 18 | S18 | 🟡 ⬜ n/a | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
+| 19 | S19 | ⬜ ⬜ ⬜ | G14: endpoint agent inventory; approved-list comparison waits for G2 | after Task20h-b | later | Task20h-b, G2 |
+| 20 | S20 | ⬜ ⬜ ⬜ | G14: day-one scan uploads | after Task20h-b | later | Task20h-b |
+| 21 | S26 | ✅ 🟡 ⬜ | permission events stored | Task19f live | later | founder IT-T19f-01 |
+| 22 | S23 | 🟡 🟡 ⬜ | indicators stored only when `urls` enabled | Task19f live, settings-aware | later | founder IT-T19f-01 |
+| 23 | S21 | 🟡 🟡 ⬜ | guardrails-off findings stored; bypass flags G16 | Task19f partial | later | Task20 wave 2 |
+| 24 | S22 | ⬜ ⬜ ⬜ | G15: MCP configuration and per-call identity | after G15 | later | Task20 later |
+| 25 | S24 | ⬜ ⬜ ⬜ | G17: opt-in blocking pilot | after Task20k | later | Task20k |
+| 26 | S25 | n/a n/a ⬜ | case bundle signing deferred | n/a | Task15 case bundle, phase 2 | later |
 
 ### 3.1 Answer sources (T19.1, confirmed against `main` at `67c903f`, 2026-10-15)
 
@@ -190,7 +198,7 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 | 3 | `Task19c-qa-live-security` | T19.4: S7, S9, S11, S12, S17; S5, S6, S8, S10 partly; S18 counts; S15 linked to the Audit view; Q11; the ranked S19–S26 | Muse | about 0.1× (to re-size against Task20a now that Q11 and S19–S26 are in) | Task19b merged **and Task20d (security ingest v2) merged**; prompt written by the Task19 lead against Task20a's contract | `features/qa/` answer modules for security questions | 🟡 built about 0.12× (S5, S6, S7, S8, S9, S10, S11, S12, S15, S17, S18, Q11; S1–S4, S13, S14, S16 stay `answer_not_built`); handoff `docs/handoffs/Task19c-qa-live-security_HANDOFF.md`; IT-T19c-01 agent-passed 2026-10-18 |
 | 4 | `Task19d-qa-line-walk` | Q2 (point-in-time line attribution). T19.1: TrackAI stores per-commit ranges (`scm_commit_files.attribution_ranges`) but no line-offset history and no code, so "which commit last touched line N at commit C" needs the provider's blame (GitHub GraphQL `blame` through the GitHub App) mapped through `scm_merge_lineage` and `scm_commit_lineage` to the observed commit's ranges | **Codex** (GitHub App calls, lineage internals, rate limits: decisions not all writable upfront) | about 0.12× | Task19a merged | `features/qa/` answerer; a GitHub App read helper in `features/scm/` (pre-approved in its prompt) | ⬜ |
 | 5 | `Task19e-qa-questions-screen` | T19.5: a design note by the lead (about 0.02×), then the build | Claude design, Muse build | about 0.12× (actual about 0.13×) | Task19b and Task19c merged; Task10's design system, or the UI-1 rules until it exists | `apps/web/src/app/dashboard/questions-workspace.tsx` (new); `questions-presentation.tsx`; dashboard navigation | 🟡 built; handoff `docs/handoffs/Task19e-qa-questions-screen_HANDOFF.md`; latest full suite hit inherited Attesta timing flake (isolated pass); founder walkthrough pending |
-| 6 | `Task19f-qa-numbat-questions` | S19–S26 in the registry (version 2; reason `data_setting_off`; gaps G14–G17; founder ranking 2026-10-19: S19, S20, S26, S23, S21, S22, S24, S25); live answers S26, S23, S21 (requested by the Task20 lead, T20.18) | Muse | about 0.10× | now (Task20d merged) | `docs/contracts/qa/` (additive), `features/qa/registry.ts`, `security-read.ts`, `security-answerers.ts`, `CUSTOMER_AUDITOR_QA.md` | ⬜ prompt `docs/prompts/Task19/NEXT_CHAT_Task19f-qa-numbat-questions_PROMPT.md` |
+| 6 | `Task19f-qa-numbat-questions` | S19–S26 in the registry (version 2; reasons `data_setting_off`, `zero_denominator`; gaps G14–G17; founder ranking 2026-10-19: S19, S20, S26, S23, S21, S22, S24, S25); live answers S26, S23, S21 (requested by the Task20 lead, T20.18) | Codex | about 0.10× | now (Task20d merged) | `docs/contracts/qa/` (additive), `features/qa/registry.ts`, `security-read.ts`, `security-answerers.ts`, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19f-01 agent-passed 2026-10-19; handoff `docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md` |
 | — | Lead work | T19.6 prompts and reviews, T19.7, T19.8 | Claude (lead chat) | about 0.05× | ongoing | prompts, this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 plan written |
 | — | Founder walkthrough | T19.9 | founder-live | about 0.02× | Task19e merged; A16.13a merged | — | ⬜ |
 
