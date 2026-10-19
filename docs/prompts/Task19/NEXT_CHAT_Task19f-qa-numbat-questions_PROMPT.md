@@ -86,7 +86,12 @@ The other five are registered and answer an honest `unavailable` until their dat
    - update the "How to read this" bullet: S1–S18 are numbered in rank order, and S19–S26 carry an explicit Rank column.
 
    In `qa-contract.test.ts`, extend the parser so rows of the new table take their rank from its Rank column. The test must still compare every registry entry with the catalogue.
-7. **Fixtures:** add `docs/contracts/qa/fixtures/valid-live-unavailable-data-setting-off.json` (S23, `urls` off), validated by the existing fixture test.
+7. **Questions screen (types and one message only):**
+   - `apps/web/src/lib/api.ts` (`:488-496`): add `data_setting_off` to `QaReasonCode` and `G14`–`G17` to `QaGapId`;
+   - `apps/web/src/app/dashboard/questions-presentation.tsx` (`QA_REASON_MESSAGES`, `:14-22`): add `data_setting_off: 'Your organization's security data settings keep this information on the developer machine.'`.
+
+   The screen reads the question list from the API, so the new questions need no other UI change. Run `npm run build -w apps/web`.
+8. **Fixtures:** add `docs/contracts/qa/fixtures/valid-live-unavailable-data-setting-off.json` (S23, `urls` off), validated by the existing fixture test.
 
 ### 2.2 Live answers (registered for kind `live` in `registerSecurityAnswerers`)
 These follow the Task19c pattern: a pure `computeSn(input)` plus the loader. Extend `security-read.ts` so the context also carries, for the tenant and period:
@@ -122,6 +127,7 @@ None. This extends Task19a's contract and Task19c's answer pattern; no SushiCorp
   - `qa-contract.test.ts`, `security-answerers.test.ts`;
   - `task19f-qa-live-verify.ts` (new).
 - `apps/api/package.json`: `verify:task19f-qa-live` in alphabetical position.
+- `apps/web/src/lib/api.ts` (the two type unions only) and `apps/web/src/app/dashboard/questions-presentation.tsx` (one message), §2.1 item 7.
 - `docs/plan/CUSTOMER_AUDITOR_QA.md` (§2.1 item 6 only).
 - `docs/plan/TASK19.md`: add the eight S19–S26 rows to the §3 matrix, with status (S26 ⬜ → live after this session), and your own §6.1 row.
 - `docs/plan/STATUS_BOARD.md`: registry row IT-T19f-01 and your remaining-plan row only.
@@ -131,18 +137,18 @@ None. This extends Task19a's contract and Task19c's answer pattern; no SushiCorp
 - Any existing entry, code or enum value in the contract: additions only.
 - `core/db/schema.ts` and migrations.
 - `features/security-findings/` (Task20's ingest).
-- `apps/web/` (the Questions screen lists the registry, so the new questions appear without UI work).
+- `apps/web/` beyond §2.1 item 7.
 
 ## 3. Working rules
 - **Commits** prefixed `Task19f-qa-numbat-questions: …`:
-  1. contract additions (types, both schema copies, README, api.md, fixture);
+  1. contract additions (types, both schema copies, README, api.md, fixture, the two web type and message lines);
   2. registry, version 2, regenerated `questions.md`, catalogue table and parser;
   3. the loader;
   4. S26, S23 and S21 with tests;
   5. the live verify;
   6. the handoff.
 
-  `npm run lint`, `npm run typecheck` and `npm run check` must be clean.
+  `npm run lint`, `npm run typecheck`, `npm run check` and `npm run build -w apps/web` must be clean.
 - **Unit tests** (no database):
   - the registry matches the catalogue, including the new Rank column;
   - the version-2 digest is pinned;
