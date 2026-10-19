@@ -1171,3 +1171,205 @@ export const getAuditExport = (id: string) => auditFetch<AuditExportJob>(
 );
 
 export const downloadAuditExport = (contentPath: string): Promise<Blob> => apiDownload(contentPath);
+
+// ---------------------------------------------------------------------------
+// Security (Task20i-b console client)
+// ---------------------------------------------------------------------------
+
+export type SecurityFindingGeneration = 'task6a' | 'v2';
+
+export type SecurityFindingItem = {
+  id: string;
+  generation: SecurityFindingGeneration;
+  rule_id: string;
+  rule_version: string;
+  rule_severity: string;
+  rule_category: string;
+  title: string | null;
+  agent: string | null;
+  model: string | null;
+  repository_id: string | null;
+  repository_kind: string | null;
+  machine_id: string;
+  session_id: string | null;
+  occurred_at: string;
+  received_at: string;
+  rule_pack_version: string;
+  bundle_digest: string | null;
+  lease_id: string | null;
+  found_at_rest: boolean | null;
+  phase: string | null;
+  result_category: string | null;
+};
+
+export type SecurityFindingPage = {
+  items: SecurityFindingItem[];
+  next_cursor: string | null;
+};
+
+export type SecurityFindingDetail = {
+  finding: SecurityFindingItem;
+  machine_indicators_nearby: Array<{ type: string; value: string | null; count: number }>;
+  nearby_enforcement: Array<{
+    id: string;
+    decision: string;
+    mode: string;
+    occurred_at: string;
+    tool_name: string | null;
+    session_id: string | null;
+  }>;
+};
+
+export type SecurityCoverageRow = {
+  machine_id: string;
+  platform: string | 'unreported';
+  status: {
+    observed_at: string;
+    numbat_version: string;
+    wired_agents: string[];
+    active_bundle_digest: string | null;
+    lease_id: string | null;
+    last_record_at: string | null;
+    hook_status: string;
+    agent_effective_view: string;
+    local_record: string;
+    forwarder_ack: string;
+  } | 'unreported';
+  inventory: { observed_at: string; agents: unknown } | 'unreported';
+  lease: { mode: string; expires_at: string; bundle_epoch: number | 'unknown' } | 'no_lease';
+  acknowledgement: {
+    result: string;
+    refusal_code: string | null;
+    received_at: string;
+  } | 'not_acknowledged';
+};
+
+export type SecurityCoveragePage = {
+  rows: SecurityCoverageRow[];
+  next_cursor: string | null;
+};
+
+export type SecurityFindingsQuery = {
+  from?: string;
+  to?: string;
+  severity?: string;
+  category?: string;
+  rule_id?: string;
+  agent?: string;
+  machine_id?: string;
+  repository_id?: string;
+  generation?: SecurityFindingGeneration;
+  cursor?: string;
+  limit?: number;
+};
+
+export type SecuritySettingsView = {
+  schema_version: 'trackai.security-settings-view/1';
+  numbat_commit: string;
+  rule_settings_version: number;
+  rules: Array<{
+    id: string;
+    group: string;
+    enabled: boolean;
+    severity: string;
+    upstream: { enabled: boolean; severity: string; version: string };
+  }>;
+  data_settings_version: number;
+  data_settings: {
+    schema_version: 'trackai.security-data-settings/1';
+    command_previews: boolean;
+    file_paths: boolean;
+    urls: boolean;
+    host_identity: boolean;
+    user_identity: boolean;
+  };
+  agents: string[];
+  day_one_scan: boolean;
+  monitor: { mode: 'off' | 'monitor'; version: number };
+  bundle: {
+    bundle_version: number;
+    epoch: number;
+    digest: string;
+    issued_at: string;
+    enabled_rule_count: number;
+  } | null;
+};
+
+export type SecuritySettingsChange = {
+  dry_run: boolean;
+  reason: string;
+  monitor_mode?: 'off' | 'monitor';
+  rules?: Record<string, { enabled?: boolean; severity?: string }>;
+  data_settings?: Partial<Pick<SecuritySettingsView['data_settings'],
+    'command_previews' | 'file_paths' | 'urls' | 'host_identity' | 'user_identity'>>;
+  agents?: string[];
+  day_one_scan?: boolean;
+};
+
+export type SecuritySettingsPlan = {
+  schema_version: 'trackai.security-settings-plan/1';
+  dry_run: true;
+  rule_changes: Array<{
+    id: string;
+    from: { enabled: boolean; severity: string };
+    to: { enabled: boolean; severity: string };
+  }>;
+  data_settings_changed: boolean;
+  monitor: { from: 'off' | 'monitor'; to: 'off' | 'monitor' };
+  publishes_bundle: boolean;
+  exceeds_signer_limit: boolean;
+  next: {
+    rule_settings_version: number;
+    data_settings_version: number;
+    monitor_version: number;
+    bundle_version: number | null;
+    epoch: number | null;
+  };
+  active_machine_count: number;
+};
+
+export type SecuritySettingsApplied = {
+  schema_version: 'trackai.security-settings-applied/1';
+  dry_run: false;
+  changed: boolean;
+  rule_settings_version: number;
+  data_settings_version: number;
+  monitor_version: number;
+  bundle: {
+    bundle_version: number;
+    epoch: number;
+    digest: string;
+    issued_at: string;
+  } | null;
+};
+
+export const getSecurityFindings = (query: SecurityFindingsQuery = {}) => {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') parameters.set(key, String(value));
+  }
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return apiFetch<SecurityFindingPage>(`/api/admin/security/v2/findings${suffix}`);
+};
+
+export const getSecurityFinding = (id: string) => (
+  apiFetch<SecurityFindingDetail>(`/api/admin/security/v2/findings/${encodeURIComponent(id)}`)
+);
+
+export const getSecurityCoverage = (cursor?: string) => {
+  const parameters = new URLSearchParams();
+  if (cursor) parameters.set('cursor', cursor);
+  const suffix = parameters.size ? `?${parameters.toString()}` : '';
+  return apiFetch<SecurityCoveragePage>(`/api/admin/security/v2/coverage${suffix}`);
+};
+
+export const getSecuritySettings = () => (
+  apiFetch<SecuritySettingsView>('/api/admin/security/settings')
+);
+
+export const putSecuritySettings = (change: SecuritySettingsChange) => (
+  apiFetch<SecuritySettingsPlan | SecuritySettingsApplied>('/api/admin/security/settings', {
+    method: 'PUT',
+    body: JSON.stringify(change),
+  })
+);
