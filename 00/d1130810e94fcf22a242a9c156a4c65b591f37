@@ -1,0 +1,29 @@
+apps/api/src/features/qa/qa-contract.test.ts
+  s_f0fcc7adbbc69b::t_7a27eb6291e4e5 36
+apps/api/src/features/qa/registry.ts
+  s_f0fcc7adbbc69b::t_f8d4f5758c77eb 20,235-236
+docs/contracts/qa/questions.md
+  s_f0fcc7adbbc69b::t_39c18a81f4194e 5,71-72
+docs/plan/CUSTOMER_AUDITOR_QA.md
+  s_f0fcc7adbbc69b::t_90a2bc299ad1e3 44-45,47,256-257
+docs/plan/STATUS_BOARD.md
+  s_f0fcc7adbbc69b::t_e5a1c6bca9d9e3 71,165
+docs/plan/TASK19.md
+  s_f0fcc7adbbc69b::t_0cd9e16df4fbf0 73-74,76,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "00d1130810e94fcf22a242a9c156a4c65b591f37",
+  "prompts": {},
+  "sessions": {
+    "s_f0fcc7adbbc69b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15534-94b0-7a70-8d68-8bd3398b1a5c",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
