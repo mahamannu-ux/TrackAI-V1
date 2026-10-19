@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/core/audit/catalog.ts by `npm run audit:catalog -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Catalog version 4. 62 emitted actions (31 high, 14 notice, 17 info) and 4 reserved.
+Catalog version 5. 64 emitted actions (31 high, 16 notice, 17 info) and 4 reserved.
 Rules: `README.md` in this folder. Every action also accepts an optional `request_id: string` (AP-1).
 Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[]` at most 200 items, `counts` an object of non-negative integers, `string_map` an object of strings, `sha256_digest` is `sha256:<64 hex>`.
 
@@ -10,6 +10,8 @@ Types: `string` at most 512 characters, `reason` at most 1000, `string[]`/`uuid[
 
 | Action | Owner | Severity | Actor types | Target type | Target id | Details keys (`?` optional) | Status |
 |---|---|---|---|---|---|---|---|
+| `scm.merged_by.backfilled` | Task2 | notice | system_operator | `tenant` | tenant (the tenant id) | `updated: integer`<br>`skipped: integer` | emitted |
+| `telemetry.upload.rejected` | Task4 | notice | machine | `tenant` | tenant (the tenant id) | `event_count: integer`<br>`reason_counts: counts`<br>`repository_digests: string[]`<br>`request_id?: string` | emitted |
 | `repository.enrolled` | Task4 | notice | tenant_admin | `repository_enrollment` | row (uuid) | `repositoryId: uuid`<br>`effectiveFrom: iso_timestamp`<br>`generationSessionEvidenceFrom: iso_timestamp`<br>`commitNoteEvidenceFrom: iso_timestamp`<br>`effectiveUntil: iso_timestamp \| null`<br>`reason: reason \| null` | emitted |
 | `repository.reenrolled` | Task4 | notice | tenant_admin | `repository_enrollment` | row (uuid) | `repositoryId: uuid`<br>`effectiveFrom: iso_timestamp`<br>`generationSessionEvidenceFrom: iso_timestamp`<br>`commitNoteEvidenceFrom: iso_timestamp`<br>`effectiveUntil: iso_timestamp \| null`<br>`reason: reason \| null` | emitted |
 | `repository_backfill.authorized` | Task4 | notice | tenant_admin | `repository_backfill_authorization` | row (uuid) | `enrollmentId: uuid`<br>`evidenceFamily: enum[generation_session, commit_note, operational]`<br>`occurredFrom: iso_timestamp`<br>`occurredUntil: iso_timestamp`<br>`expiresAt: iso_timestamp`<br>`reason: reason` | emitted |
