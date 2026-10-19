@@ -74,6 +74,7 @@
     "verify:task19a-qa-live": "tsx src/features/qa/task19a-qa-live-verify.ts",
     "verify:task19b-qa-live": "tsx src/features/qa/task19b-qa-live-verify.ts",
     "verify:task19c-qa-live": "tsx src/features/qa/task19c-qa-live-verify.ts",
+    "verify:task19f-qa-live": "tsx src/features/qa/task19f-qa-live-verify.ts",
     "verify:task20d-ingest-live": "tsx src/features/security-findings/task20d-ingest-live-verify.ts",
     "verify:task20f-signing-live": "tsx src/features/security/task20f-signing-live-verify.ts",
     "verify:task20i-reads-live": "tsx src/features/security-findings/task20i-reads-live-verify.ts",
