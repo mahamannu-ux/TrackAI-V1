@@ -3,14 +3,14 @@
 > Status: 🟡 built and agent-verified; Task19 lead review and founder-live Q2 check remain.
 > Branch `task/Task19g-merged-by-rejections-line-blame` (base `main` at `7c58af4`). Local only; no push or PR.
 
-Task19g closes capture gaps G4 and G5 and builds Q2's GitHub line walk. The changes are grouped in A `fb8831f`, B `e729e60`, C `1ec8c53`, registry/plan `00d1130`, and review fixes `4de9ff1`.
+Task19g closes capture gaps G4 and G5 and builds Q2's GitHub line walk. The changes are grouped in A `fb8831f`, B `e729e60`, C `1ec8c53`, registry/plan `00d1130`, review fixes `4de9ff1`, and per-tenant backfill completion `f7d1ff1`.
 
 ## At a glance
 
 | Part | Acceptance | Status |
 |---|---|---|
 | A, G4/Q6 | Migration `0028_friendly_mystique` adds only nullable `merged_by_provider_id/login`; closed merged webhook parses, stores, and upserts merger identity | ✅ |
-| A, G4/Q6 | Retained-delivery backfill is dry-run-first, fills nulls only, emits one `scm.merged_by.backfilled` audit row per changed tenant; Q6 counts AI PRs by self/other/unknown merger and known commit author | ✅ |
+| A, G4/Q6 | Retained-delivery backfill is dry-run-first, fills nulls only, emits one `scm.merged_by.backfilled` audit row per tenant on confirm; Q6 counts AI PRs by self/other/unknown merger and known commit author | ✅ |
 | B, G5/Q15 | Audit catalog v5 adds `telemetry.upload.rejected` (Task4) and the backfill action (Task2); managed refusal records counts and URL digests before ingest, fails closed on audit write failure | ✅ |
 | B, G5/Q15 | Q15 reads tenant-bound audit rows, returns partial null figures before first capture, partial lower-bound counts for periods spanning it, and counts uploads, events, four reasons, and distinct digests in covered periods | ✅ |
 | C, Q2 | Additive file UUID and line scope, GitHub App GraphQL blame, lineage mapping, neutral file drill-down, Questions input, and Q2 live figures | 🟡 founder-live App check pending |
@@ -34,7 +34,7 @@ GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sh
 
 ## Decisions and deviations
 
-1. Missing merger identity remains unknown; backfill never overwrites a populated field. No login enters Q6's envelope.
+1. Missing merger identity remains unknown; backfill never overwrites a populated field. Q6's self/other figures are partial before the tenant's confirmed backfill audit marker and recorded afterward. No login enters its envelope.
 2. Rejection audit details contain four reason counts and at most 20 SHA-256 digests of canonical HTTPS repository URLs. Q15 marks the repository figure partial when a row reaches that cap. A period before the tenant's first rejection event stays partial; one spanning first capture reports partial lower-bound counts. Legacy unmanaged uploads are outside Q15. Repository breakdown is unavailable because a digest is not a repository UUID.
 3. Q2 accepts a server-owned `scm_commit_files.id`, never a path. Exact line attribution is reported only when blame names the requested commit. Older origins return file-level counts and session IDs as partial; unknown origins are unavailable.
 4. The frozen QA reason schema requires a registered gap with `not_captured_yet`. Q2 has no gap, so missing installation uses `answer_not_built` and an unknown origin uses `partial_linkage`; this preserves schema validity without assigning a false gap. The Task19 lead should decide whether a future additive reason is warranted.
@@ -43,7 +43,7 @@ GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sh
 
 ## Test evidence and limits
 
-- IT-T19g-01 agent run passed 2026-10-19: signed merged webhook stored merger; dry run left nulls unchanged; confirm filled the nulls; Q6 counted the AI PR; a managed ungranted upload wrote exactly one rejection; Q15 counted it; Company B saw neither; a forced audit insert failure returned 503 and ingested nothing.
+- IT-T19g-01 agent run passed 2026-10-19: signed merged webhook stored merger; dry run left nulls unchanged; confirm filled the nulls and wrote one marker for each tenant, including zero updates; Q6 counted the AI PR; a managed ungranted upload wrote exactly one rejection; Q15 counted it; Company B saw neither; a forced audit insert failure returned 503 and ingested nothing.
 - `npm run check` did not finish: the existing Attesta test path stalled as it did in the pre-change baseline, and this sandbox also produced unrelated HTTP listener failures. No full-suite pass is claimed. The focused 42 tests and the database IT above passed.
 - `npm run build -w apps/web` compiled, then needed public Supabase build settings for prerender; with placeholder settings it passed. `npm run typecheck`, `npm run lint`, and `npm exec --workspace=apps/api drizzle-kit check` passed.
 - Q2 provider access is stubbed in unit tests. Step 4 on an App-installed GitHub repository is required before marking Q2 answered. The answer exposes session IDs via drill-down; agent/model and timestamps are reached through existing session and commit metadata, not duplicated into the Q2 numeric envelope.
