@@ -1,0 +1,23 @@
+docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md
+  s_af031ef3d0db12::t_cf0a2300d0ce76 1-46
+docs/plan/STATUS_BOARD.md
+  s_af031ef3d0db12::t_b8a36b3c5a5fd7 70,163
+docs/plan/TASK19.md
+  s_af031ef3d0db12::t_cf6318877bcc8f 100-107,201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "7302c82adc210fa1a0d3a801beeb3e485d9a51f5",
+  "prompts": {},
+  "sessions": {
+    "s_af031ef3d0db12": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a154f9-b484-7ba0-92ba-ad57431b2d16",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
