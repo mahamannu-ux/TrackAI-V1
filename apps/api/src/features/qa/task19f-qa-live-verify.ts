@@ -53,11 +53,12 @@ async function finding(t: Tenant, rule: string, session: string): Promise<void> 
       '0.5.0', $8, 'it-lease', false, 'not_enrolled')`,
     [t.id, t.machine, rule, ago(5), `bundle:${bundle.slice(0, 16)}`, session, digest(), bundle]);
 }
-async function indicator(t: Tenant, type: string, value: string, count: number): Promise<void> {
+async function indicator(t: Tenant, type: string, value: string, count: number,
+  window: { firstSeen: Date; lastSeen: Date } = { firstSeen: ago(6), lastSeen: ago(5) }): Promise<void> {
   await pool.query(`insert into security_indicators
     (tenant_id, machine_id, record_id, type, value, count, first_seen, last_seen, source_agent)
     values ($1, $2, $3, $4, $5, $6, $7, $8, 'claude-code')`,
-    [t.id, t.machine, digest(), type, value, count, ago(6), ago(5)]);
+    [t.id, t.machine, digest(), type, value, count, window.firstSeen, window.lastSeen]);
 }
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const kid = 'it-t19f';
@@ -87,6 +88,7 @@ async function main(): Promise<void> {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const a = await tenant('a');
     const b = await tenant('b');
+    const periodEnd = new Date();
     await membership(a, 'admin-a', 'tenant_admin');
     await membership(a, 'auditor-a', 'tenant_auditor');
     await membership(b, 'admin-b', 'tenant_admin');
@@ -98,13 +100,16 @@ async function main(): Promise<void> {
     await permission(a, 'denied', 'session-b');
     await finding(a, 'tamper.guardrails_off', 'session-a');
     await indicator(a, 'domain', 'a.example', 2);
+    // This row overlaps the requested period even though last_seen is after it.
+    await indicator(a, 'domain', 'ongoing.example', 5,
+      { firstSeen: ago(4), lastSeen: new Date(periodEnd.getTime() + 86_400_000) });
     await indicator(a, 'url', 'https://a.example/path', 3);
     await indicator(a, 'ipv4', '203.0.113.1', 4);
     await permission(b, 'requested', 'session-b');
     await indicator(b, 'domain', 'b.example', 7);
     const schema = JSON.parse(readFileSync(resolve(__dirname, '../../../../../docs/contracts/qa/answer-v1.schema.json'), 'utf8'));
     const validate = new Ajv({ strict: true, allErrors: true, strictTypes: false, strictRequired: false }).compile(schema);
-    const period = `from=${encodeURIComponent(ago(30).toISOString())}&to=${encodeURIComponent(new Date().toISOString())}`;
+    const period = `from=${encodeURIComponent(ago(30).toISOString())}&to=${encodeURIComponent(periodEnd.toISOString())}`;
     async function get(path: string, bearer: string): Promise<{ status: number; body: any }> {
       const res = await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${bearer}` } });
       check(res.headers.get('cache-control') === 'no-store', 'no-store');
@@ -122,11 +127,12 @@ async function main(): Promise<void> {
     check(figure(s26.body, 'approval_rate')?.value?.denominator === 2, 'S26 approval denominator');
     const s23 = await get(answer('S23'), adminA);
     check(s23.status === 200 && validate(s23.body), 'S23 schema-valid 200');
-    check(figure(s23.body, 'distinct_domains')?.value?.count === 1, 'S23 distinct domains');
+    check(figure(s23.body, 'distinct_domains')?.value?.count === 2, 'S23 overlapping domains');
     check(figure(s23.body, 'distinct_urls')?.value?.count === 1, 'S23 distinct URLs');
     check(figure(s23.body, 'distinct_ip_addresses')?.value?.count === 1, 'S23 distinct IPs');
-    check(figure(s23.body, 'indicator_observations')?.value?.count === 9, 'S23 observations');
-    check(!JSON.stringify(s23.body).includes('a.example'), 'S23 indicator values excluded');
+    check(figure(s23.body, 'indicator_observations')?.value?.count === 14, 'S23 overlapping observations');
+    check(!JSON.stringify(s23.body).includes('a.example') && !JSON.stringify(s23.body).includes('ongoing.example'),
+      'S23 indicator values excluded');
     const s21 = await get(answer('S21'), adminA);
     check(s21.status === 200 && validate(s21.body), 'S21 schema-valid 200');
     check(figure(s21.body, 'guardrails_off_findings')?.value?.count === 1, 'S21 findings');

@@ -218,8 +218,9 @@ export async function loadSecurityContext(
     tenantDb.select(aiSessions),
     tenantDb.select(securityPermissionEvents, and(
       gte(securityPermissionEvents.occurredAt, from), lte(securityPermissionEvents.occurredAt, to))),
+    // A cumulative indicator belongs to every period its observation window overlaps.
     tenantDb.select(securityIndicators, and(
-      gte(securityIndicators.lastSeen, from), lte(securityIndicators.lastSeen, to))),
+      lte(securityIndicators.firstSeen, to), gte(securityIndicators.lastSeen, from))),
     tenantDb.select(securityDataSettingsVersions, lte(securityDataSettingsVersions.createdAt, to)),
   ]);
   return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings });

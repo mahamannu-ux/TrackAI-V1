@@ -27,6 +27,7 @@ Branch `task/Task19f-qa-numbat-questions` (base: `main` at `5c9c98f`).
 ## Known limitations
 - S19's approved-list comparison and agent versions remain unavailable; Numbat inventory reports no versions.
 - S23 counts metadata only when the tenant enables URL data upload. No values or drill-down leave the Security console.
+- `indicator_observations` sums each overlapping indicator's count over its whole Numbat window, including observations outside the requested period.
 - No auditor kind is built for the new phase-1 questions; live answers remain admin-only.
 
 ## Test coverage
@@ -36,7 +37,7 @@ Branch `task/Task19f-qa-numbat-questions` (base: `main` at `5c9c98f`).
 
 ## Integration test impact
 - **IT-T19f-01:** `scripts/it-db.sh npm run verify:task19f-qa-live -w apps/api`. Blocking Task19f merge. Requires local PostgreSQL 16 with pgvector or Docker via `it-db.sh`.
-- 🟡 Agent-passed 2026-10-19: seeded Company A/B figures, S23 URLs-off, isolation, auditor 403 and 46 questions. ⬜ Founder run.
+- 🟡 Agent-passed 2026-10-19: seeded Company A/B figures, S23 URLs-off and a row whose last_seen is after the period, isolation, auditor 403 and 46 questions. ⬜ Founder run.
 
 ## Integration notes
 - Register version 2 before deployment. Run the new live verifier on the founder machine before merge.
