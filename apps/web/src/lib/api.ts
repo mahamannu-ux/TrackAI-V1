@@ -490,10 +490,10 @@ export type QaDimension =
 export type QaAvailability = 'recorded' | 'partial' | 'unavailable';
 export type QaReasonCode =
   | 'not_captured_yet' | 'not_monitored' | 'vendor_does_not_report'
-  | 'never_written' | 'partial_linkage' | 'answer_not_built' | 'phase_2';
+  | 'never_written' | 'partial_linkage' | 'answer_not_built' | 'phase_2' | 'data_setting_off' | 'zero_denominator';
 export type QaGapId =
   | 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6' | 'G7'
-  | 'G8' | 'G9' | 'G10' | 'G11' | 'G12' | 'G13';
+  | 'G8' | 'G9' | 'G10' | 'G11' | 'G12' | 'G13' | 'G14' | 'G15' | 'G16' | 'G17';
 export type QaWordingCode =
   | 'monitor_only_observed' | 'unknown_model_explicit' | 'merged_not_deployed_proxy'
   | 'churned_unavailable' | 'session_link_partial' | 'requested_not_confirmed'

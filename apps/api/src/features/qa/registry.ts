@@ -17,7 +17,7 @@ import type {
   QaBuilder, QaDimension, QaGap, QaGapId, QaKind, QaQuestion, QaQuestionKind, QaScopeLevel, QaWordingCode,
 } from './types';
 
-export const QA_REGISTRY_VERSION = 1;
+export const QA_REGISTRY_VERSION = 2;
 
 const k = (kind: QaKind, builder: QaBuilder | null): QaQuestionKind => ({ kind, builder });
 
@@ -199,6 +199,30 @@ export const QA_QUESTIONS: readonly QaQuestion[] = [
   security({ id: 'S18', rank: 18, auditor: 'no',
     title: 'Which rules fire most, and which are noisy (findings later marked benign)?',
     kinds: [k('live', 'T19.4')], gaps: ['G13'], scopes: ['tenant'], dimensions: ['rule'] }),
+  security({ id: 'S19', rank: 19, auditor: 'yes',
+    title: 'Which AI coding agents are installed on our machines, and which are not on the approved list?',
+    kinds: [k('live', 'T19.4')], gaps: ['G14'], scopes: ['tenant'], dimensions: ['agent_family', 'operating_system', 'machine'] }),
+  security({ id: 'S20', rank: 20, auditor: 'yes',
+    title: 'Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find?',
+    kinds: [k('live', 'T19.4')], gaps: ['G14'], scopes: ['tenant'], dimensions: ['rule_category', 'severity'], wording: ['requested_not_confirmed'] }),
+  security({ id: 'S26', rank: 21, auditor: 'yes',
+    title: 'How often do agents ask permission, how often do developers approve or deny, and did sessions with findings get approvals?',
+    kinds: [k('live', 'T19.4')], scopes: ['tenant'], dimensions: ['agent_family'], wording: ['requested_not_confirmed'] }),
+  security({ id: 'S23', rank: 22, auditor: 'partly',
+    title: 'Which external domains, URLs and addresses did agents reach in a period?',
+    kinds: [k('live', 'T19.4')], scopes: ['tenant'], dimensions: ['agent_family'], wording: ['metadata_only'] }),
+  security({ id: 'S21', rank: 23, auditor: 'yes',
+    title: 'Which agents ran in reduced-approval or bypass modes, and how often?',
+    kinds: [k('live', 'T19.4')], gaps: ['G16'], scopes: ['tenant'], dimensions: ['agent_family'] }),
+  security({ id: 'S22', rank: 24, auditor: 'yes',
+    title: 'Which MCP servers are configured and used by agents, and did any send data out?',
+    kinds: [k('live', 'T19.4')], gaps: ['G15'], scopes: ['tenant'], dimensions: ['agent_family'] }),
+  security({ id: 'S24', rank: 25, auditor: 'yes',
+    title: 'What did we block, under which settings version, and what did the developer do next?',
+    kinds: [k('live', 'T19.4')], gaps: ['G17'], scopes: ['tenant'], dimensions: ['rule', 'agent_family'] }),
+  security({ id: 'S25', rank: 26, auditor: 'yes',
+    title: 'Give me a signed incident case for one session.',
+    kinds: [k('signed', null)], scopes: ['tenant'], phase: 2 }),
 ];
 
 export const QA_QUESTIONS_BY_ID: ReadonlyMap<string, QaQuestion> = new Map(QA_QUESTIONS.map((q) => [q.id, q]));
@@ -218,6 +242,10 @@ export const QA_GAPS: readonly QaGap[] = [
   { id: 'G11', title: 'D6.1 activation lease issue and refuse events', owner: 'Task6.b', open: true, questions: ['S13'] },
   { id: 'G12', title: 'Policy exceptions and waivers', owner: 'Task6.b', open: true, questions: ['S14'] },
   { id: 'G13', title: 'Finding triage, disposition and remediation state', owner: 'Task6 (state), Task16 (event), Task10 (UI)', open: true, questions: ['S16', 'S18'] },
+  { id: 'G14', title: 'Agent inventory and day-one scan uploads from the endpoint', owner: 'Task20 (Task20h-b)', open: true, questions: ['S19', 'S20'] },
+  { id: 'G15', title: 'MCP server configuration and per-call MCP identity on findings', owner: 'Task20 (later)', open: true, questions: ['S22'] },
+  { id: 'G16', title: 'Deferred rule wave 2 (the 7 normal-development rules, including exec.agent_runtime_bypass_flags)', owner: 'Task20 (later wave)', open: true, questions: ['S21'] },
+  { id: 'G17', title: 'Opt-in blocking pilot (enforcement decisions)', owner: 'Task20 (Task20k)', open: true, questions: ['S24'] },
 ];
 
 export const QA_GAPS_BY_ID: ReadonlyMap<string, QaGap> = new Map(QA_GAPS.map((g) => [g.id, g]));
