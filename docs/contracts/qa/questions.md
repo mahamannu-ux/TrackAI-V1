@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/features/qa/registry.ts by `npm run qa:registry -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Registry version 2. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
+Registry version 3. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
 Every security answer carries `monitor_only_observed`. No scope or dimension names a person.
 
 ## Code questions
@@ -68,8 +68,8 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | G1 | Repository and path line-count snapshot | Task2 + GitAI | yes | Q1 |
 | G2 | Organization AI-usage policy (approved tools and models) | Task6.b | yes | Q4, Q12, S13 |
 | G3 | Pull request review and approval capture | Task2 (semantics), Task7 (other providers), Task4 (delivery) | yes | Q5 |
-| G4 | merged_by on pull requests | Task2 | yes | Q6 |
-| G5 | Content-free rejection audit event for refused uploads | Task4 (capture), Task16 (expose), Task15 (count) | yes | Q15 |
+| G4 | merged_by on pull requests | Task2 | no | Q6 |
+| G5 | Content-free rejection audit event for refused uploads | Task4 (capture), Task16 (expose), Task15 (count) | no | Q15 |
 | G6 | Security findings signed on their own (finding_observed) | Task15 (Task15o), Task6 (outbox row) | yes | S1, S5, S7, S10, S11, S12 |
 | G7 | Monitoring coverage history | Task6 + Task9 (capture), Task15 (signed) | yes | S2, S10 |
 | G8 | Security-monitor setting writer and audit event | Task6 (writer), Task16 (event) | yes | S3 |
