@@ -1,0 +1,29 @@
+apps/api/package.json
+  s_f0fcc7adbbc69b::t_6590a1c680bde7 78,102,126
+apps/api/src/features/qa/answer-schema.ts
+  s_f0fcc7adbbc69b::t_6d43c10ea2e9be 713-738,772-779
+apps/api/src/features/qa/task19g-qa-live-verify.ts
+  s_f0fcc7adbbc69b::t_4bf469513053cf 1-160
+apps/web/src/app/dashboard/questions-workspace.tsx
+  s_f0fcc7adbbc69b::t_bd6ea69f466e75 96,105-106,126-127,135,162-165,211-212,235-236,250,274-296,326,335-336,341,553-567
+apps/web/src/lib/api.ts
+  s_f0fcc7adbbc69b::t_e394a85ba08531 528-529,592-593
+docs/contracts/qa/answer-v1.schema.json
+  s_f0fcc7adbbc69b::t_be4f0ae29f16d1 709-734,768-775
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "1ec8c53e0edfce6359b88d7d18f10aae43cb6591",
+  "prompts": {},
+  "sessions": {
+    "s_f0fcc7adbbc69b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15534-94b0-7a70-8d68-8bd3398b1a5c",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
