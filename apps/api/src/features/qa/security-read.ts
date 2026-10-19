@@ -24,6 +24,9 @@ import {
   aiSessions,
   fleetMachineStates,
   securityEnforcementDecisions,
+  securityPermissionEvents,
+  securityIndicators,
+  securityDataSettingsVersions,
   securityFindings,
   securityStatusSnapshots,
 } from '../../core/db/schema';
@@ -84,6 +87,26 @@ export interface SessionRow {
   tool: string;
 }
 
+export interface PermissionEventRow {
+  machineId: string;
+  sessionId: string | null;
+  sourceAgent: string;
+  outcome: string;
+}
+
+export interface IndicatorRow {
+  type: string;
+  value: string;
+  count: number;
+  sourceAgent: string;
+}
+
+export interface DataSettingsRow {
+  version: number;
+  urls: boolean;
+  createdAt: Date;
+}
+
 /** Everything a pure security answer reads: period-filtered by the loader. */
 export interface SecurityContext {
   findings: SecurityFindingRow[];
@@ -92,6 +115,9 @@ export interface SecurityContext {
   /** Latest `fleet_machine_states.platform` per machine; absent = no platform row. */
   machinePlatforms: Map<string, string | null>;
   sessions: SessionRow[];
+  permissionEvents: PermissionEventRow[];
+  indicators: IndicatorRow[];
+  dataSettings: DataSettingsRow[];
 }
 
 type FindingSelect = typeof securityFindings.$inferSelect;
@@ -140,6 +166,9 @@ export function buildSecurityContext(input: {
   statusSnapshots: StatusSelect[];
   machineStates: MachineStateSelect[];
   sessions: SessionSelect[];
+  permissionEvents?: Array<typeof securityPermissionEvents.$inferSelect>;
+  indicators?: Array<typeof securityIndicators.$inferSelect>;
+  dataSettings?: Array<typeof securityDataSettingsVersions.$inferSelect>;
 }): SecurityContext {
   return {
     findings: input.findings.map(toFindingRow),
@@ -152,6 +181,15 @@ export function buildSecurityContext(input: {
     machinePlatforms: latestPlatforms(input.machineStates),
     sessions: input.sessions.map((row) => ({
       id: row.id, externalSessionId: row.externalSessionId, tool: row.tool,
+    })),
+    permissionEvents: (input.permissionEvents ?? []).map((row) => ({
+      machineId: row.machineId, sessionId: row.sessionId, sourceAgent: row.sourceAgent, outcome: row.outcome,
+    })),
+    indicators: (input.indicators ?? []).map((row) => ({
+      type: row.type, value: row.value, count: row.count, sourceAgent: row.sourceAgent,
+    })),
+    dataSettings: (input.dataSettings ?? []).map((row) => ({
+      version: row.version, urls: row.urls, createdAt: row.createdAt,
     })),
   };
 }
@@ -170,7 +208,7 @@ export async function loadSecurityContext(
   const from = new Date(fromMs);
   const to = new Date(toMs);
   const tenantDb = withTenant(db, tenantId);
-  const [findings, enforcement, statusSnapshots, machineStates, sessions] = await Promise.all([
+  const [findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings] = await Promise.all([
     tenantDb.select(securityFindings, and(gte(securityFindings.occurredAt, from), lte(securityFindings.occurredAt, to))),
     tenantDb.select(securityEnforcementDecisions, and(
       gte(securityEnforcementDecisions.occurredAt, from), lte(securityEnforcementDecisions.occurredAt, to))),
@@ -178,6 +216,11 @@ export async function loadSecurityContext(
       gte(securityStatusSnapshots.observedAt, from), lte(securityStatusSnapshots.observedAt, to))),
     tenantDb.select(fleetMachineStates),
     tenantDb.select(aiSessions),
+    tenantDb.select(securityPermissionEvents, and(
+      gte(securityPermissionEvents.occurredAt, from), lte(securityPermissionEvents.occurredAt, to))),
+    tenantDb.select(securityIndicators, and(
+      gte(securityIndicators.lastSeen, from), lte(securityIndicators.lastSeen, to))),
+    tenantDb.select(securityDataSettingsVersions, lte(securityDataSettingsVersions.createdAt, to)),
   ]);
-  return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions });
+  return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings });
 }
