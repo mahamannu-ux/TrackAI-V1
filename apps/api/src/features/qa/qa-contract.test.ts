@@ -158,15 +158,16 @@ const FIXTURES = resolve(REPO, 'docs/contracts/qa/fixtures');
 const fixture = (name: string): Record<string, any> => JSON.parse(readFileSync(resolve(FIXTURES, `${name}.json`), 'utf8'));
 
 test('qa envelope: one valid fixture per kind and availability, each passes', () => {
-  const names = readdirSync(FIXTURES).filter((n) => n.startsWith('valid-')).sort();
-  const expected = (['live', 'verifiable', 'signed'] as const).flatMap((kind) =>
-    (['partial', 'recorded', 'unavailable'] as const).map((a) => `valid-${kind}-${a}.json`)).sort();
-  assert.deepEqual(names, expected);
+  const names = readdirSync(FIXTURES).filter((n) => n.startsWith('valid-')).map((n) => n.replace(/\.json$/, '')).sort();
+  // One per kind × availability, plus Task16 A16.13's per-reason-code fixtures.
+  const reasonFixtures = ['valid-signed-report-not-built', 'valid-verifiable-not-sealed'];
+  const standard = (['live', 'verifiable', 'signed'] as const).flatMap((kind) =>
+    (['partial', 'recorded', 'unavailable'] as const).map((a) => `valid-${kind}-${a}`)).sort();
+  assert.deepEqual(names, [...standard, ...reasonFixtures].sort());
   for (const name of names) {
-    const envelope = fixture(name.replace(/\.json$/, ''));
-    const [, kind, availability] = name.replace(/\.json$/, '').split('-');
-    assert.equal(envelope.kind, kind, name);
-    assert.equal(envelope.availability, availability, name);
+    const envelope = fixture(name);
+    assert.equal(envelope.kind, name.split('-')[1], name);
+    if (!reasonFixtures.includes(name)) assert.equal(envelope.availability, name.split('-')[2], name);
     assert.deepEqual(checkEnvelope(envelope), { ok: true, path: null }, name);
   }
 });

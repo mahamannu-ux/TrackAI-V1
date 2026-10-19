@@ -16,6 +16,7 @@ import { requireAdminAction } from '../../core/middleware/admin';
 import { defaultAnswerers, type AnswererRegistry } from './answerers';
 import './answers/register-code';
 import './security-answerers';
+import './auditor/register-auditor';
 import type { QaContext } from './answers/common';
 import { defaultLog, logFailure, problemizeAuth, qaHttp, sendJson, sendProblem, type QaLog } from './http';
 import { QA_QUESTIONS, QA_REGISTRY_VERSION } from './registry';

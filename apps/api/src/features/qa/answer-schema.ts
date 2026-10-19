@@ -485,7 +485,11 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
             "never_written",
             "partial_linkage",
             "answer_not_built",
-            "phase_2"
+            "phase_2",
+            "not_sealed_yet",
+            "evidence_broken",
+            "report_not_built",
+            "evidence_truncated"
           ]
         },
         "gap": {
