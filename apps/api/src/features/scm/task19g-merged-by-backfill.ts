@@ -48,7 +48,7 @@ export async function runMergedByBackfill(confirm: boolean): Promise<void> {
     ]);
     const plan = planMergedByBackfill(tenant.id, deliveries, repositories, pullRequests);
     console.log(JSON.stringify({ tenant_id: tenant.id, would_update: plan.candidates.length, skipped: plan.skipped, dry_run: !confirm }));
-    if (!confirm || plan.candidates.length === 0) continue;
+    if (!confirm) continue;
     await db.transaction(async (tx) => {
       let updated = 0;
       for (const candidate of plan.candidates) {

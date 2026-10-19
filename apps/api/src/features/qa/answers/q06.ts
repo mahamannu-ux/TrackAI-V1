@@ -1,9 +1,13 @@
-import { pullRequestIntelligence } from '../../telemetry/task2-lifecycle-read';
-import { finishEnvelope, inPeriod, periodMs, rawAnswer, type ComputeInput } from './common';
+import { eq } from 'drizzle-orm';
+import { db } from '../../../core/db';
+import { withTenant } from '../../../core/db/tenant';
+import { securityAuditEvents } from '../../../core/db/schema';
+import { loadContext, pullRequestIntelligence } from '../../telemetry/task2-lifecycle-read';
+import { finishEnvelope, inPeriod, periodMs, type ComputeInput } from './common';
 import { pullRequestCommitIds, repositoryIdsInScope } from '../drilldown';
 import type { QaAnswerer, QaEnvelope, QaFigure } from '../types';
 
-export function computeQ6({ context, ctx }: ComputeInput): QaEnvelope {
+export function computeQ6({ context, ctx }: ComputeInput, backfillDone = false): QaEnvelope {
   const { fromMs, toMs } = periodMs(ctx.scope);
   const repositoryIds = new Set(repositoryIdsInScope(context, ctx));
   const prs = context.pullRequests.filter((pr) =>
@@ -29,9 +33,9 @@ export function computeQ6({ context, ctx }: ComputeInput): QaEnvelope {
   const unknown = counts.merger_unknown;
   const figures: QaFigure[] = Object.entries(counts).map(([key, count]) => ({
     key,
-    availability: unknown > 0 && (key === 'merged_by_author' || key === 'merged_by_someone_else')
+    availability: unknown > 0 && !backfillDone && (key === 'merged_by_author' || key === 'merged_by_someone_else')
       ? 'partial' : 'recorded',
-    reasons: unknown > 0 && (key === 'merged_by_author' || key === 'merged_by_someone_else')
+    reasons: unknown > 0 && !backfillDone && (key === 'merged_by_author' || key === 'merged_by_someone_else')
       ? [{ code: 'not_captured_yet', gap: 'G4' }] : [],
     value: { type: 'count', count },
     ...(ctx.breakdown === 'repository' ? { breakdown: [...repositoryIds].sort().map((repositoryId) => ({
@@ -43,4 +47,11 @@ export function computeQ6({ context, ctx }: ComputeInput): QaEnvelope {
   return finishEnvelope(ctx, context, figures);
 }
 
-export const answererQ6: QaAnswerer = rawAnswer(computeQ6);
+export const answererQ6: QaAnswerer = async (ctx) => {
+  const [context, markers] = await Promise.all([
+    loadContext(ctx.tenantId),
+    withTenant(db, ctx.tenantId).select(securityAuditEvents,
+      eq(securityAuditEvents.action, 'scm.merged_by.backfilled')),
+  ]);
+  return computeQ6({ context, ctx }, markers.length > 0);
+};

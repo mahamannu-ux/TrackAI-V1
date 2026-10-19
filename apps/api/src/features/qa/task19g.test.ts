@@ -111,6 +111,18 @@ test('Q6 validates through answerQuestion, counts the merger without naming peop
   assert.doesNotMatch(JSON.stringify(answer), /hidden@example|"authorLogin"|"mergedByLogin"|\/repo/);
   await assert.rejects(answerQuestion({ answerers, scopes }, { ...request, tenantId: tenantB }),
     (error: Error & { code?: string }) => error.code === 'QA_SCOPE_NOT_FOUND');
+  const unknownContext = row<QaContext>({ ...context,
+    pullRequests: [{ ...context.pullRequests[0], mergedByProviderId: null, mergedByLogin: null }] });
+  const beforeAnswerers = createAnswererRegistry();
+  beforeAnswerers.register('Q6', 'live', async (ctx) => computeQ6({ context: unknownContext, ctx }));
+  const before = await answerQuestion({ answerers: beforeAnswerers, scopes }, request);
+  assert.equal(before.figures.find((figure) => figure.key === 'merged_by_author')?.availability, 'partial');
+  const afterAnswerers = createAnswererRegistry();
+  afterAnswerers.register('Q6', 'live', async (ctx) => computeQ6({ context: unknownContext, ctx }, true));
+  const after = await answerQuestion({ answerers: afterAnswerers, scopes }, request);
+  assert.equal(after.figures.find((figure) => figure.key === 'merged_by_author')?.availability, 'recorded');
+  assert.deepEqual(after.figures.find((figure) => figure.key === 'merger_unknown')?.value,
+    { type: 'count', count: 1 });
 });
 
 test('Q15 is partial before capture, then recorded; Company B has no A rows', async () => {

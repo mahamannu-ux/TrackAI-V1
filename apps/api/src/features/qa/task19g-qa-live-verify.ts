@@ -87,6 +87,11 @@ async function main(): Promise<void> {
     const afterBackfill = await pool.query<{ merged_by_provider_id: string | null }>(
       `select merged_by_provider_id from scm_pull_requests where id = $1`, [pr.rows[0].id]);
     check(afterBackfill.rows[0].merged_by_provider_id === '11', 'confirm fills merger');
+    const markers = await pool.query<{ tenant_id: string; details: { updated: number } }>(
+      `select tenant_id, details from security_audit_events
+       where action = 'scm.merged_by.backfilled' order by tenant_id`);
+    check(markers.rows.length === 2 && markers.rows.some((row) =>
+      row.tenant_id === tenantB && row.details.updated === 0), 'one backfill marker per tenant');
     const commitId = randomUUID();
     await pool.query(`insert into scm_commits
       (id, tenant_id, repository_id, sha, subject, author_email, observed_ai_lines)
