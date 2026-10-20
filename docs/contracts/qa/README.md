@@ -13,7 +13,7 @@ Every surface that answers a customer's or an auditor's question uses this contr
 
 ## The rules in plain words
 
-1. **One registry.** Each question has a stable id (`Q1`…`Q20`, `S1`…`S18`), a family, a rank, an auditor flag, the kinds of answer it offers (and who builds each), its open gaps, the scopes it accepts, the breakdowns it allows, whether it compares with the previous period, and the caveats every answer must show. `QA_REGISTRY_VERSION` goes up whenever an entry or a gap changes, and a unit test pins each version's content. Ids are never reused.
+1. **One registry.** Each question has a stable id (`Q1`…`Q20`, `S1`…`S26`), a family, a rank, an auditor flag, the kinds of answer it offers (and who builds each), its open gaps, the scopes it accepts, the breakdowns it allows, whether it compares with the previous period, and the caveats every answer must show. `QA_REGISTRY_VERSION` goes up whenever an entry or a gap changes, and a unit test pins each version's content. Ids are never reused.
 2. **Three kinds of answer.**
    - `live` is a query over today's tables. It proves nothing and is for admins only.
    - `verifiable` is computed only from signed Attesta statements. Each figure lists the statements behind it (`evidence`: count, seqs, digests and an RFC 6962 root, as in RP-1 and `docs/contracts/attesta/period-report.md`). In a verifiable or signed answer, every `recorded` or `partial` figure, in `figures` and in `previous`, **must** carry `evidence`; the schema refuses one without it.
@@ -23,6 +23,9 @@ Every surface that answers a customer's or an auditor's question uses this contr
 3. **Auditors get verifiable and signed answers only.** The server refuses `kind=live` to `tenant_auditor` (rule 9). Hiding it in the UI is not enough.
 4. **Honest states.**
    - Every figure says `recorded`, `partial` or `unavailable`, with reasons from a closed list. A `not_captured_yet` reason names its gap.
+   - Task16 A16.13 (auditor verifiable/signed answers) added four closed-list codes: `not_sealed_yet` — part of the period is not sealed yet (the settle margin plus the hourly seal), so only the sealed part is counted; `evidence_broken` — a seal or chain check found a break, and the answer is `unavailable`; `report_not_built` — no signed report exists for exactly this scope, and the auditor can request one; `evidence_truncated` — more than 50 000 statements behind one figure, so it is `partial`.
+   - `data_setting_off` means the tenant's security data settings keep the needed data on the developer machine.
+   - `zero_denominator` means a ratio has no recorded denominator in this period.
    - An unavailable figure has value `null`, **never 0**. The schema refuses a 0 in its place, and a unit test proves it.
    - A question with no answer built yet still answers: `unavailable`, with `answer_not_built` (or `phase_2`) and its open gaps.
 5. **Integers only.** A value is a count, a ratio (numerator and denominator, never a float) or a duration in milliseconds, within ±(2^53 − 1). A share is computed for display only.

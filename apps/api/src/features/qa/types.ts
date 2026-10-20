@@ -43,10 +43,16 @@ export const QA_REASON_CODES = [
   'partial_linkage', // the session text join (G10)
   'answer_not_built',
   'phase_2',
+  'not_sealed_yet', // A16.13: the seal lag, only the sealed part is counted
+  'evidence_broken', // A16.13: a seal or chain break; the answer is unavailable
+  'report_not_built', // A16.13: no signed report for exactly this scope
+  'evidence_truncated', // A16.13: more than 50 000 statements; the figure is partial
+  'data_setting_off', // security URL data remains on the developer machine
+  'zero_denominator', // a ratio cannot be computed from zero decisions
 ] as const;
 export type QaReasonCode = typeof QA_REASON_CODES[number];
 
-export const QA_GAP_IDS = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13'] as const;
+export const QA_GAP_IDS = ['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7', 'G8', 'G9', 'G10', 'G11', 'G12', 'G13', 'G14', 'G15', 'G16', 'G17'] as const;
 export type QaGapId = typeof QA_GAP_IDS[number];
 
 export const QA_WORDING_CODES = [

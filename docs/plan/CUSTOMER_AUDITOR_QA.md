@@ -4,7 +4,7 @@
 
 ## How to read this
 
-- **Rank**: customer priority and impact, 1 = asked first. Code questions keep their `Q` ids, so links stay valid; security questions are numbered in rank order (S1 = rank 1).
+- **Rank**: customer priority and impact, 1 = asked first. Code questions keep their `Q` ids, so links stay valid; S1–S18 are numbered in rank order; S19–S26 carry an explicit Rank column.
 - **Auditor**: "yes" means an auditor (SOC 2, ISO 42001, acquirer's counsel, insurer) would ask it, so the answer must be **provable** (see the three kinds of answer below). "no" means an admin or engineering question that needs no proof.
 - **Data today**: whether TrackAI **stores** what the answer needs: ✅ stored; 🟡 partly; ⬜ not captured. It says nothing about whether an answer exists yet: **no Q&A query or screen exists for any row**, even a ✅ one. Task2's lifecycle dashboards show some figures (Q3, Q19), but not as answers to these questions.
 - **Lives in**: what has to be in a signed predicate for the answer to be provable, or "live query" when a dashboard is enough.
@@ -91,7 +91,20 @@ Three limits shape every answer below:
 | S17 | Which **machines (or teams)** generate repeated findings? | partly | 🟡 | live query, aggregated | live query | `machine_id` is a column. Teams: no team mapping exists (as Q20), so by-team is `unavailable`. Never per developer: Task5's no-surveillance rule. |
 | S18 | Which rules fire most, and which are noisy (findings later marked benign)? | no | 🟡 | live query | live query (counts); new capture for disposition (G13) | A tuning question for Task10. A false-positive rate needs G13's disposition field. |
 
-**Auditor-relevant:** S1–S15 (S16, S17 partly). **Task10 only:** S18. **Answerable with signatures before any new capture:** S6, plus S15 after A16.4. **Answerable live today:** S7, S9, S11, S12, S17, and S5, S8, S10 partly. Everything else waits on G6–G13.
+### Security questions from Numbat (S19–S26, founder-ranked 2026-10-19)
+
+| Rank | # | Question | Auditor | Data today | Lives in | Answered by | Notes / gap |
+|---|---|---|---|---|---|---|---|
+| 19 | S19 | Which AI coding agents are installed on our machines, and which are not on the approved list? | yes | ⬜ | inventory metadata | live query after capture | G14: endpoint inventory upload and approved-list comparison; no agent versions reported. |
+| 20 | S20 | Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find? | yes | ⬜ | scan summary and findings | live query after capture | G14: day-one scan upload. Requested actions are not confirmed outcomes. |
+| 21 | S26 | How often do agents ask permission, how often do developers approve or deny, and did sessions with findings get approvals? | yes | ✅ | permission events and v2 findings | live query | Same-session approval association is partial linkage, not proof of approval for a finding's action. |
+| 22 | S23 | Which external domains, URLs and addresses did agents reach in a period? | partly | 🟡 (only with `urls` on) | indicator metadata | live query | With `urls` off, unavailable (`data_setting_off`); no indicator values in the answer envelope. |
+| 23 | S21 | Which agents ran in reduced-approval or bypass modes, and how often? | yes | 🟡 | v2 findings | live query (partial) | `tamper.guardrails_off` observed; bypass flag launches await G16. |
+| 24 | S22 | Which MCP servers are configured and used by agents, and did any send data out? | yes | ⬜ | MCP metadata | live query after capture | G15: server configuration and per-call MCP identity. |
+| 25 | S24 | What did we block, under which settings version, and what did the developer do next? | yes | ⬜ | enforcement decisions | live query after pilot | G17: opt-in blocking pilot. |
+| 26 | S25 | Give me a signed incident case for one session. | yes | n/a | signed case bundle | phase 2 | Waits for Task15 case-bundle work. |
+
+**Auditor-relevant:** S1–S15 (S16, S17 partly). **Task10 only:** S18. **Answerable with signatures before any new capture:** S6, plus S15 after A16.4. **Answerable live today:** S7, S9, S11, S12, S17, and S5, S8, S10 partly. S19–S26 follow the new table above; their remaining capture gaps are G14–G17.
 
 ### A security period report: yes, as its own predicate
 
@@ -250,6 +263,10 @@ Provider re-delivery already has a strong unique key `(tenant, provider, deliver
 | G11 | D6.1 activation lease issue and refuse events | S13 | Task6.b (events reserved in Task16b) | with D6.1 |
 | G12 | Policy exceptions and waivers object | S14 | Task6.b | with Task6.b |
 | G13 | Finding triage, disposition and remediation state (append-only, audited) | S16, S18 | Task6 (state), Task16 (event `security.finding.triaged`, reserved in Task16b), Task10 (UI) | 2 |
+| G14 | Agent inventory and day-one scan uploads from the endpoint | S19, S20 | Task20 (Task20h-b) | 1 |
+| G15 | MCP server configuration and per-call MCP identity on findings | S22 | Task20 (later) | later |
+| G16 | Deferred rule wave 2 (the 7 normal-development rules, including `exec.agent_runtime_bypass_flags`) | S21 | Task20 (later wave) | later |
+| G17 | Opt-in blocking pilot (enforcement decisions) | S24 | Task20 (Task20k) | later |
 
 ## Task6.a status and what it means for these questions (Codex's report, 2026-10-14)
 

@@ -1,0 +1,32 @@
+{
+  "question_id": "S1",
+  "registry_version": 1,
+  "kind": "signed",
+  "as_of": "2026-10-15T09:30:00.000Z",
+  "scope": {
+    "from": "2026-07-01T00:00:00.000Z",
+    "to": "2026-09-30T23:59:59.999Z"
+  },
+  "availability": "unavailable",
+  "reasons": [
+    {
+      "code": "report_not_built"
+    }
+  ],
+  "figures": [
+    {
+      "key": "high_or_critical_findings",
+      "availability": "unavailable",
+      "reasons": [
+        {
+          "code": "report_not_built"
+        }
+      ],
+      "value": null
+    }
+  ],
+  "wording": [
+    "monitor_only_observed"
+  ],
+  "drilldown": []
+}

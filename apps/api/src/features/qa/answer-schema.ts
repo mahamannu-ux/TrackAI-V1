@@ -466,7 +466,11 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
         "G10",
         "G11",
         "G12",
-        "G13"
+        "G13",
+        "G14",
+        "G15",
+        "G16",
+        "G17"
       ]
     },
     "reason": {
@@ -485,7 +489,13 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
             "never_written",
             "partial_linkage",
             "answer_not_built",
-            "phase_2"
+            "phase_2",
+            "not_sealed_yet",
+            "evidence_broken",
+            "report_not_built",
+            "evidence_truncated",
+            "data_setting_off",
+            "zero_denominator"
           ]
         },
         "gap": {

@@ -27,6 +27,7 @@ import {
   comparisonAnswer, linkedAnswer, securityAnswer,
   computeS5, computeS6, computeS7, computeS8, computeS9, computeS10, computeS11,
   computeS12, computeS15, computeS17, computeS18, computeQ11,
+  computeS26, computeS23, computeS21,
 } from './security-answerers';
 import type { QaContext } from './answers/common';
 import type { QaAnswerContext, QaEnvelope, QaFigure } from './types';
@@ -75,6 +76,9 @@ function securityContext(over: Partial<SecurityContext> = {}): SecurityContext {
     machinePlatforms: new Map([[MACHINE_A, 'macos'], [MACHINE_B, 'windows']]),
     sessions: [{ id: SESSION_ID, externalSessionId: EXT_SESSION, tool: 'opencode' }],
     ...over,
+    permissionEvents: over.permissionEvents ?? [],
+    indicators: over.indicators ?? [],
+    dataSettings: over.dataSettings ?? [],
   };
 }
 
@@ -370,5 +374,103 @@ describe('Task19c: Company A and Company B see only their own findings', () => {
     } finally {
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
+  });
+});
+
+describe('Task19f: Numbat live answers', () => {
+  const settings = (urls: boolean, at: string) => ({ version: 1, urls, createdAt: new Date(at) });
+  const permission = (outcome: string, sourceAgent = 'claude', sessionId: string | null = EXT_SESSION) =>
+    ({ machineId: MACHINE_A, sessionId, sourceAgent, outcome });
+  const valid = (e: QaEnvelope) => assert.deepEqual(checkEnvelope(e, { questionId: e.question_id,
+    kind: e.kind, scope: e.scope, breakdown: null }), { ok: true, path: null });
+
+  test('S26 counts, rate, same-session association, and zero denominator', () => {
+    const security = securityContext({
+      findings: [finding({ generation: 'v2', machineId: MACHINE_A, sessionId: EXT_SESSION })],
+      permissionEvents: [permission('requested'), permission('requested'), permission('approved'), permission('denied')],
+    });
+    const e = computeS26({ ctx: ctxFor('S26', 'tenant'), security });
+    assert.deepEqual(e.figures.map((f) => f.value), [
+      { type: 'count', count: 2 }, { type: 'count', count: 1 }, { type: 'count', count: 1 },
+      { type: 'ratio', numerator: 1, denominator: 2 }, { type: 'count', count: 1 },
+    ]);
+    assert.equal(figureOf(e, 'sessions_with_finding_and_approval').availability, 'partial');
+    assert.deepEqual(figureOf(e, 'sessions_with_finding_and_approval').reasons, [{ code: 'partial_linkage' }]);
+    valid(e);
+    const byAgent = computeS26({ ctx: ctxFor('S26', 'tenant', 'agent_family'), security });
+    assert.deepEqual(figureOf(byAgent, 'permission_requested').breakdown,
+      [{ dimension: 'agent_family', key: 'claude', value: { type: 'count', count: 2 } }]);
+    assert.equal(checkEnvelope(byAgent, { questionId: 'S26', kind: 'live', scope: byAgent.scope,
+      breakdown: 'agent_family' }).ok, true);
+    const zero = computeS26({ ctx: ctxFor('S26', 'tenant'), security: securityContext({ findings: [], permissionEvents: [] }) });
+    assert.equal(figureOf(zero, 'permission_requested').availability, 'recorded');
+    assert.equal(figureOf(zero, 'approval_rate').availability, 'unavailable');
+    assert.equal(figureOf(zero, 'approval_rate').value, null);
+    valid(zero);
+  });
+
+  test('S23 urls off, part-period on, value privacy, and all-period on', () => {
+    const indicator = (type: string, value: string, count: number) => ({ type, value, count, sourceAgent: 'claude' });
+    const rows = [indicator('domain', 'sensitive.example', 3), indicator('url', 'https://secret.example/a', 2),
+      indicator('ipv4', '203.0.113.42', 4)];
+    const off = computeS23({ ctx: ctxFor('S23', 'tenant'), security: securityContext({ indicators: rows,
+      dataSettings: [settings(false, '2026-09-01T00:00:00.000Z')] }) });
+    assert.equal(off.availability, 'unavailable');
+    for (const f of off.figures) {
+      assert.equal(f.value, null);
+      assert.deepEqual(f.reasons, [{ code: 'data_setting_off' }]);
+    }
+    valid(off);
+    const part = computeS23({ ctx: ctxFor('S23', 'tenant'), security: securityContext({ indicators: rows,
+      dataSettings: [settings(false, '2026-09-01T00:00:00.000Z'),
+        { version: 2, urls: true, createdAt: new Date('2026-10-01T00:00:00.000Z') }] }) });
+    assert.equal(part.availability, 'partial');
+    assert.ok(part.figures.every((f) => f.availability === 'partial'));
+    assert.deepEqual(figureOf(part, 'indicator_observations').value, { type: 'count', count: 9 });
+    valid(part);
+    const on = computeS23({ ctx: ctxFor('S23', 'tenant'), security: securityContext({ indicators: rows,
+      dataSettings: [settings(true, '2026-09-01T00:00:00.000Z')] }) });
+    assert.equal(on.availability, 'recorded');
+    assert.deepEqual(on.figures.map((f) => f.value), [
+      { type: 'count', count: 1 }, { type: 'count', count: 1 },
+      { type: 'count', count: 1 }, { type: 'count', count: 9 },
+    ]);
+    valid(on);
+    const byAgent = computeS23({ ctx: ctxFor('S23', 'tenant', 'agent_family'), security: securityContext({
+      indicators: rows, dataSettings: [settings(true, '2026-09-01T00:00:00.000Z')],
+    }) });
+    assert.deepEqual(figureOf(byAgent, 'indicator_observations').breakdown,
+      [{ dimension: 'agent_family', key: 'claude', value: { type: 'count', count: 9 } }]);
+    assert.equal(checkEnvelope(byAgent, { questionId: 'S23', kind: 'live', scope: byAgent.scope,
+      breakdown: 'agent_family' }).ok, true);
+    for (const e of [off, part, on]) for (const row of rows) assert.ok(!JSON.stringify(e).includes(row.value));
+  });
+
+  test('S21 observed guardrails off and unavailable bypass flag launches', () => {
+    const e = computeS21({ ctx: ctxFor('S21', 'tenant'), security: securityContext({ findings: [
+      finding({ generation: 'v2', ruleId: 'tamper.guardrails_off' }),
+      finding({ id: 'other', generation: 'v2', ruleId: 'tamper.guardrails_off' }),
+    ] }) });
+    assert.equal(e.availability, 'partial');
+    assert.deepEqual(figureOf(e, 'guardrails_off_findings').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'guardrails_off_sessions').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'bypass_flag_launches').reasons, [{ code: 'not_captured_yet', gap: 'G16' }]);
+    valid(e);
+  });
+
+  test('unbuilt Numbat questions carry their gaps and phase-2 reason', async () => {
+    const answerers = createAnswererRegistry();
+    const base = { tenantId: A, role: 'tenant_admin' as const, now: new Date(NOW) };
+    for (const [id, gap] of [['S19', 'G14'], ['S20', 'G14'], ['S22', 'G15'], ['S24', 'G17']]) {
+      const e = await answerQuestion({ answerers, scopes }, { ...base, questionId: id,
+        query: { kind: 'live', from: FROM, to: TO } });
+      assert.equal(e.availability, 'unavailable');
+      assert.deepEqual(e.reasons, [{ code: 'answer_not_built' }, { code: 'not_captured_yet', gap }]);
+      valid(e);
+    }
+    const s25 = await answerQuestion({ answerers, scopes }, { ...base, questionId: 'S25',
+      query: { kind: 'signed', from: FROM, to: TO } });
+    assert.deepEqual(s25.reasons, [{ code: 'phase_2' }]);
+    valid(s25);
   });
 });
