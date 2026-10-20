@@ -710,32 +710,9 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
         }
       },
       "else": {
-        "if": {
-          "properties": {
-            "availability": {
-              "const": "recorded"
-            }
-          }
-        },
-        "then": {
-          "properties": {
-            "value": {
-              "$ref": "#/definitions/value"
-            }
-          }
-        },
-        "else": {
-          "properties": {
-            "value": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/value"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
+        "properties": {
+          "value": {
+            "$ref": "#/definitions/value"
           }
         }
       }

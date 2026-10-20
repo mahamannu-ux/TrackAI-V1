@@ -46,9 +46,12 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     if (ctx.breakdown === 'repository' || ctx.scope.repository_id) return {
       key, availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null,
     };
+    if (!rows.length) return {
+      key, availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G5' }], value: null,
+    };
     if (!covered) return {
       key, availability: 'partial', reasons: [{ code: 'not_captured_yet', gap: 'G5' }],
-      value: rows.length ? { type: 'count', count: count(key, rows) } : null,
+      value: { type: 'count', count: count(key, rows) },
     };
     if (key === 'rejected_repositories' && digestsTruncated) return {
       key, availability: 'partial', reasons: [{ code: 'evidence_truncated' }],
@@ -61,12 +64,13 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     };
   });
   const unavailable = ctx.breakdown === 'repository' || Boolean(ctx.scope.repository_id);
-  const partial = !covered && !unavailable;
+  const uncaptured = !unavailable && rows.length === 0;
+  const partial = !covered && !unavailable && !uncaptured;
   const truncated = !partial && !unavailable && digestsTruncated;
   return {
     question_id: 'Q15', registry_version: QA_REGISTRY_VERSION, kind: 'live', as_of: ctx.now,
-    scope: ctx.scope, availability: unavailable ? 'unavailable' : partial || truncated ? 'partial' : 'recorded',
-    reasons: unavailable ? [{ code: 'answer_not_built' }] : partial
+    scope: ctx.scope, availability: unavailable || uncaptured ? 'unavailable' : partial || truncated ? 'partial' : 'recorded',
+    reasons: unavailable ? [{ code: 'answer_not_built' }] : uncaptured || partial
       ? [{ code: 'not_captured_yet', gap: 'G5' }] : truncated ? [{ code: 'evidence_truncated' }] : [],
     figures, wording: [], drilldown: [],
   };

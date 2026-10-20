@@ -223,7 +223,9 @@ async function main(): Promise<void> {
       f.key === 'rejected_uploads')?.value?.count === 1, 'Q15 rejection count');
     const isolated = await get(`/api/qa/questions/Q15/answer?kind=live&${period}`,
       bearer('admin-b', domainB));
-    check(isolated.status === 200 && isolated.body.availability === 'partial', 'Company B Q15 isolation');
+    check(isolated.status === 200 && isolated.body.availability === 'unavailable'
+      && isolated.body.figures.every((figure: { availability: string; value: unknown }) =>
+        figure.availability === 'unavailable' && figure.value === null), 'Company B Q15 isolation');
     const foreign = await get(`/api/qa/questions/Q6/answer?kind=live&repository_id=${pr.rows[0].repository_id}&${period}`,
       bearer('admin-b', domainB));
     check(foreign.status === 404, 'Company B Q6 scope isolation');

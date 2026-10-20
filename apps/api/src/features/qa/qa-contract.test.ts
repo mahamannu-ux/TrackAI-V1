@@ -222,6 +222,12 @@ test('qa envelope: an unavailable figure never serializes as 0', () => {
   assert.equal(checkEnvelope(withBuckets).ok, false);
 });
 
+test('qa envelope: a partial figure carries a value', () => {
+  const envelope = fixture('valid-live-partial');
+  envelope.figures[0].value = null;
+  assert.equal(checkEnvelope(envelope).ok, false);
+});
+
 test('qa envelope: integers only, within ±(2^53 − 1); ratios never divide by zero', () => {
   const base = fixture('valid-live-recorded');
   const set = (value: unknown) => { const e = structuredClone(base); e.figures[0].value = value; return e; };

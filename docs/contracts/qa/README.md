@@ -26,7 +26,7 @@ Every surface that answers a customer's or an auditor's question uses this contr
    - Task16 A16.13 (auditor verifiable/signed answers) added four closed-list codes: `not_sealed_yet` — part of the period is not sealed yet (the settle margin plus the hourly seal), so only the sealed part is counted; `evidence_broken` — a seal or chain check found a break, and the answer is `unavailable`; `report_not_built` — no signed report exists for exactly this scope, and the auditor can request one; `evidence_truncated` — more than 50 000 statements behind one figure, so it is `partial`.
    - `data_setting_off` means the tenant's security data settings keep the needed data on the developer machine.
    - `zero_denominator` means a ratio has no recorded denominator in this period.
-   - An unavailable figure has value `null`, **never 0**. A partial live figure may also have `null` when capture has not begun, as Q15 does before its first managed-upload rejection; it must carry a reason. Recorded figures keep a value.
+   - An unavailable figure has value `null`, **never 0**. The schema refuses a 0 in its place, and a unit test proves it.
    - A question with no answer built yet still answers: `unavailable`, with `answer_not_built` (or `phase_2`) and its open gaps.
 5. **Integers only.** A value is a count, a ratio (numerator and denominator, never a float) or a duration in milliseconds, within ±(2^53 − 1). A share is computed for display only.
 6. **Required wording.**

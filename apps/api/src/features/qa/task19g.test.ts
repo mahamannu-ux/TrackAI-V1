@@ -125,28 +125,32 @@ test('Q6 validates through answerQuestion, counts the merger without naming peop
     { type: 'count', count: 1 });
 });
 
-test('Q15 is partial before capture, then recorded; Company B has no A rows', async () => {
+test('Q15 is unavailable before capture, then recorded; Company B has no A rows', async () => {
   const answerers = createAnswererRegistry();
   let rows: Parameters<typeof computeQ15>[1] = [];
   answerers.register('Q15', 'live', async (ctx) => computeQ15(ctx, rows.filter((row) => row.tenantId === ctx.tenantId)));
   const request = { tenantId: tenantA, role: 'tenant_admin' as const, questionId: 'Q15',
     query: { kind: 'live', from: '2026-10-18T00:00:00.000Z', to: '2026-10-20T00:00:00.000Z' }, now };
   const before = await answerQuestion({ answerers, scopes }, request);
-  assert.equal(before.availability, 'partial');
-  assert.equal(before.figures[0]?.value, null);
+  assert.equal(before.availability, 'unavailable');
+  assert.deepEqual(before.reasons, [{ code: 'not_captured_yet', gap: 'G5' }]);
+  assert.ok(before.figures.every((figure) => figure.availability === 'unavailable' && figure.value === null));
   rows = [row({ tenantId: tenantA, action: 'telemetry.upload.rejected', actorId: randomUUID(),
     occurredAt: now, details: { event_count: 2, reason_counts: { grant_inactive: 2 },
       repository_digests: ['a'.repeat(64)] } })];
   const after = await answerQuestion({ answerers, scopes }, request);
+  assert.equal(after.availability, 'partial');
+  assert.equal(after.figures.find((figure) => figure.key === 'rejected_events')?.availability, 'partial');
   assert.deepEqual(after.figures.find((figure) => figure.key === 'rejected_events')?.value,
     { type: 'count', count: 2 });
   const other = await answerQuestion({ answerers, scopes }, { ...request, tenantId: tenantB });
-  assert.equal(other.availability, 'partial');
+  assert.equal(other.availability, 'unavailable');
   const historical = await answerQuestion({ answerers, scopes }, { ...request,
     query: { ...request.query, from: '2026-10-17T00:00:00.000Z',
       to: '2026-10-18T00:00:00.000Z' } });
-  assert.equal(historical.availability, 'partial');
-  assert.equal(historical.figures.find((figure) => figure.key === 'rejected_uploads')?.value, null);
+  assert.equal(historical.availability, 'unavailable');
+  assert.deepEqual(historical.reasons, [{ code: 'not_captured_yet', gap: 'G5' }]);
+  assert.ok(historical.figures.every((figure) => figure.availability === 'unavailable' && figure.value === null));
   rows = [row({ ...rows[0], details: { event_count: 2, reason_counts: { grant_inactive: 2 },
     repository_digests: Array.from({ length: 20 }, (_, index) => index.toString(16).padStart(64, '0')) } })];
   const truncated = await answerQuestion({ answerers, scopes }, { ...request,
