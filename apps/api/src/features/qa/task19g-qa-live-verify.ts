@@ -1,10 +1,14 @@
 /** IT-T19g-01 steps 1–3: real webhook, managed upload, QA routes, and tenant isolation. */
 import 'dotenv/config';
 import { createHmac, generateKeyPairSync, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { parse as parseDotenv } from 'dotenv';
 import jwt from 'jsonwebtoken';
+import { Client } from 'pg';
 import { pool } from '../../core/db';
+import { createGitHubAppInstallation } from '../../core/security/github-app-security-service';
 import { createMachineCredential } from '../../core/security/machine-credential';
 import { runMergedByBackfill } from '../scm/task19g-merged-by-backfill';
 
@@ -16,6 +20,95 @@ const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 async function listen(server: Server): Promise<Server> {
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   return server;
+}
+
+/** Optional step 4: copy one lab commit's metadata into the throwaway DB, then use real App blame. */
+async function verifyLiveQ2(
+  tenantId: string,
+  token: string,
+  get: (path: string, token: string) => Promise<{ status: number; body: any }>,
+): Promise<void> {
+  const sourceEnvFile = process.env.TASK19G_Q2_SOURCE_ENV_FILE;
+  const appKeyFile = process.env.TASK19G_Q2_APP_KEY_FILE;
+  if (!sourceEnvFile && !appKeyFile) return;
+  check(sourceEnvFile && appKeyFile, 'both Q2 source env and App key file required');
+  const sourceUrl = parseDotenv(readFileSync(sourceEnvFile)).DATABASE_URL;
+  check(sourceUrl && sourceUrl !== process.env.DATABASE_URL, 'separate source database URL required');
+  const source = new Client({
+    connectionString: sourceUrl,
+    connectionTimeoutMillis: 7000,
+    options: '-c default_transaction_read_only=on -c statement_timeout=7000',
+  });
+  type LabRow = {
+    provider: string; external_id: string; name: string; url: string;
+    sha: string; subject: string; author_email: string | null; commit_ai_lines: number;
+    path: string; file_ai_lines: number; file_human_lines: number; attribution_ranges: unknown;
+    app_id: string; installation_external_id: string; account_login: string;
+  };
+  let candidates: LabRow[];
+  await source.connect();
+  try {
+    const result = await source.query<LabRow>(`select r.provider, r.external_id, r.name, r.url,
+      c.sha, c.subject, c.author_email, c.observed_ai_lines as commit_ai_lines,
+      f.path, f.observed_ai_lines as file_ai_lines,
+      f.observed_human_lines as file_human_lines, f.attribution_ranges,
+      i.app_id, i.installation_external_id, i.account_login
+      from sso_tenants t
+      join scm_repositories r on r.tenant_id = t.id
+      join scm_commits c on c.tenant_id = t.id and c.repository_id = r.id
+      join scm_commit_files f on f.tenant_id = t.id and f.commit_id = c.id
+      join github_app_installations i on i.tenant_id = t.id and i.provider_host = 'github.com'
+        and i.account_login = 'mahamannu-ai'
+        and i.status = 'active'
+      where t.domain = 'purpletealabs.net'
+        and r.url = 'https://github.com/mahamannu-ai/git-ai-teamz-lab'
+        and c.sha = '807419e8ceb1436ce34826d496e87a964888aa27'
+        and f.observed_ai_lines > 0
+      order by f.observed_ai_lines desc limit 3`);
+    candidates = result.rows;
+  } finally {
+    await source.end();
+  }
+  const chosen = candidates.flatMap((row) => {
+    if (!Array.isArray(row.attribution_ranges)) return [];
+    const range = row.attribution_ranges.find((item) => item && typeof item === 'object'
+      && item.kind === 'ai' && Number.isInteger(item.startLine)
+      && item.startLine > 0 && item.startLine <= 1_000_000);
+    return range ? [{ row, line: range.startLine as number }] : [];
+  })[0];
+  check(chosen, 'lab commit has an AI-attributed file line');
+  const { row, line } = chosen;
+  const repositoryId = randomUUID();
+  const commitId = randomUUID();
+  const fileId = randomUUID();
+  await pool.query(`insert into scm_repositories
+    (id, tenant_id, provider, external_id, name, url)
+    values ($1, $2, $3, $4, $5, $6)`,
+  [repositoryId, tenantId, row.provider, row.external_id, row.name, row.url]);
+  await pool.query(`insert into scm_commits
+    (id, tenant_id, repository_id, sha, subject, author_email, observed_ai_lines)
+    values ($1, $2, $3, $4, $5, $6, $7)`,
+  [commitId, tenantId, repositoryId, row.sha, row.subject, row.author_email, row.commit_ai_lines]);
+  await pool.query(`insert into scm_commit_files
+    (id, tenant_id, commit_id, path, observed_ai_lines, observed_human_lines, attribution_ranges)
+    values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+  [fileId, tenantId, commitId, row.path, row.file_ai_lines, row.file_human_lines,
+    JSON.stringify(row.attribution_ranges)]);
+  await createGitHubAppInstallation({
+    tenantId, appId: row.app_id, installationExternalId: row.installation_external_id,
+    accountLogin: row.account_login, permissions: { contents: 'read', pull_requests: 'read' },
+    privateKey: readFileSync(appKeyFile, 'utf8'), actorId: 'it-t19g-live',
+  });
+  const scope = `kind=live&repository_id=${repositoryId}&commit_sha=${row.sha}`;
+  const drilldown = await get(`/api/qa/questions/Q2/drilldown?${scope}`, token);
+  check(drilldown.status === 200 && drilldown.body.items?.some((item: { id: string }) => item.id === fileId),
+    'Q2 file drill-down');
+  const answer = await get(`/api/qa/questions/Q2/answer?${scope}&file_id=${fileId}&line=${line}`, token);
+  const figure = (key: string) => answer.body.figures?.find((item: { key: string }) => item.key === key);
+  check(answer.status === 200 && figure('line_written_by_ai')?.value?.count === 1
+    && figure('originating_commit_known')?.value?.count === 1, 'Q2 live exact AI line');
+  check(!JSON.stringify(answer.body).includes(row.path), 'Q2 response has no file path');
+  process.stdout.write(`IT-T19g-01 step 4 passed: real App blame, exact AI line ${line}, no path in answer\n`);
 }
 
 async function main(): Promise<void> {
@@ -152,6 +245,12 @@ async function main(): Promise<void> {
       await pool.query(`alter table security_audit_events drop constraint it_t19g_refuse_audit`);
     }
     process.stdout.write('IT-T19g-01 steps 1–3 passed: merger, managed rejection, tenant isolation\n');
+    try {
+      await verifyLiveQ2(tenantA, bearer('admin-a', domainA), get);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('IT-T19g-01 failed:')) throw error;
+      throw new Error('IT-T19g-01 failed: Q2 live provider or setup error');
+    }
   } finally {
     await new Promise<void>((done) => api?.close(() => done()) ?? done());
     await new Promise<void>((done) => auth.close(() => done()));

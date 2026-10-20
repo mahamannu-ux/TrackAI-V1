@@ -23,6 +23,7 @@ Task19g closes capture gaps G4 and G5 and builds Q2's GitHub line walk. The chan
 ```text
 npm run backfill:task19g-merged-by -w apps/api [-- --confirm]
 scripts/it-db.sh npm run verify:task19g-qa-live -w apps/api
+TASK19G_Q2_SOURCE_ENV_FILE=<existing-API-env-path> TASK19G_Q2_APP_KEY_FILE=<local-App-PEM-path> scripts/it-db.sh npm run verify:task19g-qa-live -w apps/api
 GET /api/qa/questions/Q2/answer?kind=live&repository_id=<uuid>&commit_sha=<sha>&file_id=<uuid>&line=<1..1000000>
 GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sha>
 ```
@@ -44,9 +45,12 @@ GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sh
 ## Test evidence and limits
 
 - IT-T19g-01 agent run passed 2026-10-19: signed merged webhook stored merger; dry run left nulls unchanged; confirm filled the nulls and wrote one marker for each tenant, including zero updates; Q6 counted the AI PR; a managed ungranted upload wrote exactly one rejection; Q15 counted it; Company B saw neither; a forced audit insert failure returned 503 and ingested nothing.
+- Founder reported `npm test` and `it-db.sh` passing on 2026-10-20. The optional step-4 verifier uses a read-only source connection to copy one existing lab commit's metadata into the disposable database, then calls the real Q2 API using the installed GitHub App. It reads a local PEM file; neither the key nor the source file path is printed.
 - After correcting the Q2 API test's required file/line scope and the Task20i settings mount test's database-dependent status assumption, `npm test -w apps/api` passed 1,258/1,258 tests on 2026-10-20 with loopback enabled. `npm run typecheck` passed. The earlier `npm run check` attempt did not finish in the sandbox; this API test rerun supersedes its API test uncertainty, but does not claim a full root check pass.
 - `npm run build -w apps/web` compiled, then needed public Supabase build settings for prerender; with placeholder settings it passed. `npm run typecheck`, `npm run lint`, and `npm exec --workspace=apps/api drizzle-kit check` passed.
 - Q2 provider access is stubbed in unit tests. Step 4 on an App-installed GitHub repository is required before marking Q2 answered. The answer exposes session IDs via drill-down; agent/model and timestamps are reached through existing session and commit metadata, not duplicated into the Q2 numeric envelope.
+- Founder-live provider preflight on 2026-10-20: App ID `4377457`, installation `148568870`, and the supplied local PEM minted a token; GitHub GraphQL blame returned the selected lab line with the requested commit as its origin. The full Q2 API step-4 run remains pending.
+- The `TrackAI-v1` Supabase migration ledger ends at `0009`; migrations `0010`–`0028` are unapplied there. Leave that database unchanged until its separately planned migration work. The production backfill dry run waits for that work; the disposable step-4 verifier reads only existing lab metadata from Supabase.
 - An origin whose file path changed across commits has no safe file-row match from GraphQL blame's SHA alone; Q2 returns unavailable rather than guessing its old path.
 - Independent review found three correctness issues fixed in the follow-up: Q15 historical zeroes, capped digests, and cached blame after locally revoked credentials. It also flagged the Q6 key/author distinction above, which follows the requested figure definition.
 
@@ -54,7 +58,7 @@ GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sh
 
 | Gate | Command or action | Status |
 |---|---|---|
-| IT-T19g-01 steps 1–3 | `scripts/it-db.sh npm run verify:task19g-qa-live -w apps/api` | 🟡 agent-passed; founder rerun before merge |
+| IT-T19g-01 steps 1–3 | `scripts/it-db.sh npm run verify:task19g-qa-live -w apps/api` | ✅ founder reported pass 2026-10-20 |
 | Backfill planning | `npm run backfill:task19g-merged-by -w apps/api` against deployment database after migration | ⬜ **FOUNDER:** inspect tenant counts; use `-- --confirm` only after approval |
 | Q2 live | Use a real GitHub commit and file with TrackAI App installed; call the Q2 drill-down for file UUID, then answer with a line number | ⬜ **FOUNDER:** blocks marking Q2 answered |
 | Review and release | Independent review, Task19 lead cross-review, then founder push/PR/preflight/merge | ⬜ **FOUNDER:** do not merge before gates |
