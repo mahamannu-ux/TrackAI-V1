@@ -14,7 +14,7 @@ Task19g closes capture gaps G4 and G5 and builds Q2's GitHub line walk. The chan
 | B, G5/Q15 | Audit catalog v5 adds `telemetry.upload.rejected` (Task4) and the backfill action (Task2); managed refusal records counts and URL digests before ingest, fails closed on audit write failure | ✅ |
 | B, G5/Q15 | Q15 reads tenant-bound audit rows, returns partial null figures before first capture, partial lower-bound counts for periods spanning it, and counts uploads, events, four reasons, and distinct digests in covered periods | ✅ |
 | C, Q2 | Additive file UUID and line scope, GitHub App GraphQL blame, lineage mapping, neutral file drill-down, Questions input, and Q2 live figures | 🟡 founder-live App check pending |
-| Quality | Focused audit, QA contract, drill-down, and Task19g tests: 42/42; typecheck, lint, Drizzle check, and web build with placeholder public Supabase settings passed | ✅ |
+| Quality | API workspace suite: 1,258/1,258; typecheck, lint, Drizzle check, and web build with placeholder public Supabase settings passed | ✅ |
 | Integration | IT-T19g-01 steps 1–3 through real `createApp`, JWT/tenant/machine middleware and throwaway PostgreSQL passed; step 4 uses a real App installation | 🟡 step 4 pending |
 | Review | Independent Codex review completed; three correctness fixes applied, Q6 author-coverage definition retained per prompt; Task19 lead cross-review remains | 🟡 lead review pending |
 
@@ -44,7 +44,7 @@ GET /api/qa/questions/Q2/drilldown?kind=live&repository_id=<uuid>&commit_sha=<sh
 ## Test evidence and limits
 
 - IT-T19g-01 agent run passed 2026-10-19: signed merged webhook stored merger; dry run left nulls unchanged; confirm filled the nulls and wrote one marker for each tenant, including zero updates; Q6 counted the AI PR; a managed ungranted upload wrote exactly one rejection; Q15 counted it; Company B saw neither; a forced audit insert failure returned 503 and ingested nothing.
-- `npm run check` did not finish: the existing Attesta test path stalled as it did in the pre-change baseline, and this sandbox also produced unrelated HTTP listener failures. No full-suite pass is claimed. The focused 42 tests and the database IT above passed.
+- After correcting the Q2 API test's required file/line scope and the Task20i settings mount test's database-dependent status assumption, `npm test -w apps/api` passed 1,258/1,258 tests on 2026-10-20 with loopback enabled. `npm run typecheck` passed. The earlier `npm run check` attempt did not finish in the sandbox; this API test rerun supersedes its API test uncertainty, but does not claim a full root check pass.
 - `npm run build -w apps/web` compiled, then needed public Supabase build settings for prerender; with placeholder settings it passed. `npm run typecheck`, `npm run lint`, and `npm exec --workspace=apps/api drizzle-kit check` passed.
 - Q2 provider access is stubbed in unit tests. Step 4 on an App-installed GitHub repository is required before marking Q2 answered. The answer exposes session IDs via drill-down; agent/model and timestamps are reached through existing session and commit metadata, not duplicated into the Q2 numeric envelope.
 - An origin whose file path changed across commits has no safe file-row match from GraphQL blame's SHA alone; Q2 returns unavailable rather than guessing its old path.

@@ -24,6 +24,7 @@ const REPO_A = '00000000-0000-4000-8000-0000000000a1';
 const REPO_A2 = '00000000-0000-4000-8000-0000000000a2';
 const REPO_B = '00000000-0000-4000-8000-0000000000b1';
 const PR_A = '00000000-0000-4000-8000-0000000000c1';
+const FILE_A = '00000000-0000-4000-8000-0000000000f1';
 const SHA_A = 'a'.repeat(40);
 const NOW = new Date('2026-10-15T09:30:00.000Z');
 
@@ -73,6 +74,9 @@ class FakeScopes implements QaScopeStore {
   async pullRequestRepository(tenantId: string, id: string) { this.check(); return tenantId === A && id === PR_A ? REPO_A : null; }
   async commitExists(tenantId: string, repositoryId: string, sha: string) {
     this.check(); return tenantId === A && repositoryId === REPO_A && sha === SHA_A;
+  }
+  async fileInCommit(tenantId: string, repositoryId: string, sha: string, fileId: string) {
+    this.check(); return tenantId === A && repositoryId === REPO_A && sha === SHA_A && fileId === FILE_A;
   }
   private check() { if (this.fail) throw new Error('database down'); }
 }
@@ -228,7 +232,9 @@ describe('qa api: answers', () => {
       assert.deepEqual(q17.reasons, [{ code: 'phase_2' }]);
       // Every question and kind gives a valid not-built envelope.
       for (const q of QA_QUESTIONS) {
-        const scope = q.scopes.includes('tenant') ? '' : q.scopes.includes('repository') ? `&repository_id=${REPO_A}`
+        const scope = q.id === 'Q2'
+          ? `&repository_id=${REPO_A}&commit_sha=${SHA_A}&file_id=${FILE_A}&line=1`
+          : q.scopes.includes('tenant') ? '' : q.scopes.includes('repository') ? `&repository_id=${REPO_A}`
           : q.scopes.includes('pull_request') ? `&pull_request_id=${PR_A}` : `&repository_id=${REPO_A}&commit_sha=${SHA_A}`;
         for (const { kind } of q.kinds) {
           const res = await h.get(answer(q.id, `kind=${kind}${scope}`));
@@ -320,6 +326,8 @@ describe('qa api: parameters and scope', () => {
       // A scope level the question does not accept (Q14 is per pull request; Q20 tenant only).
       assertProblem(await h.get(answer('Q14', 'kind=live')), 'QA_SCOPE_INVALID');
       assertProblem(await h.get(answer('Q20', `kind=live&repository_id=${REPO_A}`)), 'QA_SCOPE_INVALID');
+      assertProblem(await h.get(answer('Q2', `kind=live&repository_id=${REPO_A}&commit_sha=${SHA_A}`)), 'QA_SCOPE_INVALID');
+      assertProblem(await h.get(answer('Q3', `kind=live&file_id=${FILE_A}&line=1`)), 'QA_SCOPE_INVALID');
       // Exactly 366 days is allowed; offsets are normalized to UTC.
       const ok = await h.get(answer('Q3', 'kind=live&from=2025-10-01T00:00:00Z&to=2026-10-02T00:00:00Z'));
       assert.equal(ok.status, 200);
@@ -336,6 +344,7 @@ describe('qa api: parameters and scope', () => {
       assertProblem(await h.get(answer('Q9', `kind=live&repository_id=${REPO_A2}&pull_request_id=${PR_A}`)), 'QA_SCOPE_NOT_FOUND');
       assertProblem(await h.get(answer('Q9', `kind=live&pull_request_id=${PR_A}`, ), { tenant: B, sub: 'admin-b' }), 'QA_SCOPE_NOT_FOUND');
       assertProblem(await h.get(answer('Q8', `kind=verifiable&repository_id=${REPO_A}&commit_sha=${'b'.repeat(40)}`)), 'QA_SCOPE_NOT_FOUND');
+      assertProblem(await h.get(answer('Q2', `kind=live&repository_id=${REPO_A}&commit_sha=${SHA_A}&file_id=${REPO_B}&line=1`)), 'QA_SCOPE_NOT_FOUND');
       assert.equal((await h.get(answer('Q8', `kind=verifiable&repository_id=${REPO_A}&commit_sha=${SHA_A}`))).status, 200);
       assert.equal((await h.get(answer('Q9', `kind=live&repository_id=${REPO_A}&pull_request_id=${PR_A}`))).status, 200);
       h.scopes.fail = true;
