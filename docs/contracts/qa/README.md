@@ -47,7 +47,7 @@ Every surface that answers a customer's or an auditor's question uses this contr
 ```ts
 import { registerAnswerer } from 'apps/api/src/features/qa/answerers';
 registerAnswerer('Q3', 'live', async (ctx) => envelope);
-// ctx: { tenantId, questionId, kind, role, scopeLevel, scope: {repository_id?, pull_request_id?, commit_sha?, from, to}, breakdown, now }
+// ctx: { tenantId, questionId, kind, role, scopeLevel, scope: {repository_id?, pull_request_id?, commit_sha?, file_id?, line?, from, to}, breakdown, now }
 ```
 
 One answerer per question and kind. Registering for a kind the question does not offer, or a second time, throws. `as_of` is the query time (`ctx.now`) for `live`, the newest input statement's `recorded_at` for `verifiable`, and the report's signed time for `signed`. For an unavailable signed answer (no report yet), `signed` may be omitted.

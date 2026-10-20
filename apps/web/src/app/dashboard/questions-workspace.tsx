@@ -93,6 +93,7 @@ function scopeLabel(scope: QaScopeLevel): string {
 }
 
 function buildQuery(input: {
+  questionId: QaQuestionId;
   kind: QaKind;
   period: Period;
   customFrom: string;
@@ -101,6 +102,8 @@ function buildQuery(input: {
   repositoryId: string;
   pullRequestId: string;
   commitSha: string;
+  fileId: string;
+  line: string;
   breakdown: QaDimension | '';
 }): QaAnswerQuery | null {
   let from: string;
@@ -120,6 +123,8 @@ function buildQuery(input: {
   if (input.scope === 'pull_request' && !input.pullRequestId) return null;
   if (input.scope === 'commit'
     && (!input.repositoryId || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(input.commitSha))) return null;
+  if (input.questionId === 'Q2' && (!/^[0-9a-f-]{36}$/.test(input.fileId)
+    || !/^[1-9][0-9]{0,6}$/.test(input.line) || Number(input.line) > 1_000_000)) return null;
   return {
     kind: input.kind,
     from,
@@ -127,6 +132,7 @@ function buildQuery(input: {
     ...(input.scope === 'repository' || input.scope === 'commit' ? { repository_id: input.repositoryId } : {}),
     ...(input.scope === 'pull_request' ? { pull_request_id: input.pullRequestId } : {}),
     ...(input.scope === 'commit' ? { commit_sha: input.commitSha } : {}),
+    ...(input.questionId === 'Q2' ? { file_id: input.fileId, line: Number(input.line) } : {}),
     ...(input.breakdown ? { breakdown: input.breakdown } : {}),
   };
 }
@@ -153,6 +159,12 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
   const [repositoryId, setRepositoryId] = useState('');
   const [pullRequestId, setPullRequestId] = useState('');
   const [commitSha, setCommitSha] = useState('');
+  const [fileId, setFileId] = useState('');
+  const [line, setLine] = useState('');
+  const [fileOptions, setFileOptions] = useState<QaDrilldownItem[]>([]);
+  const [fileProblem, setFileProblem] = useState<Problem | null>(null);
+  const [fileCursor, setFileCursor] = useState<string | null>(null);
+  const [filesLoading, setFilesLoading] = useState(false);
   const [breakdown, setBreakdown] = useState<QaDimension | ''>('');
   const [urlReady, setUrlReady] = useState(false);
   const [answer, setAnswer] = useState<QaEnvelope | null>(null);
@@ -198,6 +210,8 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
     setRepositoryId(parameters.get('qaRepository') ?? '');
     setPullRequestId(parameters.get('qaPullRequest') ?? '');
     setCommitSha(parameters.get('qaCommit') ?? '');
+    setFileId(parameters.get('qaFile') ?? '');
+    setLine(parameters.get('qaLine') ?? '');
     const selectedBreakdown = parameters.get('qaBreakdown');
     if (isDimension(selectedBreakdown)) setBreakdown(selectedBreakdown);
     setUrlReady(true);
@@ -220,6 +234,8 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
       ['qaRepository', repositoryId],
       ['qaPullRequest', pullRequestId],
       ['qaCommit', commitSha],
+      ['qaFile', fileId],
+      ['qaLine', line],
       ['qaBreakdown', breakdown],
       ['qaFrom', period === 'custom' ? localInputIso(customFrom) : ''],
       ['qaTo', period === 'custom' ? localInputIso(customTo) : ''],
@@ -233,7 +249,7 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
     window.history.replaceState(window.history.state, '', nextUrl);
   }, [
     urlReady, selectedQuestionId, selectedKind, period, customFrom, customTo,
-    scope, repositoryId, pullRequestId, commitSha, breakdown,
+    scope, repositoryId, pullRequestId, commitSha, fileId, line, breakdown,
   ]);
 
   useEffect(() => {
@@ -257,6 +273,51 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
   }, [selectedQuestionId]);
 
   const selectedQuestion = questionList?.items.find(question => question.id === selectedQuestionId) ?? null;
+  useEffect(() => {
+    if (selectedQuestionId !== 'Q2' || isAuditor || scope !== 'commit' || !repositoryId
+      || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(commitSha)) {
+      setFileOptions([]);
+      setFileProblem(null);
+      setFileCursor(null);
+      return;
+    }
+    let active = true;
+    const to = new Date();
+    void getQaAnswer('Q2', {
+      kind: 'live', repository_id: repositoryId, commit_sha: commitSha,
+      from: new Date(to.getTime() - 30 * 86_400_000).toISOString(), to: to.toISOString(),
+    }, true).then(page => {
+      if (!active) return;
+      setFileOptions(page.items.filter(item => item.scope === 'file'));
+      setFileCursor(page.next_cursor);
+      setFileProblem(null);
+    }).catch(cause => {
+      if (!active) return;
+      setFileOptions([]);
+      setFileCursor(null);
+      setFileProblem(describeProblem(cause, 'Files are unavailable.'));
+    });
+    return () => { active = false; };
+  }, [selectedQuestionId, isAuditor, scope, repositoryId, commitSha]);
+  const loadMoreFiles = async () => {
+    if (!fileCursor || filesLoading) return;
+    setFilesLoading(true);
+    try {
+      const to = new Date();
+      const page = await getQaAnswer('Q2', {
+        kind: 'live', repository_id: repositoryId, commit_sha: commitSha,
+        from: new Date(to.getTime() - 30 * 86_400_000).toISOString(), to: to.toISOString(),
+        cursor: fileCursor,
+      }, true);
+      setFileOptions(current => [...current, ...page.items.filter(item => item.scope === 'file')]);
+      setFileCursor(page.next_cursor);
+      setFileProblem(null);
+    } catch (cause) {
+      setFileProblem(describeProblem(cause, 'More files are unavailable.'));
+    } finally {
+      setFilesLoading(false);
+    }
+  };
   const filteredQuestions = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return (questionList?.items ?? [])
@@ -286,6 +347,7 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
     if (selectedQuestion && !selectedQuestion.scopes.includes(scope)) return null;
     if (selectedQuestion && breakdown && !selectedQuestion.dimensions.includes(breakdown)) return null;
     return buildQuery({
+      questionId: selectedQuestionId,
       kind: selectedKind,
       period,
       customFrom,
@@ -294,11 +356,13 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
       repositoryId,
       pullRequestId,
       commitSha,
+      fileId,
+      line,
       breakdown,
     });
   }, [
     selectedQuestionId, selectedQuestion, selectedAnswerKind?.built, selectedKind, isAuditor,
-    period, customFrom, customTo, scope, repositoryId, pullRequestId, commitSha, breakdown,
+    period, customFrom, customTo, scope, repositoryId, pullRequestId, commitSha, fileId, line, breakdown,
   ]);
 
   useEffect(() => {
@@ -508,6 +572,25 @@ export function QuestionsWorkspace({ repositories, pullRequests, role }: {
                     aria-invalid={Boolean(commitSha) && !validCommitSha}
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-xs text-white placeholder:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400" />
                   {Boolean(commitSha) && !validCommitSha && <span className="mt-1 block text-xs text-amber-300">Enter a lowercase 40- or 64-character SHA.</span>}
+                </Field>
+              </>}
+              {selectedQuestionId === 'Q2' && scope === 'commit' && <>
+                <Field label="File">
+                  <select value={fileId} onChange={event => setFileId(event.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400">
+                    <option value="">Select a file</option>
+                    {fileOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </select>
+                  {fileProblem && <span className="mt-1 block text-xs text-amber-300">{fileProblem.message}</span>}
+                  {fileCursor && <button type="button" onClick={() => void loadMoreFiles()}
+                    disabled={filesLoading} className="mt-1 text-xs text-violet-300 hover:text-violet-200 disabled:opacity-50">
+                    {filesLoading ? 'Loading files…' : 'Load more files'}
+                  </button>}
+                </Field>
+                <Field label="Line number">
+                  <input type="number" min="1" max="1000000" step="1" value={line}
+                    onChange={event => setLine(event.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400" />
                 </Field>
               </>}
 

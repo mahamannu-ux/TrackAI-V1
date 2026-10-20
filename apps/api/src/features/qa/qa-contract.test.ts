@@ -33,6 +33,7 @@ const CATALOGUE = readFileSync(resolve(REPO, 'docs/plan/CUSTOMER_AUDITOR_QA.md')
 const REGISTRY_DIGESTS: Record<number, string> = {
   1: 'sha256:c6119cc1e67c206bd2548b34db85eb147d662c9a0d6c3f1a03c31f0dc06c6377',
   2: 'sha256:319b894e4f80b8bfa1e22161c8c75b964c8f5ce6e09c64b59d1993bde9116618',
+  3: 'sha256:66acd3b8a5e8079ea076536b9a876a47245830ff68056656092bfb6eee5d1a5b',
 };
 
 function registryDigest(): string {
@@ -219,6 +220,12 @@ test('qa envelope: an unavailable figure never serializes as 0', () => {
   const withBuckets = structuredClone(envelope);
   withBuckets.figures[0].breakdown = [{ dimension: 'repository', key: 'r', value: { type: 'count', count: 0 } }];
   assert.equal(checkEnvelope(withBuckets).ok, false);
+});
+
+test('qa envelope: a partial figure carries a value', () => {
+  const envelope = fixture('valid-live-partial');
+  envelope.figures[0].value = null;
+  assert.equal(checkEnvelope(envelope).ok, false);
 });
 
 test('qa envelope: integers only, within ±(2^53 − 1); ratios never divide by zero', () => {

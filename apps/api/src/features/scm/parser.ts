@@ -16,6 +16,8 @@ export type SCMPayload = {
     authorEmail: string | null;
     authorProviderId: string;
     authorLogin: string;
+    mergedByProviderId?: string | null;
+    mergedByLogin?: string | null;
     headRef: string | null;
     baseRef: string | null;
     headSha: string | null;
@@ -186,6 +188,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
 
   const pullRequest = asRecord(bodyRecord.pull_request);
   const author = pullRequest ? asRecord(pullRequest.user) : null;
+  const mergedBy = action === 'closed' && pullRequest?.merged_at
+    ? asRecord(pullRequest.merged_by) : null;
   if (!pullRequest) return null;
 
   const externalId = asString(pullRequest.id);
@@ -214,6 +218,8 @@ export function parseGitHubWebhook(headers: any, body: any): SCMPayload | null {
         ?? asString(author?.email),
       authorProviderId,
       authorLogin,
+      mergedByProviderId: asString(mergedBy?.id),
+      mergedByLogin: asString(mergedBy?.login),
       headRef: asString(head?.ref),
       baseRef: asString(base?.ref),
       headSha: asString(head?.sha),

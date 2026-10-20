@@ -58,6 +58,9 @@ const reportScope = { repository_id: U2, from: ISO, to: ISO };
 
 /** Today's row for every emitted action, from the call site its entry cites. */
 const FIXTURES: Record<string, Fixture> = {
+  'scm.merged_by.backfilled': operator('task19g-backfill', TENANT, { updated: 2, skipped: 1 }),
+  'telemetry.upload.rejected': { actorType: 'machine', actorId: U2, targetId: TENANT,
+    details: { event_count: 2, reason_counts: { repository_missing: 1, grant_inactive: 1 }, repository_digests: [HEX] } },
   'repository.enrolled': enrolled,
   'repository.reenrolled': admin(U1, { ...enrolled.details, effectiveUntil: ISO, reason: 'again' }),
   'repository_backfill.authorized': admin(U1, {
@@ -211,9 +214,9 @@ function codeOf(fn: () => unknown): string | undefined {
 const emitted = AUDIT_CATALOG.filter(entry => entry.status === 'emitted');
 const reserved = AUDIT_CATALOG.filter(entry => entry.status === 'reserved');
 
-test('audit contract: 62 emitted actions, each validates as today\'s emitter writes it', () => {
+test('audit contract: 64 emitted actions, each validates as today\'s emitter writes it', () => {
   // Task15op adds two (security-finding seals and their verify report), Task15op-b two (the security report).
-  assert.equal(emitted.length, 62);
+  assert.equal(emitted.length, 64);
   assert.deepEqual(Object.keys(FIXTURES).sort(), emitted.map(entry => entry.action).sort(), 'one fixture per emitted action');
   for (const entry of emitted) {
     const event = eventFor(entry.action);
@@ -228,7 +231,7 @@ test('audit contract: 62 emitted actions, each validates as today\'s emitter wri
 test('audit contract: entries are well formed', () => {
   const names = AUDIT_CATALOG.flatMap(entry => [entry.action, ...entry.aliases]);
   assert.equal(new Set(names).size, names.length, 'actions and aliases are unique');
-  assert.equal(AUDIT_CATALOG_VERSION, 4);
+  assert.equal(AUDIT_CATALOG_VERSION, 5);
   for (const entry of AUDIT_CATALOG) {
     assert.ok(entry.actorTypes.length > 0, entry.action);
     assert.ok(entry.sources.length > 0, `${entry.action} cites its source`);
@@ -256,7 +259,7 @@ test('audit contract: severities match the founder-approved table (2026-10-15), 
   // Task20f adds four high actions (settings, bundle publish, monitor switch, lease issued)
   // and two notice actions (lease refused, bundle acknowledged). Task15op adds two info actions,
   // Task15op-b two more (the security report built and downloaded).
-  assert.deepEqual([by('high'), by('notice'), by('info')], [31, 14, 17]);
+  assert.deepEqual([by('high'), by('notice'), by('info')], [31, 16, 17]);
 });
 
 test('audit contract: each error code is raised', () => {
@@ -434,7 +437,8 @@ test('audit contract: every action in the Task16a inventory is in the catalog, a
   // Task15op emits four (security-finding seals, their verify report, the security report built and downloaded).
   const task15op = ['audit.trail.security_findings_sealed', 'audit.trail.security_findings_verified',
     'attesta.security_report.built', 'attesta.security_report.downloaded'];
-  assert.deepEqual([...inventory, 'audit.events.read', ...task16e, ...task20f, ...task15op].sort(), emitted.map(entry => entry.action).sort());
+  assert.deepEqual([...inventory, 'audit.events.read', ...task16e, ...task20f, ...task15op,
+    'scm.merged_by.backfilled', 'telemetry.upload.rejected'].sort(), emitted.map(entry => entry.action).sort());
 });
 
 test('audit contract: an emitted row round-trips through event-v1.schema.json', () => {

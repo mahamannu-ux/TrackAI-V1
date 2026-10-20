@@ -13,7 +13,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /** The ten code questions Task19b builds (§2.4); every other question keeps 501. */
 export const DRILLDOWN_BUILT_QUESTIONS: readonly string[] = [
-  'Q1', 'Q3', 'Q4', 'Q9', 'Q10', 'Q13', 'Q14', 'Q18', 'Q19', 'Q20',
+  'Q1', 'Q2', 'Q3', 'Q4', 'Q9', 'Q10', 'Q13', 'Q14', 'Q18', 'Q19', 'Q20',
 ];
 
 export function encodeCursor(id: string): string {
@@ -109,7 +109,15 @@ export function listDrilldownItems(context: QaContext, ctx: QaAnswerContext): Qa
     const ms = value.getTime();
     return ms >= fromMs && ms <= toMs;
   };
-  if (ctx.scopeLevel === 'commit') return [];
+  if (ctx.scopeLevel === 'commit') {
+    if (ctx.questionId !== 'Q2') return [];
+    const commit = context.commits.find((row) => row.repositoryId === ctx.scope.repository_id
+      && row.sha === ctx.scope.commit_sha);
+    if (!commit) return [];
+    return context.files.filter((row) => row.commitId === commit.id)
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((row, index) => ({ scope: 'file' as const, id: row.id, label: `file ${index + 1}` }));
+  }
   if (ctx.scopeLevel === 'pull_request' && ctx.scope.pull_request_id) {
     const ids = pullRequestCommitIds(context, ctx.scope.pull_request_id);
     return context.commits

@@ -17,7 +17,7 @@ import type {
   QaBuilder, QaDimension, QaGap, QaGapId, QaKind, QaQuestion, QaQuestionKind, QaScopeLevel, QaWordingCode,
 } from './types';
 
-export const QA_REGISTRY_VERSION = 2;
+export const QA_REGISTRY_VERSION = 3;
 
 const k = (kind: QaKind, builder: QaBuilder | null): QaQuestionKind => ({ kind, builder });
 
@@ -232,8 +232,8 @@ export const QA_GAPS: readonly QaGap[] = [
   { id: 'G1', title: 'Repository and path line-count snapshot', owner: 'Task2 + GitAI', open: true, questions: ['Q1'] },
   { id: 'G2', title: 'Organization AI-usage policy (approved tools and models)', owner: 'Task6.b', open: true, questions: ['Q4', 'Q12', 'S13'] },
   { id: 'G3', title: 'Pull request review and approval capture', owner: 'Task2 (semantics), Task7 (other providers), Task4 (delivery)', open: true, questions: ['Q5'] },
-  { id: 'G4', title: 'merged_by on pull requests', owner: 'Task2', open: true, questions: ['Q6'] },
-  { id: 'G5', title: 'Content-free rejection audit event for refused uploads', owner: 'Task4 (capture), Task16 (expose), Task15 (count)', open: true, questions: ['Q15'] },
+  { id: 'G4', title: 'merged_by on pull requests', owner: 'Task2', open: false, questions: ['Q6'] },
+  { id: 'G5', title: 'Content-free rejection audit event for refused uploads', owner: 'Task4 (capture), Task16 (expose), Task15 (count)', open: false, questions: ['Q15'] },
   { id: 'G6', title: 'Security findings signed on their own (finding_observed)', owner: 'Task15 (Task15o), Task6 (outbox row)', open: true, questions: ['S1', 'S5', 'S7', 'S10', 'S11', 'S12'] },
   { id: 'G7', title: 'Monitoring coverage history', owner: 'Task6 + Task9 (capture), Task15 (signed)', open: true, questions: ['S2', 'S10'] },
   { id: 'G8', title: 'Security-monitor setting writer and audit event', owner: 'Task6 (writer), Task16 (event)', open: true, questions: ['S3'] },

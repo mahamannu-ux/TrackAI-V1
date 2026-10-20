@@ -746,6 +746,14 @@ export const ANSWER_V1_SCHEMA: Record<string, unknown> = {
         },
         "to": {
           "$ref": "#/definitions/time"
+        },
+        "file_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
         }
       }
     },

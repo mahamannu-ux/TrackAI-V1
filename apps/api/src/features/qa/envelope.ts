@@ -43,7 +43,7 @@ const fail = (path: string): EnvelopeCheck => ({ ok: false, path });
 const OK: EnvelopeCheck = { ok: true, path: null };
 
 function sameScope(a: QaScope, b: QaScope): boolean {
-  const keys = ['repository_id', 'pull_request_id', 'commit_sha', 'from', 'to'] as const;
+  const keys = ['repository_id', 'pull_request_id', 'commit_sha', 'file_id', 'line', 'from', 'to'] as const;
   return keys.every((key) => a[key] === b[key]);
 }
 

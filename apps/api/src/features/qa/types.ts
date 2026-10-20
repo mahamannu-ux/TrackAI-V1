@@ -112,6 +112,8 @@ export interface QaScope {
   repository_id?: string;
   pull_request_id?: string;
   commit_sha?: string;
+  file_id?: string;
+  line?: number;
   /** RFC 3339 UTC with milliseconds; at most 366 days apart. */
   from: string;
   to: string;

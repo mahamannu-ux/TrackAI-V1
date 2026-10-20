@@ -131,7 +131,7 @@ export class AuditContractError extends Error {
 // The catalog
 
 /** Goes up when an entry is added or an alias recorded; never for a change of an existing row's meaning. */
-export const AUDIT_CATALOG_VERSION = 4;
+export const AUDIT_CATALOG_VERSION = 5;
 
 const r = (type: AuditDetailType): AuditDetailKey => ({ type, required: true, nullable: false });
 /** Required, may be null: today's emitter writes `null` rather than omitting the key. */
@@ -182,6 +182,21 @@ const REPORT_SCOPE: AuditDetailType = {
  * Each entry's details are exactly what the cited call site writes (paths under apps/api/src/).
  */
 export const AUDIT_CATALOG: readonly AuditCatalogEntry[] = [
+  ...entries(['scm.merged_by.backfilled'], {
+    owner: 'Task2', severity: 'notice', actorTypes: OPERATOR,
+    targetType: 'tenant', targetIdKind: 'tenant',
+    details: { updated: r('integer'), skipped: r('integer') },
+    sources: ['features/scm/task19g-merged-by-backfill.ts:76'],
+  }),
+  ...entries(['telemetry.upload.rejected'], {
+    owner: 'Task4', severity: 'notice', actorTypes: ['machine'],
+    targetType: 'tenant', targetIdKind: 'tenant',
+    details: {
+      event_count: r('integer'), reason_counts: r('counts'),
+      repository_digests: r('string[]'), request_id: o('string'),
+    },
+    sources: ['features/telemetry/ingest.routes.ts:103'],
+  }),
   // --- Task4: repositories (core/security/repository-security-service.ts) -------------
   // :115 enrollRepository
   ...entries(['repository.enrolled', 'repository.reenrolled'], {

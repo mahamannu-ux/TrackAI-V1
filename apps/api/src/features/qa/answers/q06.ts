@@ -1,0 +1,57 @@
+import { eq } from 'drizzle-orm';
+import { db } from '../../../core/db';
+import { withTenant } from '../../../core/db/tenant';
+import { securityAuditEvents } from '../../../core/db/schema';
+import { loadContext, pullRequestIntelligence } from '../../telemetry/task2-lifecycle-read';
+import { finishEnvelope, inPeriod, periodMs, type ComputeInput } from './common';
+import { pullRequestCommitIds, repositoryIdsInScope } from '../drilldown';
+import type { QaAnswerer, QaEnvelope, QaFigure } from '../types';
+
+export function computeQ6({ context, ctx }: ComputeInput, backfillDone = false): QaEnvelope {
+  const { fromMs, toMs } = periodMs(ctx.scope);
+  const repositoryIds = new Set(repositoryIdsInScope(context, ctx));
+  const prs = context.pullRequests.filter((pr) =>
+    repositoryIds.has(pr.repositoryId)
+    && (!ctx.scope.pull_request_id || pr.id === ctx.scope.pull_request_id)
+    && inPeriod(pr.mergedAt, fromMs, toMs)
+    && (pullRequestIntelligence(context, pr.id)?.finalAiLines ?? 0) > 0);
+  const countFor = (selected: typeof prs) => {
+    const ids = new Set(selected.flatMap((pr) => [...pullRequestCommitIds(context, pr.id)]));
+    return {
+      ai_assisted_merged_prs: selected.length,
+      merged_by_author: selected.filter((pr) => pr.mergedByProviderId
+        && pr.mergedByProviderId === pr.authorProviderId).length,
+      merged_by_someone_else: selected.filter((pr) => pr.mergedByProviderId
+        && pr.mergedByProviderId !== pr.authorProviderId).length,
+      merger_unknown: selected.filter((pr) => !pr.mergedByProviderId).length,
+      // Task19g defines this key as commits with a known commit author. A
+      // separate Git committer identity is not captured in scm_commits.
+      committer_known: context.commits.filter((commit) => ids.has(commit.id) && commit.authorEmail).length,
+    };
+  };
+  const counts = countFor(prs);
+  const unknown = counts.merger_unknown;
+  const figures: QaFigure[] = Object.entries(counts).map(([key, count]) => ({
+    key,
+    availability: unknown > 0 && !backfillDone && (key === 'merged_by_author' || key === 'merged_by_someone_else')
+      ? 'partial' : 'recorded',
+    reasons: unknown > 0 && !backfillDone && (key === 'merged_by_author' || key === 'merged_by_someone_else')
+      ? [{ code: 'not_captured_yet', gap: 'G4' }] : [],
+    value: { type: 'count', count },
+    ...(ctx.breakdown === 'repository' ? { breakdown: [...repositoryIds].sort().map((repositoryId) => ({
+      dimension: 'repository' as const,
+      key: repositoryId,
+      value: { type: 'count' as const, count: countFor(prs.filter((pr) => pr.repositoryId === repositoryId))[key as keyof typeof counts] },
+    })) } : {}),
+  }));
+  return finishEnvelope(ctx, context, figures);
+}
+
+export const answererQ6: QaAnswerer = async (ctx) => {
+  const [context, markers] = await Promise.all([
+    loadContext(ctx.tenantId),
+    withTenant(db, ctx.tenantId).select(securityAuditEvents,
+      eq(securityAuditEvents.action, 'scm.merged_by.backfilled')),
+  ]);
+  return computeQ6({ context, ctx }, markers.length > 0);
+};
