@@ -70,7 +70,7 @@ Columns:
 | 9 | Q9 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's production-deployments figure | T19.2 |
 | 10 | Q14 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
 | 11 | Q12 | 🟡 ⬜ ⬜ | partly; org policy G2 shelved; the rule bundle and lease in force come from Task20 | T19.3 (partly) | partly | Task20f |
-| 12 | Q2 | 🟡 🟡 ⬜ | GitHub blame line walk and lineage mapping built in Task19g; exact origin only at requested commit, older origin partial; founder-live App check pending | Task19g (ex-Task19d) | later (file paths are hashed in the predicate) | IT-T19g-01 step 4 |
+| 12 | Q2 | 🟡 🟡 ⬜ | GitHub blame line walk and lineage mapping built in Task19g; exact origin only at requested commit, older origin partial; founder-live App check passed 2026-10-20 on a disposable database; branch release pending | Task19g (ex-Task19d) | later (file paths are hashed in the predicate) | IT-T19g-01 step 4 |
 | 13 | Q6 | 🟡 ✅ ⬜ | merger G4 capture and dry-run-first backfill built in Task19g; unknown pre-backfill remains partial | Task19g | `pr_merged` merger field for Task15 | IT-T19g-01 steps 1–3 |
 | 14 | Q8 | 🟡 n/a ⬜ | stored + Attesta | n/a | A16.13a | — |
 | 15 | Q15 | 🟡 ✅ ⬜ | managed rejection audit capture from deployment, Q15 counts; unmanaged legacy uploads excluded | Task19g | rejection count in Task15 batch statement | IT-T19g-01 steps 1–3 |
