@@ -1,0 +1,21 @@
+apps/api/src/features/qa/task19g-qa-live-verify.ts
+  s_f0fcc7adbbc69b::t_6d39bb91b2d970 226-228
+docs/plan/CUSTOMER_AUDITOR_QA.md
+  s_f0fcc7adbbc69b::t_fc88e874f1fac6 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "989ec960615227dcde50b57fa10031f60443fe3d",
+  "prompts": {},
+  "sessions": {
+    "s_f0fcc7adbbc69b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15534-94b0-7a70-8d68-8bd3398b1a5c",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
