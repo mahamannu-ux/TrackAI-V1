@@ -1,0 +1,27 @@
+docs/handoffs/Task17-plan_HANDOFF.md
+  s_c9850750b37e31::t_fed587ff467e75 1-28
+docs/plan/GITAI_FUTURE_TODO.md
+  s_c9850750b37e31::t_009cb46ff8d9fb 11,16,18,20
+docs/plan/GITAI_UPSTREAM_LEDGER_2026-10.tsv
+  s_c9850750b37e31::t_04fc02a282072e 2,4,6,12,52,55-56,60-66,92-93,95-97,99-102,108-112,122-131,135,139,147-187,210,214-255,277,279-281,291,296-297
+docs/plan/TASK17.md
+  s_c9850750b37e31::t_2e6125eb826997 1,3,5,7,9,11,13-79
+docs/plan/primers/Task17_PRIMER.md
+  s_c9850750b37e31::t_145f72cfeb1d37 3,32,43,45,48,52,56-60,62,64,131,135,137-139,142,144-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "9063ed021a5cfcc50ceb2f55f1a9db299fc86b00",
+  "prompts": {},
+  "sessions": {
+    "s_c9850750b37e31": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15fd1-51be-7492-83a0-358b788e6f0a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
