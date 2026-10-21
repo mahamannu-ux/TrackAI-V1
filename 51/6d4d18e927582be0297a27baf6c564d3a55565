@@ -1,0 +1,29 @@
+apps/api/src/features/security/testing/task20j-daily-triage.ts
+  s_4bd686272a5179::t_6af1409f7fa40f 1-60
+apps/api/src/features/security/testing/task20j-week-setup.ts
+  s_4bd686272a5179::t_7b9c7b7b385c99 1-187
+docs/handoffs/Task20j-acceptance_HANDOFF.md
+  s_4bd686272a5179::t_04558516d014ca 1-62
+docs/plan/GITAI_FUTURE_TODO.md
+  s_4bd686272a5179::t_92068c53a831d2 14
+docs/plan/STATUS_BOARD.md
+  s_4bd686272a5179::t_48b798eb586127 84,176
+docs/plan/TASK20.md
+  s_4bd686272a5179::t_a6679cec552e46 60,66,230-233,237-248,254-261
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "516d4d18e927582be0297a27baf6c564d3a55565",
+  "prompts": {},
+  "sessions": {
+    "s_4bd686272a5179": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15e7e-ac27-7381-b5cf-96e8a27a3d00",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
