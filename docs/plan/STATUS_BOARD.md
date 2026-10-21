@@ -1,5 +1,7 @@
 # TrackAI status board
 
+*Task17 rows updated 2026-10-22 for planning checkpoint 2; other Task rows retain their own recorded dates.*
+
 The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `ROUGH_ROADMAP.md` stays the portfolio index and each Task tracker stays its spec; this file holds the session-level state. Together with the handoffs it is the project's whole state. Symbols per AGENTS.md §11 (✅ = 🟢 ✅, 🟡 = 🟡 ◐, ⬜ = 🔴 ☐ in the older trackers).
 
 ---
@@ -21,7 +23,7 @@ The kit's three tables (agent-kit 0.1.0 `templates/STATUS_BOARD_TEMPLATE.md`). `
 | Task11 API/SDK | — | — | n/a deferred until a customer asks | n/a | Triggers in `docs/plan/TASK11.md` |
 | Task12 Trust center and buyer content | — | — | ⬜ | ⬜ | After Task14 (`docs/plan/TASK12.md`) |
 | Task14 Production readiness | — | — | ⬜ | ⬜ | T14.1 pilot hosting before Task18; rest after the pilot milestone |
-| Task17 GitAI upstream sync | Codex + Claude + Muse | — | ⬜ | ⬜ | After Task9 (`docs/plan/TASK17.md`) |
+| Task17 GitAI upstream sync | Codex lead; Claude product review; Task9f package owner | `docs/Task17-plan` (checkpoint 2 approved with Task20 lead corrections) | 🟡 Task17a plan locally complete, PR delivery pending; Task17e triage complete; no code port | ⬜ affected gates in `TASK17.md` §5 | Merge plan PR; relay daemon group packet to Claude; start Task17b in new chat after verdict |
 | Task18 Real-world validation | Codex + Muse | — | ⬜ | ⬜ | After Task8 and T14.1 (`docs/plan/TASK18.md`) |
 | Task19 Customer and auditor Q&A delivery | Claude + Muse (+ owning Tasks) | Task19a PR #72 merged; `TASK19.md` updated 2026-10-16 for the Numbat decision (Task20 plan PR) | 🟡 Task19a merged | 🟡 IT-T19a-01 founder run ⬜ | Start `Task19b-qa-live-code` (Muse, `docs/prompts/Task19/NEXT_CHAT_Task19b-qa-live-code_PROMPT.md`); Task19c waits for Task20d |
 | Task20 Coding-agent security with Numbat | Claude + Codex + Muse | `docs/Task20-plan` (primer approved 2026-10-16; tracker `docs/plan/TASK20.md`) | ⬜ | ⬜ | Merge the plan PR; create the Numbat mirror fork and tag; then start Task20a (Codex, prompt written) and Task20b (Muse) |
@@ -61,7 +63,12 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7e | Task9e-fleet-console: inventory, rollout, offboard and mismatch UI | Muse | about 0.20× target; 0.25× ceiling | about 0.17× | merged in TrackAI PR #18 (`b43d007`); only a narrow v2 form/type assessment may follow | `docs/prompts/Task9/NEXT_CHAT_Task9e-fleet-console_PROMPT.md` |
 | 7f | Task9f-macos-conformance: current Intel Mac lifecycle plus best-effort Jamf/second-Mac gates | Codex | about 0.30× | | Task9a2, Task9c2 and resumed Task9d merged | written after implementation sessions |
 | 7g | Task9g-windows-conformance: Windows x64 CI floor plus best-effort native/Intune gates | Codex | about 0.35× | | corrected implementation sessions and Task9f merged; host/tenant if available | written after macOS conformance |
-| 7h | Task17-lead: GitAI upstream sync (Codex leads; Claude product review; Muse ports) | Codex + Claude + Muse | (primer decides) | | Task9 done | to write from `docs/agents/TASK_LEAD_PROCEDURE.md` |
+| 7h | Task17a-plan: 304-row ledger, founder decisions, tracker and gates | Codex lead | about 0.40× | planning work locally complete; delivery pending plan PR merge | founder and Task20 lead approved conditional corrections, now recorded | `docs/plan/TASK17.md`; `docs/handoffs/Task17-plan_HANDOFF.md` |
+| 7h1 | Task17e-package-triage: Task9f take/reject; Task14 and Task13 product handoffs | Codex lead + Task9f lead | about 0.12× | decision-only triage complete in lead chat | Task9f reviewed 16 rows; four concepts stay Task9f-owned; no Task17 package port | `docs/plan/TASK17.md` §2–4 |
+| 7h2 | Task17b-daemon-reliability: first port in new chat | Codex | about 0.35× | | plan PR merged; Claude daemon group verdict pending | `docs/prompts/Task17/NEXT_CHAT_Task17b-daemon-reliability_PROMPT.md` |
+| 7h3 | Task17c-agent-config: route identity and config fixes | Codex | about 0.25× | | Task17b integrated; Claude group review | `docs/plan/TASK17.md` §4–5 |
+| 7h4 | Task17d-attribution-metrics: Lab decisions and telemetry/notes ports | Codex | about 0.38× | | Task14a migrated Lab DB; Claude semantic/shared-code review | `docs/plan/TASK17.md` §3–5 |
+| 7h5 | Task17f-integration: full gates and one GitAI fork PR | Codex + founder-live | about 0.30× | | reviewed waves; Task20j week ends for native package gates | `docs/plan/TASK17.md` §5–6 |
 | 7i | Task19-lead: Q&A delivery (matrix, Q&A contract, live answers, gap dispatch, Task6 strategy) | Claude + Muse | about 0.4× (own work) | | §1 approved 2026-10-15; sessions in `docs/plan/TASK19.md` §6 | `docs/prompts/Task19/NEXT_CHAT_Task19-lead_PROMPT.md` |
 | 7i1 | Task19a-qa-matrix-contract: T19.1 matrix confirmed against the code; T19.2 question registry, answer envelope, `/api/qa/*`, `docs/contracts/qa/` | Claude | about 0.09× | about 0.10× (by turns) | plan PR merged | `docs/prompts/Task19/NEXT_CHAT_Task19a-qa-matrix-contract_PROMPT.md` |
 | 7i2 | Task19b-qa-live-code (T19.3), then Task19c-qa-live-security (T19.4) | Muse | about 0.1× + 0.08× | Task19b about 0.38× (schema edge, Docker down, piped-tsc miss, two review fix rounds); Task19c about 0.12× | Task19a merged | written after Task19a |
@@ -70,7 +77,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 7i5 | Task19f-qa-numbat-questions: S19–S26 in the Q&A registry; live S26, S23, S21 | Codex | about 0.10× | about 0.17× | Task20d merged | 🟡 built; `docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md`; IT-T19f-01 founder run ⬜ |
 | 7i6 | Task19g-merged-by-rejections-line-blame: G4 → Q6, G5 → Q15, Q2 line walk (absorbs Task19d) | Codex | about 0.25× | about 0.35× | now | 🟡 local build; migration 0028, catalog v5, registry v3; IT-T19g-01 founder-passed 2026-10-20; lead review and post-migration deployment backfill pending; `docs/handoffs/Task19g-merged-by-rejections-line-blame_HANDOFF.md` |
 | 7i7 | Task19h-qa-inventory-scan-walkthrough: live S19 and S20; T19.9 walkthrough steps | Claude | about 0.04× | about 0.05× | Task19g merged | 🟡 built; registry v4; IT-T19h-01 agent-passed 2026-10-21, founder run ⬜; `docs/handoffs/Task19h-qa-inventory-scan-walkthrough_HANDOFF.md` |
-| 7i | Task2-lab-regression: Lifecycle Lab regression check after Task9 and Task17 | Codex | about 0.1× | | Task17 done | to write |
+| 7h6 | Task17 Lifecycle Lab regression (integrated in Task17d/17f after Task14a) | Codex + founder-live | included in Task17d/17f | | Task14a migrated database and Task17 branch build | `docs/plan/TASK17.md` §3, §5 |
 | 9 | Task20-lead: primer, plan, prompts, reviews (`docs/plan/TASK20.md`) | Claude | about 0.08× (own work) | | primer approved 2026-10-16 | `docs/prompts/Task20/NEXT_CHAT_Task20-lead_PROMPT.md` |
 | 9a | Task20a-security-v2-contract (T20.1) | Codex (Claude reviews) | about 0.12× | about 0.16× | plan PR merged | `docs/prompts/Task20/NEXT_CHAT_Task20a-security-v2-contract_PROMPT.md` |
 | 9b | Task20b-numbat-mirror-build (T20.2–T20.4; GitAI) | Muse + founder-live | about 0.12× | | mirror fork and tag created (setup step 2 of its prompt) | `docs/prompts/Task20/NEXT_CHAT_Task20b-numbat-mirror-build_PROMPT.md` |
