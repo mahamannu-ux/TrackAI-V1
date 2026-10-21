@@ -34,6 +34,7 @@ const REGISTRY_DIGESTS: Record<number, string> = {
   1: 'sha256:c6119cc1e67c206bd2548b34db85eb147d662c9a0d6c3f1a03c31f0dc06c6377',
   2: 'sha256:319b894e4f80b8bfa1e22161c8c75b964c8f5ce6e09c64b59d1993bde9116618',
   3: 'sha256:66acd3b8a5e8079ea076536b9a876a47245830ff68056656092bfb6eee5d1a5b',
+  4: 'sha256:de8e32207231dfbdc478a89316d3e794fd2fb8503aa7eae01f0a22dcbbdd3d1a',
 };
 
 function registryDigest(): string {

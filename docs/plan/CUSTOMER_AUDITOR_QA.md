@@ -95,8 +95,8 @@ Three limits shape every answer below:
 
 | Rank | # | Question | Auditor | Data today | Lives in | Answered by | Notes / gap |
 |---|---|---|---|---|---|---|---|
-| 19 | S19 | Which AI coding agents are installed on our machines, and which are not on the approved list? | yes | ⬜ | inventory metadata | live query after capture | G14: endpoint inventory upload and approved-list comparison; no agent versions reported. |
-| 20 | S20 | Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find? | yes | ⬜ | scan summary and findings | live query after capture | G14: day-one scan upload. Requested actions are not confirmed outcomes. |
+| 19 | S19 | Which AI coding agents are installed on our machines, and which are not on the approved list? | yes | 🟡 | inventory metadata | live query (Task19h) | Latest Endpoint inventory per machine: agents detected, wired, detected but not wired. No versions (Numbat reports none). The approved-list comparison waits for G2. |
+| 20 | S20 | Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find? | yes | ✅ | scan summary and findings | live query (Task19h) | Scans by outcome (a zero-artifact `error` scan is "no session files found"), artifacts scanned, findings found at rest. Requested actions are not confirmed outcomes. |
 | 21 | S26 | How often do agents ask permission, how often do developers approve or deny, and did sessions with findings get approvals? | yes | ✅ | permission events and v2 findings | live query | Same-session approval association is partial linkage, not proof of approval for a finding's action. |
 | 22 | S23 | Which external domains, URLs and addresses did agents reach in a period? | partly | 🟡 (only with `urls` on) | indicator metadata | live query | With `urls` off, unavailable (`data_setting_off`); no indicator values in the answer envelope. |
 | 23 | S21 | Which agents ran in reduced-approval or bypass modes, and how often? | yes | 🟡 | v2 findings | live query (partial) | `tamper.guardrails_off` observed; bypass flag launches await G16. |
@@ -251,7 +251,7 @@ Provider re-delivery already has a strong unique key `(tenant, provider, deliver
 | ID | Gap | Questions | Likely owner | Phase |
 |---|---|---|---|---|
 | G1 | Repo/path line-count snapshot (denominator for "% AI as of a date") | Q1 | Task2 + GitAI | 1 if cheap, else 2 |
-| G2 | Organization AI-usage policy (approved tools and models) | Q4, Q12, S13 | Task6.b | later; reference `unavailable` until then |
+| G2 | Organization AI-usage policy (approved tools and models) | Q4, Q12, S13, S19 | Task6.b | later; reference `unavailable` until then |
 | G3 | PR review and approval capture (`pull_request_review` webhook; not subscribed today, so past reviews cannot be recovered) | Q5 | Task2 (semantics), Task7 (other providers), Task4 (delivery) | before production (founder, 2026-10-12); predicate field ready now |
 | G4 | Closed in Task19g: parsed and stored `merged_by`; retained-webhook backfill is dry-run-first | Q6 | Task2 | migration 0028; deployment/backfill pending |
 | G5 | Closed in Task19g: content-free `telemetry.upload.rejected` audit event for managed refusals | Q15 | Task4 (capture), Task16 (catalog), Task15 (count in batch statement) | capture starts at deployment; signed count pending |
@@ -263,7 +263,7 @@ Provider re-delivery already has a strong unique key `(tenant, provider, deliver
 | G11 | D6.1 activation lease issue and refuse events | S13 | Task6.b (events reserved in Task16b) | with D6.1 |
 | G12 | Policy exceptions and waivers object | S14 | Task6.b | with Task6.b |
 | G13 | Finding triage, disposition and remediation state (append-only, audited) | S16, S18 | Task6 (state), Task16 (event `security.finding.triaged`, reserved in Task16b), Task10 (UI) | 2 |
-| G14 | Agent inventory and day-one scan uploads from the endpoint | S19, S20 | Task20 (Task20h-b) | 1 |
+| G14 | Closed in Task19h: agent inventory and day-one scan uploads from the Endpoint (Task20h-b) | S19, S20 | Task20 (Task20h-b) | closed 2026-10-21 |
 | G15 | MCP server configuration and per-call MCP identity on findings | S22 | Task20 (later) | later |
 | G16 | Deferred rule wave 2 (the 7 normal-development rules, including `exec.agent_runtime_bypass_flags`) | S21 | Task20 (later wave) | later |
 | G17 | Opt-in blocking pilot (enforcement decisions) | S24 | Task20 (Task20k) | later |

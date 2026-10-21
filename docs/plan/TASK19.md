@@ -97,8 +97,8 @@ Columns:
 | 16 | S16 | ⬜ ⬜ ⬜ | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
 | 17 | S17 | 🟡 ⬜ n/a | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
 | 18 | S18 | 🟡 ⬜ n/a | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
-| 19 | S19 | ⬜ ⬜ ⬜ | G14: endpoint agent inventory; approved-list comparison waits for G2 | after Task20h-b | later | Task20h-b, G2 |
-| 20 | S20 | ⬜ ⬜ ⬜ | G14: day-one scan uploads | after Task20h-b | later | Task20h-b |
+| 19 | S19 | 🟡 🟡 ⬜ | Endpoint inventory stored (Task20h-b); approved-list comparison waits for G2 | Task19h (live) | later | G2 |
+| 20 | S20 | ✅ 🟡 ⬜ | day-one scan summaries and at-rest findings stored (Task20h-b) | Task19h (live; ✅ after T19.9) | later | T19.9 |
 | 21 | S26 | ✅ 🟡 ⬜ | permission events stored | Task19f live | later | founder IT-T19f-01 |
 | 22 | S23 | 🟡 🟡 ⬜ | indicators stored only when `urls` enabled | Task19f live, settings-aware | later | founder IT-T19f-01 |
 | 23 | S21 | 🟡 🟡 ⬜ | guardrails-off findings stored; bypass flags G16 | Task19f partial | later | Task20 wave 2 |
@@ -200,8 +200,9 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 | 5 | `Task19e-qa-questions-screen` | T19.5: a design note by the lead (about 0.02×), then the build | Claude design, Muse build | about 0.12× (actual about 0.13×) | Task19b and Task19c merged; Task10's design system, or the UI-1 rules until it exists | `apps/web/src/app/dashboard/questions-workspace.tsx` (new); `questions-presentation.tsx`; dashboard navigation | 🟡 built; handoff `docs/handoffs/Task19e-qa-questions-screen_HANDOFF.md`; latest full suite hit inherited Attesta timing flake (isolated pass); founder walkthrough pending |
 | 6 | `Task19f-qa-numbat-questions` | S19–S26 in the registry (version 2; reasons `data_setting_off`, `zero_denominator`; gaps G14–G17; founder ranking 2026-10-19: S19, S20, S26, S23, S21, S22, S24, S25); live answers S26, S23, S21 (requested by the Task20 lead, T20.18) | Codex | about 0.10× | now (Task20d merged) | `docs/contracts/qa/` (additive), `features/qa/registry.ts`, `security-read.ts`, `security-answerers.ts`, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19f-01 agent-passed 2026-10-19; handoff `docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md` |
 | 7 | `Task19g-merged-by-rejections-line-blame` | G4 (merged-by, Task2) → Q6; G5 (rejection audit event, Task4) → Q15; Q2 line walk (ex-Task19d) | Codex | about 0.25× | now | migration 0028; SCM merger capture/backfill and blame; rejection audit; Q2/Q6/Q15 live answers; additive Q&A contract | 🟡 built locally; IT-T19g-01 and founder-live Q2 gate in `docs/handoffs/Task19g-merged-by-rejections-line-blame_HANDOFF.md` |
+| 8 | `Task19h-qa-inventory-scan-walkthrough` | S19 (agent inventory) and S20 (day-one scan) live answers, requested by the Task20 lead after Task20h-b; the T19.9 walkthrough (`docs/plan/TASK19_WALKTHROUGH.md`) for the joint sitting with Task20j | Claude (lead) | about 0.04× | Task19g merged (registry v3 → v4) | `features/qa/` (security-read, security-answerers, registry), `docs/contracts/qa/questions.md` (regenerated), `questions-presentation.tsx` (one label), this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19h-01 agent-passed 2026-10-21; handoff `docs/handoffs/Task19h-qa-inventory-scan-walkthrough_HANDOFF.md` |
 | — | Lead work | T19.6 prompts and reviews, T19.7, T19.8 | Claude (lead chat) | about 0.05× | ongoing | prompts, this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 plan written |
-| — | Founder walkthrough | T19.9 | founder-live | about 0.02× | Task19e merged; A16.13a merged | — | ⬜ |
+| — | Founder walkthrough | T19.9, run with Task20j's E20 from `docs/plan/TASK20_ACCEPTANCE.md` (written by Task20j); steps in `docs/plan/TASK19_WALKTHROUGH.md` | founder-live | about 0.02× | Task19e, Task19h and A16.13a merged | — | ⬜ |
 
 **Total:** about 0.46× T6 for Task19's own work, against the 0.4× plan, mostly from the Muse factor. Q2 (`Task19d`, sized in T19.1 at about 0.12×) comes on top: about 0.58×. The Task19b/19c split is unchanged by the inventory.
 
@@ -265,3 +266,11 @@ A solid arrow means "must merge before"; the dotted arrow means the security row
 2. **2026-10-15:** D1–D5 approved as recommended. The founder runs T19.1 and T19.2 as one Claude session (`Task19a-qa-matrix-contract`). The delivery matrix gets a running-status column (capture · live · auditor).
 3. **2026-10-15 (pending the founder's yes on the plan PR):** exception to D3 for one pure move. Task19a moves `loadContext`, `lifecycleForTenant` and `lifecycleForModel` unchanged out of Task2's `read.routes.ts` into a new Task2 file, `features/telemetry/task2-lifecycle-read.ts`, so live answers reuse Task2's semantics. Codex reviews it as Task2's owner. `features/qa/` may import that file and `lifecycle.ts`.
 4. **2026-10-16 (Numbat decision; recorded by the Task20 lead at the founder's request):** T19.7 is done (`docs/plan/NUMBAT_ADOPTION_REVIEW.md`). Security gaps move into Task20 (G7, G8, G10 model part, G11); G9 is cancelled; G6 stays with Task15o, redesigned on Numbat's finding schema; G10's session key waits for Task13; G2 and G12 are shelved with `customerPolicyForDataAccess`. Q11 moves from Task19b to Task19c, which waits for Task20d. Task15n gate 6 is removed. Trackers show a session graph, not a sub-task graph.
+5. **2026-10-21 (Task20 lead request):** T19.9 runs in the same founder sitting as Task20j's E20, from one runbook (`docs/plan/TASK20_ACCEPTANCE.md`, to be written by Task20j) that links to `docs/plan/TASK19_WALKTHROUGH.md`. The ten questions are five code (Q3, Q1, Q4, Q11, Q7) and five security (S1, S7, S19, S20, S26). A day-one scan that found no session files (status `error`, nothing scanned) is shown as "scans with no session files found for this agent", never as a failure.
+
+## 8. T19.9 results
+Filled in after the sitting: one line per step of `docs/plan/TASK19_WALKTHROUGH.md` that did not match (question, role, what was seen), then the §3 cells moved to ✅.
+
+| Date | Steps passed | Mismatches |
+|---|---|---|
+| — | — | ⬜ not run yet |

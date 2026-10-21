@@ -18,13 +18,15 @@
  * `session_id`, `occurred_at`; the agent is Task6.a `agent_family` or v2
  * `source_agent`; the model is v2 `model` or null for Task6.a.
  */
-import { and, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte } from 'drizzle-orm';
 import { db } from '../../core/db';
 import {
   aiSessions,
   fleetMachineStates,
   securityEnforcementDecisions,
   securityPermissionEvents,
+  securityAgentInventorySnapshots,
+  securityScanSummaries,
   securityIndicators,
   securityDataSettingsVersions,
   securityFindings,
@@ -107,6 +109,36 @@ export interface DataSettingsRow {
   createdAt: Date;
 }
 
+/** One agent row of an Endpoint inventory snapshot (security-v2 README "agent_inventory"). */
+export interface InventoryAgentRow {
+  agent: string;
+  config: string;
+  artifacts: string;
+  wired: string;
+}
+
+/** The latest inventory snapshot per machine, observed in the period (Task19h). */
+export interface InventorySnapshotRow {
+  machineId: string;
+  observedAt: Date;
+  agents: InventoryAgentRow[];
+}
+
+/** One Numbat scan summary (the opt-in day-one scan). No agent is projected (security-v2 README "scan_summary"). */
+export interface ScanSummaryRow {
+  machineId: string;
+  status: string;
+  artifactsScanned: number;
+  receivedAt: Date;
+}
+
+/** A v2 finding from the day-one scan: metadata only, cut to the period by `received_at`. */
+export interface AtRestFindingRow {
+  machineId: string;
+  ruleCategory: string;
+  ruleSeverity: string;
+}
+
 /** Everything a pure security answer reads: period-filtered by the loader. */
 export interface SecurityContext {
   findings: SecurityFindingRow[];
@@ -118,6 +150,32 @@ export interface SecurityContext {
   permissionEvents: PermissionEventRow[];
   indicators: IndicatorRow[];
   dataSettings: DataSettingsRow[];
+  inventory: InventorySnapshotRow[];
+  scanSummaries: ScanSummaryRow[];
+  atRestFindings: AtRestFindingRow[];
+}
+
+/** Keeps each machine's latest snapshot and only the four projected agent fields (no version is claimed). */
+export function latestInventory(rows: Array<{ machineId: string; observedAt: Date; agents: unknown }>): InventorySnapshotRow[] {
+  const latest = new Map<string, { machineId: string; observedAt: Date; agents: unknown }>();
+  for (const row of rows) {
+    const current = latest.get(row.machineId);
+    if (!current || row.observedAt.getTime() > current.observedAt.getTime()) latest.set(row.machineId, row);
+  }
+  return [...latest.values()].map((row) => ({
+    machineId: row.machineId,
+    observedAt: row.observedAt,
+    agents: (Array.isArray(row.agents) ? row.agents : []).flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const value = item as Record<string, unknown>;
+      return typeof value.agent === 'string' ? [{
+        agent: value.agent,
+        config: typeof value.config === 'string' ? value.config : 'unavailable',
+        artifacts: typeof value.artifacts === 'string' ? value.artifacts : 'unavailable',
+        wired: typeof value.wired === 'string' ? value.wired : 'unavailable',
+      }] : [];
+    }),
+  }));
 }
 
 type FindingSelect = typeof securityFindings.$inferSelect;
@@ -169,6 +227,9 @@ export function buildSecurityContext(input: {
   permissionEvents?: Array<typeof securityPermissionEvents.$inferSelect>;
   indicators?: Array<typeof securityIndicators.$inferSelect>;
   dataSettings?: Array<typeof securityDataSettingsVersions.$inferSelect>;
+  inventory?: Array<typeof securityAgentInventorySnapshots.$inferSelect>;
+  scanSummaries?: Array<typeof securityScanSummaries.$inferSelect>;
+  atRestFindings?: FindingSelect[];
 }): SecurityContext {
   return {
     findings: input.findings.map(toFindingRow),
@@ -191,6 +252,13 @@ export function buildSecurityContext(input: {
     dataSettings: (input.dataSettings ?? []).map((row) => ({
       version: row.version, urls: row.urls, createdAt: row.createdAt,
     })),
+    inventory: latestInventory(input.inventory ?? []),
+    scanSummaries: (input.scanSummaries ?? []).map((row) => ({
+      machineId: row.machineId, status: row.status, artifactsScanned: row.artifactsScanned, receivedAt: row.receivedAt,
+    })),
+    atRestFindings: (input.atRestFindings ?? [])
+      .filter((row) => row.recordGeneration === 'v2' && row.foundAtRest === true)
+      .map((row) => ({ machineId: row.machineId, ruleCategory: row.ruleCategory, ruleSeverity: row.ruleSeverity })),
   };
 }
 
@@ -208,7 +276,8 @@ export async function loadSecurityContext(
   const from = new Date(fromMs);
   const to = new Date(toMs);
   const tenantDb = withTenant(db, tenantId);
-  const [findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings] = await Promise.all([
+  const [findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings,
+    inventory, scanSummaries, atRestFindings] = await Promise.all([
     tenantDb.select(securityFindings, and(gte(securityFindings.occurredAt, from), lte(securityFindings.occurredAt, to))),
     tenantDb.select(securityEnforcementDecisions, and(
       gte(securityEnforcementDecisions.occurredAt, from), lte(securityEnforcementDecisions.occurredAt, to))),
@@ -222,6 +291,15 @@ export async function loadSecurityContext(
     tenantDb.select(securityIndicators, and(
       lte(securityIndicators.firstSeen, to), gte(securityIndicators.lastSeen, from))),
     tenantDb.select(securityDataSettingsVersions, lte(securityDataSettingsVersions.createdAt, to)),
+    tenantDb.select(securityAgentInventorySnapshots, and(
+      gte(securityAgentInventorySnapshots.observedAt, from), lte(securityAgentInventorySnapshots.observedAt, to))),
+    // Scan summaries and day-one findings carry no activity time for the scan itself:
+    // an at-rest finding's occurred_at is the old session's time, so both use received_at.
+    tenantDb.select(securityScanSummaries, and(
+      gte(securityScanSummaries.receivedAt, from), lte(securityScanSummaries.receivedAt, to))),
+    tenantDb.select(securityFindings, and(eq(securityFindings.foundAtRest, true),
+      gte(securityFindings.receivedAt, from), lte(securityFindings.receivedAt, to))),
   ]);
-  return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings });
+  return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents,
+    indicators, dataSettings, inventory, scanSummaries, atRestFindings });
 }

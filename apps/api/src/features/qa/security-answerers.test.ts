@@ -20,6 +20,7 @@ import { answerQuestion, type QaScopeStore } from './service';
 import {
   SECURITY_FINDING_METADATA_COLUMNS,
   toFindingRow,
+  latestInventory,
   type SecurityContext,
   type SecurityFindingRow,
 } from './security-read';
@@ -27,7 +28,7 @@ import {
   comparisonAnswer, linkedAnswer, securityAnswer,
   computeS5, computeS6, computeS7, computeS8, computeS9, computeS10, computeS11,
   computeS12, computeS15, computeS17, computeS18, computeQ11,
-  computeS26, computeS23, computeS21,
+  computeS26, computeS23, computeS21, computeS19, computeS20,
 } from './security-answerers';
 import type { QaContext } from './answers/common';
 import type { QaAnswerContext, QaEnvelope, QaFigure } from './types';
@@ -79,6 +80,9 @@ function securityContext(over: Partial<SecurityContext> = {}): SecurityContext {
     permissionEvents: over.permissionEvents ?? [],
     indicators: over.indicators ?? [],
     dataSettings: over.dataSettings ?? [],
+    inventory: over.inventory ?? [],
+    scanSummaries: over.scanSummaries ?? [],
+    atRestFindings: over.atRestFindings ?? [],
   };
 }
 
@@ -461,7 +465,7 @@ describe('Task19f: Numbat live answers', () => {
   test('unbuilt Numbat questions carry their gaps and phase-2 reason', async () => {
     const answerers = createAnswererRegistry();
     const base = { tenantId: A, role: 'tenant_admin' as const, now: new Date(NOW) };
-    for (const [id, gap] of [['S19', 'G14'], ['S20', 'G14'], ['S22', 'G15'], ['S24', 'G17']]) {
+    for (const [id, gap] of [['S22', 'G15'], ['S24', 'G17']]) {
       const e = await answerQuestion({ answerers, scopes }, { ...base, questionId: id,
         query: { kind: 'live', from: FROM, to: TO } });
       assert.equal(e.availability, 'unavailable');
@@ -472,5 +476,94 @@ describe('Task19f: Numbat live answers', () => {
       query: { kind: 'signed', from: FROM, to: TO } });
     assert.deepEqual(s25.reasons, [{ code: 'phase_2' }]);
     valid(s25);
+  });
+});
+
+describe('Task19h: S19 inventory and S20 day-one scan', () => {
+  const valid = (e: QaEnvelope, breakdown: QaAnswerContext['breakdown'] = null) => assert.deepEqual(
+    checkEnvelope(e, { questionId: e.question_id, kind: e.kind, scope: e.scope, breakdown }), { ok: true, path: null });
+  const agent = (name: string, wired: string, config = 'present', artifacts = 'absent') => ({ agent: name, version: null, config, artifacts, wired });
+
+  test('latestInventory keeps each machine\'s newest snapshot and drops versions and unknown fields', () => {
+    const rows = latestInventory([
+      { machineId: MACHINE_A, observedAt: new Date('2026-10-01T00:00:00.000Z'), agents: [agent('codex', 'no')] },
+      { machineId: MACHINE_A, observedAt: new Date('2026-10-02T00:00:00.000Z'), agents: [{ ...agent('codex', 'yes'), version: '1.2.3', setup_hint: '/Users/x' }] },
+    ]);
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].agents, [{ agent: 'codex', config: 'present', artifacts: 'absent', wired: 'yes' }]);
+  });
+
+  test('S19 counts detected, wired and unwired agents; versions and the approved list stay unavailable', () => {
+    const security = securityContext({ inventory: [
+      { machineId: MACHINE_A, observedAt: new Date('2026-10-02T00:00:00.000Z'), agents: [
+        { agent: 'claude', config: 'present', artifacts: 'present', wired: 'yes' },
+        { agent: 'codex', config: 'present', artifacts: 'absent', wired: 'no' },
+        { agent: 'cursor', config: 'absent', artifacts: 'absent', wired: 'no' },
+      ] },
+      { machineId: MACHINE_B, observedAt: new Date('2026-10-03T00:00:00.000Z'), agents: [
+        { agent: 'claude', config: 'absent', artifacts: 'present', wired: 'unavailable' },
+      ] },
+    ] });
+    const e = computeS19({ ctx: ctxFor('S19', 'tenant'), security });
+    assert.deepEqual(figureOf(e, 'machines_reporting').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'agents_detected').value, { type: 'count', count: 3 });
+    assert.deepEqual(figureOf(e, 'agents_wired').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'agents_detected_not_wired').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'agents_wiring_unknown').value, { type: 'count', count: 1 });
+    assert.equal(figureOf(e, 'agent_versions').value, null);
+    assert.deepEqual(figureOf(e, 'agents_not_on_approved_list').reasons, [{ code: 'not_captured_yet', gap: 'G2' }]);
+    assert.equal(e.availability, 'partial');
+    valid(e);
+    const byAgent = computeS19({ ctx: ctxFor('S19', 'tenant', 'agent_family'), security });
+    assert.deepEqual(figureOf(byAgent, 'agents_detected').breakdown?.map((item) => [item.key, item.value]),
+      [['claude', { type: 'count', count: 2 }], ['codex', { type: 'count', count: 1 }]]);
+    valid(byAgent, 'agent_family');
+    const byOs = computeS19({ ctx: ctxFor('S19', 'tenant', 'operating_system'), security });
+    assert.deepEqual(figureOf(byOs, 'machines_reporting').breakdown?.map((item) => item.key), ['macos', 'windows']);
+    valid(byOs, 'operating_system');
+  });
+
+  test('S19 with no machine reporting is unavailable, never zero agents', () => {
+    const e = computeS19({ ctx: ctxFor('S19', 'tenant'), security: securityContext() });
+    assert.deepEqual(figureOf(e, 'machines_reporting').value, { type: 'count', count: 0 });
+    assert.equal(figureOf(e, 'agents_detected').value, null);
+    assert.deepEqual(figureOf(e, 'agents_detected').reasons, [{ code: 'not_monitored' }]);
+    valid(e);
+  });
+
+  test('S20 separates no-session-files scans from failed ones and counts findings at rest', () => {
+    const at = new Date('2026-10-05T00:00:00.000Z');
+    const security = securityContext({
+      scanSummaries: [
+        { machineId: MACHINE_A, status: 'complete', artifactsScanned: 12, receivedAt: at },
+        { machineId: MACHINE_A, status: 'error', artifactsScanned: 0, receivedAt: at },
+        { machineId: MACHINE_B, status: 'error', artifactsScanned: 3, receivedAt: at },
+        { machineId: MACHINE_B, status: 'partial', artifactsScanned: 4, receivedAt: at },
+      ],
+      atRestFindings: [
+        { machineId: MACHINE_A, ruleCategory: 'secrets', ruleSeverity: 'high' },
+        { machineId: MACHINE_B, ruleCategory: 'exec', ruleSeverity: 'critical' },
+      ],
+    });
+    const e = computeS20({ ctx: ctxFor('S20', 'tenant'), security });
+    assert.deepEqual(figureOf(e, 'machines_scanned').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'scans_complete').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'scans_partial').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'scans_no_session_files').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'scans_failed').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'artifacts_scanned').value, { type: 'count', count: 19 });
+    assert.deepEqual(figureOf(e, 'findings_at_rest').value, { type: 'count', count: 2 });
+    assert.deepEqual(e.wording, ['monitor_only_observed', 'requested_not_confirmed']);
+    valid(e);
+    const bySeverity = computeS20({ ctx: ctxFor('S20', 'tenant', 'severity'), security });
+    assert.deepEqual(figureOf(bySeverity, 'findings_at_rest').breakdown?.map((item) => item.key), ['critical', 'high']);
+    valid(bySeverity, 'severity');
+  });
+
+  test('S20 with no day-one scan in the period is unavailable, never zero', () => {
+    const e = computeS20({ ctx: ctxFor('S20', 'tenant'), security: securityContext() });
+    assert.equal(e.availability, 'unavailable');
+    assert.ok(e.figures.every((figure) => figure.value === null));
+    valid(e);
   });
 });

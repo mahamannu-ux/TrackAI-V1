@@ -23,6 +23,12 @@ export const QA_REASON_MESSAGES: Record<string, string> = {
   zero_denominator: 'No approval decisions were recorded in this period, so the rate is unavailable.',
 };
 
+/** Figure names that need plain words beyond the key itself (otherwise the key is shown with spaces). */
+export const QA_FIGURE_LABELS: Record<string, string> = {
+  // A day-one scan with status `error` and no artifacts scanned (S20).
+  scans_no_session_files: 'scans with no session files found for this agent',
+};
+
 export const QA_WORDING_MESSAGES: Record<string, string> = {
   monitor_only_observed: 'Observed in monitor mode; nothing was blocked.',
   unknown_model_explicit: 'Some model identities are unknown.',
@@ -168,7 +174,7 @@ export function FigureCard({ figure, previous, repositories, onOpenAttestation }
 }) {
   return <article className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h4 className="font-medium text-white">{figure.key.replaceAll('_', ' ')}</h4>
+      <h4 className="font-medium text-white">{QA_FIGURE_LABELS[figure.key] ?? figure.key.replaceAll('_', ' ')}</h4>
       <Badge tone={availabilityTone(figure.availability)}>{availabilityLabel(figure.availability)}</Badge>
     </div>
     {figure.availability === 'unavailable' ? <p className="mt-3 text-sm text-rose-200">Not available</p>
