@@ -1,6 +1,6 @@
 # Task17 primer: choose which public Git AI changes TrackAI should take
 
-*Written 2026-10-22 by Codex. Founder decisions: pending checkpoint 1. All ledger dispositions below are proposals.*
+*Written 2026-10-22 by Codex. Founder checkpoint 1 recorded below. Group counts and founder decisions below reflect checkpoint 1; the live ledger and `TASK17.md` carry the wave decisions.*
 
 ## In one paragraph
 
@@ -29,7 +29,7 @@ The refs were refreshed on 2026-10-22. The common imported snapshot is `a751efd6
 
 Every non-merge upstream commit was trial-applied independently to a disposable worktree at fork `origin/main`: **50 clean, 192 textual conflicts**. The 62 merge rows were not applied because they have no independent feature to port. An isolated conflict can reflect a missing preceding commit as well as a fork edit. The ledger records touched paths, overlap, trial result, potential semantic collision, feature or issue, customer impact and Codex's proposed decision. It does **not** claim that a clean patch is semantically safe.
 
-The old [`TASK17.md`](../TASK17.md) and [`GITAI_UPSTREAM_INVENTORY_2026-10-09.md`](../GITAI_UPSTREAM_INVENTORY_2026-10-09.md) still describe the 302-commit snapshot. Updating the tracker is Phase 2, after your decisions. The prompt also calls the Lifecycle Lab status-board row “7i”; in the current board, 7i belongs to Task19, so Phase 2 must give the Lab row a distinct ID.
+The historical [`GITAI_UPSTREAM_INVENTORY_2026-10-09.md`](../GITAI_UPSTREAM_INVENTORY_2026-10-09.md) describes the 302-commit snapshot. The current [`TASK17.md`](../TASK17.md) supersedes that count and gives the Lifecycle Lab a distinct status-board ID, 7h6.
 
 ## The pieces for your checkpoint
 
@@ -40,28 +40,28 @@ Size is relative to all of Task6.a = 1.0×. The estimate is for selected TrackAI
 | T17.1 | Finish the commit ledger and fork regression map | Every public fix or feature has a reasoned decision; the team can audit why it was taken or skipped. High trust value. | 0.28× | Codex | Review only group heads; loses per-commit accountability, so I do not recommend it. | |
 | T17.2 | Port selected daemon stall and latency fixes | A wedged trace listener no longer leaves Git blocked; checkpoints remain ordered. High reliability value. | 0.35× | Codex | Take only small isolated fixes; leaves the documented #2157/#2252 stall classes. | |
 | T17.3 | Port selected agent/model identity fixes | Codex fork streams are not ingested twice, and Copilot's selected model is attributed correctly. Medium value now; high Task13 value. | 0.20× | Codex or Muse for one isolated fix | Defer all to Task13; Task13 starts from weaker identity data. | |
-| T17.4 | Review attribution, notes and local metric correctness against Task2 | Human/AI recovery and usage corrections do not silently rewrite lifecycle numbers. High correctness value. | 0.28× | Codex | Port only obvious parser fixes; postpones contested semantics to Task2. | |
+| T17.4 | Review attribution, notes and local metric correctness against Task2 | Human/AI recovery and usage corrections do not silently rewrite lifecycle numbers. High correctness value. | 0.28× | Codex | Port only obvious parser fixes; leaves contested semantics for Task17d Lab review. | |
 | T17.5 | Review package, config and release fixes with their owners | Installer permission/version mistakes and WSL credential exposure get an explicit Task9/14 owner. Medium value. | 0.12× | Codex + Task9/14 review | Record and defer without porting now; native fixes wait for their own acceptance. Recommended for most rows. | |
-| T17.6 | Decide the new TokenUsage v2 feature as a single contract | Deduplicated Claude/Codex tokens, cost and per-subagent usage could improve spend reporting. High potential value; high schema/privacy cost. | 0.12× decision only; implementation estimated separately at 0.45–0.70× | Codex + Task2/13/Claude | Recommend deferring implementation to Task13 after T13.2 and a server wire/privacy design. Token reporting remains as today. | |
+| T17.6 | Decide the new TokenUsage v2 feature as a single contract | Deduplicated Claude/Codex tokens, cost and per-subagent usage could improve spend reporting. High potential value; high schema/privacy cost. | 0.12× decision only; implementation estimated separately at 0.45–0.70× | Codex + Task2/13/Claude | Founder deferred implementation to Task13 after T13.2 and a server wire/privacy design. Token reporting remains as today. | |
 | T17.7 | Integrate, review and run the Task17 gates | One fork branch, full Rust suites, Lab comparison and bounded native checks support a single fork PR. High release confidence. | 0.30× plus founder-live time | Codex + founder-live | Split native claims: code may be reviewed, but no package or route claim before its live gate. | |
 
-**Initial implementation estimate: about 1.65× T6, plus founder-live time.** Taking TokenUsage v2 inside Task17 would raise it to about 2.1–2.35× and add a TrackAI server contract and privacy review. These are planning estimates, not completed effort.
+**Checkpoint 2 estimate: about 1.80× T6, plus founder-live time** (expanded Task17d and explicit config/auth review; original checkpoint 1 estimate was 1.65×). Taking TokenUsage v2 inside Task17 would raise it to about 2.1–2.35× and add a TrackAI server contract and privacy review. These are planning estimates, not completed effort.
 
 ## Review groups: Codex's current recommendations
 
-Counts below are **proposals over all 304 rows**, including 62 merge bookkeeping rows proposed as `reject` because they have no independent patch. “Adapt” means implement the behavior with current fork tests, not blindly apply the upstream SHA. The ledger holds the row-level feature/issue and reasoning.
+Counts below are **checkpoint 2 proposals over all 304 rows**, including 62 merge bookkeeping rows proposed as `reject` because they have no independent patch. “Adapt” means implement the behavior with current fork tests, not blindly apply the upstream SHA. The ledger holds the row-level feature/issue and reasoning.
 
 | Group | Proposal counts | Five important commits and what they bring | Main risk and recommendation |
 |---|---|---|---|
-| Daemon/runtime | 20 adapt; 16 reject; 6 defer Task2; 2 defer Task14 | `c40c82dca` moves work off the trace accept loop; `6a7d25a75` probes actual trace draining to recover a stalled daemon; `648f8e92f` filters unused trace frames; `7e8713726` moves slow family side effects off ingestion; `2b2920b94` bounds causal fences. | Highest operational value. Port the failure fixes as a tested series against current Task20 daemon wiring. Do not accept queue loss or new synthetic provenance. |
-| Attribution/notes | 2 adapt; 4 defer Task2; 2 defer Task14; 7 reject | `1e400d552` labels remaining untracked lines human; `4dc3b1ccf` corrects human additions in range stats; `2cbdfd3b5` introduces lite rewrite mode; `4f3586c60` forces C locale for internal Git; `1f09b1772` defaults API-key users to HTTP notes. | Human/AI meaning and note transport can change. Require a before/after Lab scenario; defer HTTP notes default to Task14 privacy/credential review. |
-| Metrics/telemetry | 7 adapt; 11 defer Task2; 4 reject | `d0f864c57` removes a SQLite operation from each checkpoint; `7b0eead75` isolates telemetry but drops batches on full queue; `7e71f693c` exposes silent ingest loss; `120bcf25c` supplies model on recovered-edge metrics; `ce5c08ceb` adds daemon health to heartbeat. | Preserve the fork's durable metric queue. Adapt the isolation and health ideas only with bounded no-loss behavior and an agreed server event shape. |
-| Agent/editor | 10 adapt; 12 defer Task13; 16 reject | `f17bf9177` resolves Codex model from incomplete hooks; `79cb2e83a` reads selected Copilot model; `2b7dc3b18` accepts mixed-case Claude tool names; `7ace11b09` keys Codex streams by rollout file to prevent duplicate ingestion; `9af568ff1` tests that identity on macOS. | Take focused correctness fixes with route fixtures. They do not by themselves make any Task13 route live-supported. |
-| TokenUsage v2 | 92 defer Task13; 3 reject merge rows | `6626f6b19` parses Claude/Codex transcript usage; `aac4bbc49` persists deduped entries and bucket revisions; `493805c22` emits new event 9; `262201056` removes replayed Codex fork usage; `120f6ded5` attributes child usage to its own session. | This is a large **new feature**, not routine metric maintenance. It changes wire format, cost estimates, retention, transcript reads and session identity. Upstream documents an accepted risk of lost first emissions during a long outage. Recommend one Task13 design decision after its host contract, with Task2/privacy sign-off; no default-on flip in Task17. |
+| Daemon/runtime | 20 adapt; 22 reject; 2 Task17b review | `c40c82dca` moves work off the trace accept loop; `6a7d25a75` probes actual trace draining to recover a stalled daemon; `648f8e92f` filters unused trace frames; `7e8713726` moves slow family side effects off ingestion; `2b2920b94` bounds causal fences. | Highest operational value. Port the failure fixes as a tested series against current Task20 daemon wiring. Do not accept queue loss or new synthetic provenance. |
+| Attribution/notes | 2 adapt; 3 Task17d Lab; 2 Task14; 8 reject | `1e400d552` labels remaining untracked lines human; `4dc3b1ccf` corrects human additions in range stats; `2cbdfd3b5` introduces lite rewrite mode; `4f3586c60` forces C locale for internal Git; `1f09b1772` defaults API-key users to HTTP notes. | Human/AI meaning and note transport can change. Require a before/after Lab scenario; defer HTTP notes default to Task14 privacy/credential review. |
+| Metrics/telemetry | 7 adapt; 11 Task17d Lab; 4 reject | `d0f864c57` removes a SQLite operation from each checkpoint; `7b0eead75` isolates telemetry but drops batches on full queue; `7e71f693c` exposes silent ingest loss; `120bcf25c` supplies model on recovered-edge metrics; `ce5c08ceb` adds daemon health to heartbeat. | Preserve the fork's durable metric queue. Adapt the isolation and health ideas only with bounded no-loss behavior and an agreed server event shape. |
+| Agent/editor | 10 adapt; 12 Task13 route decision; 16 reject | `f17bf9177` resolves Codex model from incomplete hooks; `79cb2e83a` reads selected Copilot model; `2b7dc3b18` accepts mixed-case Claude tool names; `7ace11b09` keys Codex streams by rollout file to prevent duplicate ingestion; `9af568ff1` tests that identity on macOS. | Take focused correctness fixes with route fixtures. They do not by themselves make any Task13 route live-supported. |
+| TokenUsage v2 | 92 Task13 product candidate; 3 reject merge rows | `6626f6b19` parses Claude/Codex transcript usage; `aac4bbc49` persists deduped entries and bucket revisions; `493805c22` emits new event 9; `262201056` removes replayed Codex fork usage; `120f6ded5` attributes child usage to its own session. | This is a large **new feature**, not routine metric maintenance. It changes wire format, cost estimates, retention, transcript reads and session identity. Upstream documents an accepted risk of lost first emissions during a long outage. Recommend one Task13 design decision after its host contract, with Task2/privacy sign-off; no default-on flip in Task17. |
 | MDM login start | 15 reject | `fb48f9530` adds scripts; `42fc263c8` rejects unsafe paths; `edbd6d80f` retries login start; `805bdda44` runs hosted tests; `7e0dd3455` launches the binary directly. | Task9b already selected and ported the macOS/Windows end state, including bounded `bg start --retry-secs`; Linux and upstream credential transport are outside the approved package scope. No second port. |
-| Packaging/release | 14 defer Task9; 2 defer Task14; 5 reject | `acbac7ef8` fixes installer version metadata; `5b25b11a6` fixes macOS payload mode; `5a79c60e2` adds `install-hooks --env`; `3b3d01e48` avoids credentials in WSL process arguments; `635b6f29b` enables WSL by default. | Task9 owns packages and native acceptance; Task14 owns release trust. Do not enable WSL or change secret transport from this sync alone. |
+| Packaging/release | 4 Task9f take/adapt; 17 reject/no-op | `acbac7ef8` fixes installer version metadata; `5b25b11a6` fixes macOS payload mode; `5a79c60e2` adds `install-hooks --env`; `3b3d01e48` avoids credentials in WSL process arguments; `635b6f29b` enables WSL by default. | Task9f took four package concepts for follow-up and rejected or no-oped the rest; Task14 owns release trust and HTTP-notes defaults. Do not enable WSL or change secret transport from this sync alone. |
 | Config/auth | 6 adapt; 2 reject | `16655f8fb` corrects config command streams; `6adc1f264` caches Git author identity to avoid a spawn every three seconds; `2c321c143` handles lowercase HEAD; `878775205` normalizes Unicode paths; `656ede16d` post-filters non-ASCII pathspecs. | Small, useful correctness work, but test the current config/credential defaults and Unicode cases. |
-| CI/deps/docs and other bookkeeping | 41 CI/deps/docs rows: 38 reject, 3 defer Task14; 5 other merge rows reject | `411cf7456` adds a workflow security gate; `c08de56df` hardens Actions; `96a8ba2e1` pauses nightly issue creation; `0670e7ef2` bumps 1.7.6; `8a6184a3a` merges a CI PR. | Version churn and upstream-specific workflows bring little fork value. Task14 may take the workflow security pattern with its release work. |
+| CI/deps/docs and other bookkeeping | 41 CI/deps/docs rows: 38 reject, 3 Task14; 5 other merge rows reject | `411cf7456` adds a workflow security gate; `c08de56df` hardens Actions; `96a8ba2e1` pauses nightly issue creation; `0670e7ef2` bumps 1.7.6; `8a6184a3a` merges a CI PR. | Version churn and upstream-specific workflows bring little fork value. Task14 may take the workflow security pattern with its release work. |
 
 ### Three decisions with an especially important product effect
 
@@ -128,17 +128,27 @@ Reuse the fork's `TestRepo` trace-driven harness, the Task2 Lifecycle Lab, Task4
 
 `npm ci` passed in the new planning worktree. The full `npm test` run did not finish: localhost-binding tests failed under the sandbox, and `attesta-api.test.ts` had not completed after seven minutes, so I stopped it. A focused rerun of `app-cors.test.ts` with localhost binding allowed passed 2/2; its earlier `EPERM` was a sandbox failure, not a product failure. The GitAI trial worktree contained only throwaway cherry-pick attempts, was reset after each attempt and has been removed. No Endpoint package was built or installed.
 
-## Suggested sessions (finalize only after your marks)
+## Sessions after checkpoint 1
 
 | Session | Pieces | Agent | Estimate | Why this agent |
 |---|---|---:|---:|---|
-| Task17a-plan | T17.1, T17.6 | Codex | 0.40× | Evidence, conflict and product decisions need one lead. |
+| Task17a-plan | T17.1, T17.6 decision | Codex | 0.40× | Evidence, conflict and product decisions need one lead. |
 | Task17b-daemon-reliability | T17.2 | Codex | 0.35× | Heavy overlap with Task20 and trace ordering. |
-| Task17c-agent-identity | T17.3 | Codex; one bounded Muse port possible | 0.20× | Route evidence needs Task13 continuity. |
-| Task17d-attribution-metrics | T17.4 | Codex | 0.28× | Task2 semantics and Lab are central. |
-| Task17e-package-triage | T17.5 | Codex with Task9 review | 0.12× | Avoid conflicting package ownership. |
+| Task17c-agent-config | T17.3 plus config/auth | Codex | 0.25× | Route evidence needs Task13 continuity. |
+| Task17d-attribution-metrics | T17.4 plus 21 former Task2 rows | Codex | 0.38× | Lifecycle semantics and Lab are central. |
+| Task17e-package-triage | T17.5 | Codex with Task9f review | 0.12× | Avoid conflicting package ownership. |
 | Task17f-integration | T17.7 | Codex + founder-live | 0.30× | One branch, one regression and native-gate record. |
 
-## Founder decisions
+## Founder decisions — checkpoint 1, 2026-10-22
 
-Pending checkpoint 1. No upstream code is ported until the group decision and Claude review are recorded.
+| Piece | Decision | Phase 2 consequence |
+|---|---|---|
+| T17.1 | Keep | Add a wave-by-wave affected-gates table. |
+| T17.2 | Keep; first implementation wave | Daemon reliability follows planning and Task20 lead review. |
+| T17.3 | Keep | Route fixtures and separate-account live checks for each affected agent. |
+| T17.4 | Keep; absorb all 21 former `defer:Task2` rows | Task17d either tests a before/after Lab scenario, rejects with reason, or names a future backlog item. No deferral to finished Task2 or Task4. |
+| T17.5 | Keep, reordered | Offer all 14 former `defer:Task9` rows plus macOS payload mode to active Task9f for take/reject. Release trust and HTTP-notes defaults remain with Task14. |
+| T17.6 | Defer implementation | Task13 checkpoint receives the product candidate **token and cost reporting**. The source provenance must record ccusage (MIT) as well as Git AI's Apache-2.0 license. |
+| T17.7 | Keep | One integration branch and the affected-gates matrix in `TASK17.md`. |
+
+Synthetic reflog attribution is rejected. TokenUsage v2 is not a Task17 port. Every group summary goes to the Task20 lead (Claude) before its port; daemon and telemetry waves also require its code review because they share Task20 security files. Task9f's take/reject response and Claude's group reviews are external gates, not assumptions of approval. Task9f's 2026-10-22 review took four package concepts for a Task9f-owned follow-up (installer receipt version, payload permissions, published-release lifecycle and byte-exact comparison); the other 12 were rejected or already satisfied. The founder's checkpoint 2 go-ahead is required before any Task17 port.
