@@ -1,6 +1,6 @@
 # Task6 Security — Coding-Agent Security
 
-**Canonical active Task6 Security tracker**
+**Historical Task6.a tracker.** Its narrow OpenCode/macOS monitor evidence remains recorded below. Task20's Numbat implementation supersedes this route for new agent/platform support claims; use [`docs/plan/TASK20.md`](docs/plan/TASK20.md) and the [E20 acceptance ledger](docs/plan/TASK20_ACCEPTANCE.md). No Task20 agent is monitored until its E20 real-machine row passes.
 
 Status: **🟡 ◐ Monitor release merged; production platform and Policy follow-ups remain**
 

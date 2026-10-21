@@ -11,7 +11,7 @@ TrackAI owns its GitAI fork (`mahamannu-ux/git-ai`, `~/AIProjects/git-ai`). Foun
 | G5 | 2026-10-07 | Selective upstream adoption only. The 2026-09-19 merge commit `2d240fb9` imported upstream snapshot `a751efd6` (v1.6.19, dated 2026-07-30); the fork has diverged at known daemon/metrics hotspots. See the dated [302-commit inventory](GITAI_UPSTREAM_INVENTORY_2026-10-09.md) before any cherry-pick or port. | any upstream adoption | inventory complete; adoption ⬜ |
 | G6 | 2026-10-07 | Inherited flakes: `tests/daemon_mode.rs` under parallel runs; Clippy findings on newer Rust | GitAI hygiene | ⬜ |
 | G7 | 2026-10-07 | Evidence collection is a manual CLI (`git-ai evidence sync-opencode`), not part of the daemon | Task5 / Task13 | ⬜ |
-| G8 | 2026-10-13 | Rust trust verifier (`verifyTrusted`, `docs/contracts/attesta/trust.md`): must return the same status and code for every vector in `apps/api/src/features/attesta/vectors/trust/`; pin the current root keyid at install, hard-code production, persist `lastTrusted` | D6.1 (G2), Task9 IT-M9-01, Task6.b P6.8, T14.7 | ⬜ |
+| G8 | 2026-10-13 | ~~Rust trust verifier (`verifyTrusted`, `docs/contracts/attesta/trust.md`): same status and code for all 82 vectors, root pin at install, production verification and persisted `lastTrusted`~~ | D6.1 (G2), Task9 IT-M9-01, T14.7 | ✅ Task20c merged in GitAI (`f5b73a500`); production root provisioning remains Task15n |
 
 ## G5 priority order from the 2026-10-09 inventory
 

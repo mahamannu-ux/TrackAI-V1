@@ -57,13 +57,13 @@
 | T20.11 | Console: Settings, Findings, Coverage | 🟡 implemented; browser walkthrough pending | ✅ web build, typecheck, lint and 1,223 tests pass (an earlier full run hit the inherited Attesta timing flake) | ⬜ browser walkthrough; non-blocking for Task20i-b merge | Task20i | Settings switches publish a new bundle; honest states shown |
 | T20.12 | Agent inventory (S19) and coverage inventory: Endpoint side (Task20h), server storage (Task20d), views (Task20i) | ⬜ | ⬜ | ⬜ | Task20h, Task20d, Task20i | Inventory under the same data settings |
 | T20.13 | Day-one scan (S20), opt-in, findings only | ⬜ | ⬜ | ⬜ | Task20h | Findings marked "found at rest" |
-| T20.14 | Rule wave 1 proof and acceptance walkthrough E20-01…E20-12 | ⬜ | ⬜ | ⬜ | Task20j | Each agent's row passed or explicitly "not monitored" |
+| T20.14 | Rule wave 1 proof and acceptance walkthrough E20-01…E20-12 | 🟡 runbook written; live checks pending | ⬜ | ⬜ | Task20j | Each agent's row passed or explicitly "not monitored"; [runbook](TASK20_ACCEPTANCE.md) |
 | T20.15 | Blocking pilot (3–5 rules) | n/a later | n/a | n/a | Task20k | Needs the root helper (Q2) and a passed Task20j |
 | T20.16 | Rule wave 2 (7 noisy rules, tuned) | n/a later | n/a | n/a | Task20l | After Task20j |
 | T20.17 | Task15o/15p redesigned on Numbat's finding schema; signed case bundles (S25) | n/a other Task | n/a | n/a | Task15o, Task15p | Task15 lead's plan |
 | T20.18 | Q&A feed to Task19 (S1–S26) | 🟡 TASK19.md updated in the plan PR | n/a | n/a | lead | S19–S26 ranked with the founder |
 | T20.19 | Module switches (entitlements) | n/a other Task | n/a | n/a | Task4-entitlements | Task20 adds only the `security` guard to its routes |
-| T20.20 | AGENTS.md §4 (done in the plan PR), §9 items 9 and 11, Task6.a tracker superseded | 🟡 | n/a | n/a | plan PR, Task20j | Wording matches E20 results |
+| T20.20 | AGENTS.md §4 (done in the plan PR), §9 items 9 and 11, Task6.a tracker superseded | 🟡 wording updated; E20 results pending | n/a | n/a | plan PR, Task20j | Wording matches E20 results |
 
 ## 3. Interfaces to freeze first (Task20a)
 
@@ -227,29 +227,37 @@ flowchart TB
 | Item | Measured | Budget | Status |
 |---|---|---|---|
 | Numbat binary, darwin/arm64, v0.2.0 release | 17.5 MB (founder's tarball, 2026-10-16) | to set | 🟡 |
-| Numbat binary at `20a5a52`, darwin/amd64 and arm64 | — | to set | ⬜ |
-| Git AI binary (installed) | 69 MB; stripped? | to set | ⬜ |
-| Added latency per tool call, Numbat hook (median / p95) | — | to set (proposal: p95 ≤ 100 ms) | ⬜ |
-| Added latency per tool call, both hooks together | — | to set | ⬜ |
+| Numbat binary at `20a5a52`, darwin/amd64 and arm64 | stripped release artifact sizes pending | record both stripped release sizes | ⬜ |
+| Git AI binary (installed) | 69 MB was unstripped; stripped release artifact size pending | record stripped release size | ⬜ |
+| Added latency per tool call, Numbat hook (median / p95) | Intel debug-package benign p95 27.0 ms; matching p95 25.4 ms (200 runs each, Task20h-a) | **p95 ≤ 50 ms** (founder approved 2026-10-21) | 🟡 needs E20 fixed-build measurement |
+| Added latency per tool call, both hooks together | Endpoint hook p95 27.0 ms alone (200 runs, Task20h-a); combined p95 pending | **each hook p95 ≤ 50 ms** on Intel Mac | ⬜ |
 
 ## 7. Integration and founder-live evidence
 
-| ID | What it proves | Prerequisites | Gating | Status |
-|---|---|---|---|---|
-| IT-T20b-01 | Two builds of the mirror tag give identical bytes; Numbat's tests pass at the pin | Go toolchain | Blocking: Task20b | ⬜ |
-| IT-T20d-01 | Real PostgreSQL: v2 upload of each kind, refusal beyond data settings, idempotent replay, Task6.a rows readable, Attesta builder query, Company A/B | `scripts/it-db.sh` | Blocking: Task20d merge | ⬜ |
-| IT-T20e-01 | The real Numbat binary writes a fixture session's records; the Endpoint tails, minimizes, queues and uploads to a local receiver that validates every body against Task20a's schemas; restart and rotation lose nothing | Numbat build from Task20b | Blocking: Task20e merge | ⬜ |
-| IT-T20f-01 | Settings → compiled bundle → signed bundle and lease (dev signer) → TypeScript `verifyTrusted` accepts; tampering rejected; machine routes, ingest under a lease, expiry and `off`; fleet v3; audit events; Company A/B, machine X/Y | `scripts/it-db.sh` | Blocking: Task20f merge | ✅ founder run passed 2026-10-18 |
-| IT-T20f-02 | The same with the platform `policy_bundle` and `activation_lease` KMS keys | Task15n root ceremony and keys | Blocking: first customer build | ⬜ |
-| IT-T20g-01 | Intel Mac: tampered, expired, replayed and broken bundle and lease never activate; last-known-good kept; off means nothing uploaded | founder's Mac, throwaway tenant | Blocking: Task20g merge | ⬜ |
-| IT-T20h-01 | Intel Mac: PKG installs Numbat and managed hooks (Claude Code, Codex), the four-layer health check is green, offboarding removes them | founder's Mac | Blocking: Task20h merge | ⬜ |
-| E20-01…E20-12 | Acceptance walkthrough per agent: monitor, off, offline, lease expiry, restart, tampered bundle, data settings, day-one scan, inventory, console, Company A/B | Task20h (+ Task20i) merged | Blocking: any "monitored" claim | ⬜ |
-| IT-M20-01 | Task15o signs v2 findings; Task19c answers S rows from v2 tables | Task15o, Task19c | Cross-Task | ⬜ |
-| IT-M20-02 | The same Endpoint against the real Task20d route on `scripts/it-db.sh` | Task20d and Task20e merged | Blocking: Task20h merge | ⬜ |
+| ID | What it proves | In plain words | Prerequisites | Gating | Status |
+|---|---|---|---|---|---|
+| IT-T20b-01 | Two builds of the mirror tag give identical bytes; Numbat's tests pass at the pin | We can rebuild the same detector and get the same program. | Go toolchain | Blocking: Task20b | ⬜ |
+| IT-T20d-01 | Real PostgreSQL: v2 upload of each kind, refusal beyond data settings, idempotent replay, Task6.a rows readable, Attesta builder query, Company A/B | The server stores every security record correctly and keeps companies apart. | `scripts/it-db.sh` | Blocking: Task20d merge | ⬜ |
+| IT-T20e-01 | The real Numbat binary writes a fixture session's records; the Endpoint tails, minimizes, queues and uploads to a local receiver that validates every body against Task20a's schemas; restart and rotation lose nothing | The Endpoint delivers allowed detector records after restart or file rotation. | Numbat build from Task20b | Blocking: Task20e merge | ⬜ |
+| IT-T20f-01 | Settings → compiled bundle → signed bundle and lease (dev signer) → TypeScript `verifyTrusted` accepts; tampering rejected; machine routes, ingest under a lease, expiry and `off`; fleet v3; audit events; Company A/B, machine X/Y | The server issues signed settings to the right machine and refuses bad ones. | `scripts/it-db.sh` | Blocking: Task20f merge | ✅ founder run passed 2026-10-18 |
+| IT-T20f-02 | The same with the platform `policy_bundle` and `activation_lease` KMS keys | Production keys sign and verify the same settings as the development test. | Task15n root ceremony and keys | Blocking: first customer build | ⬜ |
+| IT-T20g-01 | Intel Mac: tampered, expired, replayed and broken bundle and lease never activate; last-known-good kept; off means nothing uploaded | A Mac refuses invalid instructions and stops uploads when off. | founder's Mac, throwaway tenant | Blocking: Task20g merge | ⬜ |
+| IT-T20h-01 | Intel Mac: PKG installs Numbat and managed hooks (Claude Code, Codex), the four-layer health check is green, offboarding removes them | The Mac package installs, reports health and can be removed. | founder's Mac | Blocking: Task20h merge | ⬜ |
+| E20-01…E20-12, E20-R/W | Acceptance walkthrough per agent: monitor, off, offline, lease expiry, restart, tampered bundle, data settings, day-one scan, inventory, console, Company A/B; rule proof and seven-day noise run | Real work on the Mac turns an installed hook into a bounded monitoring claim. | Task20h (+ Task20i) merged; [runbook](TASK20_ACCEPTANCE.md) | Blocking: any "monitored" claim | ⬜ |
+| IT-M20-01 | Task15o signs v2 findings; Task19c answers S rows from v2 tables | Security findings reach both signed evidence and Questions. | Task15o, Task19c | Cross-Task | ⬜ |
+| IT-M20-02 | The same Endpoint against the real Task20d route on `scripts/it-db.sh` | The Endpoint sends real detector records to the real server route. | Task20d and Task20e merged | Blocking: Task20h merge | ⬜ |
 
 ## 8. Completion and deferral boundary
 
 Task20 is complete when Task20a–Task20j have merged and E20 has passed for at least Claude Code and Codex on the Intel Mac. It can close with these conditional rows:
+
+**E20 claim ledger (Task20j, pending founder run).** These are debug-package/development-trust claims only. Each cell remains "not monitored" until the matching real-machine E20-01…12 checks and E20-R/W are recorded in §7 using the [runbook](TASK20_ACCEPTANCE.md). The separate T19.9 verdict stays in `TASK19.md`.
+
+| Platform | Claude Code | Codex | Cursor | Gemini CLI | Copilot CLI | Build / evidence |
+|---|---|---|---|---|---|---|
+| Intel macOS | not monitored | not monitored | not monitored | not monitored | not monitored | E20 founder sitting and seven-day run pending |
+| Apple Silicon macOS | not monitored | not monitored | not monitored | not monitored | not monitored | Task9f second-Mac gate pending |
+| Windows, Linux, WSL | not monitored | not monitored | not monitored | not monitored | not monitored | Task9g and Linux wave pending |
 
 | If this is still missing | The claim becomes |
 |---|---|

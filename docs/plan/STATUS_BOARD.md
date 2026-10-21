@@ -81,7 +81,7 @@ Effort is relative to **T6** = all of Task6.a Security = 1.0× (about 4× SushiC
 | 9g | Task20g-endpoint-policy-apply (T20.9; GitAI) | Codex | about 0.20× | | Task20c, Task20e, Task20f merged | written later |
 | 9h | Task20h-endpoint-package-install (T20.10, T20.12, T20.13; GitAI) | Codex + founder-live | about 0.35× | | Task20b, Task20g merged | written later |
 | 9i | Task20i-security-reads-console (T20.7b, T20.11, T20.12 views) | Claude design + Muse | about 0.33× | about 0.33× combined for Task20i-a and Task20i-b | Task20d, Task20f merged; web build/typecheck/lint and 1,223 tests pass; founder walkthrough pending | `Task20i-a-security-reads_HANDOFF.md`; `Task20i-b-security-console_HANDOFF.md` (founder walkthrough pending) |
-| 9j | Task20j-acceptance (T20.14, T20.20) | Codex + founder-live | about 0.17× | | Task20h merged | written later |
+| 9j | Task20j-acceptance (T20.14, T20.20) | Codex + founder-live | about 0.17× plus seven founder days | | GitAI Stage 0 fixes and TrackAI Checkpoint 1 in progress; E20 founder run pending | `docs/plan/TASK20_ACCEPTANCE.md`; `docs/handoffs/Task20j-acceptance_HANDOFF.md` to follow |
 | 9k | Task20k-enforce-pilot (T20.15, later) | Codex + founder-live | about 0.10× | | Task20j passed; root helper; founder's go | later |
 | 9l | Task20l-rule-wave-2 (T20.16, later) | Muse | about 0.08× | | Task20j passed; founder's go | later |
 | 8 | Task13-lead: primer, plan, sessions (Codex leads, Muse helps) | Codex + Muse | (primer decides) | | this prompt's PR merged | `docs/prompts/Task13/NEXT_CHAT_Task13-lead_PROMPT.md` |
@@ -173,7 +173,7 @@ Integration tests prove what only real infrastructure can. They are founder-owne
 | IT-T20i-01 | Task20i-a | Admin/auditor security reads on real PostgreSQL: 182 rows page over 4 pages (both generations), every filter selects, detail has indicators and nearby enforcement, Company B gets 404 for A's finding id, coverage honest states for both tenants, problems/headers/auth, one `security_findings.read` audit row per call with the frozen details | `features/security-findings/task20i-reads-live-verify.ts` (`scripts/it-db.sh npm run verify:task20i-reads-live -w apps/api`) | Blocking: Task20i-a merge | 🟡 agent-verified 2026-10-18 via `scripts/it-db.sh` · ⬜ founder run |
 | IT-T20g-01 | Task20g | Intel Mac: bad, expired, replayed bundle or lease never activates; off uploads nothing | founder's Mac | Blocking: Task20g merge | ⬜ planned |
 | IT-T20h-01 | Task20h | Intel Mac: PKG installs Numbat and managed hooks, health check green, offboarding removes them | founder's Mac | Blocking: Task20h merge | ⬜ planned |
-| E20-01…E20-12 | Task20j | Acceptance walkthrough per agent on Numbat (replaces Task15n gate 6) | `docs/plan/TASK20_ACCEPTANCE.md` (Task20j) | Blocking: any "monitored" claim | ⬜ planned |
+| E20-01…E20-12 | Task20j | Acceptance walkthrough per agent on Numbat (replaces Task15n gate 6) | `docs/plan/TASK20_ACCEPTANCE.md` (Task20j; links T19.9) | Blocking: any "monitored" claim | 🟡 runbook written · ⬜ founder live rows |
 | IT-M20-01 | Task20, Task15o, Task19c | Task15o signs v2 findings; Task19c answers S rows from v2 tables | cross-Task | Cross-Task | ⬜ planned |
 | IT-M20-02 | Task20d, Task20e | The Endpoint shipper against the real ingest v2 route | GitAI tests + `scripts/it-db.sh` | Blocking: Task20h merge | ⬜ planned |
 
