@@ -1,0 +1,21 @@
+docs/handoffs/Task17-plan_HANDOFF.md
+  s_c9850750b37e31::t_26e0e8ff8b6291 3,19-20,29,35-94
+docs/plan/GITAI_UPSTREAM_LEDGER_2026-10.tsv
+  s_c9850750b37e31::t_3acfd72ffa083c 104,261-264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "58a4384c87d473535f52563bf908eb1f1509a7f8",
+  "prompts": {},
+  "sessions": {
+    "s_c9850750b37e31": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15fd1-51be-7492-83a0-358b788e6f0a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
