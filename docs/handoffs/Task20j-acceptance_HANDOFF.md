@@ -32,6 +32,7 @@ TrackAI: apps/api/src/features/security/testing/task20j-isolation-probe.ts <priv
 - The week uses a proposed kept local Docker database, rather than `scripts/it-db.sh`, because the latter removes its database at exit. The short IT verifiers still use `scripts/it-db.sh`.
 - The seed/auth helper lives on the TrackAI side, as the prompt permits. GitAI's existing `founder-live-setup.ts` creates only one tenant, so it could not establish Company A/B itself.
 - The founder uses the everyday account for the week and sitting. The final offboard removes managed hooks machine-wide. E20-07 needs an additional offline interval after the seven-day monitor run because the server's signed lease lasts 72 hours and has no development shortening switch.
+- The week API binds to `127.0.0.1`; turning off Wi-Fi does not disconnect the Endpoint from it. E20-06/07 therefore stop the saved local API process and verify `/health` is unreachable, then restart it against the same kept database.
 - The GitAI skew fix preserves the applied bundle when a verified lease is up to 60 seconds ahead. Inventory, status, day-one scan and record uploads still use `lease_at(now)` and may begin up to 60 seconds later; historical record admission is unchanged.
 
 ## Known limitations

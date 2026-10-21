@@ -59,6 +59,7 @@ export SECURITY_ACTIVATION_LEASE_CREDENTIAL_ID=dev:task20f-activation-lease
 export SECURITY_DEV_ACTIVATION_LEASE_KEY_FILE="$TASK20J_PRIVATE_DIR/private/lease.pem"
 node --import tsx apps/api/src/features/security/testing/task20j-week-setup.ts auth "$TASK20J_PRIVATE_DIR" > "$TASK20J_PRIVATE_DIR/auth.log" 2>&1 &
 PORT=8080 node --import tsx apps/api/src/index.ts > "$TASK20J_PRIVATE_DIR/api.log" 2>&1 &
+echo $! > "$TASK20J_PRIVATE_DIR/private/api.pid"
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=task20j-local-public-placeholder NEXT_PUBLIC_API_URL=http://127.0.0.1:8080 npm run dev -w apps/web
 ```
 
@@ -156,16 +157,26 @@ Expected: `SECURITY_V2_FIELD_NOT_PERMITTED`. The script fails if the record is a
 
 **E20-05:** In Settings, switch Monitor mode to **Off**, preview and apply. On the Mac, run `"$ENDPOINT" bg restart --hard`; `readlink "$SECURITY_DIR/rules/current"` must say `placeholder`. Repeat a harmless agent action; `wc -l "$HOME/.numbat/records.ndjson"` may rise, while the Company A Findings count must not. Restore **Monitor** in Settings, preview and apply before E20-06.
 
-**E20-06 / IT-T20e-01 / IT-M20-02:** On the Mac first record `wc -l "$HOME/.numbat/records.ndjson"` and the Company A Findings count in the console. Confirm the active network service with `networksetup -listallnetworkservices`; replace `Wi-Fi` below if this Mac uses a different active service. Keep the local API reachable on the founder machine only after reconnect.
+**E20-06 / IT-T20e-01 / IT-M20-02:** On the Mac first record `wc -l "$HOME/.numbat/records.ndjson"` and the Company A Findings count in the console. This week API is on **loopback**, so disabling Wi-Fi alone cannot take the Endpoint offline from it. Stop the saved API process, verify that `/health` is unreachable, make synthetic agent actions, and restart the same API against the kept database. `networksetup -setnetworkserviceenabled "Wi-Fi" off`/`on` may additionally simulate a network outage if the active service is Wi-Fi, but the API stop is required for this local topology.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
 ENDPOINT="$HOME/.git-ai/bin/git-ai"
-networksetup -setnetworkserviceenabled "Wi-Fi" off
+TASK20J_API_PID="$(cat "$TASK20J_PRIVATE_DIR/private/api.pid")"
+ps -p "$TASK20J_API_PID" -o command= | grep -F 'apps/api/src/index.ts' || exit 1
+kill "$TASK20J_API_PID"
+sleep 2
+if curl --silent --max-time 2 http://127.0.0.1:8080/health >/dev/null; then echo 'API still reachable; stop' >&2; exit 1; fi
 # Perform two harmless monitored agent actions here.
 "$ENDPOINT" bg restart --hard
 wc -l "$HOME/.numbat/records.ndjson"
-networksetup -setnetworkserviceenabled "Wi-Fi" on
+PORT=8080 node --import tsx apps/api/src/index.ts > "$TASK20J_PRIVATE_DIR/api.log" 2>&1 &
+echo $! > "$TASK20J_PRIVATE_DIR/private/api.pid"
+for E20_READY in 1 2 3 4 5; do
+  if curl --fail --silent http://127.0.0.1:8080/health >/dev/null; then break; fi
+  sleep 1
+done
+curl --fail --silent http://127.0.0.1:8080/health >/dev/null
 "$ENDPOINT" bg restart --hard
 sleep 15
 "$ENDPOINT" bg tail -n 80
@@ -185,7 +196,7 @@ touch "$HOME/.numbat/records.ndjson"
 wc -l "$HOME/.numbat/records.e20-06-before-rotation.ndjson" "$HOME/.numbat/records.ndjson"
 ```
 
-**E20-07 / IT-T20g-01:** The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage before disconnecting. After the seven-day normal-work monitor interval, keep the Mac offline until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Run a harmless action offline after expiry and check `readlink "$SECURITY_DIR/rules/current"` is `placeholder` and server counts remain unchanged. Reconnect with the E20-06 `networksetup` command, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. The bundle digest should stay the same. Reserve this additional offline interval before claiming E20 complete; it is not a quick sitting step.
+**E20-07 / IT-T20g-01:** The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage before disconnecting. After the seven-day normal-work monitor interval, stop the local API using the E20-06 PID and `/health` checks, and keep it stopped until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Run a harmless action while the API remains down after expiry and check `readlink "$SECURITY_DIR/rules/current"` is `placeholder`. Restart the API using the E20-06 start command, verify the prior server count did not rise, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. The bundle digest should stay the same. Reserve this additional outage interval before claiming E20 complete; it is not a quick sitting step.
 
 **E20-08 / IT-T20g-01:** After saving the current rule file's digest in the private evidence directory, corrupt **only the disposable cached rule copy** under `"$SECURITY_DIR/rules/current/copilot/"` (for example the selected `.yaml` copied from the active bundle); never edit the package's Numbat binary or trust documents. Use `find "$SECURITY_DIR/rules/current/copilot" -type f -name '*.yaml' -print` to select the exact file, `cp -p` to back it up, append `# E20-08 synthetic corruption`, and run `"$ENDPOINT" bg restart --hard`. Check refusal/re-fetch in Coverage and compare the restored file's digest. For stale-lease replay, save `state.json` before an ordinary settings-triggered lease renewal, then after the newer lease is accepted stop the daemon, substitute that saved **older signed state** only in this disposable run, restart and confirm it cannot regress the active lease. Keep both state copies in the private directory and restore the newer state afterward. A local state swap is a replay of the cached signed lease; record that scope explicitly. If the server never issues a newer lease, do not mark replay passed.
 
