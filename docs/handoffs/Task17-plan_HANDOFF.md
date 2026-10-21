@@ -12,11 +12,13 @@ The 21 former `defer:Task2` rows are resolved as 14 named Task17d Lab decisions 
 
 ## Implementation order and gates
 
-Task17a plan (0.40× T6), Task17e package triage (0.12×, may finish in parallel), Task17b daemon first (0.35×), Task17c agent/config (0.25×), Task17d attribution/metrics (0.38×), Task17f integration (0.30×): **about 1.80× T6 plus founder-live time**. The single GitAI branch is `task/Task17-upstream-sync-gitai`; the founder creates or authorizes its implementation worktree after checkpoint 2. No port has started.
+Task17a plan (0.40× T6, locally complete), Task17e package triage (0.12×, complete), Task17b daemon first (0.35×), Task17c agent/config (0.25×), Task17d attribution/metrics (0.38×), Task17f integration (0.30×): **about 1.80× T6 plus founder-live time**. The single GitAI branch is `task/Task17-upstream-sync-gitai`; the founder creates its implementation worktree after the planning PR merges and Claude returns the daemon group verdict. No port has started.
 
 The affected-gates matrix is `TASK17.md` §5. Always run the full GitAI `cargo test`, explicit Task20 security/contract suites, build/lint/format. Daemon and telemetry rerun the Task4 durable-queue restart at `tests/integration/commit_metric_metadata.rs:211`, IT-T20e-01 and IT-M20-02, then E20-01/02/06 and Intel hook latency after Task20j's week. Attribution/metrics use the migrated Task2 Lifecycle Lab after Task14a; evidence changes rerun Task5 evidence checks. Agent identity needs route fixtures and one separate-account live check per affected agent. Packaging/MDM/release changes need Task9 MDM tests and Task9f review. The Task20 lead reviews every group before its port, with extra shared-code review for daemon and telemetry.
 
 Task20 lead's review of `6f67802` required: (1) keep the two-second security worker's policy refresh, shipper poll, status, inventory, flush and day-one scan wiring intact and test it in waves 1 and 3; (2) keep daemon health local in Task17, rejecting `ce5c08ceb`/`8824a16b7` heartbeat upload; and (3) preserve the exact `"daemon_running": false` `bg status` field required by Task20h-a offboarding, adding a wave 1 offboarding dry run and refusal fixture. The tracker and ledger now state these choices. The lead said no plan re-review is needed after these changes; its **daemon group review** is still required before the first port.
+
+The planning PR contains the [Task17b prompt](../prompts/Task17/NEXT_CHAT_Task17b-daemon-reliability_PROMPT.md). Task17a planning is complete locally and closes for delivery when the founder merges this PR. Task17e decision-only package triage is complete in the lead chat; the four accepted concepts belong to Task9f. Task17b begins in a **new Codex chat** on the GitAI integration worktree after the plan PR merges and the daemon group verdict arrives. This Task17 lead chat remains responsible for coordination, review records, the ledger and subsequent prompts.
 
 ## Evidence and limits
 

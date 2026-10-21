@@ -49,14 +49,16 @@ One GitAI integration branch: `task/Task17-upstream-sync-gitai`. Keep it current
 
 | Session / order | T17 pieces | Agent; estimate vs T6 | Dependencies | Planned files / boundary |
 |---|---|---|---|---|
-| Task17a-plan, now | 1, 6 decision | Codex; 0.40× | Founder checkpoint 1 | TrackAI primer, ledger, tracker, board, handoff. No GitAI product code. |
-| Task17e-package-triage, parallel with plan | 5 | Codex + Task9f lead; 0.12× | Task9f read-only review received | Ledger and Task9f handoff; package implementation, if taken, stays Task9f. |
-| Task17b-daemon-reliability, **first port** | 2; wave 1 | Codex; 0.35× | Founder overall approval received; Claude daemon group and shared-code review pending | GitAI `src/daemon*`, trace worker, daemon integration tests. Preserve security-worker wiring and `bg status` offboarding field; no new synthetic provenance. |
+| Task17a-plan, locally complete; PR delivery pending | 1, 6 decision | Codex lead; 0.40× | Founder and Task20 lead approved plan with recorded corrections | TrackAI primer, ledger, tracker, board, handoff and next-session prompt. No GitAI product code. Close delivery when founder merges the plan PR. |
+| Task17e-package-triage, complete within lead chat | 5 | Codex lead + Task9f lead; 0.12× | Task9f read-only take/reject review received | Sixteen package rows decided; four accepted concepts remain Task9f-owned. This triage needs no separate Task17 implementation chat. |
+| Task17b-daemon-reliability, **first port in new chat** | 2; wave 1 | Codex; 0.35× | Plan PR merged; Claude daemon group verdict and shared-code review | GitAI `src/daemon*`, trace worker, daemon integration tests. Preserve security-worker wiring and `bg status` offboarding field; no new synthetic provenance. Prompt: `docs/prompts/Task17/NEXT_CHAT_Task17b-daemon-reliability_PROMPT.md`. |
 | Task17c-agent-config, wave 2 | 3 plus selected config/auth | Codex; 0.25× | Wave 1 rebased; Claude group review | GitAI agent presets, streams/model extraction, config and route fixtures. No new supported-route claim. |
 | Task17d-attribution-metrics, waves 3–4 | 4 and all former Task2 rows | Codex; 0.38× | Task14a migrated Lab database; earlier waves; Claude semantic and shared-code review | GitAI metrics, attribution, notes and telemetry worker; TrackAI Lab evidence only, no application/contract edits. Split a code slice if the 0.4× ceiling is exceeded. |
 | Task17f-integration, final | 7 | Codex + founder-live; 0.30× | Waves reviewed; Task20j week ends for native package checks; Task9f follow-up ownership recorded | GitAI tests and one PR; TrackAI ledger, tracker and handoff evidence. |
 
-**Estimate:** about 1.80× T6 plus founder-live time, increased from the primer's 1.65× because Task17d now owns the 21 former Task2 rows and config/auth is explicit. This is a planning estimate. TokenUsage implementation is excluded. The first port is Task17b; Task17e triage may finish beforehand without changing code.
+**Estimate:** about 1.80× T6 plus founder-live time, increased from the primer's 1.65× because Task17d now owns the 21 former Task2 rows and config/auth is explicit. This is a planning estimate. TokenUsage implementation is excluded. The first port is Task17b; Task17e triage has already finished without changing code.
+
+**Chat ownership:** this Task17 lead chat owns the ledger, wave sequencing, cross-Task coordination, review decisions and later session prompts. Task17b/c/d/f are separate implementation chats, started sequentially on the same GitAI integration worktree and branch. Each returns a handoff to this lead before the next chat starts. Task17e was decision-only triage completed here with the Task9f lead; Task9f owns any package implementation.
 
 ## 5. Affected gates — rerun on the integration branch
 
