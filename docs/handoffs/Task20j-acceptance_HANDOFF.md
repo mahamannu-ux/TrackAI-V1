@@ -2,14 +2,14 @@
 
 > Status: 🟡 GitAI Stage 0 implemented locally; TrackAI runbook and week setup prepared; founder's seven-day run and sitting pending.
 
-TrackAI branch `task/Task20j-acceptance` (fast-forwarded to `main` `12bd124`, which includes `TASK19_WALKTHROUGH.md`). Separate GitAI fork branch `task/Task20j-fixes-gitai` starts from fork `main` `8628a0b0f`; local fix commit `e49a182da`. The untracked session prompt was read from the main TrackAI checkout and was not copied into either branch.
+TrackAI branch `task/Task20j-acceptance` (fast-forwarded to `main` `12bd124`, which includes `TASK19_WALKTHROUGH.md`). Separate GitAI fork branch `task/Task20j-fixes-gitai` starts from fork `main` `8628a0b0f`; initial local fix commit `e49a182da`, followed by review fix `cc6fc1355`. The untracked session prompt was read from the main TrackAI checkout and was not copied into either branch.
 
 ## At a glance
 
 | Item | Status |
 |---|---|
-| GitAI Stage 0 | 🟡 60-second server-ahead lease tolerance; persisted 24-attempt day-one scan cap and partial marker; sync wording; local commit tested; cross-review and merge pending |
-| TrackAI Checkpoint 1 | 🟡 combined E20/T19.9 runbook, two-tenant week setup/auth and daily console-API count command written; founder review pending |
+| GitAI Stage 0 | 🟡 60-second server-ahead lease tolerance with the placeholder pre-check review fix; persisted 24-attempt day-one scan cap and partial marker; sync wording; local commit tested; lead's final diff review and merge pending |
+| TrackAI Checkpoint 1 | 🟡 combined E20/T19.9 runbook, two-tenant week setup/auth, daily findings+Coverage command, forbidden-upload and A/B isolation probes written; founder review pending |
 | E20-R/W and E20-01…12 | ⬜ founder real-Mac week and sitting not run |
 | T19.9 | ⬜ Task19 lead's separate fifteen-step walkthrough linked, not run |
 | IT sweep | ⬜ founder runs pending; short scripts listed in runbook |
@@ -22,6 +22,8 @@ GitAI: src/security/policy_apply.rs; src/security/day_one_scan.rs; packaging/num
 TrackAI: docs/plan/TASK20_ACCEPTANCE.md
 TrackAI: apps/api/src/features/security/testing/task20j-week-setup.ts seed|auth <private-directory>
 TrackAI: apps/api/src/features/security/testing/task20j-daily-triage.ts <private-directory> YYYY-MM-DD
+TrackAI: apps/api/src/features/security/testing/task20j-forbidden-upload.ts <private-directory>
+TrackAI: apps/api/src/features/security/testing/task20j-isolation-probe.ts <private-directory>
 ```
 
 ## Deviations from spec
@@ -29,6 +31,8 @@ TrackAI: apps/api/src/features/security/testing/task20j-daily-triage.ts <private
 - The prompt names `trackai-endpoint-macos-x64-debug.pkg`; the runbook uses that name, but no new package is built before the GitAI fix merge. The exact debug build/version/SHA-256 remain blank.
 - The week uses a proposed kept local Docker database, rather than `scripts/it-db.sh`, because the latter removes its database at exit. The short IT verifiers still use `scripts/it-db.sh`.
 - The seed/auth helper lives on the TrackAI side, as the prompt permits. GitAI's existing `founder-live-setup.ts` creates only one tenant, so it could not establish Company A/B itself.
+- The founder uses the everyday account for the week and sitting. The final offboard removes managed hooks machine-wide. E20-07 needs an additional offline interval after the seven-day monitor run because the server's signed lease lasts 72 hours and has no development shortening switch.
+- The GitAI skew fix preserves the applied bundle when a verified lease is up to 60 seconds ahead. Inventory, status, day-one scan and record uploads still use `lease_at(now)` and may begin up to 60 seconds later; historical record admission is unchanged.
 
 ## Known limitations
 
@@ -41,8 +45,8 @@ TrackAI: apps/api/src/features/security/testing/task20j-daily-triage.ts <private
 
 ## Test coverage
 
-- GitAI: 9 focused day-one scan, 16 policy-apply and 69 total security tests pass; `task build` and `cargo fmt --check` pass. Full `cargo clippy --lib -- -D warnings` reports 11 warnings in unchanged files; a scoped run allowing those five inherited lint categories passes with no warning in touched files.
-- TrackAI: `npm run typecheck`, `npm run lint` and the unsandboxed `npm test` (1,265/1,265) pass. The two-tenant seed ran against a throwaway PostgreSQL 16 + pgvector database, and the local auth health endpoint started. The first PostgreSQL attempt failed on sandbox `shmget`; the exact rerun outside the sandbox passed. The sandbox `npm test` had HTTP failures and an Attesta timeout, so it is not used as product evidence.
+- GitAI: 70 total security tests pass after review fix, including the new 30-second early-lease regression; `task build` and `cargo fmt --check` pass after the fix. Full `cargo clippy --lib -- -D warnings` previously reported 11 warnings in unchanged files; a scoped run allowing those five inherited lint categories passed with no warning in touched files before review fix.
+- TrackAI: `npm run typecheck`, `npm run lint` and the unsandboxed `npm test` (1,265/1,265) passed at initial checkpoint; typecheck and lint passed again after the lead's five corrections. The two-tenant seed ran against a throwaway PostgreSQL 16 + pgvector database, and the local auth health endpoint started. The forbidden-upload and A/B probes have not been run against a live week stack. The first PostgreSQL attempt failed on sandbox `shmget`; the exact rerun outside the sandbox passed. The sandbox `npm test` had HTTP failures and an Attesta timeout, so it is not used as product evidence.
 - No real Endpoint, agent, browser or seven-day assertion is claimed from these tests.
 
 ## Integration test impact

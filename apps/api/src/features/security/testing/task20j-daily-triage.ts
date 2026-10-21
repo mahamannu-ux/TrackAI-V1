@@ -5,6 +5,20 @@ import { join, resolve } from 'node:path';
 type User = { email: string; subject: string; password: string };
 type Finding = { id: string; generation: string; rule_id: string; agent: string | null };
 type Page = { items: Finding[]; next_cursor: string | null };
+type CoverageRow = {
+  machine_id: string;
+  status: 'unreported' | {
+    observed_at: string;
+    hook_status: string;
+    agent_effective_view: string;
+    local_record: string;
+    forwarder_ack: string;
+    lease_id: string | null;
+  };
+  lease: 'no_lease' | { expires_at: string; mode: string };
+  acknowledgement: 'not_acknowledged' | { received_at: string; result: string };
+};
+type CoveragePage = { rows: CoverageRow[]; next_cursor: string | null };
 
 async function main(): Promise<void> {
   const directory = process.argv[2] ? resolve(process.argv[2]) : '';
@@ -16,6 +30,8 @@ async function main(): Promise<void> {
   const users = (JSON.parse(readFileSync(join(directory, 'private/auth.json'), 'utf8')) as { users: User[] }).users;
   const admin = users.find(user => user.email === 'admin@task20j-a.acceptance.invalid');
   if (!admin) throw new Error('Company A administrator is missing');
+  const { machineId } = JSON.parse(readFileSync(join(directory, 'aliases.json'), 'utf8')) as { machineId: string };
+  if (!machineId) throw new Error('Company A machine alias is missing');
   const authResponse = await fetch('http://127.0.0.1:54321/auth/v1/token?grant_type=password', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -52,6 +68,27 @@ async function main(): Promise<void> {
   for (const [key, count] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
     console.log(`${key}\t${count}`);
   }
+
+  let coverageCursor: string | null = null;
+  let machine: CoverageRow | undefined;
+  do {
+    const query = new URLSearchParams();
+    if (coverageCursor) query.set('cursor', coverageCursor);
+    const response = await fetch(`http://127.0.0.1:8080/api/admin/security/v2/coverage?${query}`, {
+      headers: { Authorization: `Bearer ${auth.access_token}` },
+    });
+    if (!response.ok) throw new Error(`Security coverage API returned ${response.status}`);
+    const page = await response.json() as CoveragePage;
+    if (!Array.isArray(page.rows) || !('next_cursor' in page)) throw new Error('unexpected Security coverage page');
+    machine ??= page.rows.find(row => row.machine_id === machineId);
+    coverageCursor = page.next_cursor;
+  } while (coverageCursor);
+  if (!machine) throw new Error('Company A machine is absent from Security coverage');
+  const status = machine.status === 'unreported' ? null : machine.status;
+  const lease = machine.lease === 'no_lease' ? null : machine.lease;
+  const acknowledgement = machine.acknowledgement === 'not_acknowledged' ? null : machine.acknowledgement;
+  console.log(`coverage_machine=A status_at=${status?.observed_at ?? 'unreported'} lease_id=${status?.lease_id ?? 'none'} lease_mode=${lease?.mode ?? 'none'} lease_expires_at=${lease?.expires_at ?? 'none'} acknowledgement_at=${acknowledgement?.received_at ?? 'none'} acknowledgement_result=${acknowledgement?.result ?? 'none'}`);
+  console.log(`health hook_status=${status?.hook_status ?? 'unreported'} agent_effective_view=${status?.agent_effective_view ?? 'unreported'} local_record=${status?.local_record ?? 'unreported'} forwarder_ack=${status?.forwarder_ack ?? 'unreported'}`);
 }
 
 main().catch(error => {
