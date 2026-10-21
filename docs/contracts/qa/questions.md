@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/features/qa/registry.ts by `npm run qa:registry -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Registry version 3. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
+Registry version 4. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
 Every security answer carries `monitor_only_observed`. No scope or dimension names a person.
 
 ## Code questions
@@ -52,7 +52,7 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | S16 | 16 | 1 | How fast were findings triaged and remediated (time to acknowledge, time to close)? | partly | live (T19.4), verifiable (A16.13b) | G13 | tenant, repository | severity, rule | no | monitor_only_observed |
 | S17 | 17 | 1 | Which machines (or teams) generate repeated findings? | partly | live (T19.4) | — | tenant, repository | machine, team | no | monitor_only_observed |
 | S18 | 18 | 1 | Which rules fire most, and which are noisy (findings later marked benign)? | no | live (T19.4) | G13 | tenant | rule | no | monitor_only_observed |
-| S19 | 19 | 1 | Which AI coding agents are installed on our machines, and which are not on the approved list? | yes | live (T19.4) | G14 | tenant | agent_family, operating_system, machine | no | monitor_only_observed |
+| S19 | 19 | 1 | Which AI coding agents are installed on our machines, and which are not on the approved list? | yes | live (T19.4) | G14, G2 | tenant | agent_family, operating_system, machine | no | monitor_only_observed |
 | S20 | 20 | 1 | Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find? | yes | live (T19.4) | G14 | tenant | rule_category, severity | no | monitor_only_observed, requested_not_confirmed |
 | S26 | 21 | 1 | How often do agents ask permission, how often do developers approve or deny, and did sessions with findings get approvals? | yes | live (T19.4) | — | tenant | agent_family | no | monitor_only_observed, requested_not_confirmed |
 | S23 | 22 | 1 | Which external domains, URLs and addresses did agents reach in a period? | partly | live (T19.4) | — | tenant | agent_family | no | monitor_only_observed, metadata_only |
@@ -66,7 +66,7 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | Gap | What is missing | Owner | Open | Questions |
 |---|---|---|---|---|
 | G1 | Repository and path line-count snapshot | Task2 + GitAI | yes | Q1 |
-| G2 | Organization AI-usage policy (approved tools and models) | Task6.b | yes | Q4, Q12, S13 |
+| G2 | Organization AI-usage policy (approved tools and models) | Task6.b | yes | Q4, Q12, S13, S19 |
 | G3 | Pull request review and approval capture | Task2 (semantics), Task7 (other providers), Task4 (delivery) | yes | Q5 |
 | G4 | merged_by on pull requests | Task2 | no | Q6 |
 | G5 | Content-free rejection audit event for refused uploads | Task4 (capture), Task16 (expose), Task15 (count) | no | Q15 |
@@ -78,7 +78,7 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | G11 | D6.1 activation lease issue and refuse events | Task6.b | yes | S13 |
 | G12 | Policy exceptions and waivers | Task6.b | yes | S14 |
 | G13 | Finding triage, disposition and remediation state | Task6 (state), Task16 (event), Task10 (UI) | yes | S16, S18 |
-| G14 | Agent inventory and day-one scan uploads from the endpoint | Task20 (Task20h-b) | yes | S19, S20 |
+| G14 | Agent inventory and day-one scan uploads from the endpoint | Task20 (Task20h-b) | no | S19, S20 |
 | G15 | MCP server configuration and per-call MCP identity on findings | Task20 (later) | yes | S22 |
 | G16 | Deferred rule wave 2 (the 7 normal-development rules, including exec.agent_runtime_bypass_flags) | Task20 (later wave) | yes | S21 |
 | G17 | Opt-in blocking pilot (enforcement decisions) | Task20 (Task20k) | yes | S24 |

@@ -159,6 +159,21 @@ test('Q15 is unavailable before capture, then recorded; Company B has no A rows'
   assert.equal(truncated.reasons[0]?.code, 'evidence_truncated');
 });
 
+test('Q15 records zero for a period after capture began with no rejections', async () => {
+  const answerers = createAnswererRegistry();
+  const rows: Parameters<typeof computeQ15>[1] = [row({ tenantId: tenantA, action: 'telemetry.upload.rejected',
+    actorId: randomUUID(), occurredAt: new Date('2026-10-18T00:00:00.000Z'),
+    details: { event_count: 1, reason_counts: { grant_inactive: 1 }, repository_digests: [] } })];
+  answerers.register('Q15', 'live', async (ctx) => computeQ15(ctx, rows));
+  const quiet = await answerQuestion({ answerers, scopes }, { tenantId: tenantA, role: 'tenant_admin' as const,
+    questionId: 'Q15', query: { kind: 'live', from: '2026-10-19T00:00:00.000Z',
+      to: '2026-10-20T00:00:00.000Z' }, now });
+  assert.equal(quiet.availability, 'recorded');
+  assert.deepEqual(quiet.reasons, []);
+  assert.deepEqual(quiet.figures.find((figure) => figure.key === 'rejected_uploads')?.value,
+    { type: 'count', count: 0 });
+});
+
 test('Q2 exact, rewritten, unknown, and non-GitHub answers validate without exposing path', async () => {
   const sha = 'a'.repeat(40);
   const previousSha = 'b'.repeat(40);

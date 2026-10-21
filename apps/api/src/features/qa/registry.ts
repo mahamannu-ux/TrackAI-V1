@@ -17,7 +17,7 @@ import type {
   QaBuilder, QaDimension, QaGap, QaGapId, QaKind, QaQuestion, QaQuestionKind, QaScopeLevel, QaWordingCode,
 } from './types';
 
-export const QA_REGISTRY_VERSION = 3;
+export const QA_REGISTRY_VERSION = 4;
 
 const k = (kind: QaKind, builder: QaBuilder | null): QaQuestionKind => ({ kind, builder });
 
@@ -201,7 +201,7 @@ export const QA_QUESTIONS: readonly QaQuestion[] = [
     kinds: [k('live', 'T19.4')], gaps: ['G13'], scopes: ['tenant'], dimensions: ['rule'] }),
   security({ id: 'S19', rank: 19, auditor: 'yes',
     title: 'Which AI coding agents are installed on our machines, and which are not on the approved list?',
-    kinds: [k('live', 'T19.4')], gaps: ['G14'], scopes: ['tenant'], dimensions: ['agent_family', 'operating_system', 'machine'] }),
+    kinds: [k('live', 'T19.4')], gaps: ['G14', 'G2'], scopes: ['tenant'], dimensions: ['agent_family', 'operating_system', 'machine'] }),
   security({ id: 'S20', rank: 20, auditor: 'yes',
     title: 'Were we already exposed before TrackAI arrived? What did the day-one scan of existing agent sessions find?',
     kinds: [k('live', 'T19.4')], gaps: ['G14'], scopes: ['tenant'], dimensions: ['rule_category', 'severity'], wording: ['requested_not_confirmed'] }),
@@ -230,7 +230,7 @@ export const QA_QUESTIONS_BY_ID: ReadonlyMap<string, QaQuestion> = new Map(QA_QU
 /** CUSTOMER_AUDITOR_QA.md "Gaps found" (owners confirmed in T19.1). Every gap is open today. */
 export const QA_GAPS: readonly QaGap[] = [
   { id: 'G1', title: 'Repository and path line-count snapshot', owner: 'Task2 + GitAI', open: true, questions: ['Q1'] },
-  { id: 'G2', title: 'Organization AI-usage policy (approved tools and models)', owner: 'Task6.b', open: true, questions: ['Q4', 'Q12', 'S13'] },
+  { id: 'G2', title: 'Organization AI-usage policy (approved tools and models)', owner: 'Task6.b', open: true, questions: ['Q4', 'Q12', 'S13', 'S19'] },
   { id: 'G3', title: 'Pull request review and approval capture', owner: 'Task2 (semantics), Task7 (other providers), Task4 (delivery)', open: true, questions: ['Q5'] },
   { id: 'G4', title: 'merged_by on pull requests', owner: 'Task2', open: false, questions: ['Q6'] },
   { id: 'G5', title: 'Content-free rejection audit event for refused uploads', owner: 'Task4 (capture), Task16 (expose), Task15 (count)', open: false, questions: ['Q15'] },
@@ -242,7 +242,7 @@ export const QA_GAPS: readonly QaGap[] = [
   { id: 'G11', title: 'D6.1 activation lease issue and refuse events', owner: 'Task6.b', open: true, questions: ['S13'] },
   { id: 'G12', title: 'Policy exceptions and waivers', owner: 'Task6.b', open: true, questions: ['S14'] },
   { id: 'G13', title: 'Finding triage, disposition and remediation state', owner: 'Task6 (state), Task16 (event), Task10 (UI)', open: true, questions: ['S16', 'S18'] },
-  { id: 'G14', title: 'Agent inventory and day-one scan uploads from the endpoint', owner: 'Task20 (Task20h-b)', open: true, questions: ['S19', 'S20'] },
+  { id: 'G14', title: 'Agent inventory and day-one scan uploads from the endpoint', owner: 'Task20 (Task20h-b)', open: false, questions: ['S19', 'S20'] },
   { id: 'G15', title: 'MCP server configuration and per-call MCP identity on findings', owner: 'Task20 (later)', open: true, questions: ['S22'] },
   { id: 'G16', title: 'Deferred rule wave 2 (the 7 normal-development rules, including exec.agent_runtime_bypass_flags)', owner: 'Task20 (later wave)', open: true, questions: ['S21'] },
   { id: 'G17', title: 'Opt-in blocking pilot (enforcement decisions)', owner: 'Task20 (Task20k)', open: true, questions: ['S24'] },

@@ -46,7 +46,8 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     if (ctx.breakdown === 'repository' || ctx.scope.repository_id) return {
       key, availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null,
     };
-    if (!rows.length) return {
+    // No rejection before capture began is unknown; none after it is a recorded zero.
+    if (!rows.length && !covered) return {
       key, availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G5' }], value: null,
     };
     if (!covered) return {
@@ -64,7 +65,7 @@ export function computeQ15(ctx: Parameters<QaAnswerer>[0], allRows: Rejection[])
     };
   });
   const unavailable = ctx.breakdown === 'repository' || Boolean(ctx.scope.repository_id);
-  const uncaptured = !unavailable && rows.length === 0;
+  const uncaptured = !unavailable && rows.length === 0 && !covered;
   const partial = !covered && !unavailable && !uncaptured;
   const truncated = !partial && !unavailable && digestsTruncated;
   return {

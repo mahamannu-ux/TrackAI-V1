@@ -441,6 +441,75 @@ export function computeS21({ ctx, security }: SecurityInput): QaEnvelope {
   ]);
 }
 
+// --- S19, S20: Endpoint agent inventory and the day-one scan (Task19h) ---
+
+/** Counts and breakdown buckets over string keys, sorted. */
+function bucketCounts(dimension: QaDimension, keys: string[]): QaBreakdownItem[] {
+  const counts = new Map<string, number>();
+  for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1);
+  return [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([key, count]) => ({ dimension, key, value: { type: 'count' as const, count } }));
+}
+
+/**
+ * S19: what the latest inventory snapshot of each reporting machine shows. An agent
+ * is "detected" when its configuration or its session files are present. Versions
+ * are never claimed: Numbat does not report them. The tenant has no approved-agent
+ * list yet (G2).
+ */
+export function computeS19({ ctx, security }: SecurityInput): QaEnvelope {
+  const machines = security.inventory;
+  const detected = machines.flatMap((machine) => machine.agents
+    .filter((agent) => agent.config === 'present' || agent.artifacts === 'present')
+    .map((agent) => ({ machineId: machine.machineId, ...agent })));
+  const noReports: QaReason[] = [{ code: 'not_monitored' }];
+  const agentFigure = (key: string, rows: typeof detected): QaFigure => machines.length === 0
+    ? unavailableFigure(key, noReports)
+    : countFigure(key, rows.length,
+      ctx.breakdown === 'agent_family' ? bucketCounts('agent_family', rows.map((row) => row.agent))
+        : ctx.breakdown === 'machine' ? bucketCounts('machine', rows.map((row) => row.machineId)) : []);
+  return finishSecurity(ctx, [
+    countFigure('machines_reporting', machines.length,
+      ctx.breakdown === 'operating_system'
+        ? bucketCounts('operating_system', machines.map((machine) => security.machinePlatforms.get(machine.machineId) ?? 'unavailable'))
+        : []),
+    agentFigure('agents_detected', detected),
+    agentFigure('agents_wired', detected.filter((row) => row.wired === 'yes')),
+    agentFigure('agents_detected_not_wired', detected.filter((row) => row.wired === 'no')),
+    agentFigure('agents_wiring_unknown', detected.filter((row) => row.wired !== 'yes' && row.wired !== 'no')),
+    unavailableFigure('agent_versions', [{ code: 'vendor_does_not_report' }]),
+    unavailableFigure('agents_not_on_approved_list', notCaptured('G2')),
+  ]);
+}
+
+/**
+ * S20: the opt-in day-one scan of agent session files already on the machine. A
+ * scan summary with status `error` and no artifacts scanned means the scan found no
+ * session files for the agent it ran for (the summary does not name the agent).
+ * Findings "at rest" describe what old sessions requested, not confirmed outcomes.
+ */
+export function computeS20({ ctx, security }: SecurityInput): QaEnvelope {
+  const scans = security.scanSummaries;
+  const findings = security.atRestFindings;
+  if (scans.length === 0 && findings.length === 0) {
+    return finishSecurity(ctx, ['machines_scanned', 'scans_complete', 'scans_partial', 'scans_no_session_files',
+      'scans_failed', 'artifacts_scanned', 'findings_at_rest'].map((key) => unavailableFigure(key, [{ code: 'not_monitored' }])));
+  }
+  const noFiles = scans.filter((row) => row.status === 'error' && row.artifactsScanned === 0);
+  const failed = scans.filter((row) => row.status === 'error' && row.artifactsScanned > 0);
+  return finishSecurity(ctx, [
+    countFigure('machines_scanned', new Set(scans.map((row) => row.machineId)).size),
+    countFigure('scans_complete', scans.filter((row) => row.status === 'complete').length),
+    countFigure('scans_partial', scans.filter((row) => row.status === 'partial').length),
+    countFigure('scans_no_session_files', noFiles.length),
+    countFigure('scans_failed', failed.length),
+    countFigure('artifacts_scanned', scans.reduce((sum, row) => sum + row.artifactsScanned, 0)),
+    countFigure('findings_at_rest', findings.length,
+      ctx.breakdown === 'rule_category' ? bucketCounts('rule_category', findings.map((row) => row.ruleCategory))
+        : ctx.breakdown === 'severity' ? bucketCounts('severity', findings.map((row) => row.ruleSeverity)) : []),
+  ]);
+}
+
 // --- Thin answerers ---
 
 /** Loads a tenant's security context for a period; injectable so tests need no database. */
@@ -493,7 +562,7 @@ export function linkedAnswer(
   };
 }
 
-/** Registers the twelve live security answerers in the app registry. */
+/** Registers the live security answerers in the app registry. */
 export function registerSecurityAnswerers(): void {
   registerAnswerer('S5', 'live', linkedAnswer(computeS5));
   registerAnswerer('S6', 'live', linkedAnswer(computeS6));
@@ -509,6 +578,8 @@ export function registerSecurityAnswerers(): void {
   registerAnswerer('S26', 'live', securityAnswer(computeS26));
   registerAnswerer('S23', 'live', securityAnswer(computeS23));
   registerAnswerer('S21', 'live', securityAnswer(computeS21));
+  registerAnswerer('S19', 'live', securityAnswer(computeS19));
+  registerAnswerer('S20', 'live', securityAnswer(computeS20));
   registerAnswerer('Q11', 'live', linkedAnswer(computeQ11));
 }
 
