@@ -9,7 +9,7 @@ TrackAI branch `task/Task20j-acceptance` (fast-forwarded to `main` `12bd124`, wh
 | Item | Status |
 |---|---|
 | GitAI Stage 0 | 🟡 60-second server-ahead lease tolerance with the placeholder pre-check review fix; persisted 24-attempt day-one scan cap and partial marker; sync wording; PR #14 open with lead review and preflight passed; founder merge pending |
-| TrackAI Checkpoint 1 | 🟡 combined E20/T19.9 runbook, two-tenant week setup/auth, daily findings+Coverage command, forbidden-upload and A/B isolation probes written; founder review pending |
+| TrackAI Checkpoint 1 | 🟡 combined E20/T19.9 runbook, two-tenant week setup/auth, daily findings+Coverage command, forbidden-upload and A/B isolation probes written; Task20 lead's five final runbook corrections applied, ready for founder push after local verification |
 | E20-R/W and E20-01…12 | ⬜ founder real-Mac week and sitting not run |
 | T19.9 | ⬜ Task19 lead's separate fifteen-step walkthrough linked, not run |
 | IT sweep | ⬜ founder runs pending; short scripts listed in runbook |
@@ -31,7 +31,8 @@ TrackAI: apps/api/src/features/security/testing/task20j-isolation-probe.ts <priv
 - The prompt names `trackai-endpoint-macos-x64-debug.pkg`; the runbook uses that name, but no new package is built before the GitAI fix merge. The exact debug build/version/SHA-256 remain blank.
 - The week uses a proposed kept local Docker database, rather than `scripts/it-db.sh`, because the latter removes its database at exit. The short IT verifiers still use `scripts/it-db.sh`.
 - The seed/auth helper lives on the TrackAI side, as the prompt permits. GitAI's existing `founder-live-setup.ts` creates only one tenant, so it could not establish Company A/B itself.
-- The founder uses the everyday account for the week and sitting. The final offboard removes managed hooks machine-wide. E20-07 needs an additional offline interval after the seven-day monitor run because the server's signed lease lasts 72 hours and has no development shortening switch.
+- The founder uses the everyday account for the week and sitting. E20-W observes real work; targeted E20 triggers are synthetic, and Endpoint records stay on this Mac's local stack. The founder consents before day-1 E20-09 scans real prior history. The final offboard removes managed hooks machine-wide. E20-07 is last, after the seven-day run, joint sitting, T19.9 and IT sweep; its additional offline interval may last up to 72 hours because the server has no development shortening switch.
+- E20-08 now overwrites one cached Copilot rule with invalid YAML, avoids agent actions until restart, and requires an original digest match and `applied` acknowledgement after refetch. A valid local edit is not prevented at each hook invocation; the phase-1 boundary is tamper-evident at the server, not tamper-resistant.
 - The week API binds to `127.0.0.1`; turning off Wi-Fi does not disconnect the Endpoint from it. E20-06/07 therefore stop the saved local API process and verify `/health` is unreachable, then restart it against the same kept database.
 - The GitAI skew fix preserves the applied bundle when a verified lease is up to 60 seconds ahead. Inventory, status, day-one scan and record uploads still use `lease_at(now)` and may begin up to 60 seconds later; historical record admission is unchanged.
 
@@ -39,7 +40,7 @@ TrackAI: apps/api/src/features/security/testing/task20j-isolation-probe.ts <priv
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Merge reviewed GitAI PR #14 after the required founder preflight, then build the exact debug package from GitAI `main`. Have the Task20 lead review the TrackAI checkpoint corrections. | E20-W and E20 sitting cannot start on the final build. |
+| ⬜ **FOUNDER:** | Merge reviewed GitAI PR #14 after the required founder preflight, then build the exact debug package from GitAI `main`. Push the TrackAI checkpoint branch after verifying its final local commit; the Task20 lead said the five runbook text fixes need no further review. | E20-W and E20 sitting cannot start on the final build. |
 | ⬜ **FOUNDER:** | Run the seven days and E20 sitting on the Intel Mac using the runbook, then send safe summary rows. | No monitored claim or Task20 close-out before the evidence. |
 | ⬜ **FOUNDER:** | Run Task19's fifteen-step T19.9 separately in the same sitting; send its safe mismatches to the Task19 lead. | Task19 answer status remains open. |
 | ⬜ | Production trust, signed/notarized PKG, Jamf and other platforms have separate Task15n/Task9 gates. | Debug/development E20 never proves a customer build. |

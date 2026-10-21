@@ -12,19 +12,19 @@ Record safe evidence only: date, macOS version and architecture, Endpoint and Nu
 
 ## Before the sitting
 
-1. Use the founder's everyday account on the Intel Mac for both the seven-day week and the joint sitting, with a disposable TrackAI stack. Confirm the daemon's actual database, tenant and machine binding before generating records. Create Company A and Company B, with separate administrator and auditor accounts. Use only synthetic activity and a test repository. The final offboard removes managed hooks **machine-wide**, including hooks visible from other accounts.
+1. Use the founder's everyday account on the Intel Mac for both the seven-day week and the joint sitting, with a disposable TrackAI stack. Confirm the daemon's actual database, tenant and machine binding before generating records. Create Company A and Company B, with separate administrator and auditor accounts. E20-W observes **real everyday work**; use synthetic triggers and a test repository for the targeted E20 checks. Every Endpoint record goes only to this Mac's local API and kept local database. The final offboard removes managed hooks **machine-wide**, including hooks visible from other accounts.
 2. Confirm the exact `trackai-endpoint-macos-x64-debug.pkg` build, its SHA-256, Numbat pin and notices. Follow GitAI `packaging/macos/FOUNDER_WALKTHROUGH.md` for install and offboard. This run is unsigned, not notarized and uses no MDM/Jamf; leave the separate Task9 gates open.
 3. Keep these gates distinct:
    - **Already passed:** `IT-T20f-01` founder run on 2026-10-18. `IT-T20h-01` has qualified Intel debug-package evidence from 2026-10-20: install, a Claude finding, off and manual offboard passed; Codex CLI was absent, Claude/Cursor hook lists did not show Numbat despite execution, and unattended cleanup with a locked Keychain remains unproven. Repeat the relevant checks for this exact Task20j package and everyday account.
    - **Covered by E20 rows:** `IT-T20e-01` by E20-06 restart/rotation delivery; `IT-T20g-01` by E20-07/08; `IT-M20-02` by E20-02/06; Task20i browser walkthrough by E20-11. Record each original gate's verdict separately after its E20 evidence exists.
    - **Swept after E20:** `IT-T20d-01` and the Task19 registered scripts in the IT sweep below. No pending item is a prerequisite to performing its own E20 proof.
 4. Prepare Company A's development-signed monitor lease and the default wave-one rule bundle. Confirm 44 enabled rules and the seven noisy rules disabled against the pinned catalogue; compare rule ids, versions, hashes and the active bundle digest. The placeholder bundle is intentionally inert and does not count.
-5. Keep the five security data settings off initially: command previews, file paths, URLs, host identity and user identity. Opt in to day-one scan only for Company A after identifying the synthetic session files to scan.
+5. Keep the five security data settings off initially: command previews, file paths, URLs, host identity and user identity. On day 1, opt in to Company A's day-one scan **only after the founder consents to scanning the everyday account's real prior agent history**. The Endpoint uploads only minimized findings and summaries to this Mac's local stack; no raw session files are copied into the evidence worksheet. If the founder does not consent, do not enable the scan or start the acceptance week.
 6. Prepare [T19.9](TASK19_WALKTHROUGH.md#before-the-sitting): a Company A GitHub test repository with an AI-assisted merged PR, its App delivery/reconciliation, Attesta statements and period report, and a founder-approved and founder-denied permission request. The Task19 instructions own the Q&A verdicts.
 
 ### Local database that lasts seven days
 
-This is a proposed isolated week stack for the founder to review before E20-W. It is named `trackai_task20h_founder` because GitAI's existing `packaging/macos/founder-live-setup.ts` refuses other database names. Keep it only for this synthetic run. `scripts/it-db.sh` remains the choice for the separate short IT commands below and must not host the week.
+This is a proposed isolated week stack for the founder to review before E20-W. It is named `trackai_task20h_founder` because GitAI's existing `packaging/macos/founder-live-setup.ts` refuses other database names. Keep it only for this local acceptance run. `scripts/it-db.sh` remains the choice for the separate short IT commands below and must not host the week.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -88,6 +88,13 @@ Expected: the audited pin/checksum and architecture checks pass, the PKG exists,
 
 ## Rule proof and the seven-day run
 
+### Run order
+
+1. **Day 1:** install the exact debug package in the everyday account, obtain the signed monitor lease, record E20-01's install/health baseline, obtain the founder's consent to scan prior history, and run E20-09 day-one scan at enrolment. Check its summaries and done marker before the week proceeds.
+2. **Days 1–7:** run E20-W on real everyday work. Keep the local API and database running or restart them against the same database after a reboot. Record the daily worksheet below.
+3. **Joint sitting after day 7:** with the API running, recheck E20-01 and run E20-02…06 and E20-08…12, including E20-09's off/on no-repeat check. Then run Task19's T19.9 walkthrough and the disposable-database IT sweep. Record each verdict in its own tracker.
+4. **Last, E20-07:** stop the local API and verify `/health` is unreachable. Keep it down until the signed lease expires, up to 72 hours; this can overlap a weekend or time away. Record the queue count before and after the outage and verify eligible queued records deliver once after API restart. Only then close E20-07, IT-T20g-01 and the complete E20 claim.
+
 **E20-R:** After the GitAI fix merges, run the pin test from the fork's main checkout:
 
 ```bash
@@ -97,7 +104,7 @@ sh packaging/numbat/test-pin.sh
 
 Expected: `numbat-tests: ok <n> packages`. The pinned Numbat `rules/*_test.go` suites provide positive and negative cases for all 51 rules. Run `numbat rules check` on the compiled default bundle for each of the five agents, then make one harmless live trigger in each rule group (secrets, exfil, exec, persistence, integrity, impact, chains, tamper). Record the exact rule IDs live-triggered and which rely on pinned tests. Each hook p95 must be at most **50 ms** on the Intel Mac; record sample size, median and p95 for Numbat and Endpoint separately. Use stripped **release artifact** sizes for both binaries; the old 69 MB Git AI measurement was unstripped.
 
-**E20-W:** On one fixed debug build in the founder's everyday account, run the 44 first-wave rules in monitor mode for seven days. The API and a **kept local PostgreSQL database** must survive the week and be restartable after a Mac reboot; `scripts/it-db.sh` removes its database and is only for the separate IT sweep. Do not install Task13 on this account during the week. Record daily health, lease renewals (about 24/day), queue delivery across sleep/network changes, file rotation, agent failures or slowdown, and findings by rule and agent. Zero findings is valid if health stayed `ok` throughout. Triage every finding as true/false positive with an action; no critical false positive may remain untriaged.
+**E20-W:** On one fixed debug build in the founder's everyday account, run the 44 first-wave rules in monitor mode during **real work** for seven days. The API and a **kept local PostgreSQL database** must survive the week and be restartable after a Mac reboot; `scripts/it-db.sh` removes its database and is only for the separate IT sweep. Do not install Task13 on this account during the week. Record daily health, lease renewals (about 24/day), queue delivery across sleep/network changes, file rotation, agent failures or slowdown, and findings by rule and agent. Zero findings is valid if health stayed `ok` throughout. Triage every finding as true/false positive with an action; no critical false positive may remain untriaged.
 
 For each UTC day, the following command reads **all pages** of Company A's findings and Coverage APIs with the local administrator account. It prints counts, the seeded Company A machine's four health layers, last status time, lease id/expiry and last acknowledgement. It never prints the test password, token or finding content. Compare successive days' lease ids for renewal evidence; inspect queue and rotation locally with the E20-06 commands below. Record the output in the daily table and inspect each finding in the console before marking true/false positive.
 
@@ -124,8 +131,8 @@ Perform E20-01…E20-08 separately for every agent claimed as monitored. E20-09�
 | E20-05 | Set monitoring `off` and repeat a harmless match. | Placeholder restored and uploads stop. Numbat local preview records continue. The console states off, not monitored. |
 | E20-06 | Restore monitor; disconnect network, make actions, restart daemon, then reconnect. | Each eligible record arrives once through the queue; no unauthorized upload occurs while offline. Record queue/server counts before and after. |
 | E20-07 | Stay offline past lease expiry and repeat; reconnect and renew with the same bundle digest. | Expiry sets monitoring off and stops uploads. Renewal restores the same bundle without a needless rule change. |
-| E20-08 | Corrupt a cached rule file and replay an old lease in the isolated setup. | Neither activates. Last good is kept or refetched, and refusal is visible in Coverage. Restore legitimate state after the check. |
-| E20-09 | Opt in to day-one scan of synthetic prior sessions, including one agent with no session files; then switch off and on. | `found_at_rest` findings and one summary per agent arrive. Zero-artifact agent reads “no session files found”. A second scan does not run after off/on. |
+| E20-08 | Corrupt a cached rule file and replay an old lease in the isolated setup. | Invalid cached rules are refetched, the restored file digest matches the original, and an `applied` acknowledgement arrives with no new refusal. Old state cannot regress the accepted lease. Restore legitimate state after the check. |
+| E20-09 | At day-1 enrolment, opt in to scanning real prior sessions after founder consent; later switch off and on. | Minimized `found_at_rest` findings and one summary per agent arrive on the local stack. Zero-artifact agent reads “no session files found”. A second scan does not run after off/on. |
 | E20-10 | Compare inventory with installed and unmanaged agents on the Mac. | Inventory rows arrive and unmanaged agents remain visible in S19. Unknown versions remain unavailable. |
 | E20-11 | In Security, use Findings filters and drawer, Coverage and Settings. Apply with a reason, attempt stale two-tab apply, then sign in as auditor. | Coverage shows literal “Not checked by the Endpoint” and “Failed”; two-tab conflict appears, auditor is read-only, and no “blocked” or “prevented” claim appears. |
 | E20-12 | Read console, Q&A and machine routes as Company B; try Company A identifiers. | Company A sees none of B and B sees none of A; cross-tenant machine/record lookups have safe not-found responses. |
@@ -134,7 +141,7 @@ Perform E20-01…E20-08 separately for every agent claimed as monitored. E20-09�
 
 Run these against the kept local stack and the exact installed package. `TASK20J_PRIVATE_DIR` and `DATABASE_URL` are the exports from setup above. On the Mac, `ENDPOINT="$HOME/.git-ai/bin/git-ai"` and `SECURITY_DIR="$HOME/.git-ai/internal/security"`. Do not paste tokens, credentials, record bodies or local paths into the evidence worksheet. `http://localhost:3000/dashboard?view=security&tab=settings` is the Company A administrator's Settings screen; use the dry-run plan before Apply, with a written synthetic reason. Coverage is `?view=security&tab=coverage`; Findings is `?view=security&tab=findings`.
 
-**E20-03:** In Settings, choose one enabled rule, change its severity by one level, then enable one of the seven initially disabled noisy rules. Press **Preview changes**, check the named rule changes and bundle version, then **Apply** with a reason. Start with a real Copilot CLI action. In the Mac terminal force a refresh and check the active pointer:
+**E20-03:** In Settings, choose one enabled rule, change its severity by one level, then enable one of the seven initially disabled noisy rules. Press **Review changes**, check the named rule changes and bundle version, then **Apply** with a reason. Start with a real Copilot CLI action. In the Mac terminal force a refresh and check the active pointer:
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -144,9 +151,9 @@ sleep 10
 readlink "$HOME/.git-ai/internal/security/rules/current"
 ```
 
-The pointer must name the new bundle. Confirm the new digest and severity in the next Copilot finding and `applied` in Coverage. Restore the noisy rule to disabled after proof, again previewing and applying with a reason.
+The pointer must name the new bundle. Confirm the new digest and severity in the next Copilot finding and `applied` in Coverage. Restore the noisy rule to disabled after proof, again selecting **Review changes** and **Apply** with a reason.
 
-**E20-04:** In the same Settings screen, turn on **Command previews**, preview and apply; make one harmless action and inspect its finding locally. Turn **Command previews** off, preview and apply, make another action, and check that its finding lacks `observed_command`. With previews off, run the machine-credential negative probe below. It reads the credential locally, sends one synthetic upload, and prints only the refusal code:
+**E20-04:** In the same Settings screen, turn on **Command previews**, select **Review changes** and **Apply**; make one harmless action and inspect its finding locally. Turn **Command previews** off, again select **Review changes** and **Apply**, make another action, and check that its finding lacks `observed_command`. With previews off, run the machine-credential negative probe below. It reads the credential locally, sends one synthetic upload, and prints only the refusal code:
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -155,7 +162,7 @@ node --import tsx apps/api/src/features/security/testing/task20j-forbidden-uploa
 
 Expected: `SECURITY_V2_FIELD_NOT_PERMITTED`. The script fails if the record is accepted or refused for a different reason.
 
-**E20-05:** In Settings, switch Monitor mode to **Off**, preview and apply. On the Mac, run `"$ENDPOINT" bg restart --hard`; `readlink "$SECURITY_DIR/rules/current"` must say `placeholder`. Repeat a harmless agent action; `wc -l "$HOME/.numbat/records.ndjson"` may rise, while the Company A Findings count must not. Restore **Monitor** in Settings, preview and apply before E20-06.
+**E20-05:** In Settings, switch Monitor mode to **Off**, select **Review changes** and **Apply**. On the Mac, run `"$ENDPOINT" bg restart --hard`; `readlink "$SECURITY_DIR/rules/current"` must say `placeholder`. Repeat a harmless agent action; `wc -l "$HOME/.numbat/records.ndjson"` may rise, while the Company A Findings count must not. Restore **Monitor** in Settings with **Review changes** and **Apply** before E20-06.
 
 **E20-06 / IT-T20e-01 / IT-M20-02:** On the Mac first record `wc -l "$HOME/.numbat/records.ndjson"` and the Company A Findings count in the console. This week API is on **loopback**, so disabling Wi-Fi alone cannot take the Endpoint offline from it. Stop the saved API process, verify that `/health` is unreachable, make synthetic agent actions, and restart the same API against the kept database. `networksetup -setnetworkserviceenabled "Wi-Fi" off`/`on` may additionally simulate a network outage if the active service is Wi-Fi, but the API stop is required for this local topology.
 
@@ -196,9 +203,18 @@ touch "$HOME/.numbat/records.ndjson"
 wc -l "$HOME/.numbat/records.e20-06-before-rotation.ndjson" "$HOME/.numbat/records.ndjson"
 ```
 
-**E20-07 / IT-T20g-01:** The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage before disconnecting. After the seven-day normal-work monitor interval, stop the local API using the E20-06 PID and `/health` checks, and keep it stopped until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Run a harmless action while the API remains down after expiry and check `readlink "$SECURITY_DIR/rules/current"` is `placeholder`. Restart the API using the E20-06 start command, verify the prior server count did not rise, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. The bundle digest should stay the same. Reserve this additional outage interval before claiming E20 complete; it is not a quick sitting step.
+**E20-07 / IT-T20g-01:** Run this **last**, after the seven-day week, the joint sitting, T19.9 and the IT sweep. The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage and record the local queued-record count before disconnecting. Stop the local API using the E20-06 PID and `/health` checks, and keep it stopped until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Make a harmless monitored action before expiry to exercise the offline queue, then another after expiry. Check `readlink "$SECURITY_DIR/rules/current"` is `placeholder` after expiry. Restart the API using the E20-06 start command, verify no expired-lease upload arrived, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. Compare queued and server record IDs/counts: each eligible pre-expiry record must deliver once after restart. The bundle digest should stay the same. This outage can overlap a weekend or time away.
 
-**E20-08 / IT-T20g-01:** After saving the current rule file's digest in the private evidence directory, corrupt **only the disposable cached rule copy** under `"$SECURITY_DIR/rules/current/copilot/"` (for example the selected `.yaml` copied from the active bundle); never edit the package's Numbat binary or trust documents. Use `find "$SECURITY_DIR/rules/current/copilot" -type f -name '*.yaml' -print` to select the exact file, `cp -p` to back it up, append `# E20-08 synthetic corruption`, and run `"$ENDPOINT" bg restart --hard`. Check refusal/re-fetch in Coverage and compare the restored file's digest. For stale-lease replay, save `state.json` before an ordinary settings-triggered lease renewal, then after the newer lease is accepted stop the daemon, substitute that saved **older signed state** only in this disposable run, restart and confirm it cannot regress the active lease. Keep both state copies in the private directory and restore the newer state afterward. A local state swap is a replay of the cached signed lease; record that scope explicitly. If the server never issues a newer lease, do not mark replay passed.
+On the Mac, run this at outage start, after the pre-expiry action and after API restart; record only the counts. Match the queued record IDs to Company A Findings locally before calling delivery complete.
+
+```bash
+cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
+sqlite3 "$HOME/.git-ai/internal/security-findings.db" 'SELECT count(*) FROM security_record_queue;'
+```
+
+**E20-08 / IT-T20g-01:** Save the active Copilot rule file and its SHA-256 in the private evidence directory, then overwrite **only that disposable cached copy** with invalid YAML (`not: [valid`). Do not edit the package's Numbat binary or trust documents. **Make no agent actions while the file is corrupted:** a hook load error can fail open. Restart the Endpoint immediately. Its reconciliation must detect the bad cached folder, refetch the same signed bundle, and restore a version-folder `rules/current` whose selected file digest equals the saved original. Coverage must show an **`applied` acknowledgement and no new refusal row**; a refusal is expected only for a bad document delivered by the server. If the file stays corrupted, the pointer is `placeholder`, or a refusal appears, E20-08 fails. A *valid* local edit to a cached rule can affect behavior without per-hook integrity enforcement; the server sees only digest and health evidence. As `TASK20.md` §1 item 8 states, phase 1 is **tamper-evident at the server, not tamper-resistant**.
+
+For stale-lease replay, save `state.json` before an ordinary settings-triggered lease renewal, then after the newer lease is accepted stop the daemon, substitute that saved **older signed state** only in this disposable run, restart and confirm it cannot regress the active lease. Keep both state copies in the private directory and restore the newer state afterward. A local state swap is a replay of the cached signed lease; record that scope explicitly. If the server never issues a newer lease, do not mark replay passed.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -207,14 +223,18 @@ SECURITY_DIR="$HOME/.git-ai/internal/security"
 umask 077
 E20_RULE_FILE="$(find "$SECURITY_DIR/rules/current/copilot" -type f -name '*.yaml' -print -quit)"
 test -n "$E20_RULE_FILE" || exit 1
-shasum -a 256 "$E20_RULE_FILE"
+E20_RULE_SHA="$(shasum -a 256 "$E20_RULE_FILE" | awk '{print $1}')"
+test ! -e "$TASK20J_PRIVATE_DIR/private/e20-rule-before.yaml" || exit 1
 cp -p "$E20_RULE_FILE" "$TASK20J_PRIVATE_DIR/private/e20-rule-before.yaml"
-printf '\n# E20-08 synthetic corruption\n' >> "$E20_RULE_FILE"
+printf 'not: [valid\n' > "$E20_RULE_FILE"
+# Do not run an agent action while the cached YAML is invalid.
 "$ENDPOINT" bg restart --hard
 sleep 10
-shasum -a 256 "$E20_RULE_FILE"
+test "$(shasum -a 256 "$E20_RULE_FILE" | awk '{print $1}')" = "$E20_RULE_SHA" || exit 1
+test "$(readlink "$SECURITY_DIR/rules/current")" != placeholder || exit 1
+# Coverage must now show an applied acknowledgement and no new refusal.
 cp -p "$SECURITY_DIR/state.json" "$TASK20J_PRIVATE_DIR/private/e20-state-old.json"
-# In Settings, preview/apply an ordinary monitor-setting change and wait for a newer lease id.
+# In Settings, Review changes and apply an ordinary monitor-setting change; wait for a newer lease id.
 "$ENDPOINT" bg restart --hard
 cp -p "$SECURITY_DIR/state.json" "$TASK20J_PRIVATE_DIR/private/e20-state-new.json"
 "$ENDPOINT" bg shutdown --hard
@@ -227,7 +247,7 @@ cp -p "$TASK20J_PRIVATE_DIR/private/e20-state-new.json" "$SECURITY_DIR/state.jso
 "$ENDPOINT" bg restart --hard
 ```
 
-**E20-09:** Perform this once **before** E20-02 creates sessions in all five agents. Make ordinary synthetic prior sessions in four managed agents in the everyday account; leave one agent without session files. First run the pinned Numbat inventory below to identify a managed agent with no prior artifacts. Use the normal CLI (`claude`, `codex`, `gemini`, `copilot`) or Cursor Agent UI to run a harmless `pwd` action in each of the other four; verify the transcripts are local before enabling scan. If all five already have artifacts in the everyday account, do not delete real history to manufacture a zero-artifact case: record that branch of E20-09 as unproven and use an isolated fixture for the wording check. In Settings, toggle **Day-one scan** on with Monitor active, preview and apply, then run `"$ENDPOINT" bg restart --hard`. Check the done marker, its `partial` flag and the Company A S20 scan summaries; the no-artifact agent should read “no session files found.” Toggle Monitor off and on through Settings, restart again, and confirm the marker and server summary count did not change. If an agent's scan fails, inspect `day-one-scan-attempts`; after 24 failed attempts the local marker is partial, and S20 must treat a missing summary as **not scanned**.
+**E20-09:** Run the scan **at installation/enrolment on day 1**, after the founder consents to scanning the everyday account's real prior agent history. Record consent as yes/date or no in the safe E20-09 evidence row, without copying session content. Those prior sessions may produce minimized `found_at_rest` findings and summaries; they stay on this Mac's local stack. Do not delete or replace real history. Before enabling scan, run the pinned Numbat inventory below to record which managed agents already have artifacts. Cursor's at-rest store was “none found; deferred SQLite” in the checkpoint inventory, so its scan may provide the zero-artifact case; verify the actual result. If Cursor now has artifacts and all five agents do too, use an isolated fixture for the no-artifacts wording and keep the everyday-account zero-artifact branch explicitly unproven. In Settings, turn **Day-one scan** on with Monitor active, select **Review changes**, then **Apply**. Run `"$ENDPOINT" bg restart --hard`; check the done marker, its `partial` flag and the Company A S20 scan summaries. The zero-artifact agent should read “no session files found.” During the later joint sitting, toggle Monitor off and on through Settings, restart again, and confirm the marker and server summary count did not change. If an agent's scan fails, inspect `day-one-scan-attempts`; after 24 failed attempts the local marker is partial, and S20 must treat a missing summary as **not scanned**.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -240,7 +260,7 @@ jq '{partial,failed_agents}' "$SECURITY_DIR/day-one-scan-done"
 
 **E20-10:** On the Mac run `/Library/Application\ Support/TrackAI/Endpoint/bin/numbat agents --all --format json` and compare its detected/wired agents and versions with Company A Coverage's inventory row and S19. Include an installed but unmanaged agent in the comparison; it must remain visible as inventory, never described as monitored. Unknown versions remain unavailable. The Endpoint inventory refresh is lease-gated, so wait for a current monitor lease and the next reported inventory before comparing.
 
-**E20-11:** Open the three Security tabs at the console paths above as Company A admin. In Findings, filter to the test rule/agent and open the drawer; in Coverage inspect all four health layers and acknowledgement. In Settings, preview and apply with a reason. Open two tabs on the same initial settings version, apply a change in the first and attempt the stale plan in the second; expect `SECURITY_SETTINGS_CONFLICT`. Sign out and use the Company A auditor login from `private/auth.json`; Settings must be read-only. Record the literal “Not checked by the Endpoint” and “Failed” labels where the corresponding health states are present, without manufacturing those states in production data.
+**E20-11:** Open the three Security tabs at the console paths above as Company A admin. In Findings, filter to the test rule/agent and open the drawer; in Coverage inspect all four health layers and acknowledgement. In Settings, select **Review changes**, then **Apply** with a reason. Open two tabs on the same initial settings version, apply a change in the first and attempt the stale plan in the second; expect `SECURITY_SETTINGS_CONFLICT`. Sign out and use the Company A auditor login from `private/auth.json`; Settings must be read-only. Record the literal “Not checked by the Endpoint” and “Failed” labels where the corresponding health states are present, without manufacturing those states in production data.
 
 **E20-12:** Sign in with Company B admin and auditor accounts from `private/auth.json` and open `?view=security&tab=findings`, `?view=security&tab=coverage`, `?view=security&tab=settings`, and `?view=questions`. Company B has no seeded machine, so Coverage and Findings must have no Company A rows. Run the local read probe below: it pages both tenants' findings and coverage, asks B for A's finding detail (safe 404), and checks B's `/api/admin/machines` list for A's machine. It prints counts only. Repeat the visual reads as Company A and verify no B rows appear. If no Company A finding exists, E20-12 is not yet runnable.
 
@@ -249,11 +269,11 @@ cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
 node --import tsx apps/api/src/features/security/testing/task20j-isolation-probe.ts "$TASK20J_PRIVATE_DIR"
 ```
 
-After E20, run [Task19's fifteen T19.9 steps](TASK19_WALKTHROUGH.md#steps) in the same sitting using the generated Endpoint records. T19.9 is a separate pass/fail decision, including auditor and Company B checks. Do not mark E20 passed because a Q&A answer rendered, or T19.9 passed because a finding appeared.
+After the joint sitting's E20-01…06 and E20-08…12 checks, run [Task19's fifteen T19.9 steps](TASK19_WALKTHROUGH.md#steps) using the generated Endpoint records. T19.9 is a separate pass/fail decision, including auditor and Company B checks. E20-07 remains last after the IT sweep. Do not mark E20 passed because a Q&A answer rendered, or T19.9 passed because a finding appeared.
 
 ### Founder IT sweep in the same sitting
 
-Run these in disposable databases after the E20 and T19.9 observations. Their verdicts belong to their own `STATUS_BOARD.md` rows. The commands below are the registered scripts; no success is inferred until the founder returns their safe summary lines.
+Run these in disposable databases after the sitting's E20 and T19.9 observations, **before** the E20-07 outage. Their verdicts belong to their own `STATUS_BOARD.md` rows. The commands below are the registered scripts; no success is inferred until the founder returns their safe summary lines.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
