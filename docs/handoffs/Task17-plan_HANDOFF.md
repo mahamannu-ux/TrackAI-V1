@@ -20,6 +20,16 @@ The affected-gates matrix is `TASK17.md` §5. Always run the full GitAI `cargo t
 
 Phase 1 trial-applied the 242 non-merge upstream commits independently on a disposable fork worktree: 50 textual clean applications, 192 conflicts; 62 merge bookkeeping rows were not applied. These results are a conflict screen only. TrackAI `npm ci` passed. Full `npm test` did not finish because localhost tests hit sandbox `EPERM` and an Attesta test exceeded seven minutes; the focused app CORS test passed 2/2 when localhost binding was allowed. No GitAI product code, package, installer or live Task20/Task9 gate has been changed or run by Task17.
 
+## Interfaces, deviations and integration test impact
+
+**Implemented interfaces:** planning documents only: ledger row schema, Task17 wave ownership and the affected-gates map. No runtime API, package, database schema or contract changed.
+
+**Deviations:** the initial primer's 1.65× estimate is 1.80× after the founder assigned 21 finished-Task deferrals to Task17d. Task9f accepted four concepts for its own follow-up; Task17 will integrate only its separately reviewed result. The Task20 lead review is still outstanding.
+
+**Integration test impact:** no new test was added or run by this planning branch. `TASK17.md` §5 names the existing Rust, Task2 Lab, Task5 evidence, Task9 MDM, Task20 shipper and E20 gates to rerun; status remains ⬜ until their owning runs produce evidence.
+
+**Effort:** Task17a planning estimate 0.40× T6; actual planning effort is not yet measured against the T6 turn benchmark. Total remaining Task17 estimate is about 1.40× plus founder-live time, within the overall 1.80× estimate.
+
 ## Open review before checkpoint 2 closes
 
 1. The Task20 lead is Claude and has no identified Codex chat in the local task list. The founder should relay the primer's per-group summaries and relevant ledger rows before each port, then return its verdict. This is a future pre-port gate, not a claimed completed review.
