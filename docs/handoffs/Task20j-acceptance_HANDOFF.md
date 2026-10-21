@@ -1,14 +1,14 @@
 # Task20j-acceptance handoff — Checkpoint 1
 
-> Status: 🟡 GitAI Stage 0 implemented locally; TrackAI runbook and week setup prepared; founder's seven-day run and sitting pending.
+> Status: 🟡 GitAI Stage 0 reviewed and open as PR #14; TrackAI runbook and week setup prepared; founder's seven-day run and sitting pending.
 
-TrackAI branch `task/Task20j-acceptance` (fast-forwarded to `main` `12bd124`, which includes `TASK19_WALKTHROUGH.md`). Separate GitAI fork branch `task/Task20j-fixes-gitai` starts from fork `main` `8628a0b0f`; initial local fix commit `e49a182da`, followed by review fix `cc6fc1355`. The untracked session prompt was read from the main TrackAI checkout and was not copied into either branch.
+TrackAI branch `task/Task20j-acceptance` (fast-forwarded to `main` `12bd124`, which includes `TASK19_WALKTHROUGH.md`). Separate GitAI fork branch `task/Task20j-fixes-gitai` starts from fork `main` `8628a0b0f`; initial fix commit `e49a182da`, followed by review fix `cc6fc1355`. The Task20 lead marked the latter ready to push; [GitAI PR #14](https://github.com/mahamannu-ux/git-ai/pull/14) is open at that exact head. The preflight trial merge with `origin/main` passed; because the generic script did not discover the PR, its `main` base and head SHA were checked explicitly with `gh pr view --repo mahamannu-ux/git-ai`. The founder owns the merge. The untracked session prompt was read from the main TrackAI checkout and was not copied into either branch.
 
 ## At a glance
 
 | Item | Status |
 |---|---|
-| GitAI Stage 0 | 🟡 60-second server-ahead lease tolerance with the placeholder pre-check review fix; persisted 24-attempt day-one scan cap and partial marker; sync wording; local commit tested; lead's final diff review and merge pending |
+| GitAI Stage 0 | 🟡 60-second server-ahead lease tolerance with the placeholder pre-check review fix; persisted 24-attempt day-one scan cap and partial marker; sync wording; PR #14 open with lead review and preflight passed; founder merge pending |
 | TrackAI Checkpoint 1 | 🟡 combined E20/T19.9 runbook, two-tenant week setup/auth, daily findings+Coverage command, forbidden-upload and A/B isolation probes written; founder review pending |
 | E20-R/W and E20-01…12 | ⬜ founder real-Mac week and sitting not run |
 | T19.9 | ⬜ Task19 lead's separate fifteen-step walkthrough linked, not run |
@@ -39,7 +39,7 @@ TrackAI: apps/api/src/features/security/testing/task20j-isolation-probe.ts <priv
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Have the Task20 lead review the two branches; merge the GitAI fix branch before building the exact debug package. | E20-W and E20 sitting cannot start on the final build. |
+| ⬜ **FOUNDER:** | Merge reviewed GitAI PR #14 after the required founder preflight, then build the exact debug package from GitAI `main`. Have the Task20 lead review the TrackAI checkpoint corrections. | E20-W and E20 sitting cannot start on the final build. |
 | ⬜ **FOUNDER:** | Run the seven days and E20 sitting on the Intel Mac using the runbook, then send safe summary rows. | No monitored claim or Task20 close-out before the evidence. |
 | ⬜ **FOUNDER:** | Run Task19's fifteen-step T19.9 separately in the same sitting; send its safe mismatches to the Task19 lead. | Task19 answer status remains open. |
 | ⬜ | Production trust, signed/notarized PKG, Jamf and other platforms have separate Task15n/Task9 gates. | Debug/development E20 never proves a customer build. |
