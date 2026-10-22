@@ -1,0 +1,19 @@
+docs/plan/GITAI_UPSTREAM_LEDGER_2026-10.tsv
+  s_c9850750b37e31::t_d59b1bb14ef7f0 4,6,277,280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "850ded0a7c8913dd06ca368ef833ad8cebd3c55a",
+  "prompts": {},
+  "sessions": {
+    "s_c9850750b37e31": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15fd1-51be-7492-83a0-358b788e6f0a",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
