@@ -51,3 +51,25 @@ TrackAI is an AI Code Provenance, Security, Attribution and Engg Productivity Pr
 
   The architecture must allow each part to be enabled, sold, deployed and operated on its own, and to work better together.
 - **Reference material:** the founder's research primers in this folder (`numbat-architecture-capability_reference_primer.md`, `numbat_enterprise_blueprint_primer.md`, `numbat_server_architecture_primer.md`, `numbat_observability_blueprint_primer.md`). They are input, not authority: Numbat's own code and docs are the source of truth. The lead's review that checks the primers against Numbat is `docs/plan/NUMBAT_ADOPTION_REVIEW.md`.
+
+## 5. Intent and decision review (founder, 2026-10-23)
+
+*Recorded by TrackAI-Orchestrator at the founder's request. Working name **IDRES** (Intent & Decision Review/Evidence System); final name open (candidates below). Grows Task5; planning slot to be set by the founder (Task5 expansion after Task13's cloud capture).*
+
+**Marketing line (founder):** "Code reviews expire in 2027. IDRES replaces code reviews."
+
+**Idea.** When most code is written by agents, reviewing every line stops scaling. The reviewer instead approves the *intent* (what was asked, why, what was decided) and checks that the code matches it, with signed evidence of who approved what. Every feature below is enabled from the data TrackAI already captures or will capture (Task2 attribution, Task5 evidence graph and semantic search, Task13 surfaces including cloud sessions, Attesta signing):
+
+1. **"Why does this exist?" at every level:** line, function, file, PR and release, answered with a short intent summary linked to the sessions, prompts, decisions and approver.
+2. **Intent drift:** flag a PR whose code does not match its stated intent, ticket or spec; a CISO-relevant signal.
+3. **Decision records:** decisions made by agents and humans during sessions ("chose library X because Y") pulled into a searchable per-repository record.
+4. **Session replay in review:** the reasoning trail beside the diff.
+5. **"Has this been done before?":** similarity across past sessions and PRs (Task5 semantic search).
+6. **Signed intent:** Attesta statements carry an intent digest and the approver, so the "why" and the approval become evidence. Neither Git AI nor Entire does this.
+7. **Cross-agent and cloud sessions:** the same view whether the work ran on a laptop or in a cloud sandbox (`STRATEGY_CLOUD_AGENTS_2026-10-22.md`).
+
+**Why it sells to the CISO.** Change-management controls (SOC 2 CC8.1, ISO 27001 A.8.32) require evidence that changes were authorised and reviewed. IDRES keeps a human approval but moves it to intent, and produces stronger evidence than a "LGTM" on a diff nobody read. Raw prompts stay under rule 6: summaries and digests by default, raw reveal only through Task5's governed path.
+
+**Competition.** Entire (Thomas Dohmke, former GitHub CEO; $60M seed, February 2026) captures sessions as Git checkpoints, links commits to them, and generates intent/outcome summaries (`entire explain`); it covers Claude Code and Gemini CLI. Git AI focuses on attribution. Code-to-intent linkage is therefore not unique; the difference is cross-agent and cloud capture, intent drift, decision records and signed approval.
+
+**Name candidates (orchestrator):** IDRES (working); **Intent Review**; **WhyTrail**; **IntentProof** (fits the portfolio's "…Proof" family).
