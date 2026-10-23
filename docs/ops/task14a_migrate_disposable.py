@@ -97,12 +97,37 @@ def run_logged(name: str, command: list[str], env: dict[str, str]):
     return result
 
 
-def destination_url(password: str) -> str:
+def destination_url(password: str, rootcert: Path) -> str:
     username = f"postgres.{DESTINATION_REF}"
     return (
         f"postgresql://{quote(username, safe='')}:{quote(password, safe='')}"
-        f"@{DESTINATION_HOST}:5432/postgres?sslmode=require"
+        f"@{DESTINATION_HOST}:5432/postgres?sslmode=verify-full"
+        f"&sslrootcert={quote(str(rootcert), safe='')}"
     )
+
+
+def verified_rootcert(password: str) -> Path:
+    raw = input("Full path to disposable project's downloaded SSL CA certificate: ").strip()
+    rootcert = Path(raw).expanduser().resolve(strict=True)
+    if not rootcert.is_file() or b"-----BEGIN CERTIFICATE-----" not in rootcert.read_bytes():
+        raise ValueError("Expected a readable PEM certificate file")
+    connection = psycopg2.connect(
+        host=DESTINATION_HOST,
+        port=5432,
+        user=f"postgres.{DESTINATION_REF}",
+        password=password,
+        dbname="postgres",
+        sslmode="verify-full",
+        sslrootcert=str(rootcert),
+        connect_timeout=15,
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    finally:
+        connection.close()
+    print("Disposable pooler TLS certificate and hostname verified.")
+    return rootcert
 
 
 def probe_migrations(password: str) -> int:
@@ -232,11 +257,12 @@ def main() -> int:
             return probe_migrations(password)
 
         if args.node_probe:
+            rootcert = verified_rootcert(password)
             if input(f"Type NODE-PROBE {DESTINATION_REF} to continue: ").strip() != f"NODE-PROBE {DESTINATION_REF}":
                 print("Node probe cancelled; destination unchanged.")
                 return 2
             env = os.environ.copy()
-            env["DATABASE_URL"] = destination_url(password)
+            env["DATABASE_URL"] = destination_url(password, rootcert)
             env["TASK14A_ROLLBACK_PROBE"] = DESTINATION_REF
             result = run_logged(
                 "node-probe",
@@ -252,12 +278,13 @@ def main() -> int:
             print("Node/Drizzle probe failed; destination remains at 0009. Do not run MIGRATE yet.")
             return result.returncode or 1
 
+        rootcert = verified_rootcert(password)
         if input(f"Type MIGRATE {DESTINATION_REF} to continue: ").strip() != f"MIGRATE {DESTINATION_REF}":
             print("Migration cancelled; destination unchanged.")
             return 2
 
         env = os.environ.copy()
-        env["DATABASE_URL"] = destination_url(password)
+        env["DATABASE_URL"] = destination_url(password, rootcert)
         env.pop("TASK4_WAVE5_PENDING_RECONCILE_APPLY", None)
         env.pop("TASK5_EPHEMERAL_DATABASE", None)
         env.pop("TASK6_EPHEMERAL_DATABASE", None)

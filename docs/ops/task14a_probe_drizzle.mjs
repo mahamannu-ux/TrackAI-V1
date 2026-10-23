@@ -17,7 +17,9 @@ if (
   url.hostname !== expectedHost ||
   url.port !== '5432' ||
   decodeURIComponent(url.username) !== `postgres.${expectedRef}` ||
-  url.pathname !== '/postgres'
+  url.pathname !== '/postgres' ||
+  url.searchParams.get('sslmode') !== 'verify-full' ||
+  !url.searchParams.get('sslrootcert')
 ) {
   console.error('Task14a probe refused: destination identity mismatch.');
   process.exit(2);

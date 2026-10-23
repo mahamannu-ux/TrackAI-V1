@@ -40,6 +40,14 @@ Use a direct or session-mode connection for `pg_dump` and migrations, with a
 short-lived environment variable supplied by the operator's secret store.
 Do not paste it into a shell command, issue body, log or document. Confirm the
 connection's project and role with read-only SQL before any write.
+For Node/Drizzle, download the project's CA certificate from Supabase
+Dashboard → Database Settings → SSL Configuration and configure the session
+connection with `sslmode=verify-full` and `sslrootcert`. The installed
+node-postgres parser interprets plain `sslmode=require` as certificate
+verification, which failed with `SELF_SIGNED_CERT_IN_CHAIN` on the disposable
+project before any migration SQL ran. The Task14a helper tests the CA and
+hostname before invoking Drizzle. Keep the certificate path local; do not
+place a database password in a shell command or repository file.
 
 ## 2. Back up and prove recovery
 

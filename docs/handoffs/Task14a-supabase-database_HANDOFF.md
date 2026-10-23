@@ -74,8 +74,15 @@ ledger inserts and rolled back; it passed and left the destination at 0009.
 The remaining difference is the Node/Drizzle execution path. A
 `--node-probe` mode now runs the actual `drizzle-orm/node-postgres` migrator
 inside an outer transaction, forces rollback after success and captures
-structured error causes privately on failure. Its result is pending. Do not
-retry the committing migration until the underlying error is understood.
+structured error causes privately on failure. Its first run reproduced the
+failure before any SQL: Node reported `SELF_SIGNED_CERT_IN_CHAIN` for the
+pooler TLS connection. The original `sslmode=require` URL was interpreted as
+certificate verification by this installed node-postgres version, unlike
+libpq's encryption-only `require` behavior. The helper now asks for the
+disposable project's downloaded Supabase CA certificate, proves TLS and
+hostname verification with libpq, and passes `sslmode=verify-full` plus that
+CA file to Node for the probe and committing migration. This corrected Node
+probe has not run yet. Do not retry the committing migration until it passes.
 
 ## Implemented interfaces
 
