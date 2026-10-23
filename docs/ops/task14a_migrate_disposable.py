@@ -5,6 +5,7 @@ Run in an interactive Terminal. The project reference and session-pooler host
 are fixed below. The source/live project is never contacted by this script.
 """
 
+import argparse
 import getpass
 import json
 import os
@@ -94,6 +95,12 @@ def run_logged(name: str, command: list[str], env: dict[str, str]):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--inspect", action="store_true",
+        help="Read destination state only; never run migrations or post-steps",
+    )
+    args = parser.parse_args()
     os.umask(0o077)
     if not sys.stdin.isatty():
         print("Run in an interactive Terminal; no password was read.")
@@ -110,10 +117,19 @@ def main() -> int:
         original_timestamp, target_timestamp = expected_timestamps()
         before = counts(DESTINATION_HOST, password)
         print(
-            "Destination before migration: "
+            "Disposable destination state: "
             f"PostgreSQL {before[4]}; Auth users={before[0]}; "
             f"public tables={before[1]}; ledger entries={before[3]}"
         )
+        if args.inspect:
+            last = last_migration_timestamp(password) if before[2] else None
+            print(
+                "Last Drizzle migration: "
+                + ("0009 checkpoint" if last == original_timestamp else
+                   "0028 target" if last == target_timestamp else "other or absent")
+            )
+            print("Read-only inspection complete; no migration was run.")
+            return 0
         if not before[4].startswith("17.") or before[:4] != (5, 42, True, 10):
             print("Stopped: destination is not the restored 0009 checkpoint.")
             return 2

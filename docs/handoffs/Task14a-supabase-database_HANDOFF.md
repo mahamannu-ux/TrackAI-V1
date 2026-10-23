@@ -58,13 +58,17 @@ resolved the session to the same user. This proves the restored account is
 usable after a password reset, not that its original password or Okta provider
 settings work. No keys, email or password were printed or stored by the helper.
 
-`docs/ops/task14a_migrate_disposable.py` is prepared for the next isolated
-stage. It hardcodes the disposable project reference and session-pooler host,
-asks locally for that project's database password, verifies the restored 0009
-ledger and counts, then runs 0010–0028 and the three default dry-run post-steps.
-It captures command output only in private owner-readable logs. The helper's
-syntax, journal lookup and non-interactive refusal were checked; no managed
-database migration has yet run.
+`docs/ops/task14a_migrate_disposable.py` hardcodes the disposable project
+reference and session-pooler host, asks locally for that project's database
+password, verifies the restored 0009 ledger and counts, then runs 0010–0028
+and the three default dry-run post-steps. It captures command output only in
+private owner-readable logs. Its first managed migration attempt exited 1 in
+2.7 s on 2026-10-24. The log contains Drizzle's progress spinner and npm's
+exit status, but no PostgreSQL error or failed-statement detail. Thus the
+cause is unknown and no successful managed migration is claimed. The
+`--inspect` mode was added to read Auth, table and ledger counts plus the last
+migration checkpoint without writing; its result is pending. Do not retry the
+migration until that state and the underlying error are understood.
 
 ## Implemented interfaces
 
