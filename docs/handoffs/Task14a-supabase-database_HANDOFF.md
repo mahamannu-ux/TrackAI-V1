@@ -71,18 +71,19 @@ ten ledger records and the 0009 checkpoint after the failure. A `--probe`
 mode first executed all 19 pending SQL files inside a transaction and rolled
 back; every statement passed. The expanded probe also tested all Drizzle
 ledger inserts and rolled back; it passed and left the destination at 0009.
-The remaining difference is the Node/Drizzle execution path. A
-`--node-probe` mode now runs the actual `drizzle-orm/node-postgres` migrator
-inside an outer transaction, forces rollback after success and captures
-structured error causes privately on failure. Its first run reproduced the
-failure before any SQL: Node reported `SELF_SIGNED_CERT_IN_CHAIN` for the
-pooler TLS connection. The original `sslmode=require` URL was interpreted as
-certificate verification by this installed node-postgres version, unlike
-libpq's encryption-only `require` behavior. The helper now asks for the
-disposable project's downloaded Supabase CA certificate, proves TLS and
-hostname verification with libpq, and passes `sslmode=verify-full` plus that
-CA file to Node for the probe and committing migration. This corrected Node
-probe has not run yet. Do not retry the committing migration until it passes.
+The remaining difference was the Node/Drizzle execution path. An attempted
+`--node-probe` first reproduced the failure before SQL: Node reported
+`SELF_SIGNED_CERT_IN_CHAIN` for the pooler TLS connection. The helper was
+changed to use the disposable project's Supabase CA certificate with
+`sslmode=verify-full`; libpq verified its TLS certificate and hostname. A
+second `--node-probe` then exited zero after 77.8 s, but its checkpoint check
+reported a change. **The Node probe had a transaction design error:** Drizzle's
+migrator starts and commits its own transaction, defeating the proposed outer
+rollback. The command likely committed 0010–0028 despite printing a
+`pass_rolled_back` marker. The actual destination state is being checked with
+read-only `--inspect`; no managed migration completion is claimed yet. The
+unsafe Node probe has been removed. Do not run `MIGRATE` or restore again
+until the ledger, tables, role and policies are verified.
 
 ## Implemented interfaces
 

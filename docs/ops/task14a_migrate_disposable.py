@@ -209,10 +209,6 @@ def main() -> int:
         "--probe", action="store_true",
         help="Run pending SQL and ledger inserts in one transaction, then roll back",
     )
-    mode.add_argument(
-        "--node-probe", action="store_true",
-        help="Run the Drizzle migrator inside a rollback-only transaction",
-    )
     args = parser.parse_args()
     os.umask(0o077)
     if not sys.stdin.isatty():
@@ -241,6 +237,13 @@ def main() -> int:
                 + ("0009 checkpoint" if last == original_timestamp else
                    "0028 target" if last == target_timestamp else "other or absent")
             )
+            if last == target_timestamp:
+                state = migration_state(password)
+                print(
+                    "Migrated read-only checks: "
+                    f"audit membership={state[3]}; audit policies={state[4]}; "
+                    f"vector={state[5] or 'absent'}"
+                )
             print("Read-only inspection complete; no migration was run.")
             return 0
         if not before[4].startswith("17.") or before[:4] != (5, 42, True, 10):
@@ -255,28 +258,6 @@ def main() -> int:
                 print("Probe cancelled; destination unchanged.")
                 return 2
             return probe_migrations(password)
-
-        if args.node_probe:
-            rootcert = verified_rootcert(password)
-            if input(f"Type NODE-PROBE {DESTINATION_REF} to continue: ").strip() != f"NODE-PROBE {DESTINATION_REF}":
-                print("Node probe cancelled; destination unchanged.")
-                return 2
-            env = os.environ.copy()
-            env["DATABASE_URL"] = destination_url(password, rootcert)
-            env["TASK14A_ROLLBACK_PROBE"] = DESTINATION_REF
-            result = run_logged(
-                "node-probe",
-                ["node", str(ROOT / "docs/ops/task14a_probe_drizzle.mjs")], env,
-            )
-            after = counts(DESTINATION_HOST, password)
-            if after[:4] != (5, 42, True, 10) or last_migration_timestamp(password) != original_timestamp:
-                print("Post-probe checkpoint differs; stop and investigate.")
-                return 3
-            if result.returncode == 0 and b"probe=pass_rolled_back" in result.stdout:
-                print("Node/Drizzle migrator passed and rolled back; destination remains at 0009.")
-                return 0
-            print("Node/Drizzle probe failed; destination remains at 0009. Do not run MIGRATE yet.")
-            return result.returncode or 1
 
         rootcert = verified_rootcert(password)
         if input(f"Type MIGRATE {DESTINATION_REF} to continue: ").strip() != f"MIGRATE {DESTINATION_REF}":

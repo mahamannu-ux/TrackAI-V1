@@ -48,6 +48,9 @@ verification, which failed with `SELF_SIGNED_CERT_IN_CHAIN` on the disposable
 project before any migration SQL ran. The Task14a helper tests the CA and
 hostname before invoking Drizzle. Keep the certificate path local; do not
 place a database password in a shell command or repository file.
+Do not attempt a rollback-only dry run by nesting Drizzle's migrator inside
+`db.transaction`: this version's migrator starts and commits through its
+session internally, so the outer transaction does not contain its writes.
 
 ## 2. Back up and prove recovery
 
