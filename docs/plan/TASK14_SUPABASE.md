@@ -1,0 +1,171 @@
+# Task14a: Supabase and the localhost dashboard — Stage 1 plan
+
+**Status, 2026-10-23:** read-only inspection complete; no database, API, or
+rehearsal copy has been changed. Founder approval is required before Stage 2.
+
+## In plain words
+
+Supabase signs people into the dashboard and hosts the PostgreSQL database used
+by this checkout. TrackAI's API checks the sign-in token, decides the person's
+tenant and permissions, and reads PostgreSQL. Drizzle SQL files, not the
+`supabase/` stub, change TrackAI's schema. The localhost dashboard is a web
+client of the API and Supabase Auth; it does not normally read tables directly.
+
+The live database is **19 migrations behind** this branch (0010–0028). Applying
+them is a database release, not a routine `db:push`. The proposed order is a
+verified backup, restored local rehearsal, reviewed migration and backfill,
+then a separate approval for the live apply. The rehearsal PostgreSQL will use
+**127.0.0.1:55433**, and the Task14a API will use **127.0.0.1:8081**. Port
+55432, the `trackai-task20j-pg` container, port 8080, and Task20j's files stay
+untouched. Before either server starts, check that 55433 and 8081 are free.
+
+## What the code and current configuration establish
+
+| Concern | Finding |
+| --- | --- |
+| Human sign-in | `apps/web/src/lib/supabase.ts` uses `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. `apps/web/src/lib/api.ts` sends the session JWT as a bearer token to the API. `apps/api/src/core/middleware/auth.ts` checks its signature against `SUPABASE_URL`'s JWKS; `SUPABASE_JWT_SECRET` is present in the main checkout's API environment but this middleware does not read it. |
+| Database | `apps/api/src/core/db/index.ts` constructs a `pg.Pool` from `DATABASE_URL`. The main checkout's active URL was parsed without printing it: it targets Supabase's shared **transaction pooler on 6543**, not a direct 5432 connection. The login role is `postgres`; the server reported `CREATEROLE=true`, `SUPERUSER=false`. A separate non-owner API runtime role has not been demonstrated. |
+| Migrations | `apps/api/drizzle.config.ts` reads `DATABASE_URL`; `npm run db:migrate -w apps/api` uses Drizzle Kit. `supabase/` is a linked-project stub. |
+| Storage and functions | No TrackAI application use of Supabase Storage or Edge Functions was found in this checkout. |
+| Local ports | `apps/api/src/index.ts:4` defaults to 8080; `apps/web/src/lib/api.ts:19` defaults to 8081. Set `PORT=8081` on the API and `NEXT_PUBLIC_API_URL=http://127.0.0.1:8081` on the web process explicitly. Set `FRONTEND_URL` to the actual local web origin for CORS. |
+
+The current API pool is long-lived. Transaction pooling can work because
+`audit-reader.ts:21-29` sets tenant state and role inside the caller's
+transaction. The production code search found transaction-scoped advisory
+locks (`pg_advisory_xact_lock`), and no `LISTEN`, session advisory lock, or
+non-local `SET` in request code. The `pg`/Drizzle path does not explicitly
+enable named prepared statements. Supabase says transaction mode does not
+support prepared statements or session state; rehearse the actual API queries
+through 6543 before treating this as verified. Migration and `pg_dump` should
+use a direct or session-mode connection, to be obtained from Supabase's Connect
+dialog; neither should be run through the API's transaction pooler by default.
+
+## Live schema inventory (read-only SQL, 2026-10-23)
+
+`drizzle.__drizzle_migrations` has **10 records**, with journal timestamps for
+0000–0009; the record ID sequence has a gap, which does not imply a missing
+migration. The repository journal has **29 entries**, 0000–0028. Pending:
+0010, 0011, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021,
+0022, 0023, 0024, 0025, 0026, 0027, 0028. The Task19g handoff independently
+reported the same end point at 0009.
+
+**Ledger discrepancy to resolve in rehearsal:** the live hashes for 0000 and
+0009 differ from the current SQL files. The 0000 hash matches an older Git
+version; 0009's hash did not match the versions in the local file history.
+Drizzle orders pending migrations by timestamp and may not detect this drift.
+Do not alter a merged migration or repair the ledger by hand. Compare the
+actual schema and a restored copy against the expected pre-0010 schema, and
+stop if there is an unexplained difference.
+
+`pgcrypto` 1.3 is installed. `vector` is available at 0.8.2 but **not yet
+installed**, consistent with pending 0011. The live `postgres` role can create
+roles but is not a superuser; this supports, but does not prove, 0024's full
+grant/policy sequence. There is no live `security_findings`, `attesta_records`,
+or `fleet_configurations` table yet, so their later migrations cannot be
+judged from live row counts until the local rehearsal reaches them.
+
+**B5:** migration `0000_solid_annihilus.sql:248-263` specifies 11
+`authenticated` SELECT policies. Seven exist. RLS is on for all 11 targets,
+but policies are absent on `scm_repositories`, `scm_pull_requests`,
+`scm_contributors`, and `scm_branches`. The frontend uses the protected API,
+but the asymmetry is still a security/design finding for Task20 lead review.
+No policy change is part of this migration plan; decide its disposition before
+claiming the live project has the intended B5 policy set.
+
+## Pending migration risk and required follow-up
+
+| SQL | Main risk or check |
+| --- | --- |
+| `0010_cooing_darkhawk.sql:108-125` | Evidence-table foreign keys and indexes; check existing rows and lock duration. |
+| `0011_plain_xavin.sql:1,39-58` | Installs `vector`, updates every existing intention, then requires new NOT NULL columns and builds indexes. Check extension privileges and intention count; this is a likely table rewrite/long lock. |
+| `0012_gray_warbird.sql:1-7` | Alters existing evidence tables; compare pre-existing constraints. |
+| `0013_task6_security_storage.sql:93-107` and `0014_spotty_serpent_society.sql:92-126` | Security/audit tables and triggers; check old data against constraints and trigger creation on the restored copy. |
+| `0015_aromatic_blink.sql:1-10` | Alters existing tables; inspect lock and validation time in rehearsal. |
+| `0016_attesta_subjects.sql:59-89` through `0023_attesta_audit_seals.sql:71-277` | New Attesta tables, constraints, indexes and append-only triggers; test pgcrypto/`pg_catalog.sha256` support and pre-existing row compatibility. |
+| `0024_audit_db_role.sql:5-25` | Creates `trackai_audit_reader`, grants two SELECT privileges and membership to `CURRENT_USER`, then adds tenant-bound policies. The live migration role has `CREATEROLE` but is not superuser. Confirm full migration in rehearsal. A distinct API runtime role needs an additional reviewed `GRANT trackai_audit_reader TO <runtime role>`; otherwise audited reads return 503 (`audit-reader.ts:22`, Task16e2 handoff). Do not assume the `postgres` login is that distinct runtime role. |
+| `0025_security_v2_ingest.sql:192-260,267-350` | Widens `security_findings` with many drops/adds and checks, and adds seven tenant tables. The first creation of `security_findings` in 0013 precedes this; measure lock time and validate rows on the restored copy before live apply. |
+| `0026_security_settings_signing.sql:123-135` | Replaces fleet checks and adds signed-settings tables/triggers; check existing fleet rows. |
+| `0027_attesta_security_seals.sql:55-104,305-436` | Replaces the `attesta_records` shape check, adds seal/report tables and guard triggers; validate old records and lock time. |
+| `0028_friendly_mystique.sql:1-2` | Adds nullable merger fields. Afterward, run Task19g merger backfill in dry-run mode, review counts per tenant, then separately approve `--confirm`. |
+
+After schema apply, also review whether `reconcile:task4-wave5-pending` has
+stranded pending batches; its default dry run must precede any confirmed
+repair. Task15op requires an initial `attesta:security-seal --now` dry run,
+then a separately approved `--confirm --now` before security period reports.
+These are data-writing operations and are not bundled into schema approval.
+
+## Architecture choice for the founder
+
+TrackAI uses Supabase-specific **Auth** (including JWT/JWKS), the hosted
+`auth` schema and `authenticated` role, and its connection endpoints. Managed
+backup, PITR, and network controls also depend on the chosen Supabase plan.
+The data model and Drizzle migrations are PostgreSQL and mostly portable,
+subject to available extensions, roles, trigger privileges, and an Auth
+adapter. Task14's GCP SaaS mode can retain Supabase Auth while choosing a
+private GCP PostgreSQL later; a customer VPC or self-hosted mode needs its
+own Auth/JWKS issuer, PostgreSQL operations and backup contract. Task15n's
+KMS/Rekor/TSA signing and trust decisions are separate from the database
+provider; Supabase does not supply or validate those keys.
+
+Recommended split: disposable local PostgreSQL and the Task20j local auth
+stub for development; a separate Supabase project for the founder's persistent
+dashboard; a future production project/database with its own access and
+recovery policy. This costs another database/project and operational setup,
+but prevents development resets and migration rehearsals from affecting
+production data. No provider or plan-tier decision is made here. Supabase's
+current documentation says paid Pro/Team/Enterprise projects have daily
+backups with different retention; PITR is an add-on and restore interrupts
+the project. Confirm the project's actual plan, entitlement, backup age,
+network restrictions and price in its dashboard before scheduling a live
+change. Sources: [connections](https://supabase.com/docs/guides/database/connecting-to-postgres),
+[backups](https://supabase.com/docs/guides/platform/backups).
+
+## Proposed Stage 2 sequence and approval gates
+
+1. **Before backup:** record the project reference privately, backup tier,
+   available restore point, direct/session connection method, current ledger
+   and target Git SHA. Quiesce only the relevant writes during the live window.
+   Verify that 8081 and 55433 are free. Never inspect or stop the Task20j
+   container or bind 8080/55432.
+2. **Backup (founder approval to create it):** take a Supabase backup/PITR
+   point if the project supports one, and `pg_dump` a full logical copy via
+   direct/session mode to a locally encrypted, owner-only file kept by the
+   founder outside the repository. Include `public`, `drizzle`, and needed
+   `auth` objects; verify the dump is readable without printing rows or
+   secrets. A `pg_dump` is a snapshot, not a restore test.
+3. **Rehearsal:** restore to a named isolated PostgreSQL 16 + pgvector
+   container bound **only to 127.0.0.1:55433**. This copy must not be the
+   `trackai-task20j-pg` container. Stop if Supabase-managed roles/extensions
+   cannot be represented faithfully. Compare pre-0010 schema and ledger,
+   including the two hash discrepancies and B5 policy set. Apply
+   `npm run db:migrate -w apps/api` with `DATABASE_URL` pointed solely to
+   55433; run `npm exec --workspace=apps/api -- drizzle-kit check`; capture
+   migration duration and only names/counts. Rehearse the audit role grant
+   if a separate runtime role exists. Dry-run each backfill/reconcile/seal
+   command and inspect per-tenant counts.
+4. **Checkpoint:** founder reviews the rehearsal evidence, backup restore
+   result, lock timings, policy/hash findings, and exact live scope. Obtain
+   explicit approval for the live migration. If schema drift or unbounded
+   locks appear, revise the plan before approval; never edit merged SQL.
+5. **Live apply:** use the approved direct/session database connection and
+   `npm run db:migrate -w apps/api`. Confirm 29 journal entries, expected
+   extensions/tables/policies and `drizzle-kit check`. Apply the reviewed
+   runtime-role grant if needed. Run post-steps in dry-run mode; seek separate
+   approval for each `--confirm` based on its actual counts.
+6. **Smoke:** start this branch's API with `PORT=8081` and the live project
+   URL, and the web app with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8081`.
+   Check `http://127.0.0.1:8081/health`, then founder browser sign-in for an
+   admin and auditor; load Task2 lifecycle, Audit, Questions and Security.
+   Verify a Company A user cannot see Company B data. Record status and
+   counts only. Keep Task20j's API on 8080 unchanged.
+7. **Rollback route:** stop this Task14a API and any writing jobs; restore
+   the pre-apply Supabase backup/PITR point or the verified encrypted dump,
+   then reconnect the old application version and re-run the smoke. Database
+   restore can overwrite post-backup writes and cause downtime, so it requires
+   a separate explicit decision. **Recovery time is unknown until a timed
+   restore rehearsal**; record the measured time and any data-loss window
+   before live approval rather than promising an untested interval.
+
+**Decision requested at Checkpoint 1:** approve this Stage 2 backup and
+rehearsal plan, including local port 55433. Live migration and each data
+backfill remain separate approval gates.
