@@ -1,0 +1,23 @@
+docs/handoffs/Task14a-supabase-database_HANDOFF.md
+  s_1cf7357bdc9187::t_cdc87556ad04b8 74-86
+docs/ops/DATABASE_MIGRATION_RUNBOOK.md
+  s_1cf7357bdc9187::t_24dc9346a31936 51-53
+docs/ops/task14a_migrate_disposable.py
+  s_1cf7357bdc9187::t_06dee24b78600d 240-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "1f43becf3975113eec9d1cc920701e232ee4f504",
+  "prompts": {},
+  "sessions": {
+    "s_1cf7357bdc9187": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f97-618d-7150-a179-ef0cdcfe91dd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
