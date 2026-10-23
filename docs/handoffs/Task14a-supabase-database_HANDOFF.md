@@ -15,7 +15,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | | Item | Status |
 |---|---|---|
 | Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; PostgreSQL 17.6. | ✅ |
-| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore passed; Auth sign-in and full service configuration unproved |
+| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore and one recovered-user sign-in after a disposable password reset passed; original password and Okta settings unproved |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Matching Supabase image | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. | 🟡 local pass; review and hosted recovery remain |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
@@ -47,15 +47,24 @@ Auth service sign-in and provider settings still need validation. The
 destination's PostgreSQL is 17.11; the source snapshot was 17.6.
 
 The founder does not know the original email/password account's password.
-`docs/ops/task14a_verify_restored_auth.py` is prepared to locate that one
-copied account from the encrypted backup, ask locally for the destination's
-publishable and secret keys and a new temporary password, reset only the
-copied account through Supabase Auth Admin, then sign in and resolve its
-session. It has passed syntax, backup selection and non-interactive refusal
-checks; it has **not** been run against the destination. A pass would prove
-the restored account is usable after a password reset, not that its original
-password or Okta provider settings work. No keys, email or password are
-printed or stored by the helper.
+`docs/ops/task14a_verify_restored_auth.py` locates that one
+copied account from the encrypted backup, asks locally for the destination's
+publishable and secret keys and a new temporary password, resets only the
+copied account through Supabase Auth Admin, then signs in and resolves its
+session. It passed syntax, backup selection and non-interactive refusal checks.
+The founder then ran it on the disposable project: Auth Admin found the
+restored user, reset that copy's password, issued a sign-in session and
+resolved the session to the same user. This proves the restored account is
+usable after a password reset, not that its original password or Okta provider
+settings work. No keys, email or password were printed or stored by the helper.
+
+`docs/ops/task14a_migrate_disposable.py` is prepared for the next isolated
+stage. It hardcodes the disposable project reference and session-pooler host,
+asks locally for that project's database password, verifies the restored 0009
+ledger and counts, then runs 0010–0028 and the three default dry-run post-steps.
+It captures command output only in private owner-readable logs. The helper's
+syntax, journal lookup and non-interactive refusal were checked; no managed
+database migration has yet run.
 
 ## Implemented interfaces
 
@@ -105,7 +114,7 @@ merged-migration freeze, 0024's role-membership grant now resolves
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ | Task16e2/Task20 owners must review the founder-authorized 0024 correction and its changed file hash. The matching-image rehearsal passed, but independent security review has not. | Blocking: live migration. |
-| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts. Prove Auth sign-in and any required Okta settings, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: reliable Free-tier rollback; full service recovery time and lost-write window unmeasured. |
+| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts. A copied email account signed in after a disposable password reset; original-password and Okta sign-in remain unproved. Decide the Okta configuration/recovery procedure, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |

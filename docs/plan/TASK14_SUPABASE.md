@@ -306,7 +306,10 @@ ERROR or WARNING. It produced five Auth users, 42 public base tables and 10
 Drizzle entries, matching the source checkpoint. This demonstrates a
 database-content recovery path into a fresh managed project. The backup has
 one email/password identity and four users with Okta identities. Auth service
-sign-in, Okta configuration, API keys, and any wider project settings are
-still unverified, so the measured 129.0 seconds is only the database restore
-portion of a recovery-time estimate. Live 0010–0028 migration still awaits
+sign-in was then tested through the Auth Admin and user APIs: after resetting
+the one copied email account's password **in the disposable project**, Auth
+issued a session that resolved to the restored user. The original password,
+Okta configuration, and wider project settings remain unverified, so the
+measured 129.0 seconds is only the database restore portion of a recovery-time
+estimate. Live 0010–0028 migration still awaits
 owner review, a complete recovery decision and separate founder approval.
