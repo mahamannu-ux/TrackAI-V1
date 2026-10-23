@@ -1,0 +1,19 @@
+docs/ops/task14a_probe_drizzle.mjs
+  s_1cf7357bdc9187::t_25e24d05604d66 20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "a1b5abc5c59aaf038d031b9cc58fa7542ed5002d",
+  "prompts": {},
+  "sessions": {
+    "s_1cf7357bdc9187": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12f97-618d-7150-a179-ef0cdcfe91dd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
