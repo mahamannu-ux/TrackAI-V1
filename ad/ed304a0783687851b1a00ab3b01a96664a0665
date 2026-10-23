@@ -1,0 +1,19 @@
+docs/ops/DATABASE_MIGRATION_RUNBOOK.md
+  s_148c5698b1601f::t_0ed1544178d9fd 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "aded304a0783687851b1a00ab3b01a96664a0665",
+  "prompts": {},
+  "sessions": {
+    "s_148c5698b1601f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16999-04f8-7132-9449-4e791fee42d1",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
