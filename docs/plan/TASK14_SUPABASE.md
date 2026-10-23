@@ -313,3 +313,17 @@ Okta configuration, and wider project settings remain unverified, so the
 measured 129.0 seconds is only the database restore portion of a recovery-time
 estimate. Live 0010–0028 migration still awaits
 owner review, a complete recovery decision and separate founder approval.
+
+### Managed migration rehearsal (2026-10-24)
+
+The disposable project then applied 0010–0028 in **77.8 seconds**. This
+occurred during a diagnostic Node/Drizzle run that was incorrectly expected
+to roll back: Drizzle's migrator committed its own transaction. The unsafe
+probe was removed. Read-only follow-up verified PostgreSQL 17.11, five Auth
+users, 84 public tables, 29 Drizzle ledger entries through 0028, audit-reader
+role membership, both audit policies and vector 0.8.2. The first managed
+`db:migrate` attempt had failed before SQL because node-postgres rejected the
+pooler certificate chain. The successful run used the downloaded Supabase CA
+with `sslmode=verify-full` and hostname verification. The three managed
+post-step dry runs and dashboard/API smoke remain pending. No write was made
+to the original live project, which remains at 0009.

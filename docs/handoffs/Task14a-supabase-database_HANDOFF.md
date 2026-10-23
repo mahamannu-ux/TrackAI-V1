@@ -1,8 +1,9 @@
 # Task14a-supabase-database Handoff — Supabase schema recovery
 
-> Status: 🟡 Founder-authorized 0024 correction passed on the full restored
-> Supabase PostgreSQL copy. Owner review, a usable Free-tier recovery route
-> and separate live-apply approval remain. The live project remains at 0009.
+> Status: 🟡 Founder-authorized 0024 correction passed on local and disposable
+> managed Supabase copies. Managed post-step dry runs, owner review, the
+> Free-tier recovery decision and separate live-apply approval remain. The
+> live project remains at 0009.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
 This session explains Supabase's Auth/database role, inventories the live
@@ -18,6 +19,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore and one recovered-user sign-in after a disposable password reset passed; original password and Okta settings unproved |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Matching Supabase image | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. | 🟡 local pass; review and hosted recovery remain |
+| Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. | 🟡 managed migration passed; post-step dry runs and broader Auth/settings checks pending |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
 | Review | Task20 lead security review and independent cross-agent review remain. | ⬜ |
@@ -80,10 +82,12 @@ second `--node-probe` then exited zero after 77.8 s, but its checkpoint check
 reported a change. **The Node probe had a transaction design error:** Drizzle's
 migrator starts and commits its own transaction, defeating the proposed outer
 rollback. The command likely committed 0010–0028 despite printing a
-`pass_rolled_back` marker. The actual destination state is being checked with
-read-only `--inspect`; no managed migration completion is claimed yet. The
-unsafe Node probe has been removed. Do not run `MIGRATE` or restore again
-until the ledger, tables, role and policies are verified.
+`pass_rolled_back` marker. The subsequent read-only `--inspect` reported
+PostgreSQL 17.11, five Auth users, 84 public tables, 29 ledger entries through
+0028, audit membership true, both audit policies and vector 0.8.2. Therefore
+the migration did commit. The unsafe Node probe has been removed. Do not run
+`MIGRATE` or restore again. The helper's `--poststeps` mode now checks this
+exact migrated checkpoint and runs the three default dry-run post-steps.
 
 ## Implemented interfaces
 

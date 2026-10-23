@@ -198,6 +198,40 @@ def probe_migrations(password: str) -> int:
     return 1
 
 
+def run_poststep_dry_runs(env: dict[str, str]) -> int:
+    dry_runs = [
+        ("task19g-dry-run", ["npm", "run", "backfill:task19g-merged-by", "-w", "apps/api"]),
+        ("task4-dry-run", ["npm", "run", "reconcile:task4-wave5-pending", "-w", "apps/api"]),
+        ("security-seal-dry-run", ["npm", "run", "attesta:security-seal", "-w", "apps/api", "--", "--now"]),
+    ]
+    for name, command in dry_runs:
+        result = run_logged(name, command, env)
+        if result.returncode:
+            print("A post-step dry run failed; do not use an apply flag.")
+            return result.returncode
+        output = result.stdout.decode(errors="replace")
+        if name == "task19g-dry-run":
+            values = [int(x) for x in re.findall(r'"would_update":(\d+)', output)]
+            summary = f"tenants={len(values)}, candidates={sum(values)}"
+            dry_run_verified = bool(values) and output.count('"dry_run":true') == len(values)
+        elif name == "task4-dry-run":
+            selected = re.search(r"^selected_rows=(\d+)", output, re.M)
+            changed = re.search(r"^database_changes=(\d+)", output, re.M)
+            summary = (
+                f"selected={selected.group(1) if selected else '?'}; "
+                f"changes={changed.group(1) if changed else '?'}"
+            )
+            dry_run_verified = "mode=dry-run" in output
+        else:
+            dry_run_verified = "mode=dry-run" in output
+            summary = f"dry-run flag present={dry_run_verified}"
+        print(f"{name}: {summary}")
+        if not dry_run_verified:
+            print("Dry-run output could not be verified; stop here.")
+            return 3
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
@@ -208,6 +242,10 @@ def main() -> int:
     mode.add_argument(
         "--probe", action="store_true",
         help="Run pending SQL and ledger inserts in one transaction, then roll back",
+    )
+    mode.add_argument(
+        "--poststeps", action="store_true",
+        help="Run the three default dry-run post-steps on a verified 0028 destination",
     )
     args = parser.parse_args()
     os.umask(0o077)
@@ -245,6 +283,31 @@ def main() -> int:
                     f"vector={state[5] or 'absent'}"
                 )
             print("Read-only inspection complete; no migration was run.")
+            return 0
+        if args.poststeps:
+            after = migration_state(password)
+            if (
+                not before[4].startswith("17.")
+                or before[:4] != (5, 84, True, 29)
+                or after[:5] != (29, target_timestamp, 5, True, 2)
+                or not after[5]
+            ):
+                print("Stopped: destination is not the verified 0028 checkpoint.")
+                return 2
+            rootcert = verified_rootcert(password)
+            env = os.environ.copy()
+            env["DATABASE_URL"] = destination_url(password, rootcert)
+            env.pop("TASK4_WAVE5_PENDING_RECONCILE_APPLY", None)
+            env.pop("TASK5_EPHEMERAL_DATABASE", None)
+            env.pop("TASK6_EPHEMERAL_DATABASE", None)
+            result = run_poststep_dry_runs(env)
+            if result:
+                return result
+            final = counts(DESTINATION_HOST, password)
+            if final[:4] != (5, 84, True, 29):
+                print("Post-step checkpoint differs; stop and investigate.")
+                return 3
+            print("All three default dry runs passed; destination remains at 0028.")
             return 0
         if not before[4].startswith("17.") or before[:4] != (5, 42, True, 10):
             print("Stopped: destination is not the restored 0009 checkpoint.")
@@ -287,37 +350,7 @@ def main() -> int:
             print("Post-migration checks differ; stop before any further step.")
             return 3
 
-        dry_runs = [
-            ("task19g-dry-run", ["npm", "run", "backfill:task19g-merged-by", "-w", "apps/api"]),
-            ("task4-dry-run", ["npm", "run", "reconcile:task4-wave5-pending", "-w", "apps/api"]),
-            ("security-seal-dry-run", ["npm", "run", "attesta:security-seal", "-w", "apps/api", "--", "--now"]),
-        ]
-        for name, command in dry_runs:
-            result = run_logged(name, command, env)
-            if result.returncode:
-                print("A post-step dry run failed; do not use an apply flag.")
-                return result.returncode
-            output = result.stdout.decode(errors="replace")
-            if name == "task19g-dry-run":
-                values = [int(x) for x in re.findall(r'"would_update":(\d+)', output)]
-                summary = f"tenants={len(values)}, candidates={sum(values)}"
-                dry_run_verified = bool(values) and output.count('"dry_run":true') == len(values)
-            elif name == "task4-dry-run":
-                selected = re.search(r"^selected_rows=(\d+)", output, re.M)
-                changed = re.search(r"^database_changes=(\d+)", output, re.M)
-                summary = (
-                    f"selected={selected.group(1) if selected else '?'}; "
-                    f"changes={changed.group(1) if changed else '?'}"
-                )
-                dry_run_verified = "mode=dry-run" in output
-            else:
-                dry_run_verified = "mode=dry-run" in output
-                summary = f"dry-run flag present={dry_run_verified}"
-            print(f"{name}: {summary}")
-            if not dry_run_verified:
-                print("Dry-run output could not be verified; stop here.")
-                return 3
-        return 0
+        return run_poststep_dry_runs(env)
     except Exception as exc:
         print(f"Connection or verification failed: {type(exc).__name__}")
         return 1
