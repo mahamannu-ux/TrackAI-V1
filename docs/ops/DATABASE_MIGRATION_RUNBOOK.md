@@ -54,7 +54,9 @@ connection with `sslmode=verify-full` and `sslrootcert`. The installed
 node-postgres parser interprets plain `sslmode=require` as certificate
 verification, which failed with `SELF_SIGNED_CERT_IN_CHAIN` on the disposable
 project before any migration SQL ran. The Task14a helper tests the CA and
-hostname before invoking Drizzle. Keep the certificate path local; do not
+hostname before every read-only check and Drizzle call. The restore helper
+now uses the same certificate verification for its preflight, `psql` stream
+and postflight. Keep the certificate path local; do not
 place a database password in a shell command or repository file.
 Do not attempt a rollback-only dry run by nesting Drizzle's migrator inside
 `db.transaction`: this version's migrator starts and commits through its
@@ -116,7 +118,7 @@ release these include `backfill:task19g-merged-by`,
 `reconcile:task4-wave5-pending`, and `attesta:security-seal --now`. Each
 `--confirm` or apply flag needs a separate approval with its exact scope.
 Check whether the API runtime role differs from the migration role; if so,
-migration 0024's `GRANT ... TO CURRENT_USER` does not supply the runtime role
+migration 0024's grant to its resolved current user does not supply the runtime role
 with `trackai_audit_reader` membership. Rehearse a reviewed, narrow grant and
 verify an auditor read before live use.
 

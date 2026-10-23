@@ -313,6 +313,11 @@ Okta configuration, and wider project settings remain unverified, so the
 measured 129.0 seconds is only the database restore portion of a recovery-time
 estimate. Live 0010–0028 migration still awaits
 owner review, a complete recovery decision and separate founder approval.
+The original restore stream used encrypted TLS without checking the pooler's
+certificate. An independent review identified this gap; the helper now pins
+the disposable host and requires the downloaded CA and `verify-full` for
+preflight, restore and postflight. The earlier restore result remains observed
+but cannot be retroactively upgraded to a certificate-verified connection.
 
 ### Managed migration rehearsal (2026-10-24)
 

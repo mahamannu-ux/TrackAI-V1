@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 DESTINATION_REF = "glwwxaobocwoczvjmrod"
+DESTINATION_HOST = "aws-0-ap-northeast-1.pooler.supabase.com"
 BACKUP_DIR = Path("/Users/manishmahajan/AIProjects/_task14a_backup_20261024")
 MAGIC = b"T14A1"
 RESERVED_ROLE_SETTING = b'ALTER ROLE "supabase_admin" SET "statement_timeout" TO \'0\';'
@@ -48,14 +49,23 @@ def omit_reserved_role_setting(roles: bytes) -> bytes:
     return b"".join(line for line in lines if line.strip() != RESERVED_ROLE_SETTING)
 
 
-def connect(host: str, password: str, *, readonly: bool):
+def read_rootcert() -> Path:
+    raw = input("Full path to disposable project's downloaded SSL CA certificate: ").strip()
+    rootcert = Path(raw).expanduser().resolve(strict=True)
+    if not rootcert.is_file() or b"-----BEGIN CERTIFICATE-----" not in rootcert.read_bytes():
+        raise ValueError("Expected a readable PEM certificate file")
+    return rootcert
+
+
+def connect(password: str, rootcert: Path, *, readonly: bool):
     connection = psycopg2.connect(
-        host=host,
+        host=DESTINATION_HOST,
         port=5432,
         user=f"postgres.{DESTINATION_REF}",
         password=password,
         dbname="postgres",
-        sslmode="require",
+        sslmode="verify-full",
+        sslrootcert=str(rootcert),
         connect_timeout=15,
     )
     if readonly:
@@ -63,8 +73,8 @@ def connect(host: str, password: str, *, readonly: bool):
     return connection
 
 
-def counts(host: str, password: str) -> tuple[int, int, bool, int, str]:
-    connection = connect(host, password, readonly=True)
+def counts(password: str, rootcert: Path) -> tuple[int, int, bool, int, str]:
+    connection = connect(password, rootcert, readonly=True)
     try:
         with connection:
             with connection.cursor() as cursor:
@@ -128,14 +138,15 @@ def main() -> int:
         print("Terminal cannot hide password input; no database input was read.")
         return 2
 
-    print("In the disposable project's Connect panel, choose Session pooler.")
-    host = input("Session pooler host (no URL or password): ").strip().lower()
-    if not host.endswith(".pooler.supabase.com") or "/" in host or ":" in host:
-        print("Rejected: expected the Session pooler host only.")
+    print(f"Fixed disposable Session pooler host: {DESTINATION_HOST}")
+    try:
+        rootcert = read_rootcert()
+    except Exception as exc:
+        print(f"Certificate check failed: {type(exc).__name__}")
         return 2
     password = getpass.getpass("Disposable project database password (hidden): ")
     try:
-        before = counts(host, password)
+        before = counts(password, rootcert)
         print(
             "Destination before restore: "
             f"PostgreSQL {before[4]}; Auth users={before[0]}; "
@@ -160,12 +171,13 @@ def main() -> int:
         )
         command = [
             "psql", "-X", "-q", "--single-transaction", "-v", "ON_ERROR_STOP=1",
-            "-h", host, "-p", "5432", "-U", f"postgres.{DESTINATION_REF}",
+            "-h", DESTINATION_HOST, "-p", "5432", "-U", f"postgres.{DESTINATION_REF}",
             "-d", "postgres", "-f", "-",
         ]
         child_env = os.environ.copy()
         child_env["PGPASSWORD"] = password
-        child_env["PGSSLMODE"] = "require"
+        child_env["PGSSLMODE"] = "verify-full"
+        child_env["PGSSLROOTCERT"] = str(rootcert)
         child_env["PGCONNECT_TIMEOUT"] = "15"
         started = time.monotonic()
         result = subprocess.run(
@@ -179,7 +191,7 @@ def main() -> int:
             print("Restore failed; do not retry or edit the destination yet.")
             return result.returncode
 
-        after = counts(host, password)
+        after = counts(password, rootcert)
         print(
             "Destination after restore: "
             f"Auth users={after[0]}; public tables={after[1]}; "

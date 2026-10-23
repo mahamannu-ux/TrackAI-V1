@@ -21,13 +21,12 @@ from urllib.parse import quote
 
 import psycopg2
 
-from task14a_restore_disposable import BACKUP_DIR, DESTINATION_REF, connect, counts
+from task14a_restore_disposable import (
+    BACKUP_DIR, DESTINATION_HOST, DESTINATION_REF, connect, counts, read_rootcert,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DESTINATION_HOST = "aws-0-ap-northeast-1.pooler.supabase.com"
-
-
 def expected_timestamps() -> tuple[int, int]:
     journal = json.loads((ROOT / "apps/api/drizzle/meta/_journal.json").read_text())
     entries = journal["entries"]
@@ -36,8 +35,8 @@ def expected_timestamps() -> tuple[int, int]:
     return entries[9]["when"], entries[-1]["when"]
 
 
-def migration_state(password: str) -> tuple[int, int, int, bool, int, str | None]:
-    connection = connect(DESTINATION_HOST, password, readonly=True)
+def migration_state(password: str, rootcert: Path) -> tuple[int, int, int, bool, int, str | None]:
+    connection = connect(password, rootcert, readonly=True)
     try:
         with connection:
             with connection.cursor() as cursor:
@@ -64,8 +63,8 @@ def migration_state(password: str) -> tuple[int, int, int, bool, int, str | None
         connection.close()
 
 
-def last_migration_timestamp(password: str) -> int:
-    connection = connect(DESTINATION_HOST, password, readonly=True)
+def last_migration_timestamp(password: str, rootcert: Path) -> int:
+    connection = connect(password, rootcert, readonly=True)
     try:
         with connection:
             with connection.cursor() as cursor:
@@ -106,34 +105,10 @@ def destination_url(password: str, rootcert: Path) -> str:
     )
 
 
-def verified_rootcert(password: str) -> Path:
-    raw = input("Full path to disposable project's downloaded SSL CA certificate: ").strip()
-    rootcert = Path(raw).expanduser().resolve(strict=True)
-    if not rootcert.is_file() or b"-----BEGIN CERTIFICATE-----" not in rootcert.read_bytes():
-        raise ValueError("Expected a readable PEM certificate file")
-    connection = psycopg2.connect(
-        host=DESTINATION_HOST,
-        port=5432,
-        user=f"postgres.{DESTINATION_REF}",
-        password=password,
-        dbname="postgres",
-        sslmode="verify-full",
-        sslrootcert=str(rootcert),
-        connect_timeout=15,
-    )
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-    finally:
-        connection.close()
-    print("Disposable pooler TLS certificate and hostname verified.")
-    return rootcert
-
-
-def probe_migrations(password: str) -> int:
+def probe_migrations(password: str, rootcert: Path) -> int:
     """Execute Drizzle's SQL and ledger inserts in one transaction, then roll back."""
     journal = json.loads((ROOT / "apps/api/drizzle/meta/_journal.json").read_text())
-    connection = connect(DESTINATION_HOST, password, readonly=False)
+    connection = connect(password, rootcert, readonly=False)
     failure = None
     migration_tag = "none"
     statement_number = 0
@@ -168,10 +143,10 @@ def probe_migrations(password: str) -> int:
         finally:
             connection.close()
 
-    after = counts(DESTINATION_HOST, password)
+    after = counts(password, rootcert)
     original_timestamp, _ = expected_timestamps()
     unchanged = after[:4] == (5, 42, True, 10) and (
-        last_migration_timestamp(password) == original_timestamp
+        last_migration_timestamp(password, rootcert) == original_timestamp
     )
     if not unchanged:
         print("Post-probe checkpoint differs; stop and investigate.")
@@ -259,24 +234,30 @@ def main() -> int:
         print("Terminal cannot hide password input; no password was read.")
         return 2
 
+    try:
+        rootcert = read_rootcert()
+    except Exception as exc:
+        print(f"Certificate check failed: {type(exc).__name__}")
+        return 2
     password = getpass.getpass("Disposable project database password (hidden): ")
     try:
         original_timestamp, target_timestamp = expected_timestamps()
-        before = counts(DESTINATION_HOST, password)
+        before = counts(password, rootcert)
+        print("Disposable pooler TLS certificate and hostname verified.")
         print(
             "Disposable destination state: "
             f"PostgreSQL {before[4]}; Auth users={before[0]}; "
             f"public tables={before[1]}; ledger entries={before[3]}"
         )
         if args.inspect:
-            last = last_migration_timestamp(password) if before[2] else None
+            last = last_migration_timestamp(password, rootcert) if before[2] else None
             print(
                 "Last Drizzle migration: "
                 + ("0009 checkpoint" if last == original_timestamp else
                    "0028 target" if last == target_timestamp else "other or absent")
             )
             if last == target_timestamp:
-                state = migration_state(password)
+                state = migration_state(password, rootcert)
                 print(
                     "Migrated read-only checks: "
                     f"audit membership={state[3]}; audit policies={state[4]}; "
@@ -285,7 +266,7 @@ def main() -> int:
             print("Read-only inspection complete; no migration was run.")
             return 0
         if args.poststeps:
-            after = migration_state(password)
+            after = migration_state(password, rootcert)
             if (
                 not before[4].startswith("17.")
                 or before[:4] != (5, 84, True, 29)
@@ -294,7 +275,6 @@ def main() -> int:
             ):
                 print("Stopped: destination is not the verified 0028 checkpoint.")
                 return 2
-            rootcert = verified_rootcert(password)
             env = os.environ.copy()
             env["DATABASE_URL"] = destination_url(password, rootcert)
             env.pop("TASK4_WAVE5_PENDING_RECONCILE_APPLY", None)
@@ -303,7 +283,7 @@ def main() -> int:
             result = run_poststep_dry_runs(env)
             if result:
                 return result
-            final = counts(DESTINATION_HOST, password)
+            final = counts(password, rootcert)
             if final[:4] != (5, 84, True, 29):
                 print("Post-step checkpoint differs; stop and investigate.")
                 return 3
@@ -312,7 +292,7 @@ def main() -> int:
         if not before[4].startswith("17.") or before[:4] != (5, 42, True, 10):
             print("Stopped: destination is not the restored 0009 checkpoint.")
             return 2
-        if last_migration_timestamp(password) != original_timestamp:
+        if last_migration_timestamp(password, rootcert) != original_timestamp:
             print("Stopped: last migration timestamp differs from 0009.")
             return 2
 
@@ -320,9 +300,8 @@ def main() -> int:
             if input(f"Type PROBE {DESTINATION_REF} to continue: ").strip() != f"PROBE {DESTINATION_REF}":
                 print("Probe cancelled; destination unchanged.")
                 return 2
-            return probe_migrations(password)
+            return probe_migrations(password, rootcert)
 
-        rootcert = verified_rootcert(password)
         if input(f"Type MIGRATE {DESTINATION_REF} to continue: ").strip() != f"MIGRATE {DESTINATION_REF}":
             print("Migration cancelled; destination unchanged.")
             return 2
@@ -339,7 +318,7 @@ def main() -> int:
             print("Migration failed; do not retry or edit the destination yet.")
             return migration.returncode
 
-        after = migration_state(password)
+        after = migration_state(password, rootcert)
         print(
             "Destination after migration: "
             f"ledger={after[0]}; Auth users={after[2]}; "

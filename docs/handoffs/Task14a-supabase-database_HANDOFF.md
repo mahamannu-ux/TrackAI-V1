@@ -22,7 +22,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. | 🟡 managed database and one Auth route passed; broader Auth/settings checks pending |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
-| Review | Task20 lead security review and independent cross-agent review remain. | ⬜ |
+| Review | Independent review found that helper preflight/restore TLS lacked certificate verification; the helpers now pin the disposable host and require the downloaded CA with hostname verification. Task20 owner review of 0024 remains. | 🟡 re-review pending |
 
 The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
 managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
@@ -95,6 +95,12 @@ reported dry-run mode with no signing or writes and no seal outcomes. All
 three commands exited zero, and the destination remained at 0028. No apply
 flag was used. The helper's Task4 summary parser was corrected to display
 `none` rather than `?` for that value; the private log already showed `none`.
+An independent review then found that the original restore helper and the
+Python read-only checks used encrypted `sslmode=require` without authenticating
+the pooler certificate, and accepted any pooler hostname. The helper now pins
+the disposable host and uses the downloaded CA with `verify-full` for every
+database connection, including the `psql` restore stream. This closes the
+future-use gap; it does not retroactively authenticate the earlier restore.
 
 ## Implemented interfaces
 
