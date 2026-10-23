@@ -22,7 +22,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. | 🟡 managed database and one Auth route passed; broader Auth/settings checks pending |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
-| Review | Independent review found that helper preflight/restore TLS lacked certificate verification; the helpers now pin the disposable host and require the downloaded CA with hostname verification. Task20 owner review of 0024 remains. | 🟡 re-review pending |
+| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. Task16e2/Task20 owner review of 0024 remains. | 🟡 owner review pending |
 
 The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
 managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
@@ -169,7 +169,11 @@ on 8081. Local `vector` is 0.8.7; the live project currently offers 0.8.2.
 
 `npm run typecheck`, `npm run lint`, `npm exec --workspace=apps/api --
 drizzle-kit check`, and the command-scoped `npm test` passed; 1,265 tests,
-zero failures. One copied Auth user signed in to the disposable project after
+zero failures. These gates were rerun after local `git merge main` reported
+already up to date; the sandbox-only unit run first hit loopback failures,
+then the same suite passed with command-scoped loopback access. The later TLS
+helper fix passed Python syntax, pinned-host/verified-TLS connection checks
+and independent re-review. One copied Auth user signed in to the disposable project after
 a password reset; browser roles and full Supabase Auth recovery remain unproved.
 
 The October 24 Free-tier rehearsal authenticated three CLI exports and
@@ -220,4 +224,4 @@ and archives are private local files, not Git artifacts.
 
 | Estimate (× T6) | Actual so far (× T6) | Cause of difference |
 |---|---|---|
-| about 0.10× | about 0.13× | Full encrypted dump/restore, PostgreSQL-major correction and the sandbox test rerun. Live migration, founder browser checks and review are not included yet. |
+| about 0.10× | about 0.30× | Full encrypted dump/restore, managed Free-tier recovery rehearsal, two migration failure investigations, TLS correction and sandbox test rerun. Live migration and founder browser checks are not included. |
