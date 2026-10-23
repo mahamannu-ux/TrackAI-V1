@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 DESTINATION_REF = "glwwxaobocwoczvjmrod"
 BACKUP_DIR = Path("/Users/manishmahajan/AIProjects/_task14a_backup_20261024")
 MAGIC = b"T14A1"
+RESERVED_ROLE_SETTING = b'ALTER ROLE "supabase_admin" SET "statement_timeout" TO \'0\';'
 
 
 def decrypt_export(name: str, key: bytes) -> bytes:
@@ -36,6 +37,15 @@ def read_exports() -> tuple[bytes, bytes, bytes]:
     if len(key) != 32:
         raise ValueError("Backup key has an unexpected length")
     return tuple(decrypt_export(name, key) for name in ("roles", "schema", "data"))
+
+
+def omit_reserved_role_setting(roles: bytes) -> bytes:
+    """Leave the destination's provider-owned supabase_admin settings intact."""
+    lines = roles.splitlines(keepends=True)
+    matches = [line for line in lines if line.strip() == RESERVED_ROLE_SETTING]
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one provider-managed role setting")
+    return b"".join(line for line in lines if line.strip() != RESERVED_ROLE_SETTING)
 
 
 def connect(host: str, password: str, *, readonly: bool):
@@ -99,10 +109,12 @@ def main() -> int:
 
     try:
         roles, schema, data = read_exports()
+        roles = omit_reserved_role_setting(roles)
     except Exception as exc:
         print(f"Encrypted export check failed: {type(exc).__name__}")
         return 1
     print("Encrypted roles, schema and data exports authenticated.")
+    print("Provider-managed supabase_admin timeout setting omitted from restore stream.")
     if args.check_archive:
         return 0
 

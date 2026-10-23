@@ -28,9 +28,16 @@ managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
 `docs/ops/task14a_restore_disposable.py` helper authenticates the October 24
 encrypted CLI exports, requires this exact destination project and a fresh
 empty-database check, then streams roles/schema/data to `psql` in one
-transaction. It was syntax-checked and its archive-only mode passed. **It has
-not yet been run against the disposable project.** The password is requested
+transaction. It was syntax-checked and its archive-only mode passed. The password is requested
 only in the founder's interactive Terminal; no credential belongs in chat.
+
+The first managed restore attempt exited at the roles export's
+`ALTER ROLE "supabase_admin" SET "statement_timeout" TO '0'` with a reserved-role
+permission error. It used `psql --single-transaction`; no post-restore state
+was claimed. The helper now omits exactly that provider-owned timeout setting
+from its in-memory restore stream, leaving the authenticated archive intact.
+Its next run must recheck zero Auth users, zero public tables and no Drizzle
+ledger before writing. The corrected managed restore has not yet run.
 
 ## Implemented interfaces
 
