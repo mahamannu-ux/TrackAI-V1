@@ -16,6 +16,14 @@ the live project until Task16e2/Task20 owner review, a demonstrated Free-tier
 recovery route including Auth sign-in, and separate founder approval. The
 live project remains at 0009.
 
+The separate disposable managed project restored the CLI export in 129.0 s,
+validated one copied Auth account after a password reset, and reached 0028
+in 77.8 s. All three default post-step dry runs passed. A diagnostic Node
+probe caused the migration to commit because Drizzle owns an internal
+transaction; the read-only ledger and schema checks confirmed the result.
+This is rehearsal evidence only. Original-password/Okta recovery, owner
+review, a fresh off-site backup and explicit live-apply approval remain.
+
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and

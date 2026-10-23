@@ -216,7 +216,7 @@ def run_poststep_dry_runs(env: dict[str, str]) -> int:
             dry_run_verified = bool(values) and output.count('"dry_run":true') == len(values)
         elif name == "task4-dry-run":
             selected = re.search(r"^selected_rows=(\d+)", output, re.M)
-            changed = re.search(r"^database_changes=(\d+)", output, re.M)
+            changed = re.search(r"^database_changes=([a-z0-9_-]+)$", output, re.M)
             summary = (
                 f"selected={selected.group(1) if selected else '?'}; "
                 f"changes={changed.group(1) if changed else '?'}"

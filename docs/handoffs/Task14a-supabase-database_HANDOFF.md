@@ -1,8 +1,8 @@
 # Task14a-supabase-database Handoff — Supabase schema recovery
 
 > Status: 🟡 Founder-authorized 0024 correction passed on local and disposable
-> managed Supabase copies. Managed post-step dry runs, owner review, the
-> Free-tier recovery decision and separate live-apply approval remain. The
+> managed Supabase copies. Owner review, the Free-tier recovery decision and
+> separate live-apply approval remain. The
 > live project remains at 0009.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
@@ -19,7 +19,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore and one recovered-user sign-in after a disposable password reset passed; original password and Okta settings unproved |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Matching Supabase image | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. | 🟡 local pass; review and hosted recovery remain |
-| Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. | 🟡 managed migration passed; post-step dry runs and broader Auth/settings checks pending |
+| Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. | 🟡 managed database and one Auth route passed; broader Auth/settings checks pending |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
 | Review | Task20 lead security review and independent cross-agent review remain. | ⬜ |
@@ -44,8 +44,9 @@ ledger before writing. The corrected managed restore passed on 2026-10-24:
 WARNING lines. Destination counts were five Auth users, 42 public tables and
 10 Drizzle ledger entries. It is a database restore into a new managed
 project, not a rollback of the original project. The exported identities
-comprise one email/password account and four users with Okta identities;
-Auth service sign-in and provider settings still need validation. The
+comprise one email/password account and four users with Okta identities. The
+copied email account later passed an Auth-service sign-in after its password
+was reset in this disposable project; Okta provider settings still need validation. The
 destination's PostgreSQL is 17.11; the source snapshot was 17.6.
 
 The founder does not know the original email/password account's password.
@@ -66,8 +67,8 @@ password, verifies the restored 0009 ledger and counts, then runs 0010–0028
 and the three default dry-run post-steps. It captures command output only in
 private owner-readable logs. Its first managed migration attempt exited 1 in
 2.7 s on 2026-10-24. The log contains Drizzle's progress spinner and npm's
-exit status, but no PostgreSQL error or failed-statement detail. Thus the
-cause is unknown and no successful managed migration is claimed. The
+exit status, but no PostgreSQL error or failed-statement detail. The later
+Node probe identified TLS certificate rejection before SQL as the cause. The
 `--inspect` mode confirmed PostgreSQL 17.11, five Auth users, 42 public tables,
 ten ledger records and the 0009 checkpoint after the failure. A `--probe`
 mode first executed all 19 pending SQL files inside a transaction and rolled
@@ -88,6 +89,12 @@ PostgreSQL 17.11, five Auth users, 84 public tables, 29 ledger entries through
 the migration did commit. The unsafe Node probe has been removed. Do not run
 `MIGRATE` or restore again. The helper's `--poststeps` mode now checks this
 exact migrated checkpoint and runs the three default dry-run post-steps.
+The founder ran it: Task19g reported two tenants and zero merger candidates;
+Task4 reported zero selected rows and `database_changes=none`; security seal
+reported dry-run mode with no signing or writes and no seal outcomes. All
+three commands exited zero, and the destination remained at 0028. No apply
+flag was used. The helper's Task4 summary parser was corrected to display
+`none` rather than `?` for that value; the private log already showed `none`.
 
 ## Implemented interfaces
 
@@ -123,8 +130,9 @@ merged-migration freeze, 0024's role-membership grant now resolves
   encryption. The CLI restore into the image's initialized database failed
   because its hosted Auth schema differs (`auth.jwt()` and then
   `auth.audit_log_entries.ip_address`). A raw full dump restored into a new
-  empty database with matching row/schema counts; Auth service sign-in and a
-  managed Free-tier restore were not proved.
+  empty database with matching row/schema counts; at that stage Auth service
+  sign-in and a managed Free-tier restore were not yet proved. Both later
+  passed for the bounded cases described above.
 - The matching-image migration first crashed at 0024's `GRANT ... TO
   CURRENT_USER`. The local cluster recovered and Drizzle stayed at 0009.
   Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
@@ -137,7 +145,7 @@ merged-migration freeze, 0024's role-membership grant now resolves
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ | Task16e2/Task20 owners must review the founder-authorized 0024 correction and its changed file hash. The matching-image rehearsal passed, but independent security review has not. | Blocking: live migration. |
-| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts. A copied email account signed in after a disposable password reset; original-password and Okta sign-in remain unproved. Decide the Okta configuration/recovery procedure, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
+| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset; original-password and Okta sign-in remain unproved. Decide the Okta configuration/recovery procedure, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
@@ -155,8 +163,8 @@ on 8081. Local `vector` is 0.8.7; the live project currently offers 0.8.2.
 
 `npm run typecheck`, `npm run lint`, `npm exec --workspace=apps/api --
 drizzle-kit check`, and the command-scoped `npm test` passed; 1,265 tests,
-zero failures. No browser, real user-role or full Supabase Auth recovery test
-has passed yet.
+zero failures. One copied Auth user signed in to the disposable project after
+a password reset; browser roles and full Supabase Auth recovery remain unproved.
 
 The October 24 Free-tier rehearsal authenticated three CLI exports and
 restored the October 23 full raw dump into an empty matching Supabase
@@ -168,18 +176,20 @@ recovered with 10 ledger entries. After the authorized correction, the full
 copy migrated to 29 ledger entries in 6.5 s. Audit role membership, two
 tenant-bound policies and a rolled-back tenant-scoped read passed; Auth users
 remained five and `vector` was 0.8.2. Task19g, Task4 and security-seal dry
-runs reported no data changes. This matching-image result is stronger than
-the generic PostgreSQL pass, but does not prove managed-project recovery.
+runs reported no data changes. The matching-image run added local owner/role
+evidence beyond the generic PostgreSQL pass. Managed-project recovery and
+migration were then checked separately as described above.
 
 ## Integration test impact
 
 No new integration test was added. The existing migration and product smoke
-gates remain blocking for the live deployment. The local rehearsal is
-agent-verified only; it does not certify the founder's hosted project.
+gates remain blocking for the live deployment. The founder ran the managed
+restore, copied-user sign-in, migration and post-step dry runs; they do not
+certify the original live project's dashboard.
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | 🟡 matching Supabase image passed after authorized 0024 correction; owner review and recovery gate remain |
+| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | 🟡 local image plus founder-run disposable managed restore/migration and post-step dry runs passed; owner review and full recovery decision remain |
 | IT-T14a-02 | Admin/auditor dashboard and Company A/B isolation against migrated live project | Blocking: dashboard restored claim | ⬜ founder browser run |
 
 ## Integration notes

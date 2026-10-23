@@ -325,5 +325,9 @@ role membership, both audit policies and vector 0.8.2. The first managed
 `db:migrate` attempt had failed before SQL because node-postgres rejected the
 pooler certificate chain. The successful run used the downloaded Supabase CA
 with `sslmode=verify-full` and hostname verification. The three managed
-post-step dry runs and dashboard/API smoke remain pending. No write was made
-to the original live project, which remains at 0009.
+post-step dry runs then passed: Task19g saw two tenants and zero merger
+candidates; Task4 selected zero pending rows and reported
+`database_changes=none`; security seal ran without signing or writes and
+emitted no seal outcomes. The managed project stayed at 0028. Dashboard/API
+smoke remains pending. No write was made to the original live project, which
+remains at 0009.
