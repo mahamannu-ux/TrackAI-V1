@@ -1,7 +1,8 @@
 # Task14a: Supabase and the localhost dashboard — Stage 1 plan
 
-**Status, 2026-10-23:** read-only inspection complete; no database, API, or
-rehearsal copy has been changed. Founder approval is required before Stage 2.
+**Status, 2026-10-23:** Stage 1 was approved. An encrypted backup and local
+application-schema rehearsal are complete; the live database remains at 0009.
+Founder approval for the live migration is still required.
 
 ## In plain words
 
@@ -49,13 +50,15 @@ migration. The repository journal has **29 entries**, 0000–0028. Pending:
 0022, 0023, 0024, 0025, 0026, 0027, 0028. The Task19g handoff independently
 reported the same end point at 0009.
 
-**Ledger discrepancy to resolve in rehearsal:** the live hashes for 0000 and
-0009 differ from the current SQL files. The 0000 hash matches an older Git
-version; 0009's hash did not match the versions in the local file history.
-Drizzle orders pending migrations by timestamp and may not detect this drift.
-Do not alter a merged migration or repair the ledger by hand. Compare the
-actual schema and a restored copy against the expected pre-0010 schema, and
-stop if there is an unexplained difference.
+**Ledger drift:** the live hashes for 0000 and 0009 differ from the current
+SQL files. The 0000 hash matches the original Git version, which created
+**seven**, not 11, browser policies; the live seven match that version.
+Migration 0009's current file only drops `public.items`, and that table is
+absent live, although its hash did not match the local file history. Drizzle
+orders pending migrations by timestamp and may not detect this drift. Do not
+alter a merged migration or repair the ledger by hand. The 0000 policy
+difference needs a reviewed disposition; 0009's intended schema effect is
+present, but its historical SQL text remains unverified.
 
 `pgcrypto` 1.3 is installed. `vector` is available at 0.8.2 but **not yet
 installed**, consistent with pending 0011. The live `postgres` role can create
@@ -133,7 +136,7 @@ change. Sources: [connections](https://supabase.com/docs/guides/database/connect
    founder outside the repository. Include `public`, `drizzle`, and needed
    `auth` objects; verify the dump is readable without printing rows or
    secrets. A `pg_dump` is a snapshot, not a restore test.
-3. **Rehearsal:** restore to a named isolated PostgreSQL 16 + pgvector
+3. **Rehearsal:** restore to a named isolated PostgreSQL 17 + pgvector
    container bound **only to 127.0.0.1:55433**. This copy must not be the
    `trackai-task20j-pg` container. Stop if Supabase-managed roles/extensions
    cannot be represented faithfully. Compare pre-0010 schema and ledger,
@@ -166,6 +169,53 @@ change. Sources: [connections](https://supabase.com/docs/guides/database/connect
    restore rehearsal**; record the measured time and any data-loss window
    before live approval rather than promising an untested interval.
 
-**Decision requested at Checkpoint 1:** approve this Stage 2 backup and
-rehearsal plan, including local port 55433. Live migration and each data
-backfill remain separate approval gates.
+**Checkpoint 1:** the founder approved this backup and rehearsal plan on
+2026-10-23. Live migration and each data backfill remain separate approval
+gates.
+
+## Stage 2 rehearsal result (2026-10-23)
+
+The founder approved the backup and local rehearsal. The server reports
+PostgreSQL **17.6**, so the named `trackai-task14a-rehearsal-pg` container uses
+`pgvector/pgvector:pg17`, bound only to **127.0.0.1:55433**. Port 55432's
+existing container was not stopped or changed. The API was briefly started
+against the rehearsal copy with `PORT=8081`; `/health` returned **HTTP 200**,
+and that API process was then stopped. Port 8080 was not used.
+
+The live project was read through the session pooler on 5432 for a full
+`pg_dump` archive. The archive was streamed directly into AES-256-GCM
+encryption; no plaintext dump file was created. Its authenticated ciphertext
+is at `/Users/manishmahajan/AIProjects/_task14a_backup_20261023/supabase_pre0010_full.dump.gcm`
+and its owner-only 32-byte key is in the same private directory as
+`backup.key`. Keep **both** files; neither is in this repository. The
+encrypted archive is 17,087,395 bytes including its header and tag. The GCM authentication
+check and `pg_restore` table-of-contents read both passed (781 entries).
+
+The `public` and `drizzle` schemas restored from that archive in one local
+transaction in **15.8 seconds**. A local `authenticated` role and an
+`auth.jwt()` stub supplied only the dependency needed by the existing seven
+browser policies; Supabase-managed Auth data/functions were not restored.
+Before migration the copy matched the source's 10 ledger entries and seven
+browser policies. Drizzle then applied 0010–0028 to this copy in **6.4
+seconds**; the ledger has 29 entries. `drizzle-kit check` passed. Migration
+0024 created the audit reader role; the local application role entered it in
+a transaction and completed a SELECT. The three post-step dry runs passed:
+Task19g merger backfill saw two tenants and zero candidate/skipped rows;
+Task4 pending reconciliation selected/changed zero; the security-seal pass
+found no tenant with findings due for a seal. No confirmed backfill ran.
+The repository gates passed: typecheck, lint, Drizzle file check and 1,265
+tests. The first sandbox test attempt encountered loopback failures and was
+stopped; the same `npm test` command passed with command-scoped access.
+
+**Recovery limitation:** this proves a restore of TrackAI's application
+schemas, not a complete self-hosted Supabase recovery. The generic pgvector
+image lacks `supabase_vault`, which is present in the full archive, and the
+rehearsal did not restore the Supabase-managed `auth`, `storage`, `realtime`,
+or other service schemas. The local image installed `vector` 0.8.7; the live
+project currently offers 0.8.2. Supabase's [restore guide](https://supabase.com/docs/guides/self-hosting/restore-from-platform)
+explains why raw full `pg_dump` is not a complete portable platform restore.
+For live rollback, confirm an accessible project backup/PITR point in the
+Supabase dashboard, or rehearse a full restore with a matching Supabase image
+and CLI procedure, before authorizing the live apply. Provider-backup status
+and a full-project recovery time remain **unverified**. The 0000/0009 hash
+differences and four missing B5 browser policies also remain open findings.
