@@ -51,7 +51,7 @@ No application code or migrations changed. Operational documents:
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Confirm an accessible pre-change Supabase backup/PITR point and restore route in the dashboard, or commission a full restore rehearsal in a matching Supabase stack. | Blocking: live migration approval; recovery time and possible lost-write window are unmeasured. |
+| ⬜ **FOUNDER:** | Confirm an accessible pre-change Supabase backup/PITR point and restore route in the dashboard, or commission a full restore rehearsal in a matching Supabase stack. This session reached the dashboard sign-in page and could not inspect the backup tier. | Blocking: live migration approval; recovery time and possible lost-write window are unmeasured. |
 | ⬜ **FOUNDER:** | Review local rehearsal and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |

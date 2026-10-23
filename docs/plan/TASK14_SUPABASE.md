@@ -216,6 +216,7 @@ project currently offers 0.8.2. Supabase's [restore guide](https://supabase.com/
 explains why raw full `pg_dump` is not a complete portable platform restore.
 For live rollback, confirm an accessible project backup/PITR point in the
 Supabase dashboard, or rehearse a full restore with a matching Supabase image
-and CLI procedure, before authorizing the live apply. Provider-backup status
-and a full-project recovery time remain **unverified**. The 0000/0009 hash
+and CLI procedure, before authorizing the live apply. The dashboard opened to
+its sign-in page in this session, so provider-backup status and a full-project
+recovery time remain **unverified**. The 0000/0009 hash
 differences and four missing B5 browser policies also remain open findings.
