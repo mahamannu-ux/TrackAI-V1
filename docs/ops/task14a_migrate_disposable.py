@@ -7,6 +7,7 @@ are fixed below. The source/live project is never contacted by this script.
 
 import argparse
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -97,7 +98,7 @@ def run_logged(name: str, command: list[str], env: dict[str, str]):
 
 
 def probe_migrations(password: str) -> int:
-    """Execute the pending Drizzle statements in one transaction, then roll back."""
+    """Execute Drizzle's SQL and ledger inserts in one transaction, then roll back."""
     journal = json.loads((ROOT / "apps/api/drizzle/meta/_journal.json").read_text())
     connection = connect(DESTINATION_HOST, password, readonly=False)
     failure = None
@@ -107,6 +108,11 @@ def probe_migrations(password: str) -> int:
         with connection.cursor() as cursor:
             cursor.execute("SET LOCAL lock_timeout = '5s'")
             cursor.execute("SET LOCAL statement_timeout = '30s'")
+            cursor.execute('CREATE SCHEMA IF NOT EXISTS "drizzle"')
+            cursor.execute(
+                'CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" '
+                '(id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)'
+            )
             for entry in journal["entries"][10:]:
                 migration_tag = entry["tag"]
                 sql = (ROOT / "apps/api/drizzle" / f"{migration_tag}.sql").read_text()
@@ -114,6 +120,12 @@ def probe_migrations(password: str) -> int:
                     sql.split("--> statement-breakpoint"), start=1
                 ):
                     cursor.execute(statement)
+                statement_number += 1
+                cursor.execute(
+                    'INSERT INTO "drizzle"."__drizzle_migrations" '
+                    '("hash", "created_at") VALUES (%s, %s)',
+                    (hashlib.sha256(sql.encode()).hexdigest(), entry["when"]),
+                )
     except psycopg2.Error as exc:
         failure = (exc.pgcode or "connection_error", type(exc).__name__,
                    str(exc), migration_tag, statement_number)

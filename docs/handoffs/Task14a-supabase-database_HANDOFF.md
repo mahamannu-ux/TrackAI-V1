@@ -68,10 +68,11 @@ exit status, but no PostgreSQL error or failed-statement detail. Thus the
 cause is unknown and no successful managed migration is claimed. The
 `--inspect` mode confirmed PostgreSQL 17.11, five Auth users, 42 public tables,
 ten ledger records and the 0009 checkpoint after the failure. A `--probe`
-mode now executes the pending SQL inside one transaction and always rolls it
-back, recording only the first failing migration/statement and SQLSTATE in
-terminal output. Its result is pending. Do not retry the committing migration
-until the underlying error is understood.
+mode first executed all 19 pending SQL files inside a transaction and rolled
+back; every statement passed. The probe now also tests Drizzle's ledger
+inserts, the remaining untested write step, in the same rollback-only
+transaction. Its expanded result is pending. Do not retry the committing
+migration until the underlying error is understood.
 
 ## Implemented interfaces
 
