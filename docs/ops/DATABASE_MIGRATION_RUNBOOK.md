@@ -5,6 +5,15 @@ no live 0010–0028 migration has run. Read
 [`TASK14_SUPABASE.md`](../plan/TASK14_SUPABASE.md) for this project's current
 ledger, risk register and recovery limitation.
 
+**Blocking update, 2026-10-24:** An ownership-preserving full raw restore on
+`supabase/postgres:17.6.1.136` succeeded, but `db:migrate` crashed the local
+PostgreSQL backend at 0024's `GRANT trackai_audit_reader TO CURRENT_USER`.
+The ledger rolled back to 10 entries. Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
+reports this statement-form crash. Do **not** follow section 4 for 0010–0028
+until the owning security/database task provides a reviewed correction and the
+matching-image rehearsal passes. Do not silently edit merged 0024 or the
+ledger. The live project remains at 0009.
+
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and

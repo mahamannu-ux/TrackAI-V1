@@ -1,7 +1,7 @@
 # Task14a-supabase-database Handoff — Supabase schema recovery
 
-> Status: 🟡 Stage 1 and the local Stage 2 rehearsal complete; live migration
-> and localhost dashboard acceptance await separate founder approval.
+> Status: 🔴 Live migration blocked by a crash at 0024 in a matching Supabase
+> PostgreSQL image. The live project remains at 0009.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
 This session explains Supabase's Auth/database role, inventories the live
@@ -14,8 +14,9 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | | Item | Status |
 |---|---|---|
 | Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; PostgreSQL 17.6. | ✅ |
-| Backup | Full `pg_dump` streamed to authenticated AES-256-GCM archive; no plaintext dump. Owner-only archive/key under `/Users/manishmahajan/AIProjects/_task14a_backup_20261023/`. | 🟡 encrypted archive validated; founder confirmed Free tier has no usable dashboard restore point |
+| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. | 🟡 local database-content recovery passed; hosted service/Free-tier restore route unproved |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
+| Matching Supabase image | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Applying 0010–0028 crashed the backend at 0024's `GRANT ... TO CURRENT_USER`; ledger remained 10. | 🔴 blocking live apply |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
 | Review | Task20 lead security review and independent cross-agent review remain. | ⬜ |
@@ -46,13 +47,26 @@ No application code or migrations changed. Operational documents:
   project recovery. This is explicitly carried into the live approval gate.
 - The first `npm test` attempt in the sandbox had loopback failures and
   stalled; the exact suite passed with command-scoped access.
+- Supabase CLI 2.109.1 roles/schema/data exports authenticated after local
+  encryption. The CLI restore into the image's initialized database failed
+  because its hosted Auth schema differs (`auth.jwt()` and then
+  `auth.audit_log_entries.ip_address`). A raw full dump restored into a new
+  empty database with matching row/schema counts; Auth service sign-in and a
+  managed Free-tier restore were not proved.
+- The matching-image migration crashed at 0024's `GRANT ... TO CURRENT_USER`.
+  The local cluster recovered and Drizzle stayed at 0009. Supabase's
+  [image issue #2348](https://github.com/supabase/postgres/issues/2348)
+  documents the same statement-form crash. A synthetic dynamic explicit-role
+  grant succeeded locally inside a rolled-back transaction; it is a candidate
+  for owner review, not an applied migration fix. No merged SQL was changed.
 
 ## Known limitations
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ | Free-tier recovery: take a Supabase CLI roles/schema/data export and rehearse a full restore in a matching isolated Supabase environment, including Auth. Take a fresh encrypted off-site copy just before any live apply. Alternatively, founder may choose a paid plan only after confirming an actual usable restore point. A 2026-10-14 raw dump was found locally; it is older than the 2026-10-23 encrypted dump. | Blocking: live migration approval; full recovery time and possible lost-write window are unmeasured. |
-| ⬜ **FOUNDER:** | Review local rehearsal and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
+| 🔴 | Task16e2/Task20 owners must review a safe way past 0024's `GRANT ... TO CURRENT_USER` and repeat the matching-image rehearsal. The Task14a prompt forbids editing merged migrations. | Blocking: live migration. |
+| ⬜ | A full raw database restore worked locally, but CLI restore into an initialized Supabase image failed on Auth version drift. Prove a managed-project or matching-stack recovery route including Auth sign-in, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: reliable Free-tier rollback; service recovery time and lost-write window unmeasured. |
+| ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
 
@@ -72,6 +86,15 @@ drizzle-kit check`, and the command-scoped `npm test` passed; 1,265 tests,
 zero failures. No browser, real user-role or full Supabase Auth recovery test
 has passed yet.
 
+The October 24 Free-tier rehearsal authenticated three CLI exports and
+restored the October 23 full raw dump into an empty matching Supabase
+PostgreSQL image on 55434 in 11.3 s with original owners. Live and restored
+counts matched: Auth users 5, identities 6, storage objects 0, Drizzle
+entries 10, tenants 2, repositories 15, public tables 42 and Auth tables 27.
+The subsequent migration attempt crashed the local backend at 0024; the
+cluster recovered with 10 ledger entries. This supersedes the generic
+PostgreSQL migration pass as a live-readiness signal.
+
 ## Integration test impact
 
 No new integration test was added. The existing migration and product smoke
@@ -80,20 +103,23 @@ agent-verified only; it does not certify the founder's hosted project.
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | 🟡 agent-verified; full recovery route pending |
+| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | 🔴 generic PostgreSQL pass; matching Supabase image crashed at 0024 |
 | IT-T14a-02 | Admin/auditor dashboard and Company A/B isolation against migrated live project | Blocking: dashboard restored claim | ⬜ founder browser run |
 
 ## Integration notes
 
 The live API configuration currently uses the transaction pooler on 6543.
 Use direct/session mode 5432 for the eventual migration and backup. Migration
-0024 grants its audit role to `CURRENT_USER`; if deployment changes to a
-separate API runtime role, grant membership to that role before auditor reads.
+0024's role-membership `GRANT ... TO CURRENT_USER` crashed the matching local
+Supabase image. Do not apply it unchanged to live; obtain a reviewed fix from
+the owning security/database task without silently rewriting the merged SQL.
+If deployment changes to a separate API runtime role, that role will also
+need reviewed membership before auditor reads.
 Do not run any command with `TASK5_EPHEMERAL_DATABASE=1` or
 `TASK6_EPHEMERAL_DATABASE=1` against this persistent project. The local
-rehearsal container remains named `trackai-task14a-rehearsal-pg` on 55433 for
-review; the encryption key and archive are private local files, not Git
-artifacts.
+rehearsal container remains named `trackai-task14a-rehearsal-pg` on 55433;
+the matching-image `trackai-task14a-recovery-pg` is on 55434. Encryption keys
+and archives are private local files, not Git artifacts.
 
 ## Effort (estimate vs actual)
 

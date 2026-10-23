@@ -1,8 +1,9 @@
 # Task14a: Supabase and the localhost dashboard — Stage 1 plan
 
-**Status, 2026-10-23:** Stage 1 was approved. An encrypted backup and local
-application-schema rehearsal are complete; the live database remains at 0009.
-Founder approval for the live migration is still required.
+**Status, 2026-10-24:** Stage 1 and the Free-tier backup/rehearsal work were
+approved. The live database remains at 0009. A migration 0024 crash on a
+matching Supabase PostgreSQL image blocks live apply pending a reviewed fix;
+separate founder approval for live migration will still be required.
 
 ## In plain words
 
@@ -228,3 +229,51 @@ recovery route are required if remaining on Free; upgrading to a paid plan is
 an optional founder decision, not an assumed prerequisite. Full-project
 recovery time remains **unmeasured**. The 0000/0009 hash
 differences and four missing B5 browser policies also remain open findings.
+
+## Free-tier recovery rehearsal and migration blocker (2026-10-24)
+
+The founder confirmed that the live project is on the Free tier and has no
+usable dashboard backup/PITR point. Supabase CLI 2.109.1 produced encrypted
+roles, schema and data exports in the private directory
+`/Users/manishmahajan/AIProjects/_task14a_backup_20261024/`. The plaintext
+exports were removed after encryption and authenticated readback. Their
+uncompressed sizes were 358, 107,545 and 64,060,005 bytes respectively. The
+data export includes `auth.users`, `drizzle.__drizzle_migrations` and the
+TrackAI `public` tables. The encrypted archive and key are currently on the
+same machine and need separately protected off-site copies before live apply.
+
+An isolated `supabase/postgres:17.6.1.136` container was started on
+**127.0.0.1:55434**; its `vector` extension is 0.8.2, matching the live
+available version. A direct CLI export restore into its initialized database
+did not pass: the image lacked the hosted `auth.jwt()` helper, and after that
+helper was copied read-only from live, its `auth.audit_log_entries` table
+lacked the hosted `ip_address` column. This is a platform schema-version
+mismatch, not a successful CLI recovery drill.
+
+The authenticated October 23 full `pg_dump` did restore in one transaction
+to a **new empty database** in the same Supabase PostgreSQL image in 12.4 s.
+A second restore preserving original object ownership succeeded in 11.3 s
+after creating the image's missing `supabase_realtime_admin` role. Counts
+matched the live source at the checkpoint: five `auth.users`, six
+`auth.identities`, zero `storage.objects`, 10 Drizzle ledger records, two
+tenants, 15 repositories, 42 public tables, 27 Auth tables and one
+`auth.jwt()` helper. This proves full **database-content** recovery locally;
+it does not prove hosted Auth sign-in, Supabase service configuration, storage
+objects, or a restore into an existing managed Free-tier project.
+
+Applying 0010–0028 to the ownership-preserving full copy as the non-superuser
+`postgres` role caused the local PostgreSQL backend to **segfault** during
+`0024_audit_db_role.sql` at `GRANT trackai_audit_reader TO CURRENT_USER`.
+The cluster restarted and recovered; the Drizzle ledger remained at 10, so
+the migration transaction rolled back. Supabase has an [open PostgreSQL image
+issue](https://github.com/supabase/postgres/issues/2348) for this exact
+statement form, including a proposed explicit-role workaround. A synthetic
+local transaction using `EXECUTE format('GRANT task14a_grant_probe TO %I',
+current_user)` succeeded and was rolled back; it has not been substituted
+into any TrackAI migration. This local
+finding does not prove the hosted project has the same image revision, but
+running the unchanged 0024 against live could interrupt all sessions. **Do
+not run the live migration** until the Task16e2/Task20 owners review a safe
+correction and it passes the matching-image full-copy rehearsal. The Task14a
+prompt forbids editing merged migrations, so no SQL file or live ledger was
+changed here. Ports 8080 and 55432 remained untouched.
