@@ -66,9 +66,12 @@ private owner-readable logs. Its first managed migration attempt exited 1 in
 2.7 s on 2026-10-24. The log contains Drizzle's progress spinner and npm's
 exit status, but no PostgreSQL error or failed-statement detail. Thus the
 cause is unknown and no successful managed migration is claimed. The
-`--inspect` mode was added to read Auth, table and ledger counts plus the last
-migration checkpoint without writing; its result is pending. Do not retry the
-migration until that state and the underlying error are understood.
+`--inspect` mode confirmed PostgreSQL 17.11, five Auth users, 42 public tables,
+ten ledger records and the 0009 checkpoint after the failure. A `--probe`
+mode now executes the pending SQL inside one transaction and always rolls it
+back, recording only the first failing migration/statement and SQLSTATE in
+terminal output. Its result is pending. Do not retry the committing migration
+until the underlying error is understood.
 
 ## Implemented interfaces
 

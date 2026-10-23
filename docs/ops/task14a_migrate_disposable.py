@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
+import psycopg2
+
 from task14a_restore_disposable import BACKUP_DIR, DESTINATION_REF, connect, counts
 
 
@@ -94,11 +96,73 @@ def run_logged(name: str, command: list[str], env: dict[str, str]):
     return result
 
 
+def probe_migrations(password: str) -> int:
+    """Execute the pending Drizzle statements in one transaction, then roll back."""
+    journal = json.loads((ROOT / "apps/api/drizzle/meta/_journal.json").read_text())
+    connection = connect(DESTINATION_HOST, password, readonly=False)
+    failure = None
+    migration_tag = "none"
+    statement_number = 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL lock_timeout = '5s'")
+            cursor.execute("SET LOCAL statement_timeout = '30s'")
+            for entry in journal["entries"][10:]:
+                migration_tag = entry["tag"]
+                sql = (ROOT / "apps/api/drizzle" / f"{migration_tag}.sql").read_text()
+                for statement_number, statement in enumerate(
+                    sql.split("--> statement-breakpoint"), start=1
+                ):
+                    cursor.execute(statement)
+    except psycopg2.Error as exc:
+        failure = (exc.pgcode or "connection_error", type(exc).__name__,
+                   str(exc), migration_tag, statement_number)
+    finally:
+        try:
+            connection.rollback()
+        finally:
+            connection.close()
+
+    after = counts(DESTINATION_HOST, password)
+    original_timestamp, _ = expected_timestamps()
+    unchanged = after[:4] == (5, 42, True, 10) and (
+        last_migration_timestamp(password) == original_timestamp
+    )
+    if not unchanged:
+        print("Post-probe checkpoint differs; stop and investigate.")
+        return 3
+    if failure is None:
+        print("Rollback-only probe passed all pending statements; destination remains at 0009.")
+        return 0
+
+    code, error_class, message, migration_tag, statement_number = failure
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    log_path = BACKUP_DIR / f"managed-probe-{timestamp}.log"
+    fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(
+            f"migration={migration_tag}\nstatement={statement_number}\n"
+            f"sqlstate={code}\nerror_class={error_class}\nmessage={message}\n"
+        )
+    print(
+        f"Rollback-only probe stopped at {migration_tag}, statement "
+        f"{statement_number}; SQLSTATE={code}; error={error_class}."
+    )
+    print(f"Private diagnostics: {log_path}")
+    print("Destination remains at 0009; do not run MIGRATE yet.")
+    return 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--inspect", action="store_true",
         help="Read destination state only; never run migrations or post-steps",
+    )
+    mode.add_argument(
+        "--probe", action="store_true",
+        help="Run pending SQL in one transaction, then roll back",
     )
     args = parser.parse_args()
     os.umask(0o077)
@@ -136,6 +200,12 @@ def main() -> int:
         if last_migration_timestamp(password) != original_timestamp:
             print("Stopped: last migration timestamp differs from 0009.")
             return 2
+
+        if args.probe:
+            if input(f"Type PROBE {DESTINATION_REF} to continue: ").strip() != f"PROBE {DESTINATION_REF}":
+                print("Probe cancelled; destination unchanged.")
+                return 2
+            return probe_migrations(password)
 
         if input(f"Type MIGRATE {DESTINATION_REF} to continue: ").strip() != f"MIGRATE {DESTINATION_REF}":
             print("Migration cancelled; destination unchanged.")
