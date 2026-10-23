@@ -309,7 +309,10 @@ one email/password identity and four users with Okta identities. Auth service
 sign-in was then tested through the Auth Admin and user APIs: after resetting
 the one copied email account's password **in the disposable project**, Auth
 issued a session that resolved to the restored user. The original password,
-Okta configuration, and wider project settings remain unverified, so the
+Okta configuration, and wider project settings remain unverified. The export
+contains two custom OAuth provider rows plus one each for SAML provider, SSO
+provider and SSO domain; their database presence does not demonstrate a
+working IdP callback or usable project-level secret. Thus the
 measured 129.0 seconds is only the database restore portion of a recovery-time
 estimate. Live 0010–0028 migration still awaits
 owner review, a complete recovery decision and separate founder approval.

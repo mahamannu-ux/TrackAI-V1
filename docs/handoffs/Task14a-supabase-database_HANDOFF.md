@@ -48,6 +48,10 @@ comprise one email/password account and four users with Okta identities. The
 copied email account later passed an Auth-service sign-in after its password
 was reset in this disposable project; Okta provider settings still need validation. The
 destination's PostgreSQL is 17.11; the source snapshot was 17.6.
+The encrypted Auth export includes two custom OAuth provider rows, one SAML
+provider row, one SSO provider row and one SSO domain row. Their presence in
+the export does not prove that the new project's provider secrets, callbacks
+and service settings can complete an Okta sign-in.
 
 The founder does not know the original email/password account's password.
 `docs/ops/task14a_verify_restored_auth.py` locates that one
