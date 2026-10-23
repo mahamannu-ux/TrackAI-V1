@@ -90,6 +90,23 @@ itself a complete self-hosted recovery package. Follow the provider's
 [platform restore guidance](https://supabase.com/docs/guides/self-hosting/restore-from-platform)
 for full-project recovery.
 
+For a replacement Supabase project, verify Auth separately after the database
+restore. In its dashboard, inspect **Authentication → Providers** for each
+restored custom provider identifier and whether it is enabled; inspect SSO
+connections and **Authentication → URL Configuration** as well. Supabase's
+[custom-provider guide](https://supabase.com/docs/guides/auth/custom-oauth-providers)
+and [project-restore guide](https://supabase.com/docs/guides/platform/clone-project)
+describe those separate settings. Database rows
+for users/providers do not prove that a new project's API keys, IdP secrets,
+callback URLs or Auth service settings work. Keep the live Okta app and its
+callbacks intact while checking. If an Okta sign-in rehearsal is required,
+use a separate test app or an additive callback approved by the operator;
+then sign in on the disposable project and confirm the issued session resolves
+to the restored user. Record only status and counts, never credentials or
+redirect URLs containing tokens. Document the manual configuration and timing
+as part of the recovery procedure before treating the backup as a usable
+failover route.
+
 Restore the TrackAI application schemas and Drizzle ledger to an isolated
 local PostgreSQL of the **same major version** and with required extensions.
 Use a named container on a free loopback port. For Task14a the approved port
