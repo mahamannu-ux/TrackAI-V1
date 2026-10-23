@@ -292,3 +292,21 @@ must assess the exception and any other deployment's ledger before release.
 **Do not run the live migration** until that review, a demonstrated Free-tier
 recovery route, and a separate founder approval. No live SQL or ledger was
 changed. Ports 8080 and 55432 remained untouched.
+
+## Disposable managed-project restore (2026-10-24)
+
+The founder created a separate Supabase Free project for a recovery drill.
+Its pre-restore SQL Editor result was PostgreSQL 17.11, zero Auth users, zero
+public base tables and no Drizzle ledger. The first CLI restore attempt
+stopped in a single transaction when the roles export tried to change the
+provider-owned `supabase_admin` timeout setting. The restore helper now omits
+exactly that setting from its in-memory stream; the encrypted archive itself
+was not changed. The second run passed in **129.0 seconds** with no logged
+ERROR or WARNING. It produced five Auth users, 42 public base tables and 10
+Drizzle entries, matching the source checkpoint. This demonstrates a
+database-content recovery path into a fresh managed project. The backup has
+one email/password identity and four users with Okta identities. Auth service
+sign-in, Okta configuration, API keys, and any wider project settings are
+still unverified, so the measured 129.0 seconds is only the database restore
+portion of a recovery-time estimate. Live 0010–0028 migration still awaits
+owner review, a complete recovery decision and separate founder approval.
