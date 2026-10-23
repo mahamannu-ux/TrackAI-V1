@@ -1,9 +1,11 @@
 # Task14a: Supabase and the localhost dashboard — Stage 1 plan
 
 **Status, 2026-10-24:** Stage 1 and the Free-tier backup/rehearsal work were
-approved. The live database remains at 0009. A migration 0024 crash on a
-matching Supabase PostgreSQL image blocks live apply pending a reviewed fix;
-separate founder approval for live migration will still be required.
+approved. The live database remains at 0009. The founder separately authorized
+a narrow correction to merged migration 0024 after a matching-image crash;
+the corrected migration passed on the restored local copy. Security owner
+review, a usable Free-tier recovery route, and separate founder approval for
+live migration remain required.
 
 ## In plain words
 
@@ -86,7 +88,7 @@ claiming the live project has the intended B5 policy set.
 | `0013_task6_security_storage.sql:93-107` and `0014_spotty_serpent_society.sql:92-126` | Security/audit tables and triggers; check old data against constraints and trigger creation on the restored copy. |
 | `0015_aromatic_blink.sql:1-10` | Alters existing tables; inspect lock and validation time in rehearsal. |
 | `0016_attesta_subjects.sql:59-89` through `0023_attesta_audit_seals.sql:71-277` | New Attesta tables, constraints, indexes and append-only triggers; test pgcrypto/`pg_catalog.sha256` support and pre-existing row compatibility. |
-| `0024_audit_db_role.sql:5-25` | Creates `trackai_audit_reader`, grants two SELECT privileges and membership to `CURRENT_USER`, then adds tenant-bound policies. The live migration role has `CREATEROLE` but is not superuser. Confirm full migration in rehearsal. A distinct API runtime role needs an additional reviewed `GRANT trackai_audit_reader TO <runtime role>`; otherwise audited reads return 503 (`audit-reader.ts:22`, Task16e2 handoff). Do not assume the `postgres` login is that distinct runtime role. |
+| `0024_audit_db_role.sql` | Creates `trackai_audit_reader`, grants two SELECT privileges and membership to the migration role, then adds tenant-bound policies. The original `GRANT ... TO CURRENT_USER` crashed a matching local Supabase image; the founder-authorized correction resolves `current_user` to a quoted identifier inside dynamic SQL and passed the full-copy rehearsal. The live migration role has `CREATEROLE` but is not superuser. A distinct API runtime role needs an additional reviewed `GRANT trackai_audit_reader TO <runtime role>`; otherwise audited reads return 503 (`audit-reader.ts:22`, Task16e2 handoff). Do not assume the `postgres` login is that distinct runtime role. |
 | `0025_security_v2_ingest.sql:192-260,267-350` | Widens `security_findings` with many drops/adds and checks, and adds seven tenant tables. The first creation of `security_findings` in 0013 precedes this; measure lock time and validate rows on the restored copy before live apply. |
 | `0026_security_settings_signing.sql:123-135` | Replaces fleet checks and adds signed-settings tables/triggers; check existing fleet rows. |
 | `0027_attesta_security_seals.sql:55-104,305-436` | Replaces the `attesta_records` shape check, adds seal/report tables and guard triggers; validate old records and lock time. |
@@ -230,7 +232,7 @@ an optional founder decision, not an assumed prerequisite. Full-project
 recovery time remains **unmeasured**. The 0000/0009 hash
 differences and four missing B5 browser policies also remain open findings.
 
-## Free-tier recovery rehearsal and migration blocker (2026-10-24)
+## Free-tier recovery rehearsal and migration correction (2026-10-24)
 
 The founder confirmed that the live project is on the Free tier and has no
 usable dashboard backup/PITR point. Supabase CLI 2.109.1 produced encrypted
@@ -269,11 +271,24 @@ the migration transaction rolled back. Supabase has an [open PostgreSQL image
 issue](https://github.com/supabase/postgres/issues/2348) for this exact
 statement form, including a proposed explicit-role workaround. A synthetic
 local transaction using `EXECUTE format('GRANT task14a_grant_probe TO %I',
-current_user)` succeeded and was rolled back; it has not been substituted
-into any TrackAI migration. This local
-finding does not prove the hosted project has the same image revision, but
-running the unchanged 0024 against live could interrupt all sessions. **Do
-not run the live migration** until the Task16e2/Task20 owners review a safe
-correction and it passes the matching-image full-copy rehearsal. The Task14a
-prompt forbids editing merged migrations, so no SQL file or live ledger was
-changed here. Ports 8080 and 55432 remained untouched.
+current_user)` succeeded and was rolled back. The founder then explicitly
+authorized an exception to the Task14a prompt's merged-migration freeze. Only
+0024's direct role-membership grant was replaced with a dynamic `GRANT` using
+`format('%I', current_user)`; its privileges and policies are otherwise
+unchanged. On the ownership-preserving full copy, 0010–0028 then applied in
+6.5 s as the non-superuser `postgres` role. The ledger reached 29; five Auth
+users remained; `vector` was 0.8.2; the audit role membership and two
+tenant-bound policies existed. A tenant-scoped audit read succeeded in a
+rolled-back transaction. Task19g, Task4 and security-seal dry runs again
+reported no data changes. Drizzle's local file check passed. This is evidence
+for the local image only; the hosted project's image revision and Auth sign-in
+have not been proved.
+
+The correction changes 0024's file hash for a fresh migration. This Drizzle
+version chooses pending files using the latest ledger `created_at`, so a
+project already beyond 0024 retains its original hash and is not replayed by
+this change. The live project is still at 0009. Task16e2/Task20 owner review
+must assess the exception and any other deployment's ledger before release.
+**Do not run the live migration** until that review, a demonstrated Free-tier
+recovery route, and a separate founder approval. No live SQL or ledger was
+changed. Ports 8080 and 55432 remained untouched.

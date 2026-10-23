@@ -5,19 +5,23 @@ no live 0010–0028 migration has run. Read
 [`TASK14_SUPABASE.md`](../plan/TASK14_SUPABASE.md) for this project's current
 ledger, risk register and recovery limitation.
 
-**Blocking update, 2026-10-24:** An ownership-preserving full raw restore on
-`supabase/postgres:17.6.1.136` succeeded, but `db:migrate` crashed the local
-PostgreSQL backend at 0024's `GRANT trackai_audit_reader TO CURRENT_USER`.
-The ledger rolled back to 10 entries. Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
-reports this statement-form crash. Do **not** follow section 4 for 0010–0028
-until the owning security/database task provides a reviewed correction and the
-matching-image rehearsal passes. Do not silently edit merged 0024 or the
-ledger. The live project remains at 0009.
+**Update, 2026-10-24:** An ownership-preserving full raw restore on
+`supabase/postgres:17.6.1.136` succeeded. The first `db:migrate` crashed at
+0024's `GRANT ... TO CURRENT_USER`; the transaction rolled back. The founder
+explicitly authorized a narrow exception to correct merged 0024. Its dynamic,
+quoted-role grant passed 0010–0028 on the full restored copy in 6.5 s; the
+ledger reached 29. Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
+documents the original statement-form crash. Do **not** follow section 4 for
+the live project until Task16e2/Task20 owner review, a demonstrated Free-tier
+recovery route including Auth sign-in, and separate founder approval. The
+live project remains at 0009.
 
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and
-never change an already merged SQL migration.
+never change an already merged SQL migration without an explicit founder
+exception and owning-task review. Task14a's authorized 0024 correction is
+pending that review.
 
 ## 1. Identify the exact target
 
@@ -46,6 +50,11 @@ operator outside the repository; keep its decryption key separately protected.
 For a Free project with no dashboard restore point, use Supabase's documented
 CLI roles/schema/data export, including Auth data, and rehearse restoration
 into an isolated matching Supabase environment before applying live migrations.
+For a managed-project recovery rehearsal, create a disposable destination
+project and follow Supabase's [CLI backup and restore procedure](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+Record the destination's project reference privately and never point the
+rehearsal restore at the source project. Its Auth settings and API keys need
+separate configuration; a database-only restore does not copy them.
 Check extension compatibility, Auth user counts and sign-in, Drizzle ledger,
 application table counts and storage-object requirements. A raw full
 `pg_dump` or an application-schema-only restore does not satisfy this full
@@ -63,7 +72,8 @@ for full-project recovery.
 Restore the TrackAI application schemas and Drizzle ledger to an isolated
 local PostgreSQL of the **same major version** and with required extensions.
 Use a named container on a free loopback port. For Task14a the approved port
-is **55433**; 55432 belongs to the ongoing Task20j/Task5 acceptance database.
+is **55433** for application-schema tests and **55434** for the matching
+Supabase image; 55432 belongs to the ongoing Task20j/Task5 acceptance database.
 Compare pre-migration ledger and policy counts with the source. Time the
 restore. If full-project Auth recovery is needed, rehearse it in a matching
 Supabase stack; do not call an application-only restore a full recovery drill.
