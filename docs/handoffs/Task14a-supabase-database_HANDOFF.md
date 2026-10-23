@@ -69,10 +69,13 @@ cause is unknown and no successful managed migration is claimed. The
 `--inspect` mode confirmed PostgreSQL 17.11, five Auth users, 42 public tables,
 ten ledger records and the 0009 checkpoint after the failure. A `--probe`
 mode first executed all 19 pending SQL files inside a transaction and rolled
-back; every statement passed. The probe now also tests Drizzle's ledger
-inserts, the remaining untested write step, in the same rollback-only
-transaction. Its expanded result is pending. Do not retry the committing
-migration until the underlying error is understood.
+back; every statement passed. The expanded probe also tested all Drizzle
+ledger inserts and rolled back; it passed and left the destination at 0009.
+The remaining difference is the Node/Drizzle execution path. A
+`--node-probe` mode now runs the actual `drizzle-orm/node-postgres` migrator
+inside an outer transaction, forces rollback after success and captures
+structured error causes privately on failure. Its result is pending. Do not
+retry the committing migration until the underlying error is understood.
 
 ## Implemented interfaces
 

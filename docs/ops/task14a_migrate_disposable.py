@@ -97,6 +97,14 @@ def run_logged(name: str, command: list[str], env: dict[str, str]):
     return result
 
 
+def destination_url(password: str) -> str:
+    username = f"postgres.{DESTINATION_REF}"
+    return (
+        f"postgresql://{quote(username, safe='')}:{quote(password, safe='')}"
+        f"@{DESTINATION_HOST}:5432/postgres?sslmode=require"
+    )
+
+
 def probe_migrations(password: str) -> int:
     """Execute Drizzle's SQL and ledger inserts in one transaction, then roll back."""
     journal = json.loads((ROOT / "apps/api/drizzle/meta/_journal.json").read_text())
@@ -174,7 +182,11 @@ def main() -> int:
     )
     mode.add_argument(
         "--probe", action="store_true",
-        help="Run pending SQL in one transaction, then roll back",
+        help="Run pending SQL and ledger inserts in one transaction, then roll back",
+    )
+    mode.add_argument(
+        "--node-probe", action="store_true",
+        help="Run the Drizzle migrator inside a rollback-only transaction",
     )
     args = parser.parse_args()
     os.umask(0o077)
@@ -219,17 +231,33 @@ def main() -> int:
                 return 2
             return probe_migrations(password)
 
+        if args.node_probe:
+            if input(f"Type NODE-PROBE {DESTINATION_REF} to continue: ").strip() != f"NODE-PROBE {DESTINATION_REF}":
+                print("Node probe cancelled; destination unchanged.")
+                return 2
+            env = os.environ.copy()
+            env["DATABASE_URL"] = destination_url(password)
+            env["TASK14A_ROLLBACK_PROBE"] = DESTINATION_REF
+            result = run_logged(
+                "node-probe",
+                ["node", str(ROOT / "docs/ops/task14a_probe_drizzle.mjs")], env,
+            )
+            after = counts(DESTINATION_HOST, password)
+            if after[:4] != (5, 42, True, 10) or last_migration_timestamp(password) != original_timestamp:
+                print("Post-probe checkpoint differs; stop and investigate.")
+                return 3
+            if result.returncode == 0 and b"probe=pass_rolled_back" in result.stdout:
+                print("Node/Drizzle migrator passed and rolled back; destination remains at 0009.")
+                return 0
+            print("Node/Drizzle probe failed; destination remains at 0009. Do not run MIGRATE yet.")
+            return result.returncode or 1
+
         if input(f"Type MIGRATE {DESTINATION_REF} to continue: ").strip() != f"MIGRATE {DESTINATION_REF}":
             print("Migration cancelled; destination unchanged.")
             return 2
 
-        username = f"postgres.{DESTINATION_REF}"
-        url = (
-            f"postgresql://{quote(username, safe='')}:{quote(password, safe='')}"
-            f"@{DESTINATION_HOST}:5432/postgres?sslmode=require"
-        )
         env = os.environ.copy()
-        env["DATABASE_URL"] = url
+        env["DATABASE_URL"] = destination_url(password)
         env.pop("TASK4_WAVE5_PENDING_RECONCILE_APPLY", None)
         env.pop("TASK5_EPHEMERAL_DATABASE", None)
         env.pop("TASK6_EPHEMERAL_DATABASE", None)
