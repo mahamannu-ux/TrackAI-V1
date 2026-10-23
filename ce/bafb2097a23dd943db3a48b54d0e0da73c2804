@@ -1,0 +1,19 @@
+docs/plan/TASK14_SUPABASE.md
+  s_97529b30008860::t_1ab30110f5b7fb 1-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "cebafb2097a23dd943db3a48b54d0e0da73c2804",
+  "prompts": {},
+  "sessions": {
+    "s_97529b30008860": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "df23e838-9c46-4fe3-9e96-74ea3934d996",
+        "model": "unknown"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
