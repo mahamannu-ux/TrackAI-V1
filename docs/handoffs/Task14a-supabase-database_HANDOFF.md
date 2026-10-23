@@ -22,6 +22,16 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
 | Review | Task20 lead security review and independent cross-agent review remain. | ⬜ |
 
+The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
+managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
+17.11, zero Auth users, zero public tables and no Drizzle ledger. The local
+`docs/ops/task14a_restore_disposable.py` helper authenticates the October 24
+encrypted CLI exports, requires this exact destination project and a fresh
+empty-database check, then streams roles/schema/data to `psql` in one
+transaction. It was syntax-checked and its archive-only mode passed. **It has
+not yet been run against the disposable project.** The password is requested
+only in the founder's interactive Terminal; no credential belongs in chat.
+
 ## Implemented interfaces
 
 No application code changed. With the founder's explicit exception to the
@@ -70,7 +80,7 @@ merged-migration freeze, 0024's role-membership grant now resolves
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ | Task16e2/Task20 owners must review the founder-authorized 0024 correction and its changed file hash. The matching-image rehearsal passed, but independent security review has not. | Blocking: live migration. |
-| ⬜ | A full raw database restore worked locally, but CLI restore into an initialized Supabase image failed on Auth version drift. Prove a managed-project or matching-stack recovery route including Auth sign-in, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: reliable Free-tier rollback; service recovery time and lost-write window unmeasured. |
+| ⬜ | A full raw database restore worked locally, but CLI restore into an initialized Supabase image failed on Auth version drift. The disposable managed project is empty and a narrowly targeted restore helper is ready. Prove its roles/schema/data restore and Auth sign-in, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: reliable Free-tier rollback; service recovery time and lost-write window unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
