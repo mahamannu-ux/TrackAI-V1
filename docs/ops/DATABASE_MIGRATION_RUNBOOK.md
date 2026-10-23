@@ -34,6 +34,16 @@ Confirm the project's actual Supabase backup/PITR entitlement and a usable
 pre-change restore point in the dashboard. Record its time and expected
 data-loss window. Take an additional encrypted logical dump retained by the
 operator outside the repository; keep its decryption key separately protected.
+For a Free project with no dashboard restore point, use Supabase's documented
+CLI roles/schema/data export, including Auth data, and rehearse restoration
+into an isolated matching Supabase environment before applying live migrations.
+Check extension compatibility, Auth user counts and sign-in, Drizzle ledger,
+application table counts and storage-object requirements. A raw full
+`pg_dump` or an application-schema-only restore does not satisfy this full
+recovery gate. Take a fresh export immediately before the live apply and keep
+an off-site encrypted copy with its key protected separately. Alternatively,
+the operator may choose a paid provider backup route after verifying an actual
+usable pre-change restore point; upgrading alone is not proof of one.
 Validate archive authentication and its table of contents. A generic
 `pg_dump` of all Supabase schemas contains provider internals and is not by
 itself a complete self-hosted recovery package. Follow the provider's

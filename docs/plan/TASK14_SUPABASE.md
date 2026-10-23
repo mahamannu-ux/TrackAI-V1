@@ -161,9 +161,11 @@ change. Sources: [connections](https://supabase.com/docs/guides/database/connect
    admin and auditor; load Task2 lifecycle, Audit, Questions and Security.
    Verify a Company A user cannot see Company B data. Record status and
    counts only. Keep Task20j's API on 8080 unchanged.
-7. **Rollback route:** stop this Task14a API and any writing jobs; restore
-   the pre-apply Supabase backup/PITR point or the verified encrypted dump,
-   then reconnect the old application version and re-run the smoke. Database
+7. **Rollback route:** stop this Task14a API and any writing jobs; use a
+   confirmed provider restore point or the separately rehearsed CLI
+   roles/schema/data recovery package in a matching Supabase environment,
+   then reconnect the old application version and re-run the smoke. The raw
+   encrypted `pg_dump` alone is not a proven full-project rollback. Database
    restore can overwrite post-backup writes and cause downtime, so it requires
    a separate explicit decision. **Recovery time is unknown until a timed
    restore rehearsal**; record the measured time and any data-loss window
@@ -216,7 +218,13 @@ project currently offers 0.8.2. Supabase's [restore guide](https://supabase.com/
 explains why raw full `pg_dump` is not a complete portable platform restore.
 For live rollback, confirm an accessible project backup/PITR point in the
 Supabase dashboard, or rehearse a full restore with a matching Supabase image
-and CLI procedure, before authorizing the live apply. The dashboard opened to
-its sign-in page in this session, so provider-backup status and a full-project
-recovery time remain **unverified**. The 0000/0009 hash
+and CLI procedure, before authorizing the live apply. The founder confirmed on
+2026-10-24 that this is a Free-tier project with no usable dashboard restore
+point. Supabase's current backup guidance recommends manual CLI exports for
+Free projects. A prior raw dump dated 2026-10-14 was found locally, but it is
+older than the encrypted 2026-10-23 snapshot and neither has passed a complete
+Supabase Auth/platform restore. A fresh pre-apply export and a rehearsed manual
+recovery route are required if remaining on Free; upgrading to a paid plan is
+an optional founder decision, not an assumed prerequisite. Full-project
+recovery time remains **unmeasured**. The 0000/0009 hash
 differences and four missing B5 browser policies also remain open findings.

@@ -14,7 +14,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | | Item | Status |
 |---|---|---|
 | Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; PostgreSQL 17.6. | ✅ |
-| Backup | Full `pg_dump` streamed to authenticated AES-256-GCM archive; no plaintext dump. Owner-only archive/key under `/Users/manishmahajan/AIProjects/_task14a_backup_20261023/`. | 🟡 encrypted archive validated; provider backup/PITR point not yet confirmed |
+| Backup | Full `pg_dump` streamed to authenticated AES-256-GCM archive; no plaintext dump. Owner-only archive/key under `/Users/manishmahajan/AIProjects/_task14a_backup_20261023/`. | 🟡 encrypted archive validated; founder confirmed Free tier has no usable dashboard restore point |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
@@ -51,7 +51,7 @@ No application code or migrations changed. Operational documents:
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Confirm an accessible pre-change Supabase backup/PITR point and restore route in the dashboard, or commission a full restore rehearsal in a matching Supabase stack. This session reached the dashboard sign-in page and could not inspect the backup tier. | Blocking: live migration approval; recovery time and possible lost-write window are unmeasured. |
+| ⬜ | Free-tier recovery: take a Supabase CLI roles/schema/data export and rehearse a full restore in a matching isolated Supabase environment, including Auth. Take a fresh encrypted off-site copy just before any live apply. Alternatively, founder may choose a paid plan only after confirming an actual usable restore point. A 2026-10-14 raw dump was found locally; it is older than the 2026-10-23 encrypted dump. | Blocking: live migration approval; full recovery time and possible lost-write window are unmeasured. |
 | ⬜ **FOUNDER:** | Review local rehearsal and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
