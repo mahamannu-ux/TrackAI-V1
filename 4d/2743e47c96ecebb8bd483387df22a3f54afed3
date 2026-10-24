@@ -1,0 +1,23 @@
+docs/handoffs/Task14a-supabase-database_HANDOFF.md
+  s_148c5698b1601f::t_28e8e12744521a 7-10,23,172,174,230-247
+docs/plan/BUG_BACKLOG.md
+  s_148c5698b1601f::t_784f0c1a40e0bf 11
+docs/plan/STATUS_BOARD.md
+  s_148c5698b1601f::t_c99d565402598b 26,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "4d2743e47c96ecebb8bd483387df22a3f54afed3",
+  "prompts": {},
+  "sessions": {
+    "s_148c5698b1601f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16999-04f8-7132-9449-4e791fee42d1",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
