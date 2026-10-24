@@ -4,8 +4,10 @@
 > managed Supabase copies. The founder supplied a Task20 lead approval for
 > live-apply consideration with conditions. Task20 has accepted the exact-tag
 > local rehearsal for version parity. The Task16e2 lead was notified of the
-> one-statement exception. A fresh off-site backup and separate live-apply
-> approval remain. The live project remains at 0009.
+> one-statement exception. The founder granted a one-week exception for
+> off-site archive and key storage. A fresh encrypted local backup restored
+> and migrated on the exact-tag image; separate live-apply approval remains.
+> The live project remains at 0009.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
 This session explains Supabase's Auth/database role, inventories the live
@@ -18,7 +20,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | | Item | Status |
 |---|---|---|
 | Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; a new read-only `version()` check confirmed PostgreSQL 17.6. | ✅ |
-| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore, recovered email sign-in after a disposable password reset, and one `custom:okta` sign-in passed; second provider and full recovery timing remain unproved |
+| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The CLI exports restored to a disposable managed Supabase project in 129.0 s. A fresh October 24 encrypted full dump was written to Documents after verified-TLS read-only preflight, authenticated, and restored on the exact-tag local image in 11.3 s. | 🟡 tested local and managed routes; founder's one-week off-site/key-storage exception, second provider and full recovery timing remain |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Supabase image rehearsals | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. The same dump also restored on the live project's exact reported image tag, `17.6.1.155`, at 55435; corrected 0010–0028 passed in 5.0 s, ledger 29, Auth users 5, public tables 84, and all three default dry runs passed. | ✅ Task20 accepted exact-tag local evidence for condition 1; hosted 17.6 rehearsal waived |
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. The founder also completed `custom:okta` browser sign-in and saw the existing restored user's current sign-in time. | 🟡 managed database and two Auth routes passed; second custom provider and full dashboard remain pending |
@@ -167,9 +169,9 @@ merged-migration freeze, 0024's role-membership grant now resolves
 | Status | Limitation | Impact |
 |---|---|---|
 | 🟡 | Task20 accepted the `17.6.1.155` local full-copy migration as satisfying condition 1 at `60a1b5c`; no hosted 17.6 disposable is required. Task20 accepted x86_64 versus hosted aarch64 and relies on managed 17.11 Auth/restore rehearsal plus immediate post-apply pooler audit and cross-tenant checks. The runbook records both 0024 hashes and the future distinct-runtime-role grant. The Task16e2 lead was notified on 2026-10-24 in the `16e2` chat of the founder-authorized one-statement exception; this was a notification, not a new review cycle. | Blocking before apply: recovery/backup decision and separate founder approval. Blocking before acceptance: post-apply pooler smoke. |
-| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset, and `custom:okta` reached the local dashboard for an existing restored user after an additive Okta callback. The second test tenant's `custom:okta-oidc-custb` sign-in was deferred by the founder; original-password sign-in also remains unproved. Document the callback and URL-configuration steps, then take a fresh encrypted off-site export before live apply. The founder proposed Documents for the backup, but whether it syncs off this Mac and where its key would be held separately are unconfirmed. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
+| 🟡 | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset, and `custom:okta` reached the local dashboard for an existing restored user after an additive Okta callback. The second test tenant's `custom:okta-oidc-custb` sign-in was deferred by the founder; original-password sign-in also remains unproved. A fresh encrypted local full dump was taken into Documents and restored on the exact-tag image; the prior CLI roles/schema/data backup remains the managed-project recovery rehearsal. Document the callback and URL-configuration steps for any replacement project. On 2026-10-24 the founder temporarily waived off-site archive and separate key storage for one week, until a new Mac, external drive or cloud space is available. A weekly reminder starts 2026-10-31; loss of this Mac before off-site copying could lose recovery material. The 2026-10-14 raw dump is older than both new backups. | Tested database recovery route; one-week local-only storage risk accepted. Full replacement-project recovery time and lost-write window remain unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
-| 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. The Task20 lead said not to add the four missing B5 policies; Task4 must separately remove the seven existing direct-read policies or disable `public` Data API exposure. On 2026-10-24 the founder reported live Auth sign-up on and Confirm Email off, so an unverified tenant-domain signup could reach rows through the seven policies. Recommend disabling new signups now if self-registration is unnecessary. | B5 disposition and Auth setting recorded; immediate mitigation and separate Task4 fix pending. |
+| 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. The Task20 lead said not to add the four missing B5 policies; Task4 must separately remove the seven existing direct-read policies or disable `public` Data API exposure. On 2026-10-24 the founder reported that live sign-up had been on with Confirm Email off, then saved sign-up off in the live dashboard. This closes new self-registration, while the policies and any previously created accounts still need separate review. | B5 disposition and founder-reported mitigation recorded; separate Task4 fix pending. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
 
 ## Test coverage
@@ -224,6 +226,24 @@ the hosted service, Auth sign-in or transaction pooler. The Task20 lead later
 accepted this exact-tag local rehearsal as satisfying condition 1, with those
 residual risks accepted and the pooler smoke required immediately after live
 apply. No hosted 17.6 disposable project is required.
+
+Before the live apply decision, `docs/ops/task14a_backup_live.py` checked the
+live session-pooler target over verified TLS: PostgreSQL 17.6, five Auth users,
+42 public tables and 10 ledger entries. With the founder's one-week storage
+exception, it wrote a new encrypted full custom-format dump to
+`~/Documents/TrackAI-Task14a-backups/` and a new 32-byte key to the private
+`_task14a_backup_20261024` directory. Both files are mode 0600; the archive
+directory is mode 0700. The archive authenticated after saving, has SHA-256
+`3a1327572aeb1669de6902e72612f2c27c674dd2c0a50a579ab47ea012bb1dfc`,
+and no plaintext dump was written to disk. The fresh archive restored to a
+second empty database in `supabase/postgres:17.6.1.155` on 55435 in 11.3 s:
+Auth users 5, identities 6, public tables 42 and ledger 10. The first local
+migration command stopped before applying SQL because that new database was
+owned by `supabase_admin`, unlike the earlier `postgres`-owned rehearsal
+database. Its ledger stayed at 10. After correcting only the isolated new
+database owner to `postgres`, 0010–0028 passed in 2.7 s: ledger 29, Auth users
+5, public tables 84, vector 0.8.2 and both audit policies. All three default
+post-step dry runs passed; the ledger remained at 29. No live SQL was changed.
 
 ## Integration test impact
 

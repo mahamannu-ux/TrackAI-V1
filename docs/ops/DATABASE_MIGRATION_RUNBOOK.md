@@ -28,8 +28,11 @@ test tenant's custom provider was intentionally not tested. This is rehearsal
 evidence only. A read-only live `version()` check returned PostgreSQL 17.6,
 while the managed disposable is 17.11. Task20 subsequently accepted the
 exact-tag local rehearsal for condition 1; no hosted 17.6 disposable is
-required. The Task16e2 lead was notified on 2026-10-24. A fresh
-off-site backup and explicit live-apply approval remain.
+required. The Task16e2 lead was notified on 2026-10-24. The founder granted
+a one-week Task14a exception to off-site archive and separate key storage,
+with a weekly reminder starting 2026-10-31. A fresh encrypted local full dump
+was taken, authenticated and restored into an isolated exact-tag image; only
+explicit live-apply approval remains before the schema write.
 
 The live dashboard reported image tag `17.6.1.155`. An isolated local
 `supabase/postgres:17.6.1.155` container on 127.0.0.1:55435 restored the
@@ -117,8 +120,13 @@ Check extension compatibility, Auth user counts and sign-in, Drizzle ledger,
 application table counts and storage-object requirements. A raw full
 `pg_dump` or an application-schema-only restore does not satisfy this full
 recovery gate. Take a fresh export immediately before the live apply and keep
-an off-site encrypted copy with its key protected separately. Alternatively,
-the operator may choose a paid provider backup route after verifying an actual
+an off-site encrypted copy with its key protected separately. For Task14a
+only, the founder temporarily deferred this storage step for one week on
+2026-10-24; the fresh encrypted local export and its authenticated readback
+still precede any live apply. The archives and key remain on one Mac during
+the exception, so loss of that Mac can defeat recovery. The reminder starts
+2026-10-31. Alternatively, the operator may choose a paid provider backup
+route after verifying an actual
 usable pre-change restore point; upgrading alone is not proof of one.
 Validate archive authentication and its table of contents. A generic
 `pg_dump` of all Supabase schemas contains provider internals and is not by
@@ -196,6 +204,17 @@ disposable is required. Supabase's documented project-creation controls do
 not show a minor-version selector. Do not change the live version or discard
 the 17.11 rehearsal project to work around this. Record that the Task16e2
 lead was notified of the 0024 exception.
+For Task14a, `python3 docs/ops/task14a_backup_live.py --inspect` checked the
+live 0009 checkpoint over verified TLS. The interactive backup then saved an
+encrypted full dump in Documents, authenticated it, and a local restore into
+the exact-tag image passed in 11.3 s. The fresh local copy migrated and passed
+all three default dry runs. `python3 docs/ops/task14a_migrate_live.py --inspect`
+is read only. Only after the founder separately approves the exact live apply,
+run that helper with `--apply`; it checks the reviewed 0024 hash, fresh archive
+authentication, project, 0009 ledger and table counts before asking for an
+interactive project-specific confirmation. Use `--poststeps` afterward for
+the three default dry runs. Neither mode grants permission to run a confirmed
+backfill or seal.
 Obtain explicit approval for the schema apply. During the
 window, stop or drain only relevant writers and use the approved direct or
 session connection. Run `npm run db:migrate -w apps/api` once. Confirm the

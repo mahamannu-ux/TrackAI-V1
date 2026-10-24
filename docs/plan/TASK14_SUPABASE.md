@@ -9,8 +9,10 @@ consideration with conditions. Read-only live `version()` confirmed PostgreSQL
 17.6 and the dashboard reported image `17.6.1.155`. An exact-tag local
 full-copy migration rehearsal passed, and Task20 accepted it for condition 1;
 no hosted 17.6 disposable is required. The Task16e2 lead was notified on
-2026-10-24. A fresh off-site backup, a usable Free-tier recovery route and separate founder
-approval for live migration remain required.
+2026-10-24. The founder temporarily waived off-site archive and separate key
+storage through 2026-10-31, with a weekly reminder. A fresh encrypted local
+backup was taken and restored on the exact-tag image; separate founder
+approval for live migration remains required.
 
 ## In plain words
 
@@ -84,11 +86,12 @@ the seven existing policies permit direct Data API reads based on a JWT email
 domain and may expose tenant rows if Auth allows unverified sign-up. Task4
 should separately remove those seven policies in a reviewed migration or
 disable `public` exposure in Supabase Data API settings. On 2026-10-24, the
-founder reported that live Auth has **Allow new users to sign up=on** and
-**Confirm Email=off**. This permits unverified signup; recommend disabling
-new signups immediately if self-registration is unnecessary. Do not call the
-project secure until the signup exposure is mitigated and Task4 handles the
-underlying direct-read policies. No policy change is part of Task14a's
+founder reported that live Auth had **Allow new users to sign up=on** and
+**Confirm Email=off**. Later the same day the founder saved **Allow new users
+to sign up=off** in the live dashboard. This stops new self-registration but
+does not remove the seven direct-read policies or assess existing accounts.
+Do not call the project secure until Task4 handles the underlying direct-read
+policies. No policy change is part of Task14a's
 migration plan.
 
 ## Pending migration risk and required follow-up
@@ -255,7 +258,26 @@ exports were removed after encryption and authenticated readback. Their
 uncompressed sizes were 358, 107,545 and 64,060,005 bytes respectively. The
 data export includes `auth.users`, `drizzle.__drizzle_migrations` and the
 TrackAI `public` tables. The encrypted archive and key are currently on the
-same machine and need separately protected off-site copies before live apply.
+same machine. On 2026-10-24 the founder explicitly deferred off-site copying
+and separate key storage for one week, until a new Mac, external drive or
+cloud space is available. A reminder is set for 2026-10-31. This does not
+remove the need for a fresh encrypted local backup just before live apply;
+loss of this Mac before an off-site copy could lose the recovery material.
+
+Before the live apply decision, `docs/ops/task14a_backup_live.py` used the
+verified session pooler and Supabase CA to read-only check the live 0009
+checkpoint (PostgreSQL 17.6; Auth users 5; public tables 42; ledger 10). It
+wrote a fresh encrypted full custom-format dump to the private
+`~/Documents/TrackAI-Task14a-backups/` folder and a new key to the existing
+private `_task14a_backup_20261024` folder. Only encrypted bytes were saved;
+the archive authenticated after writing. It restored in 11.3 s into a new
+empty database on the exact `17.6.1.155` image at 55435 with Auth users 5,
+identities 6, public tables 42 and ledger 10. An initial local migration
+attempt failed before SQL because the new database had the wrong owner;
+ledger remained 10. After matching the earlier rehearsal's `postgres`
+ownership on this isolated copy, corrected 0010–0028 passed in 2.7 s and
+reached ledger 29, Auth users 5, public tables 84 and both audit policies.
+The three default post-step dry runs passed with no apply flags.
 
 An isolated `supabase/postgres:17.6.1.136` container was started on
 **127.0.0.1:55434**; its `vector` extension is 0.8.2, matching the live
@@ -305,8 +327,9 @@ lead's approval for live-apply consideration at `93805f8` and acceptance of
 the exact-tag rehearsal at `60a1b5c`; the two hashes and remaining conditions
 are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. The Task16e2 lead was
 notified of the one-statement exception on 2026-10-24. **Do not run the live migration** until the
-Free-tier recovery route and fresh off-site backup are ready and the founder
-separately approves the apply. No live SQL or ledger was
+Free-tier recovery route and fresh encrypted local backup are ready; both
+have now been rehearsed. The founder must separately approve the apply. The founder's one-week off-site
+storage exception is recorded above. No live SQL or ledger was
 changed. Ports 8080 and 55432 remained untouched.
 
 ## Disposable managed-project restore (2026-10-24)
