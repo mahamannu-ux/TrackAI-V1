@@ -1,0 +1,23 @@
+apps/api/drizzle/meta/0029_snapshot.json
+  s_c023862e5bb644::t_8db0731f8e4d15 1-13153
+apps/api/drizzle/meta/_journal.json
+  s_c023862e5bb644::t_9ca26e7b78a9cb 207-213
+docs/plan/STATUS_BOARD.md
+  s_c023862e5bb644::t_be77e8a85829bb 27,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "b5172fbc913dbbc33f60d81dbb7d377d0e66171d",
+  "prompts": {},
+  "sessions": {
+    "s_c023862e5bb644": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16e67-73b8-7d63-9729-b2b319d05fa4",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
