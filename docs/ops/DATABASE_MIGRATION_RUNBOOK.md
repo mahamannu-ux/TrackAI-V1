@@ -1,0 +1,246 @@
+# TrackAI database migration runbook
+
+**Status, 2026-10-23:** Task14a's local application-schema rehearsal passed;
+no live 0010–0028 migration has run. Read
+[`TASK14_SUPABASE.md`](../plan/TASK14_SUPABASE.md) for this project's current
+ledger, risk register and recovery limitation.
+
+**Update, 2026-10-24:** An ownership-preserving full raw restore on
+`supabase/postgres:17.6.1.136` succeeded. The first `db:migrate` crashed at
+0024's `GRANT ... TO CURRENT_USER`; the transaction rolled back. The founder
+explicitly authorized a narrow exception to correct merged 0024. Its dynamic,
+quoted-role grant passed 0010–0028 on the full restored copy in 6.5 s; the
+ledger reached 29. Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
+documents the original statement-form crash. The Task20 lead reviewed commit
+`93805f8` and approved it for live-apply consideration with the conditions
+below. Do **not** follow section 4 for the live project until those conditions,
+a usable Free-tier recovery route and separate founder approval are met. The
+live project remains at 0009.
+
+The separate disposable managed project restored the CLI export in 129.0 s,
+validated one copied Auth account after a password reset, and reached 0028
+in 77.8 s. All three default post-step dry runs passed. A diagnostic Node
+probe caused the migration to commit because Drizzle owns an internal
+transaction; the read-only ledger and schema checks confirmed the result.
+The founder also completed `custom:okta` browser sign-in for an existing
+restored user after adding the disposable callback to the Okta app. The second
+test tenant's custom provider was intentionally not tested. This is rehearsal
+evidence only. A read-only live `version()` check returned PostgreSQL 17.6,
+while the managed disposable is 17.11. Task20 subsequently accepted the
+exact-tag local rehearsal for condition 1; no hosted 17.6 disposable is
+required. The Task16e2 lead was notified on 2026-10-24. The founder granted
+a one-week Task14a exception to off-site archive and separate key storage,
+with a weekly reminder starting 2026-10-31. A fresh encrypted local full dump
+was taken, authenticated and restored into an isolated exact-tag image; only
+explicit live-apply approval remains before the schema write.
+
+The live dashboard reported image tag `17.6.1.155`. An isolated local
+`supabase/postgres:17.6.1.155` container on 127.0.0.1:55435 restored the
+authenticated October 23 full dump into a new empty database. After creating
+the bare image's missing `supabase_realtime_admin NOLOGIN` role and installing
+`vector` 0.8.2 in that isolated database, corrected 0010–0028 passed in
+5.0 s: ledger 10→29, Auth users 5→5, public tables 42→84, audit membership
+and two policies present. Task19g, Task4 and security-seal default dry runs
+passed with no apply flags. This local x86_64 image check does not reproduce
+the hosted aarch64 service, Auth or pooler. At `60a1b5c`, the Task20 lead
+explicitly accepted these residual risks and this exact-tag check as satisfying
+condition 1. Condition 2 still requires a tenant-scoped audit read through the
+live API on the 6543 transaction pooler and a Company A admin read of Company B
+audit data returning zero, immediately after the live apply.
+
+This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
+is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
+not the migration ledger. Never use `db:push` on a persistent project and
+never change an already merged SQL migration without an explicit founder
+exception and owning-task review. Task14a's authorized 0024 correction has
+Task20 lead review approval for live-apply consideration; the Task16e2 lead
+was notified of the one-statement exception on 2026-10-24.
+
+## 1. Identify the exact target
+
+Record privately: project reference, database name, server major version,
+application role, migration role, target commit SHA, maintenance window and
+who can authorize a restore. Read `drizzle.__drizzle_migrations` and compare
+its timestamps and hashes with `apps/api/drizzle/meta/_journal.json` and the
+SQL files. Inspect RLS policies, extensions and any previously manual grants.
+Use read-only SQL and report names/counts, not rows or connection strings.
+If the ledger or schema differs from the expected predecessor state, stop and
+investigate before invoking Drizzle. A green `drizzle-kit check` checks local
+migration files; it does not prove that a remote database matches them.
+
+Migration `0024_audit_db_role.sql` has two known SHA-256 hashes because of the
+founder-authorized, Task20-reviewed grant correction:
+
+| 0024 file | SHA-256 |
+|---|---|
+| Original, on `main` before Task14a | `c1ae252d20c2df2c92fe37ba1fdb13172db972237993adaf6c067712bb7e315c` |
+| Corrected, reviewed at `93805f8` | `b41314b8b63d45ebd2276e360637e1082e247a25b4c95b5c83c9042698306061` |
+
+Drizzle records the hash when it applies the migration and selects pending
+files after the latest ledger timestamp. A project already past 0024 retains
+the original hash; the live project at 0009 will record the corrected hash.
+For 0024 only, future ledger checks must accept either known hash with the
+corresponding schema/role state. Never re-run 0024 or edit its ledger row to
+make hashes match.
+
+The API's `DATABASE_URL` may point to Supabase's transaction pooler on 6543.
+Use a direct or session-mode connection for `pg_dump` and migrations, with a
+short-lived environment variable supplied by the operator's secret store.
+Do not paste it into a shell command, issue body, log or document. Confirm the
+connection's project and role with read-only SQL before any write.
+For Node/Drizzle, download the project's CA certificate from Supabase
+Dashboard → Database Settings → SSL Configuration and configure the session
+connection with `sslmode=verify-full` and `sslrootcert`. The installed
+node-postgres parser interprets plain `sslmode=require` as certificate
+verification, which failed with `SELF_SIGNED_CERT_IN_CHAIN` on the disposable
+project before any migration SQL ran. The Task14a helper tests the CA and
+hostname before every read-only check and Drizzle call. The restore helper
+now uses the same certificate verification for its preflight, `psql` stream
+and postflight. Keep the certificate path local; do not
+place a database password in a shell command or repository file.
+Do not attempt a rollback-only dry run by nesting Drizzle's migrator inside
+`db.transaction`: this version's migrator starts and commits through its
+session internally, so the outer transaction does not contain its writes.
+
+## 2. Back up and prove recovery
+
+Confirm the project's actual Supabase backup/PITR entitlement and a usable
+pre-change restore point in the dashboard. Record its time and expected
+data-loss window. Take an additional encrypted logical dump retained by the
+operator outside the repository; keep its decryption key separately protected.
+For a Free project with no dashboard restore point, use Supabase's documented
+CLI roles/schema/data export, including Auth data, and rehearse restoration
+into an isolated matching Supabase environment before applying live migrations.
+For a managed-project recovery rehearsal, create a disposable destination
+project and follow Supabase's [CLI backup and restore procedure](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+Record the destination's project reference privately and never point the
+rehearsal restore at the source project. Its Auth settings and API keys need
+separate configuration; a database-only restore does not copy them.
+Check extension compatibility, Auth user counts and sign-in, Drizzle ledger,
+application table counts and storage-object requirements. A raw full
+`pg_dump` or an application-schema-only restore does not satisfy this full
+recovery gate. Take a fresh export immediately before the live apply and keep
+an off-site encrypted copy with its key protected separately. For Task14a
+only, the founder temporarily deferred this storage step for one week on
+2026-10-24; the fresh encrypted local export and its authenticated readback
+still precede any live apply. The archives and key remain on one Mac during
+the exception, so loss of that Mac can defeat recovery. The reminder starts
+2026-10-31. Alternatively, the operator may choose a paid provider backup
+route after verifying an actual
+usable pre-change restore point; upgrading alone is not proof of one.
+Validate archive authentication and its table of contents. A generic
+`pg_dump` of all Supabase schemas contains provider internals and is not by
+itself a complete self-hosted recovery package. Follow the provider's
+[backup guidance](https://supabase.com/docs/guides/platform/backups) and
+[platform restore guidance](https://supabase.com/docs/guides/self-hosting/restore-from-platform)
+for full-project recovery.
+
+For a replacement Supabase project, verify Auth separately after the database
+restore. In its dashboard, inspect **Authentication → Providers** for each
+restored custom provider identifier and whether it is enabled; inspect SSO
+connections and **Authentication → URL Configuration** as well. Supabase's
+[custom-provider guide](https://supabase.com/docs/guides/auth/custom-oauth-providers)
+and [project-restore guide](https://supabase.com/docs/guides/platform/clone-project)
+describe those separate settings. Database rows
+for users/providers do not prove that a new project's API keys, IdP secrets,
+callback URLs or Auth service settings work. Keep the live Okta app and its
+callbacks intact while checking. If an Okta sign-in rehearsal is required,
+use a separate test app or an additive callback approved by the operator;
+then sign in on the disposable project and confirm the issued session resolves
+to the restored user. Record only status and counts, never credentials or
+redirect URLs containing tokens. Document the manual configuration and timing
+as part of the recovery procedure before treating the backup as a usable
+failover route.
+
+Restore the TrackAI application schemas and Drizzle ledger to an isolated
+local PostgreSQL of the **same major version** and with required extensions.
+Use a named container on a free loopback port. For Task14a the approved port
+is **55433** for application-schema tests, **55434** for the earlier Supabase
+image, and **55435** for exact-tag `17.6.1.155`; 55432 belongs to the ongoing
+Task20j/Task5 acceptance database.
+Compare pre-migration ledger and policy counts with the source. Time the
+restore. If full-project Auth recovery is needed, rehearse it in a matching
+Supabase stack; do not call an application-only restore a full recovery drill.
+No live apply proceeds without a demonstrated rollback route and an explicit
+operator decision about its recovery time and possible lost writes.
+
+## 3. Rehearse the exact migration
+
+Point `DATABASE_URL` **only** at the restored copy. Run
+`npm run db:migrate -w apps/api` and then
+`npm exec --workspace=apps/api -- drizzle-kit check`. Verify the expected
+ledger count, extension versions, roles, policies, constraints, triggers and
+representative table counts. Measure migration and lock time; a fast run on
+small data is not a bound for a larger production database. If a migration
+fails, preserve the copy and error for diagnosis. Never edit its ledger to
+skip the failure.
+
+Inventory every accompanying data operation. Run its default dry-run mode
+first and record only per-tenant counts and safe status codes. In the current
+release these include `backfill:task19g-merged-by`,
+`reconcile:task4-wave5-pending`, and `attesta:security-seal --now`. Each
+`--confirm` or apply flag needs a separate approval with its exact scope.
+Check whether the API runtime role differs from the migration role; if so,
+migration 0024's grant to its resolved current user does not supply the runtime role
+with `trackai_audit_reader` membership. Rehearse a reviewed, narrow
+`GRANT trackai_audit_reader TO <runtime role>` deploy step (replace the
+placeholder with the correctly quoted role identifier), then verify an auditor
+read before live use. Without membership, audited reads fail closed with 503.
+The current live API uses the migration role `postgres`, so this additional
+grant is not needed for its present configuration.
+
+## 4. Approve and apply to the persistent project
+
+Present the operator with: target identity and SHA, current/pending migration
+names, drift findings, backup/restore evidence, rehearsal duration, lock and
+row counts, post-step dry runs, smoke checklist, rollback route and estimated
+recovery time. Read `version()` from the live project before approval and
+compare with the disposable managed project's version. If they differ,
+rehearse on a disposable project at the live version or obtain explicit
+reviewer acceptance of an alternative. For Task14a, live is PostgreSQL 17.6
+with image tag `17.6.1.155`, while the managed disposable is 17.11. Task20
+accepted the exact-tag local full-copy rehearsal at `60a1b5c`; no hosted 17.6
+disposable is required. Supabase's documented project-creation controls do
+not show a minor-version selector. Do not change the live version or discard
+the 17.11 rehearsal project to work around this. Record that the Task16e2
+lead was notified of the 0024 exception.
+For Task14a, `python3 docs/ops/task14a_backup_live.py --inspect` checked the
+live 0009 checkpoint over verified TLS. The interactive backup then saved an
+encrypted full dump in Documents, authenticated it, and a local restore into
+the exact-tag image passed in 11.3 s. The fresh local copy migrated and passed
+all three default dry runs. `python3 docs/ops/task14a_migrate_live.py --inspect`
+is read only. Only after the founder separately approves the exact live apply,
+run that helper with `--apply`; it checks the reviewed 0024 hash, fresh archive
+authentication, project, 0009 ledger and table counts before asking for an
+interactive project-specific confirmation. Use `--poststeps` afterward for
+the three default dry runs. Neither mode grants permission to run a confirmed
+backfill or seal.
+Obtain explicit approval for the schema apply. During the
+window, stop or drain only relevant writers and use the approved direct or
+session connection. Run `npm run db:migrate -w apps/api` once. Confirm the
+ledger and schema immediately. Record start/end times and safe counts.
+
+Run post-steps in dry-run mode against the newly migrated project. Seek a
+separate approval for each confirmed backfill, reconcile or seal. Never set
+`TASK5_EPHEMERAL_DATABASE` or `TASK6_EPHEMERAL_DATABASE` on this project.
+
+## 5. Smoke and close out
+
+Start the intended API build with its own port and the live database URL;
+for Task14a use **`PORT=8081`** and set the web client's
+`NEXT_PUBLIC_API_URL=http://127.0.0.1:8081`. Confirm the origin in
+`FRONTEND_URL`. Keep the ongoing API on 8080 undisturbed. Check `/health`,
+admin and auditor sign-in, Code Lifecycle/Task2, Audit, Questions, Security,
+and Company A/B tenant isolation. Specifically exercise one tenant-scoped
+audit read through the API's 6543 transaction-pooler connection, including
+`set local role trackai_audit_reader`, and verify a Company A admin gets zero
+Company B audit rows. Browser sign-in and cross-tenant checks
+require the founder's accounts; an HTTP 200 from `/health` alone is not a
+dashboard acceptance result. Record only status and counts in the handoff.
+
+If smoke fails, stop the new API and writers, diagnose whether an application
+rollback suffices, and obtain explicit approval before restoring a database
+backup or PITR point. A restore may overwrite writes since that point and
+interrupt Auth and the dashboard. Time the actual restore and smoke; revise
+the recovery estimate from evidence. Preserve the failed-state evidence
+without printing customer rows or secrets.

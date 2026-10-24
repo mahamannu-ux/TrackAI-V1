@@ -11,7 +11,12 @@ END $$;
 --> statement-breakpoint
 GRANT SELECT ON "security_audit_events", "attesta_audit_seals" TO trackai_audit_reader;
 --> statement-breakpoint
-GRANT trackai_audit_reader TO CURRENT_USER;
+-- Resolve CURRENT_USER to an identifier before GRANT. Supabase PostgreSQL
+-- images can crash on the role-specification form `TO CURRENT_USER`.
+DO $$
+BEGIN
+	EXECUTE format('GRANT trackai_audit_reader TO %I', current_user);
+END $$;
 --> statement-breakpoint
 CREATE POLICY "security_audit_events_audit_reader_select"
 	ON "security_audit_events"
