@@ -10,24 +10,21 @@ The Task's own prompt (`docs/prompts/NEXT_CHAT_<TaskN>-lead_PROMPT.md`) says wha
 1. Read `AGENTS.md` in full, `docs/plan/PROJECT_MAP.md`, `docs/plan/STATUS_BOARD.md`, `docs/plan/BUG_BACKLOG.md`, `docs/plan/GITAI_FUTURE_TODO.md`, `docs/plan/REUSE_MAP.md`, the Task's row and workstreams in `ROUGH_ROADMAP.md`, its tracker if one exists, and every handoff the prompt names.
 2. Your thread runs in a worktree under `~/AIProjects/TrackAI-wt/` (check `pwd`; stop if not). Name the planning branch `docs/<TaskN>-plan` (`git switch -c docs/<TaskN>-plan` if you started detached or on `codex/…`). Identity `mahamannu-ux <mahamannu@gmail.com>`, per worktree.
 3. Baseline: `npm ci && npm test` in TrackAI; in GitAI, read its `AGENTS.md` and `Taskfile.yml` (do not build yet).
-4. One-line message to the founder: what you read, any blocker, and that the primer comes next.
+4. One-line message to the founder: what you read, any blocker, and that the plan comes next.
 
-## Phase 1. Primer and session graph → founder checkpoint 1
-Write `docs/plan/primers/<TaskN>_PRIMER.md` from `docs/templates/TASK_PRIMER_TEMPLATE.md`:
-- plain words, a customer story (the customer is primarily a CISO, then engineering leaders), a "words you will see" table;
-- **one row per subtask** (use the roadmap's workstream IDs, `T9.1`, `T9.2`…, splitting any that are too large into `T9.1a`…), each with an example, value, size against T6, the cheaper or deferrable option, and **who does it**: Codex, Muse, or *founder-live* (needs a real machine, account, tenant or browser);
-- the proposed **sessions** and the **session graph**: a Mermaid `flowchart TB` with one box per session (naming the subtasks it handles, its agent and its estimate), arrows for "must merge before", the other Tasks' sessions that wait for it or feed it, and the larger font of the template, so it shows what runs in sequence and what in parallel; then two lines naming the critical path and the first things that can start at once. No sub-task graph (founder, 2026-10-16);
+## Phase 1. Plan and session graph → founder checkpoint 1
+No primer unless the founder asks for one (founder, 2026-10-25; template `docs/templates/TASK_PRIMER_TEMPLATE.md`). Write the plan straight into the Task tracker: an existing root tracker stays where it is (`AGENT_COVERAGE.md` for Task13); a new one goes in `docs/plan/<TaskN>.md`, in the style of `TASK6_SECURITY.md` (master matrix, waves with exit gates, evidence gates, completion boundary) and with AGENTS.md §11 symbols. It holds:
+- **one row per subtask** (the roadmap's workstream IDs, `T9.1`, `T9.2`…, splitting any that are too large), each with value, size against T6, the cheaper or deferrable option, and **who does it**: Codex, Muse, or *founder-live* (needs a real machine, account, tenant or browser);
+- the **sessions** (`<TaskN>a`, `b`, …; a session implements one or more subtasks): at most about 0.4× T6 each; split at a migration + contract + UI boundary; TrackAI and GitAI in separate sessions; Muse sessions only where every decision can be written down upfront (AGENTS.md §12.8). Each has an agent, an estimate (apply about 1.3× to your own Muse estimates until there is data), its dependencies and its files;
+- the **session graph**: a Mermaid `flowchart TB` with one box per session (naming its subtasks, agent and estimate), arrows for "must merge before", the other Tasks' sessions that wait for it or feed it, and the larger font (`docs/templates/TASK_PRIMER_TEMPLATE.md` shows the style); then two lines naming the critical path and what can start at once. Never a subtask graph;
 - what is reused (SushiCorp catalog, other Tasks' code), risks, and the questions only the founder can answer, each with your recommendation.
 
-Commit on `docs/<TaskN>-plan`. **Stop.** Reply with a short summary, the questions, and the primer path. The founder marks each row keep / simplify / defer / reorder and answers the questions (he may ask FounderQA or the orchestrator first).
+Commit on `docs/<TaskN>-plan`. **Stop.** Reply with a short summary, the questions, and the tracker path. The founder answers and approves, simplifies or defers subtasks (he may ask FounderQA or the orchestrator first, or ask for a primer).
 
-## Phase 2. Tracker and session plan → founder checkpoint 2
-After his marks:
-1. Record his decisions in the primer's "Founder decisions" section.
-2. Create or update the Task tracker: an existing root tracker stays where it is (`AGENT_COVERAGE.md` for Task13); a new one goes in `docs/plan/<TaskN>.md`, in the style of `TASK6_SECURITY.md` (master matrix, waves with exit gates, evidence gates, completion boundary) and with AGENTS.md §11 symbols.
-3. Split the kept subtasks into **sessions** (`<TaskN>a`, `b`, …): at most about 0.4× T6 each; split at a migration + contract + UI boundary; TrackAI and GitAI work in separate sessions; Muse sessions only where every decision can be written down upfront (AGENTS.md §12.8). Give each session an agent, an estimate (apply about 1.3× to your own Muse estimates until there is data), its dependencies and its files.
-4. Add the sessions to the remaining-plan table and the Task's row to the status board in `docs/plan/STATUS_BOARD.md`.
-5. Write a planning handoff `docs/handoffs/<TaskN>-plan_HANDOFF.md` and end with the §12.4 reply (bash block to push `docs/<TaskN>-plan` and open its PR; a review request). **Stop** for the founder's go-ahead and the review of the plan (§Reviews).
+## Phase 2. Record decisions → founder checkpoint 2
+1. Record his decisions in the tracker's "Founder decisions" section and adjust the subtasks, sessions and graph.
+2. Add the sessions to the remaining-plan table and the Task's row to the status board in `docs/plan/STATUS_BOARD.md`.
+3. Write a planning handoff `docs/handoffs/<TaskN>-plan_HANDOFF.md` and end with the §12.4 reply (bash block to push `docs/<TaskN>-plan` and open its PR; a review request). **Stop** for the founder's go-ahead and the review of the plan (§Reviews).
 
 ## Phase 3. Execute sessions
 For each session, in graph order:
@@ -44,7 +41,7 @@ For each session, in graph order:
 
 ## Phase 4. Close the Task
 - Tracker and roadmap row updated (roadmap stays a summary); status board rows and remaining-plan actuals filled; integration test registry rows added.
-- A Task handoff `docs/handoffs/<TaskN>_HANDOFF.md`: what shipped, what was deferred (with the trigger to resume), open items, evidence, and the Task's total Effort against its primer estimate.
+- A Task handoff `docs/handoffs/<TaskN>_HANDOFF.md`: what shipped, what was deferred (with the trigger to resume), open items, evidence, and the Task's total Effort against its plan estimate.
 - New problems found outside the Task go to `docs/plan/BUG_BACKLOG.md` or `docs/plan/GITAI_FUTURE_TODO.md`, not into the Task.
 - Lessons rows for each session in `docs/agents/MANAGER_PROMPT.md` (what went well, what needed fixing, what to fold into the next prompt).
 
