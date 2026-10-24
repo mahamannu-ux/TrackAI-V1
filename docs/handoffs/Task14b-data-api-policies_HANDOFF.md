@@ -2,11 +2,10 @@
 
 > Status: 🟡 prepared locally; live change requires separate founder approval.
 
-Branch `task/Task14b-data-api-policies` is stacked on Task14a `c72e7c6`.
-Task14a [PR #106](https://github.com/mahamannu-ux/TrackAI-V1/pull/106)
-is open against `main` at head `c72e7c6`, matching this branch's Task14a base.
-Land Task14a first, then rebase this branch on the resulting `main` before
-opening a Task14b PR. No live SQL,
+Branch `task/Task14b-data-api-policies` is rebased onto `origin/main` at
+`df001a1`, the merge of Task14a
+[PR #106](https://github.com/mahamannu-ux/TrackAI-V1/pull/106).
+The Task14b diff contains only this session's changes. No live SQL,
 project setting, or Auth setting was changed by Task14b.
 
 ## At a glance
@@ -48,10 +47,10 @@ creates all eleven on a fresh Supabase installation, so this prevents a fresh
 deployment from reopening the four missing live reads. The live Data API
 schema configuration could not be read from this agent's available session;
 the effective `public` endpoint was verified with zero-row requests instead.
-  No safe test account session/token was available, and the founder chose local
-  evidence only for now. The dedicated worktree was
-created from the Task14a commit because Task14a's branch had no PR or merge
-at session start; only Task14b's status row and registry row were edited.
+No safe test account session/token was available, and the founder chose local
+evidence only for now. The dedicated worktree was first created from the
+Task14a commit; after PR #106 merged, its Task14b-only commits were rebased
+onto the merge. Only Task14b's status row and registry row were edited.
 
 ## Known limitations
 
@@ -101,7 +100,7 @@ IT_PG_MODE=docker IT_PG_VERSION=17 IT_PG_IMAGE=pgvector/pgvector:pg17 IT_PG_DATA
 ## Integration notes
 
 The live 0000 ledger hash is historical and must not be changed. Apply only
-new migration 0029 after Task14a is on `main` and independently reviewed.
+new migration 0029 after independent review and separate founder approval.
 Before approval, inspect the live ledger at 0028, exact seven policy names,
 RLS and `sso_tenants` login policy/privilege; compare 0029's SHA-256
 `a3384a12198c126a66a05c266066cbd54d5f7fd4a21cf0f551a30f3cfbdff18b`.
