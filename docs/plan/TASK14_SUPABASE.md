@@ -1,7 +1,7 @@
 # Task14a: Supabase and the localhost dashboard — Stage 1 plan
 
 **Status, 2026-10-24:** Stage 1 and the Free-tier backup/rehearsal work were
-approved. The live database remains at 0009. The founder separately authorized
+approved. The live database reached 0028 on 2026-10-24. The founder separately authorized
 a narrow correction to merged migration 0024 after a matching-image crash;
 the corrected migration passed on restored local and disposable managed copies.
 The founder supplied the Task20 lead's approval at `93805f8` for live-apply
@@ -11,8 +11,12 @@ full-copy migration rehearsal passed, and Task20 accepted it for condition 1;
 no hosted 17.6 disposable is required. The Task16e2 lead was notified on
 2026-10-24. The founder temporarily waived off-site archive and separate key
 storage through 2026-10-31, with a weekly reminder. A fresh encrypted local
-backup was taken and restored on the exact-tag image; separate founder
-approval for live migration remains required.
+backup was taken and restored on the exact-tag image. The founder separately
+approved the live apply at `4d2743e`; Drizzle exited zero in 79.3 s, and
+postflight found five Auth users, 84 public tables and 29 ledger entries.
+All three default live dry runs passed. API `/health` passed on 8081 against
+the live 6543 transaction-pooler configuration. Authenticated audit and
+cross-tenant dashboard smoke remain pending.
 
 ## In plain words
 
@@ -322,15 +326,14 @@ exact-tag and managed-project checks are recorded below.
 The correction changes 0024's file hash for a fresh migration. This Drizzle
 version chooses pending files using the latest ledger `created_at`, so a
 project already beyond 0024 retains its original hash and is not replayed by
-this change. The live project is still at 0009. The founder supplied the Task20
+this change. The live project is now at 0028. The founder supplied the Task20
 lead's approval for live-apply consideration at `93805f8` and acceptance of
 the exact-tag rehearsal at `60a1b5c`; the two hashes and remaining conditions
 are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. The Task16e2 lead was
-notified of the one-statement exception on 2026-10-24. **Do not run the live migration** until the
-Free-tier recovery route and fresh encrypted local backup are ready; both
-have now been rehearsed. The founder must separately approve the apply. The founder's one-week off-site
-storage exception is recorded above. No live SQL or ledger was
-changed. Ports 8080 and 55432 remained untouched.
+notified of the one-statement exception on 2026-10-24. The Free-tier recovery
+route and fresh encrypted local backup were rehearsed before the founder
+separately approved and ran the live apply. The founder's one-week off-site
+storage exception is recorded above. Ports 8080 and 55432 remained untouched.
 
 ## Disposable managed-project restore (2026-10-24)
 

@@ -1,32 +1,49 @@
 # Task14a-supabase-database Handoff — Supabase schema recovery
 
-> Status: 🟡 Founder-authorized 0024 correction passed on local and disposable
-> managed Supabase copies. The founder supplied a Task20 lead approval for
-> live-apply consideration with conditions. Task20 has accepted the exact-tag
-> local rehearsal for version parity. The Task16e2 lead was notified of the
-> one-statement exception. The founder granted a one-week exception for
-> off-site archive and key storage. A fresh encrypted local backup restored
-> and migrated on the exact-tag image; separate live-apply approval remains.
-> The live project remains at 0009.
+> Status: 🟡 Founder-approved live migration 0010–0028 applied on 2026-10-24.
+> Live postflight and three default dry runs passed. API `/health` passed on
+> 8081; authenticated audit and cross-tenant dashboard smoke remains.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
 This session explains Supabase's Auth/database role, inventories the live
-ledger, stores an encrypted backup and rehearses migrations 0010–0028 on a
-restored application-schema copy. It has made **no live database write** and
-has not started an API on 8080 or PostgreSQL on 55432.
+ledger, stores an encrypted backup, rehearses migrations 0010–0028 and applies
+them to the founder-approved live project. It has not started an API on 8080
+or PostgreSQL on 55432.
+
+## Live apply, 2026-10-24
+
+The founder separately approved `python3 docs/ops/task14a_migrate_live.py
+--apply` at clean commit `4d2743e` against project
+`uqqpnsbpbkmdxzodwmqg`. The guarded command authenticated the fresh
+encrypted archive, verified the corrected 0024 hash and confirmed the live
+0009 checkpoint before running Drizzle through the verified 5432 session
+pooler. Drizzle exited **0 in 79.3 s**. Postflight found PostgreSQL 17.6,
+five Auth users, 84 public tables, 29 ledger entries through 0028,
+`trackai_audit_reader` membership, two audit policies, audit RLS and vector
+0.8.2. Private diagnostic:
+`/Users/manishmahajan/AIProjects/_task14a_backup_20261024/live-migrate-20261024T094104055839Z.log`.
+
+`--poststeps` then ran only the three default dry runs. Task19g reported two
+tenants and zero candidates; Task4 selected zero and changed none; the
+security seal command reported dry-run mode. All exited zero. No backfill or
+seal was applied. The API started on **8081** with the live transaction pooler
+on **6543**; `/health` returned HTTP 200. The web app started on **3002**.
+Authenticated Audit and Company A/B isolation are still pending founder smoke.
+The October 24 archive and key remain on this Mac under the founder's
+one-week off-site/separate-key exception; the reminder is set for 2026-10-31.
 
 ## At a glance
 
 | | Item | Status |
 |---|---|---|
-| Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; a new read-only `version()` check confirmed PostgreSQL 17.6. | ✅ |
+| Discovery | Before apply: 10 records through 0009 and PostgreSQL 17.6. After apply: 29 records through 0028. Runtime transaction pooler is 6543. | ✅ |
 | Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The CLI exports restored to a disposable managed Supabase project in 129.0 s. A fresh October 24 encrypted full dump was written to Documents after verified-TLS read-only preflight, authenticated, and restored on the exact-tag local image in 11.3 s. | 🟡 tested local and managed routes; founder's one-week off-site/key-storage exception, second provider and full recovery timing remain |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Supabase image rehearsals | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. The same dump also restored on the live project's exact reported image tag, `17.6.1.155`, at 55435; corrected 0010–0028 passed in 5.0 s, ledger 29, Auth users 5, public tables 84, and all three default dry runs passed. | ✅ Task20 accepted exact-tag local evidence for condition 1; hosted 17.6 rehearsal waived |
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. The founder also completed `custom:okta` browser sign-in and saw the existing restored user's current sign-in time. | 🟡 managed database and two Auth routes passed; second custom provider and full dashboard remain pending |
-| API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. The founder reached the disposable-project dashboard after Okta sign-in, with expected data errors because the API was stopped. | 🟡 complete dashboard views require an API against the intended database; live acceptance requires live migration |
+| API | This branch's API is running on 8081 against the live 6543 pooler; `/health` returned HTTP 200. Live web is on 3002. | 🟡 authenticated Audit and dashboard views pending |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
-| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. The founder supplied the Task20 lead's review of `93805f8`: approved for live-apply consideration with five conditions and no further 0024 edit. Task20 then accepted exact-tag local parity at `60a1b5c`. The Task16e2 lead was notified on 2026-10-24. | 🟡 live-apply approval pending; pooler smoke is an immediate post-apply condition |
+| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. The founder supplied the Task20 lead's review of `93805f8`: approved for live-apply consideration with five conditions and no further 0024 edit. Task20 then accepted exact-tag local parity at `60a1b5c`. The Task16e2 lead was notified on 2026-10-24. | 🟡 founder approved and migration applied; authenticated pooler smoke pending |
 
 The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
 managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
@@ -243,33 +260,34 @@ owned by `supabase_admin`, unlike the earlier `postgres`-owned rehearsal
 database. Its ledger stayed at 10. After correcting only the isolated new
 database owner to `postgres`, 0010–0028 passed in 2.7 s: ledger 29, Auth users
 5, public tables 84, vector 0.8.2 and both audit policies. All three default
-post-step dry runs passed; the ledger remained at 29. No live SQL was changed.
+post-step dry runs passed; the ledger remained at 29. This paragraph describes
+the local rehearsal before the separately approved live apply above.
 
 ## Integration test impact
 
-No new integration test was added. The existing migration and product smoke
-gates remain blocking for the live deployment. The founder ran the managed
+No new integration test was added. The authenticated product smoke gates
+remain blocking for a restored-dashboard claim. The founder ran the managed
 restore, copied-user sign-in, migration and post-step dry runs; they do not
 certify the original live project's dashboard.
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | 🟡 local image plus founder-run disposable managed restore/migration and post-step dry runs passed; owner review and full recovery decision remain |
+| IT-T14a-01 | Restored application schemas, 0010–0028, audit role, post-step dry runs and API `/health` on isolated ports | Blocking: live migration decision | ✅ live migration, postflight, three dry runs and API health passed; full recovery remains limited by local-only backup storage |
 | IT-T14a-02 | Admin/auditor dashboard and Company A/B isolation against migrated live project | Blocking: dashboard restored claim | ⬜ founder browser run |
 
 ## Integration notes
 
 The live API configuration currently uses the transaction pooler on 6543.
-Use direct/session mode 5432 for the eventual migration and backup. Migration
+The approved migration and backup used verified session mode 5432. Migration
 0024's original role-membership `GRANT ... TO CURRENT_USER` crashed the
 matching local Supabase image. The founder-authorized dynamic quoted-role
 replacement passed locally. Task20 reviewed the correction for live-apply
-consideration and accepted the exact-tag rehearsal for version parity. Notify
-the Task16e2 lead and resolve the remaining pre-apply gates before applying
-it live. Drizzle selects pending migrations by
+consideration and accepted the exact-tag rehearsal for version parity. The
+Task16e2 lead was notified and the founder approved the live apply. Drizzle
+selects pending migrations by
 timestamp in this version; a database already past 0024 keeps its recorded
 old hash, so review every target's ledger before release. The live target is
-still at 0009.
+now at 0028.
 If deployment changes to a separate API runtime role, that role will also
 need reviewed membership before auditor reads.
 Do not run any command with `TASK5_EPHEMERAL_DATABASE=1` or
