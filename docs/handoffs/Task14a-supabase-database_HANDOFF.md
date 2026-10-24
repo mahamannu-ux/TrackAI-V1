@@ -16,11 +16,11 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | | Item | Status |
 |---|---|---|
 | Discovery | Live ledger: 10 records through 0009; 19 pending through 0028. Supabase transaction pooler on 6543; PostgreSQL 17.6. | ✅ |
-| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore and one recovered-user sign-in after a disposable password reset passed; original password and Okta settings unproved |
+| Backup | October 23 encrypted full `pg_dump`; October 24 encrypted Supabase CLI roles/schema/data exports under private `_task14a_backup_*` directories. The October 24 CLI exports restored to a disposable managed Supabase project in 129.0 s. | 🟡 managed database restore, recovered email sign-in after a disposable password reset, and one `custom:okta` sign-in passed; second provider and full recovery timing remain unproved |
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Matching Supabase image | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. | 🟡 local pass; review and hosted recovery remain |
-| Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. | 🟡 managed database and one Auth route passed; broader Auth/settings checks pending |
-| API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. | 🟡 browser sign-in and dashboard views require live migration/founder accounts |
+| Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. The founder also completed `custom:okta` browser sign-in and saw the existing restored user's current sign-in time. | 🟡 managed database and two Auth routes passed; second custom provider and full dashboard remain pending |
+| API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. The founder reached the disposable-project dashboard after Okta sign-in, with expected data errors because the API was stopped. | 🟡 complete dashboard views require an API against the intended database; live acceptance requires live migration |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
 | Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. Task16e2/Task20 owner review of 0024 remains. | 🟡 owner review pending |
 
@@ -46,7 +46,16 @@ WARNING lines. Destination counts were five Auth users, 42 public tables and
 project, not a rollback of the original project. The exported identities
 comprise one email/password account and four users with Okta identities. The
 copied email account later passed an Auth-service sign-in after its password
-was reset in this disposable project; Okta provider settings still need validation. The
+was reset in this disposable project. The founder reported both custom OAuth
+providers present and enabled. Read-only SQL showed one tenant routed through
+`custom:okta` and one through `custom:okta-oidc-custb`; neither uses the SAML
+fallback. After adding the disposable project's callback as a second URI in
+the existing Okta app and allowing `http://localhost:3001/dashboard` in the
+disposable Supabase URL configuration, the founder reached the local dashboard
+through `custom:okta`. The existing restored user showed a current sign-in
+time in the disposable Auth user list. This is founder-reported Auth evidence;
+the founder elected to skip a second browser sign-in for the test-only tenant,
+so `custom:okta-oidc-custb` and full dashboard data remain unverified. The
 destination's PostgreSQL is 17.11; the source snapshot was 17.6.
 The encrypted Auth export includes two custom OAuth provider rows, one SAML
 provider row, one SSO provider row and one SSO domain row. Their presence in
@@ -155,7 +164,7 @@ merged-migration freeze, 0024's role-membership grant now resolves
 | Status | Limitation | Impact |
 |---|---|---|
 | ⬜ | Task16e2/Task20 owners must review the founder-authorized 0024 correction and its changed file hash. The matching-image rehearsal passed, but independent security review has not. | Blocking: live migration. |
-| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset; original-password and Okta sign-in remain unproved. Decide the Okta configuration/recovery procedure, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
+| ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset, and `custom:okta` reached the local dashboard for an existing restored user after an additive Okta callback. The second test tenant's `custom:okta-oidc-custb` sign-in was deferred by the founder; original-password sign-in also remains unproved. Document the callback and URL-configuration steps, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
 | 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
