@@ -13,7 +13,7 @@ project setting, or Auth setting was changed by Task14b.
 |---|---|
 | Policy closure | 🟡 New generated Drizzle migration 0029 removes the seven policies found live and the four that fresh 0000 can create. Live apply pending. |
 | Login and API | 🟡 Disposable role probe preserved a synthetic anonymous `sso_tenants` lookup and privileged API read. No application code changed. |
-| Live Data API | 🟡 Read-only zero-row requests to `public.sso_tenants` and `public.ai_sessions` both returned HTTP 200 with empty arrays on 2026-10-24. The configured exposed-schema list and safe authenticated-account read were not available to this agent. |
+| Live Data API | 🟡 Read-only zero-row requests to `public.sso_tenants` and `public.ai_sessions` both returned HTTP 200 with empty arrays on 2026-10-24. The founder chose local evidence only for now; the configured exposed-schema list and safe authenticated-account read are deferred. |
 | Quality | 🟡 `drizzle-kit check`, `npm run typecheck`, `npm run lint`, 1,265 unit tests, web production build and disposable PostgreSQL 17 verification passed as separate commands. The first sandbox `npm run check` was interrupted. |
 | Review | ✅ Independent read-only review found a test-order gap; revised test passed and re-review found no remaining actionable issue. |
 
@@ -46,7 +46,8 @@ creates all eleven on a fresh Supabase installation, so this prevents a fresh
 deployment from reopening the four missing live reads. The live Data API
 schema configuration could not be read from this agent's available session;
 the effective `public` endpoint was verified with zero-row requests instead.
-No safe test account session/token was available. The dedicated worktree was
+  No safe test account session/token was available, and the founder chose local
+  evidence only for now. The dedicated worktree was
 created from the Task14a commit because Task14a's branch had no PR or merge
 at session start; only Task14b's status row and registry row were edited.
 
@@ -54,7 +55,7 @@ at session start; only Task14b's status row and registry row were edited.
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | Confirm the dashboard Data API exposed-schema list and run a safe test-account pre/post 0029 read probe without copying a token or tenant data into logs/chat. | Blocking: effective authenticated Data API closure claim. |
+| ⬜ **FOUNDER:** | When resuming live validation, confirm the dashboard Data API exposed-schema list and run a safe test-account pre/post 0029 read probe without copying a token or tenant data into logs/chat. | Deferred by founder for now; blocking: effective authenticated Data API closure claim. |
 | ⬜ **FOUNDER:** | Review and approve the exact 0029 SQL separately before live apply; preserve `public` while pre-login `sso_tenants` routing uses it. | Blocking: live policy closure. |
 | 🟡 | Policies are removed while existing `authenticated` table SELECT grants may remain. RLS with no replacement policy denies browser rows, but a later permissive policy could reopen them. | Review future policy additions and consider a separate grant cleanup only with a role/dependency audit. |
 | 🟡 | Task17 owns the Task2/4/5/6 regression, and Task14b changes no API or web code. | Task17's regression remains a separate gate. |
