@@ -5,7 +5,9 @@ approved. The live database remains at 0009. The founder separately authorized
 a narrow correction to merged migration 0024 after a matching-image crash;
 the corrected migration passed on restored local and disposable managed copies.
 The founder supplied the Task20 lead's approval at `93805f8` for live-apply
-consideration with conditions. Live version parity, Task16e2 notification, a
+consideration with conditions. Read-only live `version()` confirmed PostgreSQL
+17.6 versus the managed disposable project's 17.11, so hosted-version parity
+or an explicit Task20 alternative acceptance is needed. Task16e2 notification, a
 fresh off-site backup, a usable Free-tier recovery route and separate founder
 approval for live migration remain required.
 
