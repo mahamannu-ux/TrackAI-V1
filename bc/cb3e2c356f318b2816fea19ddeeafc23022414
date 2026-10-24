@@ -1,0 +1,21 @@
+docs/plan/STATUS_BOARD.md
+  s_148c5698b1601f::t_6b67b0131b4fd4 26,114
+docs/plan/TASK14_SUPABASE.md
+  s_148c5698b1601f::t_f2ddc42f6648db 18-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.19",
+  "base_commit_sha": "bccb3e2c356f318b2816fea19ddeeafc23022414",
+  "prompts": {},
+  "sessions": {
+    "s_148c5698b1601f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16999-04f8-7132-9449-4e791fee42d1",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "mahamannu-ux <mahamannu@gmail.com>"
+    }
+  }
+}
