@@ -30,6 +30,17 @@ while the managed disposable is 17.11; the Task20 lead's hosted-version
 rehearsal condition is therefore open. Task16e2 notification, a fresh
 off-site backup and explicit live-apply approval remain.
 
+The live dashboard reported image tag `17.6.1.155`. An isolated local
+`supabase/postgres:17.6.1.155` container on 127.0.0.1:55435 restored the
+authenticated October 23 full dump into a new empty database. After creating
+the bare image's missing `supabase_realtime_admin NOLOGIN` role and installing
+`vector` 0.8.2 in that isolated database, corrected 0010–0028 passed in
+5.0 s: ledger 10→29, Auth users 5→5, public tables 42→84, audit membership
+and two policies present. Task19g, Task4 and security-seal default dry runs
+passed with no apply flags. This local x86_64 image check does not reproduce
+the hosted aarch64 service, Auth or pooler; Task20 must explicitly accept it
+as an alternative before treating its hosted 17.6 condition as met.
+
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and
@@ -132,8 +143,9 @@ failover route.
 Restore the TrackAI application schemas and Drizzle ledger to an isolated
 local PostgreSQL of the **same major version** and with required extensions.
 Use a named container on a free loopback port. For Task14a the approved port
-is **55433** for application-schema tests and **55434** for the matching
-Supabase image; 55432 belongs to the ongoing Task20j/Task5 acceptance database.
+is **55433** for application-schema tests, **55434** for the earlier Supabase
+image, and **55435** for exact-tag `17.6.1.155`; 55432 belongs to the ongoing
+Task20j/Task5 acceptance database.
 Compare pre-migration ledger and policy counts with the source. Time the
 restore. If full-project Auth recovery is needed, rehearse it in a matching
 Supabase stack; do not call an application-only restore a full recovery drill.

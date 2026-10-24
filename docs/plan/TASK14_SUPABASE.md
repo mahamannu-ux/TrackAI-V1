@@ -6,7 +6,9 @@ a narrow correction to merged migration 0024 after a matching-image crash;
 the corrected migration passed on restored local and disposable managed copies.
 The founder supplied the Task20 lead's approval at `93805f8` for live-apply
 consideration with conditions. Read-only live `version()` confirmed PostgreSQL
-17.6 versus the managed disposable project's 17.11, so hosted-version parity
+17.6 and the dashboard reported image `17.6.1.155`. An exact-tag local
+full-copy migration rehearsal passed, but the managed disposable is 17.11;
+hosted-version parity
 or an explicit Task20 alternative acceptance is needed. Task16e2 notification, a
 fresh off-site backup, a usable Free-tier recovery route and separate founder
 approval for live migration remain required.
@@ -354,3 +356,21 @@ candidates; Task4 selected zero pending rows and reported
 emitted no seal outcomes. The managed project stayed at 0028. Dashboard/API
 smoke remains pending. No write was made to the original live project, which
 remains at 0009.
+
+### Exact live-tag local image rehearsal (2026-10-24)
+
+The live dashboard reported PostgreSQL image `17.6.1.155`. The authenticated
+October 23 full dump was restored into an empty database in an isolated
+`supabase/postgres:17.6.1.155` container on **127.0.0.1:55435**. The bare
+image required a local `supabase_realtime_admin NOLOGIN` role for restore;
+`vector` 0.8.2 was installed in that isolated database. Before migration:
+five Auth users, six identities, 42 public tables and 10 Drizzle entries.
+The corrected 0010–0028 migrated as `postgres` in **5.0 seconds** and ended
+with 29 ledger entries, five Auth users, 84 public tables, the corrected
+0024 hash, audit role membership, RLS and two audit policies. Task19g, Task4
+and security-seal default dry runs exited zero with no apply flags; the ledger
+remained at 29. This local container runs x86_64, while the live server's
+`version()` reports aarch64. It does not test hosted Auth, platform settings
+or pooler behavior. Task20's hosted 17.6 rehearsal condition is still open;
+the lead must approve this local exact-tag evidence as an alternative or
+identify a way to provision a managed 17.6 disposable project.
