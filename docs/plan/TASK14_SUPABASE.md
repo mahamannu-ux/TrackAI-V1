@@ -15,8 +15,8 @@ backup was taken and restored on the exact-tag image. The founder separately
 approved the live apply at `4d2743e`; Drizzle exited zero in 79.3 s, and
 postflight found five Auth users, 84 public tables and 29 ledger entries.
 All three default live dry runs passed. API `/health` passed on 8081 against
-the live 6543 transaction-pooler configuration. Authenticated audit and
-cross-tenant dashboard smoke remain pending.
+the live 6543 transaction-pooler configuration. Company A admin Audit events loaded through 8081/6543; cross-tenant
+dashboard smoke remains pending.
 
 ## In plain words
 

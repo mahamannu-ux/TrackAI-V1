@@ -2,7 +2,7 @@
 
 > Status: 🟡 Founder-approved live migration 0010–0028 applied on 2026-10-24.
 > Live postflight and three default dry runs passed. API `/health` passed on
-> 8081; authenticated audit and cross-tenant dashboard smoke remains.
+> 8081; Company A admin Audit page load passed; cross-tenant dashboard smoke remains.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
 This session explains Supabase's Auth/database role, inventories the live
@@ -28,7 +28,7 @@ tenants and zero candidates; Task4 selected zero and changed none; the
 security seal command reported dry-run mode. All exited zero. No backfill or
 seal was applied. The API started on **8081** with the live transaction pooler
 on **6543**; `/health` returned HTTP 200. The web app started on **3002**.
-Authenticated Audit and Company A/B isolation are still pending founder smoke.
+The founder reported that the signed-in Company A admin Audit page loaded events through this API and the live 6543 pooler. Company A/B isolation remains pending.
 The October 24 archive and key remain on this Mac under the founder's
 one-week off-site/separate-key exception; the reminder is set for 2026-10-31.
 
@@ -41,9 +41,9 @@ one-week off-site/separate-key exception; the reminder is set for 2026-10-31.
 | Rehearsal | `public` + `drizzle` restored on PostgreSQL 17 at 127.0.0.1:55433; migrations to 0028 in 6.4 s; 29 ledger records; Drizzle check and three post-step dry runs passed. | ✅ for application-schema scope |
 | Supabase image rehearsals | Full raw dump restored to an empty database on `supabase/postgres:17.6.1.136` at 55434; Auth and TrackAI table counts matched live. Original 0024 crashed, then the founder-authorized correction applied 0010–0028 in 6.5 s; ledger reached 29 and dry runs passed. The same dump also restored on the live project's exact reported image tag, `17.6.1.155`, at 55435; corrected 0010–0028 passed in 5.0 s, ledger 29, Auth users 5, public tables 84, and all three default dry runs passed. | ✅ Task20 accepted exact-tag local evidence for condition 1; hosted 17.6 rehearsal waived |
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. The founder also completed `custom:okta` browser sign-in and saw the existing restored user's current sign-in time. | 🟡 managed database and two Auth routes passed; second custom provider and full dashboard remain pending |
-| API | This branch's API is running on 8081 against the live 6543 pooler; `/health` returned HTTP 200. Live web is on 3002. | 🟡 authenticated Audit and dashboard views pending |
+| API | This branch's API is running on 8081 against the live 6543 pooler; `/health` returned HTTP 200. Live web is on 3002. | 🟡 Company A admin Audit events loaded; Company A/B isolation and other dashboard views pending |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
-| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. The founder supplied the Task20 lead's review of `93805f8`: approved for live-apply consideration with five conditions and no further 0024 edit. Task20 then accepted exact-tag local parity at `60a1b5c`. The Task16e2 lead was notified on 2026-10-24. | 🟡 founder approved and migration applied; authenticated pooler smoke pending |
+| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. The founder supplied the Task20 lead's review of `93805f8`: approved for live-apply consideration with five conditions and no further 0024 edit. Task20 then accepted exact-tag local parity at `60a1b5c`. The Task16e2 lead was notified on 2026-10-24. | 🟡 founder approved and migration applied; Company A admin Audit pooler read passed; cross-tenant smoke pending |
 
 The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
 managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
