@@ -3,9 +3,11 @@
 **Status, 2026-10-24:** Stage 1 and the Free-tier backup/rehearsal work were
 approved. The live database remains at 0009. The founder separately authorized
 a narrow correction to merged migration 0024 after a matching-image crash;
-the corrected migration passed on the restored local copy. Security owner
-review, a usable Free-tier recovery route, and separate founder approval for
-live migration remain required.
+the corrected migration passed on restored local and disposable managed copies.
+The founder supplied the Task20 lead's approval at `93805f8` for live-apply
+consideration with conditions. Live version parity, Task16e2 notification, a
+fresh off-site backup, a usable Free-tier recovery route and separate founder
+approval for live migration remain required.
 
 ## In plain words
 
@@ -74,9 +76,13 @@ judged from live row counts until the local rehearsal reaches them.
 `authenticated` SELECT policies. Seven exist. RLS is on for all 11 targets,
 but policies are absent on `scm_repositories`, `scm_pull_requests`,
 `scm_contributors`, and `scm_branches`. The frontend uses the protected API,
-but the asymmetry is still a security/design finding for Task20 lead review.
-No policy change is part of this migration plan; decide its disposition before
-claiming the live project has the intended B5 policy set.
+The Task20 lead's 2026-10-24 disposition is **not** to add the missing four:
+the seven existing policies permit direct Data API reads based on a JWT email
+domain and may expose tenant rows if Auth allows unverified sign-up. Task4
+should separately remove those seven policies in a reviewed migration or
+disable `public` exposure in Supabase Data API settings. Check whether live
+Auth sign-up is disabled or requires email confirmation before calling the
+project secure. No policy change is part of Task14a's migration plan.
 
 ## Pending migration risk and required follow-up
 
@@ -287,10 +293,12 @@ have not been proved.
 The correction changes 0024's file hash for a fresh migration. This Drizzle
 version chooses pending files using the latest ledger `created_at`, so a
 project already beyond 0024 retains its original hash and is not replayed by
-this change. The live project is still at 0009. Task16e2/Task20 owner review
-must assess the exception and any other deployment's ledger before release.
-**Do not run the live migration** until that review, a demonstrated Free-tier
-recovery route, and a separate founder approval. No live SQL or ledger was
+this change. The live project is still at 0009. The founder supplied the Task20
+lead's approval for live-apply consideration at `93805f8`; the exact two hashes
+and conditions are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. Notify the
+Task16e2 lead of the one-statement exception. **Do not run the live migration**
+until the live version/image check, demonstrated Free-tier recovery route,
+fresh off-site backup and separate founder approval. No live SQL or ledger was
 changed. Ports 8080 and 55432 remained untouched.
 
 ## Disposable managed-project restore (2026-10-24)
@@ -308,14 +316,19 @@ database-content recovery path into a fresh managed project. The backup has
 one email/password identity and four users with Okta identities. Auth service
 sign-in was then tested through the Auth Admin and user APIs: after resetting
 the one copied email account's password **in the disposable project**, Auth
-issued a session that resolved to the restored user. The original password,
-Okta configuration, and wider project settings remain unverified. The export
+issued a session that resolved to the restored user. The founder later saw both
+custom providers enabled and one tenant routed to each. After adding the
+disposable callback to the existing Okta app, `custom:okta` signed in an
+existing restored user to the localhost dashboard; its API data calls errored
+because the API was stopped. The second test tenant's provider sign-in was
+deferred by the founder. The original email password and wider project
+settings remain unverified. The export
 contains two custom OAuth provider rows plus one each for SAML provider, SSO
 provider and SSO domain; their database presence does not demonstrate a
 working IdP callback or usable project-level secret. Thus the
 measured 129.0 seconds is only the database restore portion of a recovery-time
-estimate. Live 0010–0028 migration still awaits
-owner review, a complete recovery decision and separate founder approval.
+estimate. Live 0010–0028 migration still awaits the Task20 review conditions,
+a complete recovery decision and separate founder approval.
 The original restore stream used encrypted TLS without checking the pooler's
 certificate. An independent review identified this gap; the helper now pins
 the disposable host and requires the downloaded CA and `verify-full` for

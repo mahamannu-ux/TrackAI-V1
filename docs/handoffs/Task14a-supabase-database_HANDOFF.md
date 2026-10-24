@@ -1,8 +1,9 @@
 # Task14a-supabase-database Handoff — Supabase schema recovery
 
 > Status: 🟡 Founder-authorized 0024 correction passed on local and disposable
-> managed Supabase copies. Owner review, the Free-tier recovery decision and
-> separate live-apply approval remain. The
+> managed Supabase copies. The founder supplied a Task20 lead approval for
+> live-apply consideration with conditions. Live version parity, Task16e2
+> notification, an off-site backup and separate live-apply approval remain. The
 > live project remains at 0009.
 
 Branch `task/Task14a-supabase-database`. Stage 1 was approved on 2026-10-23.
@@ -22,7 +23,7 @@ has not started an API on 8080 or PostgreSQL on 55432.
 | Disposable managed project | Restored CLI roles/schema/data in 129.0 s; copied email user signed in after a disposable password reset. Migrations 0010–0028 committed in 77.8 s during a flawed Node probe; read-only inspection confirmed ledger 29, Auth users 5, public tables 84, audit role membership, two policies and vector 0.8.2. Three default post-step dry runs passed and ledger stayed at 29. The founder also completed `custom:okta` browser sign-in and saw the existing restored user's current sign-in time. | 🟡 managed database and two Auth routes passed; second custom provider and full dashboard remain pending |
 | API | This branch's API used 8081 against the rehearsal copy; `/health` returned HTTP 200, then the process was stopped. The founder reached the disposable-project dashboard after Okta sign-in, with expected data errors because the API was stopped. | 🟡 complete dashboard views require an API against the intended database; live acceptance requires live migration |
 | Quality | Typecheck, lint, Drizzle file check, and 1,265/1,265 tests passed. | ✅ |
-| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. Task16e2/Task20 owner review of 0024 remains. | 🟡 owner review pending |
+| Review | Independent review found a helper TLS gap; commit `1a3e9db` pinned the host and requires CA/hostname verification for every database connection. The independent re-review found no further actionable issues. The founder supplied the Task20 lead's review of `93805f8`: approved for live-apply consideration with five conditions and no further 0024 edit. | 🟡 conditions and Task16e2 notification pending |
 
 The founder created disposable Supabase project `glwwxaobocwoczvjmrod` for a
 managed recovery drill. Its SQL Editor read-only check reported PostgreSQL
@@ -163,10 +164,10 @@ merged-migration freeze, 0024's role-membership grant now resolves
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ | Task16e2/Task20 owners must review the founder-authorized 0024 correction and its changed file hash. The matching-image rehearsal passed, but independent security review has not. | Blocking: live migration. |
+| ⬜ | The founder supplied the Task20 lead's approval of the 0024 correction at `93805f8`, conditional on a read-only live `version()` check and hosted-version rehearsal if different from 17.11, pooler audit/cross-tenant smoke after apply, a two-hash runbook, Task16e2 lead notification, and B5 disposition. The runbook and B5 disposition are recorded; live version and Task16e2 notification remain. | Blocking: live migration until pre-apply conditions are met. |
 | ⬜ | The CLI roles/schema/data backup restored into a disposable managed project in 129.0 s with matching key counts; 0010–0028 and three default dry runs then passed. A copied email account signed in after a disposable password reset, and `custom:okta` reached the local dashboard for an existing restored user after an additive Okta callback. The second test tenant's `custom:okta-oidc-custb` sign-in was deferred by the founder; original-password sign-in also remains unproved. Document the callback and URL-configuration steps, then take a fresh encrypted off-site export before live apply. The 2026-10-14 raw dump is older than both new backups. | Blocking: complete Free-tier service recovery; full recovery time and lost-write window unmeasured. |
 | ⬜ **FOUNDER:** | After the migration fix and recovery drill pass, review the new evidence and explicitly approve the exact 0010–0028 live apply; separately approve any confirmed backfill. | Blocking: live schema and dashboard acceptance. |
-| 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. | Task20 lead reviews the 0000 policy disposition; no merged SQL or live policy was changed. |
+| 🟡 | Live 0000 and 0009 ledger hashes differ from current files. 0000 matches its original seven-policy Git version; 0009's sole drop-table effect is present, though its historical SQL text is unknown. The Task20 lead said not to add the four missing B5 policies; Task4 must separately remove the seven existing direct-read policies or disable `public` Data API exposure, and check live Auth sign-up/email confirmation before claiming security. | B5 disposition recorded; separate Task4 fix and Auth setting check remain. |
 | ⬜ | Admin/auditor sign-in, Task2/Audit/Questions/Security views and Company A/B isolation have not run against migrated live data. | Blocking: localhost dashboard restored claim. |
 
 ## Test coverage

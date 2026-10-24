@@ -11,9 +11,10 @@ ledger, risk register and recovery limitation.
 explicitly authorized a narrow exception to correct merged 0024. Its dynamic,
 quoted-role grant passed 0010–0028 on the full restored copy in 6.5 s; the
 ledger reached 29. Supabase's [image issue #2348](https://github.com/supabase/postgres/issues/2348)
-documents the original statement-form crash. Do **not** follow section 4 for
-the live project until Task16e2/Task20 owner review, a demonstrated Free-tier
-recovery route including Auth sign-in, and separate founder approval. The
+documents the original statement-form crash. The Task20 lead reviewed commit
+`93805f8` and approved it for live-apply consideration with the conditions
+below. Do **not** follow section 4 for the live project until those conditions,
+a usable Free-tier recovery route and separate founder approval are met. The
 live project remains at 0009.
 
 The separate disposable managed project restored the CLI export in 129.0 s,
@@ -21,15 +22,19 @@ validated one copied Auth account after a password reset, and reached 0028
 in 77.8 s. All three default post-step dry runs passed. A diagnostic Node
 probe caused the migration to commit because Drizzle owns an internal
 transaction; the read-only ledger and schema checks confirmed the result.
-This is rehearsal evidence only. Original-password/Okta recovery, owner
-review, a fresh off-site backup and explicit live-apply approval remain.
+The founder also completed `custom:okta` browser sign-in for an existing
+restored user after adding the disposable callback to the Okta app. The second
+test tenant's custom provider was intentionally not tested. This is rehearsal
+evidence only. The live image/version check, Task16e2 notification, a fresh
+off-site backup and explicit live-apply approval remain.
 
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and
 never change an already merged SQL migration without an explicit founder
-exception and owning-task review. Task14a's authorized 0024 correction is
-pending that review.
+exception and owning-task review. Task14a's authorized 0024 correction has
+Task20 lead review approval for live-apply consideration; notify the Task16e2
+lead before live apply.
 
 ## 1. Identify the exact target
 
@@ -42,6 +47,21 @@ Use read-only SQL and report names/counts, not rows or connection strings.
 If the ledger or schema differs from the expected predecessor state, stop and
 investigate before invoking Drizzle. A green `drizzle-kit check` checks local
 migration files; it does not prove that a remote database matches them.
+
+Migration `0024_audit_db_role.sql` has two known SHA-256 hashes because of the
+founder-authorized, Task20-reviewed grant correction:
+
+| 0024 file | SHA-256 |
+|---|---|
+| Original, on `main` before Task14a | `c1ae252d20c2df2c92fe37ba1fdb13172db972237993adaf6c067712bb7e315c` |
+| Corrected, reviewed at `93805f8` | `b41314b8b63d45ebd2276e360637e1082e247a25b4c95b5c83c9042698306061` |
+
+Drizzle records the hash when it applies the migration and selects pending
+files after the latest ledger timestamp. A project already past 0024 retains
+the original hash; the live project at 0009 will record the corrected hash.
+For 0024 only, future ledger checks must accept either known hash with the
+corresponding schema/role state. Never re-run 0024 or edit its ledger row to
+make hashes match.
 
 The API's `DATABASE_URL` may point to Supabase's transaction pooler on 6543.
 Use a direct or session-mode connection for `pg_dump` and migrations, with a
@@ -136,15 +156,24 @@ release these include `backfill:task19g-merged-by`,
 `--confirm` or apply flag needs a separate approval with its exact scope.
 Check whether the API runtime role differs from the migration role; if so,
 migration 0024's grant to its resolved current user does not supply the runtime role
-with `trackai_audit_reader` membership. Rehearse a reviewed, narrow grant and
-verify an auditor read before live use.
+with `trackai_audit_reader` membership. Rehearse a reviewed, narrow
+`GRANT trackai_audit_reader TO <runtime role>` deploy step (replace the
+placeholder with the correctly quoted role identifier), then verify an auditor
+read before live use. Without membership, audited reads fail closed with 503.
+The current live API uses the migration role `postgres`, so this additional
+grant is not needed for its present configuration.
 
 ## 4. Approve and apply to the persistent project
 
 Present the operator with: target identity and SHA, current/pending migration
 names, drift findings, backup/restore evidence, rehearsal duration, lock and
 row counts, post-step dry runs, smoke checklist, rollback route and estimated
-recovery time. Obtain explicit approval for the schema apply. During the
+recovery time. Read `version()` from the live project before approval and
+compare with the disposable managed project's PostgreSQL 17.11. If they
+differ, repeat 0010–0028 rehearsal on a disposable project at the live
+version; the matching local 17.6 image alone does not establish hosted-image
+parity. Record that the Task16e2 lead was notified of the 0024 exception.
+Obtain explicit approval for the schema apply. During the
 window, stop or drain only relevant writers and use the approved direct or
 session connection. Run `npm run db:migrate -w apps/api` once. Confirm the
 ledger and schema immediately. Record start/end times and safe counts.
@@ -160,7 +189,10 @@ for Task14a use **`PORT=8081`** and set the web client's
 `NEXT_PUBLIC_API_URL=http://127.0.0.1:8081`. Confirm the origin in
 `FRONTEND_URL`. Keep the ongoing API on 8080 undisturbed. Check `/health`,
 admin and auditor sign-in, Code Lifecycle/Task2, Audit, Questions, Security,
-and Company A/B tenant isolation. Browser sign-in and cross-tenant checks
+and Company A/B tenant isolation. Specifically exercise one tenant-scoped
+audit read through the API's 6543 transaction-pooler connection, including
+`set local role trackai_audit_reader`, and verify a Company A admin gets zero
+Company B audit rows. Browser sign-in and cross-tenant checks
 require the founder's accounts; an HTTP 200 from `/health` alone is not a
 dashboard acceptance result. Record only status and counts in the handoff.
 
