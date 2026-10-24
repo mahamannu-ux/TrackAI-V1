@@ -31,7 +31,7 @@ You are **<agent>**, building **<name>** for **TrackAI**, an AI code provenance,
 
 ## 1. Read before writing code
 - <Handoffs this builds on: name the sections ("Implemented interfaces", "Integration notes").>
-- <The Task tracker section and the approved scope in `docs/plan/primers/<TaskN>_PRIMER.md`.>
+- <The Task tracker section with the approved scope (and the primer, if one was written).>
 - <Code: list the exact files, including read-only ones.>
 - <Catalog entries, if a catalogued concern is involved (§2 "Port from").>
 

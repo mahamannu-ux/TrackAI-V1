@@ -254,7 +254,7 @@ Everything else is plain words:
 - Ask before any command that writes outside your worktree.
 
 ### 12.2 Start of session
-1. Read this file, your Task's tracker and the status board in `docs/plan/STATUS_BOARD.md`, the Task primer (`docs/plan/primers/`), the remaining plan, and the handoffs your prompt names.
+1. Read this file, your Task's tracker and the status board in `docs/plan/STATUS_BOARD.md`, the Task primer if one was written (`docs/plan/primers/`), the remaining plan, and the handoffs your prompt names.
 2. Give the founder a **one-line effort estimate** against T6, and say if the work should be split.
 3. **Ask before touching a shared surface:** `apps/api/src/core/db/schema.ts`, a new migration, `package.json` / `package-lock.json`, `apps/api/src/index.ts`, `apps/api/src/core/middleware/`, `.github/workflows/`, another Task's tracker, the GitAI↔TrackAI upload contracts, a new top-level dependency, or a file outside your Task's directories. Your prompt may pre-approve specific ones. Never touch the frozen paths (§1).
 4. Then work without check-ins: interfaces first (§5), commit at each stage.
@@ -297,12 +297,12 @@ The founder pastes the author's review request and nothing else; the reviewer re
 ### 12.7 Naming sessions and the standing chats
 - **Name a session after what it handles** (`Task15a-attesta-chain`), never "session A/B". Its prompt is `docs/prompts/Task<N>/NEXT_CHAT_<name>_PROMPT.md` for a numbered Task (including that Task's lead prompt), its branch `task/<name>` (or `docs/<name>`), and its handoff `docs/handoffs/<name>_HANDOFF.md`. Generic or cross-Task prompts may remain directly under `docs/prompts/`.
 - **Standing chats** do no product code, and restart from their prompt whenever they grow long, because the repository holds the state:
-  - **TrackAI-Orchestrator** (`docs/agents/MANAGER_PROMPT.md`): plans Tasks, writes Task primers and session prompts, answers non-Claude agents, reviews their branches, keeps the lessons table and the status board.
+  - **TrackAI-Orchestrator** (`docs/agents/MANAGER_PROMPT.md`): plans Tasks, writes session prompts (and Task primers when the founder asks), answers non-Claude agents, reviews their branches, keeps the lessons table and the status board.
   - **FounderQA** (the founder's own chat for product and architecture questions; not set up by the kit here).
 - **Non-Claude agents:** when you need a decision, write the question so it can be pasted to TrackAI-Orchestrator (or to the lead Codex thread, §12.8) as is: what you are deciding, the options, your recommendation.
 
 ### 12.8 Task start, agent choice and Codex as lead [TrackAI addition]
-- **Task primer first.** Before a Task's first session prompt, the orchestrator writes `docs/plan/primers/<TaskN>_PRIMER.md` from `docs/templates/TASK_PRIMER_TEMPLATE.md`: every wave and subtask in plain, jargon-free language with a customer example, what it costs, and whether it could be simplified or deferred. The founder marks each one keep / simplify / defer / reorder; only then is the Task split into sessions.
+- **Plan first; primer only on request** (founder, 2026-10-25). A Task starts with its plan in the Task tracker (`docs/plan/<TaskN>.md`, or the existing root tracker): subtasks, the sessions that implement them (a session may implement one or more subtasks), the **session graph** (one box per session, never a subtask graph) and the founder's questions. The founder approves the plan before the first session prompt. A plain-language primer (`docs/plan/primers/<TaskN>_PRIMER.md`, from `docs/templates/TASK_PRIMER_TEMPLATE.md`) is written only when the founder asks for one.
 - **Choosing the agent for a session:**
   - **Muse** by default when every decision can be made upfront and the work is well bounded (it is faster and free).
   - **Codex** when the work needs long evidence and verification back-and-forth with the founder (live agents, real machines, tenants, browsers), or deep context on code it wrote.
