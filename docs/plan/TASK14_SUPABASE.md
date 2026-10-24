@@ -78,14 +78,18 @@ judged from live row counts until the local rehearsal reaches them.
 **B5:** migration `0000_solid_annihilus.sql:248-263` specifies 11
 `authenticated` SELECT policies. Seven exist. RLS is on for all 11 targets,
 but policies are absent on `scm_repositories`, `scm_pull_requests`,
-`scm_contributors`, and `scm_branches`. The frontend uses the protected API,
+`scm_contributors`, and `scm_branches`. The frontend uses the protected API.
 The Task20 lead's 2026-10-24 disposition is **not** to add the missing four:
 the seven existing policies permit direct Data API reads based on a JWT email
 domain and may expose tenant rows if Auth allows unverified sign-up. Task4
 should separately remove those seven policies in a reviewed migration or
-disable `public` exposure in Supabase Data API settings. Check whether live
-Auth sign-up is disabled or requires email confirmation before calling the
-project secure. No policy change is part of Task14a's migration plan.
+disable `public` exposure in Supabase Data API settings. On 2026-10-24, the
+founder reported that live Auth has **Allow new users to sign up=on** and
+**Confirm Email=off**. This permits unverified signup; recommend disabling
+new signups immediately if self-registration is unnecessary. Do not call the
+project secure until the signup exposure is mitigated and Task4 handles the
+underlying direct-read policies. No policy change is part of Task14a's
+migration plan.
 
 ## Pending migration risk and required follow-up
 
