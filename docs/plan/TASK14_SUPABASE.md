@@ -7,9 +7,8 @@ the corrected migration passed on restored local and disposable managed copies.
 The founder supplied the Task20 lead's approval at `93805f8` for live-apply
 consideration with conditions. Read-only live `version()` confirmed PostgreSQL
 17.6 and the dashboard reported image `17.6.1.155`. An exact-tag local
-full-copy migration rehearsal passed, but the managed disposable is 17.11;
-hosted-version parity
-or an explicit Task20 alternative acceptance is needed. Task16e2 notification, a
+full-copy migration rehearsal passed, and Task20 accepted it for condition 1;
+no hosted 17.6 disposable is required. Task16e2 notification, a
 fresh off-site backup, a usable Free-tier recovery route and separate founder
 approval for live migration remain required.
 
@@ -290,19 +289,20 @@ unchanged. On the ownership-preserving full copy, 0010–0028 then applied in
 users remained; `vector` was 0.8.2; the audit role membership and two
 tenant-bound policies existed. A tenant-scoped audit read succeeded in a
 rolled-back transaction. Task19g, Task4 and security-seal dry runs again
-reported no data changes. Drizzle's local file check passed. This is evidence
-for the local image only; the hosted project's image revision and Auth sign-in
-have not been proved.
+reported no data changes. Drizzle's local file check passed. This first image
+run alone did not establish hosted revision or Auth behavior; the later
+exact-tag and managed-project checks are recorded below.
 
 The correction changes 0024's file hash for a fresh migration. This Drizzle
 version chooses pending files using the latest ledger `created_at`, so a
 project already beyond 0024 retains its original hash and is not replayed by
 this change. The live project is still at 0009. The founder supplied the Task20
-lead's approval for live-apply consideration at `93805f8`; the exact two hashes
-and conditions are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. Notify the
-Task16e2 lead of the one-statement exception. **Do not run the live migration**
-until the live version/image check, demonstrated Free-tier recovery route,
-fresh off-site backup and separate founder approval. No live SQL or ledger was
+lead's approval for live-apply consideration at `93805f8` and acceptance of
+the exact-tag rehearsal at `60a1b5c`; the two hashes and remaining conditions
+are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. Notify the Task16e2 lead of
+the one-statement exception. **Do not run the live migration** until the
+Free-tier recovery route and fresh off-site backup are ready and the founder
+separately approves the apply. No live SQL or ledger was
 changed. Ports 8080 and 55432 remained untouched.
 
 ## Disposable managed-project restore (2026-10-24)
@@ -371,6 +371,8 @@ with 29 ledger entries, five Auth users, 84 public tables, the corrected
 and security-seal default dry runs exited zero with no apply flags; the ledger
 remained at 29. This local container runs x86_64, while the live server's
 `version()` reports aarch64. It does not test hosted Auth, platform settings
-or pooler behavior. Task20's hosted 17.6 rehearsal condition is still open;
-the lead must approve this local exact-tag evidence as an alternative or
-identify a way to provision a managed 17.6 disposable project.
+or pooler behavior. The Task20 lead accepted this exact-tag local rehearsal
+at `60a1b5c` as satisfying condition 1, with the architecture and hosted
+service differences accepted. A tenant-scoped audit read through the live API
+on the 6543 pooler and a Company A admin read of Company B audit data
+returning zero remain mandatory immediately after the live apply.

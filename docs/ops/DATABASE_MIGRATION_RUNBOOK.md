@@ -26,8 +26,9 @@ The founder also completed `custom:okta` browser sign-in for an existing
 restored user after adding the disposable callback to the Okta app. The second
 test tenant's custom provider was intentionally not tested. This is rehearsal
 evidence only. A read-only live `version()` check returned PostgreSQL 17.6,
-while the managed disposable is 17.11; the Task20 lead's hosted-version
-rehearsal condition is therefore open. Task16e2 notification, a fresh
+while the managed disposable is 17.11. Task20 subsequently accepted the
+exact-tag local rehearsal for condition 1; no hosted 17.6 disposable is
+required. Task16e2 notification, a fresh
 off-site backup and explicit live-apply approval remain.
 
 The live dashboard reported image tag `17.6.1.155`. An isolated local
@@ -38,8 +39,11 @@ the bare image's missing `supabase_realtime_admin NOLOGIN` role and installing
 5.0 s: ledger 10→29, Auth users 5→5, public tables 42→84, audit membership
 and two policies present. Task19g, Task4 and security-seal default dry runs
 passed with no apply flags. This local x86_64 image check does not reproduce
-the hosted aarch64 service, Auth or pooler; Task20 must explicitly accept it
-as an alternative before treating its hosted 17.6 condition as met.
+the hosted aarch64 service, Auth or pooler. At `60a1b5c`, the Task20 lead
+explicitly accepted these residual risks and this exact-tag check as satisfying
+condition 1. Condition 2 still requires a tenant-scoped audit read through the
+live API on the 6543 transaction pooler and a Company A admin read of Company B
+audit data returning zero, immediately after the live apply.
 
 This runbook applies to every persistent TrackAI PostgreSQL project. Drizzle
 is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
@@ -183,16 +187,15 @@ Present the operator with: target identity and SHA, current/pending migration
 names, drift findings, backup/restore evidence, rehearsal duration, lock and
 row counts, post-step dry runs, smoke checklist, rollback route and estimated
 recovery time. Read `version()` from the live project before approval and
-compare with the disposable managed project's PostgreSQL 17.11. If they
-differ, repeat 0010–0028 rehearsal on a disposable project at the live
-version; the matching local 17.6 image alone does not establish hosted-image
-parity. The live check on 2026-10-24 returned PostgreSQL 17.6. Supabase's
-documented project-creation controls do not show a minor-version selector;
-do not change the live version or discard the 17.11 rehearsal project to
-work around this. If a managed 17.6 destination cannot be provisioned, take
-the exact local-image and managed-17.11 evidence back to the Task20 lead for
-an explicit alternative acceptance decision. Record that the Task16e2 lead
-was notified of the 0024 exception.
+compare with the disposable managed project's version. If they differ,
+rehearse on a disposable project at the live version or obtain explicit
+reviewer acceptance of an alternative. For Task14a, live is PostgreSQL 17.6
+with image tag `17.6.1.155`, while the managed disposable is 17.11. Task20
+accepted the exact-tag local full-copy rehearsal at `60a1b5c`; no hosted 17.6
+disposable is required. Supabase's documented project-creation controls do
+not show a minor-version selector. Do not change the live version or discard
+the 17.11 rehearsal project to work around this. Record that the Task16e2
+lead was notified of the 0024 exception.
 Obtain explicit approval for the schema apply. During the
 window, stop or drain only relevant writers and use the approved direct or
 session connection. Run `npm run db:migrate -w apps/api` once. Confirm the
