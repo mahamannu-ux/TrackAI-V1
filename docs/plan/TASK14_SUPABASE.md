@@ -90,14 +90,25 @@ but policies are absent on `scm_repositories`, `scm_pull_requests`,
 `scm_contributors`, and `scm_branches`. The frontend uses the protected API.
 The Task20 lead's 2026-10-24 disposition is **not** to add the missing four:
 the seven existing policies permit direct Data API reads based on a JWT email
-domain and may expose tenant rows if Auth allows unverified sign-up. Task4
-should separately remove those seven policies in a reviewed migration or
-disable `public` exposure in Supabase Data API settings. On 2026-10-24, the
+domain and may expose tenant rows if Auth allows unverified sign-up. Task20
+reviewed the risk and disposition, but did not implement a remediation. Task4
+is merged and its regression belongs to Task17; this is a new Task14b Data
+API policy follow-up, not a Task4 rework. The seven live `authenticated`
+SELECT policies are on `ai_sessions`, `ai_session_repositories`,
+`ai_session_usage`, `ai_commit_sessions`, `scm_commits`, `scm_commit_files`, and
+`scm_pull_request_commits`. A 2026-10-24 read-only check confirmed both these
+policies and effective `authenticated` SELECT privilege on all seven tables.
+Each policy selects rows whose `tenant_id` maps to the JWT email domain in
+`sso_tenants`. Task14b should prepare a reviewed new migration to remove the
+seven policies, or prove another narrow mitigation. Disabling the whole
+`public` Data API schema would currently break the unauthenticated
+`sso_tenants` lookup in `apps/web/src/app/login/page.tsx`, so it is not a
+drop-in setting change. On 2026-10-24, the
 founder reported that live Auth had **Allow new users to sign up=on** and
 **Confirm Email=off**. Later the same day the founder saved **Allow new users
 to sign up=off** in the live dashboard. This stops new self-registration but
 does not remove the seven direct-read policies or assess existing accounts.
-Do not call the project secure until Task4 handles the underlying direct-read
+Do not call the project secure until Task14b handles the underlying direct-read
 policies. No policy change is part of Task14a's
 migration plan.
 
