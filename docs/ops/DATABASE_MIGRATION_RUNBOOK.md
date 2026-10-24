@@ -28,7 +28,7 @@ test tenant's custom provider was intentionally not tested. This is rehearsal
 evidence only. A read-only live `version()` check returned PostgreSQL 17.6,
 while the managed disposable is 17.11. Task20 subsequently accepted the
 exact-tag local rehearsal for condition 1; no hosted 17.6 disposable is
-required. Task16e2 notification, a fresh
+required. The Task16e2 lead was notified on 2026-10-24. A fresh
 off-site backup and explicit live-apply approval remain.
 
 The live dashboard reported image tag `17.6.1.155`. An isolated local
@@ -50,8 +50,8 @@ is the schema migrator. Supabase is an Auth and hosted PostgreSQL provider,
 not the migration ledger. Never use `db:push` on a persistent project and
 never change an already merged SQL migration without an explicit founder
 exception and owning-task review. Task14a's authorized 0024 correction has
-Task20 lead review approval for live-apply consideration; notify the Task16e2
-lead before live apply.
+Task20 lead review approval for live-apply consideration; the Task16e2 lead
+was notified of the one-statement exception on 2026-10-24.
 
 ## 1. Identify the exact target
 

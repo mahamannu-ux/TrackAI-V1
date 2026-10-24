@@ -8,8 +8,8 @@ The founder supplied the Task20 lead's approval at `93805f8` for live-apply
 consideration with conditions. Read-only live `version()` confirmed PostgreSQL
 17.6 and the dashboard reported image `17.6.1.155`. An exact-tag local
 full-copy migration rehearsal passed, and Task20 accepted it for condition 1;
-no hosted 17.6 disposable is required. Task16e2 notification, a
-fresh off-site backup, a usable Free-tier recovery route and separate founder
+no hosted 17.6 disposable is required. The Task16e2 lead was notified on
+2026-10-24. A fresh off-site backup, a usable Free-tier recovery route and separate founder
 approval for live migration remain required.
 
 ## In plain words
@@ -299,8 +299,8 @@ project already beyond 0024 retains its original hash and is not replayed by
 this change. The live project is still at 0009. The founder supplied the Task20
 lead's approval for live-apply consideration at `93805f8` and acceptance of
 the exact-tag rehearsal at `60a1b5c`; the two hashes and remaining conditions
-are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. Notify the Task16e2 lead of
-the one-statement exception. **Do not run the live migration** until the
+are in `docs/ops/DATABASE_MIGRATION_RUNBOOK.md`. The Task16e2 lead was
+notified of the one-statement exception on 2026-10-24. **Do not run the live migration** until the
 Free-tier recovery route and fresh off-site backup are ready and the founder
 separately approves the apply. No live SQL or ledger was
 changed. Ports 8080 and 55432 remained untouched.
