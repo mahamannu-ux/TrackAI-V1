@@ -3,8 +3,10 @@
 > Status: 🟡 prepared locally; live change requires separate founder approval.
 
 Branch `task/Task14b-data-api-policies` is stacked on Task14a `c72e7c6`.
-Task14a had no PR at this checkpoint. Land Task14a first, then rebase this
-branch on the resulting `main` before opening a Task14b PR. No live SQL,
+Task14a [PR #106](https://github.com/mahamannu-ux/TrackAI-V1/pull/106)
+is open against `main` at head `c72e7c6`, matching this branch's Task14a base.
+Land Task14a first, then rebase this branch on the resulting `main` before
+opening a Task14b PR. No live SQL,
 project setting, or Auth setting was changed by Task14b.
 
 ## At a glance
