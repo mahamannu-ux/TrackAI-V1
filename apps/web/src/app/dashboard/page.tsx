@@ -9,6 +9,7 @@ import { EvidenceWorkspace } from './evidence-workspace';
 import { FleetWorkspace } from './fleet-workspace';
 import { QuestionsWorkspace } from './questions-workspace';
 import { SecurityWorkspace } from './security-workspace';
+import { AdminSecurityFindingRow } from './admin-security-finding-row';
 import {
   getCommit, getCommitEvidenceFlow, getCommits, getContributors, getDashboardSummary,
   getLifecycle,
@@ -212,9 +213,9 @@ function isTask4VerificationRepository(repository: Repository): boolean {
   return repository.name.startsWith('task4-wave4-matrix-');
 }
 
-function AdminPanel({ context, resources, loading, error, onChanged, onOpenAudit, repositories }: {
+function AdminPanel({ context, resources, loading, error, onChanged, onOpenAudit, onOpenSecurity, repositories }: {
   context: AdminContext | null; resources: AdminResources | null; loading: boolean;
-  error: string | null; onChanged: () => void; onOpenAudit: () => void; repositories: Repository[];
+  error: string | null; onChanged: () => void; onOpenAudit: () => void; onOpenSecurity: () => void; repositories: Repository[];
 }) {
   const active = context?.membership?.status === 'active';
   const canManageFleet = active && context?.membership?.role === 'tenant_admin';
@@ -620,12 +621,11 @@ function AdminPanel({ context, resources, loading, error, onChanged, onOpenAudit
         <div className="text-xs text-slate-600">Evaluated {date(resources.operations.evaluatedAt)}</div>
       </section>}
       {adminSection === 'findings' && <section className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">Security findings</h2><p className="mt-1 text-sm text-slate-500">Reviewed metadata from supported OpenCode command requests. Raw commands, URLs, paths, outputs, prompts, and secret values are not stored here.</p></div><div className="flex items-center gap-2"><Badge tone="violet">Monitor only</Badge><button type="button" disabled={securityFindingsLoading} onClick={() => void loadSecurityFindings()} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-50">{securityFindingsLoading ? 'Loading…' : 'Refresh findings'}</button></div></div>
-        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-100"><strong>TrackAI did not block this action.</strong> A finding means a reviewed pattern was requested and observed by the supported pre-action hook; it does not prove that the command succeeded.</div>
-        <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 text-sm text-slate-300"><strong className="text-white">Verified route: OpenCode terminal/TUI on macOS.</strong> Other agents, surfaces and operating systems are not yet verified for Task6 Security monitoring.</div>
+        <div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold text-white">Security findings</h2><p className="mt-1 text-sm text-slate-500">Finding metadata for this tenant. For filters and finding details, use the Security tab.</p></div><div className="flex items-center gap-2"><button type="button" onClick={onOpenSecurity} className="rounded-lg border border-violet-500/30 px-3 py-2 text-xs text-violet-200">Open Security tab</button><button type="button" disabled={securityFindingsLoading} onClick={() => void loadSecurityFindings()} className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-50">{securityFindingsLoading ? 'Loading…' : 'Refresh findings'}</button></div></div>
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-100">A finding records a detected pattern; it does not prove the action completed. Check its details in the Security tab.</div>
         {securityFindingsError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{securityFindingsError}</div>}
         {!securityFindings && securityFindingsLoading && <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-400">Loading security findings…</div>}
-        {securityFindings && <TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{securityFindings.findings.length ? securityFindings.findings.map(finding => { const repository = resources.repositories?.repositories.find(row => row.id === finding.repositoryId); return <tr key={finding.id}><td className="px-5 py-4 text-slate-500">{date(finding.occurredAt)}</td><td className="px-5 py-4"><div className="font-medium text-white">{finding.ruleId.replace('trackai.exec.', '').replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">Version {finding.ruleVersion} · {finding.phase.replace('_', ' ')}</div></td><td className="px-5 py-4"><Badge tone={finding.ruleSeverity === 'critical' ? 'amber' : 'violet'}>{finding.ruleSeverity}</Badge></td><td className="px-5 py-4 text-slate-400">{repository?.name ?? finding.repositoryId.slice(0, 8)}</td><td className="px-5 py-4 text-slate-400">{finding.operatingSystem}</td><td className="px-5 py-4"><Badge tone="slate">Monitor only</Badge></td></tr>; }) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No monitor findings have been received for this tenant.</td></tr>}</TableShell>}
+        {securityFindings && <TableShell headers={['Time', 'Rule', 'Severity', 'Repository', 'System', 'Effect']}>{securityFindings.findings.length ? securityFindings.findings.map(finding => <AdminSecurityFindingRow key={finding.id} finding={finding} repositoryName={resources.repositories?.repositories.find(row => row.id === finding.repositoryId)?.name ?? null} />) : <tr><td colSpan={6} className="px-5 py-5 text-slate-500">No findings have been received for this tenant.</td></tr>}</TableShell>}
       </section>}
       </>}
   </div>;
@@ -803,7 +803,7 @@ export default function DashboardPage() {
           {repositories.filter((row) => matches([row.name, row.url, row.provider])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4">{row.provider}</td><td className="px-5 py-4 text-slate-400"><a href={row.url} target="_blank" rel="noreferrer" className="hover:text-violet-300">{row.normalizedUrl ?? row.url}</a></td><td className="px-5 py-4 text-slate-500">{row.externalId}</td></tr>)}</TableShell>}
         {view === 'contributors' && <TableShell headers={['Contributor', 'Email', 'Repository', 'Machine']}>
           {contributors.filter((row) => matches([row.name, row.email])).map((row) => <tr key={row.id}><td className="px-5 py-4 font-medium text-white">{row.name}</td><td className="px-5 py-4 text-slate-400">{row.email ?? 'Not provided by GitHub'}</td><td className="px-5 py-4">{repositories.find((repo) => repo.id === row.repositoryId)?.name ?? '—'}</td><td className="px-5 py-4 text-slate-500">{row.machineId ?? '—'}</td></tr>)}</TableShell>}
-        {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} onOpenAudit={() => navigateToView('audit')} repositories={repositories} />}
+        {view === 'administration' && <AdminPanel context={adminContext} resources={adminResources} loading={adminLoading} error={adminError} onChanged={() => void refresh(false)} onOpenAudit={() => navigateToView('audit')} onOpenSecurity={() => navigateToView('security')} repositories={repositories} />}
         {view === 'audit' && adminContext?.membership?.status === 'active' && <AuditWorkspace role={adminContext.membership.role} repositories={repositories} />}
         {view === 'questions' && adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor') && <QuestionsWorkspace role={adminContext.membership.role} repositories={repositories} pullRequests={pullRequests} />}
         {view === 'security' && adminContext?.membership?.status === 'active' && (adminContext.membership.role === 'tenant_admin' || adminContext.membership.role === 'tenant_auditor') && <SecurityWorkspace role={adminContext.membership.role} repositories={repositories} />}

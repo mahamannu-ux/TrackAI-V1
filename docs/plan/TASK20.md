@@ -126,7 +126,7 @@ The exact JSON and table names are decided in Task20a; these meanings are fixed 
 
 ### Wave 4: proof (Task20j), then the later sessions (Task20k, Task20l)
 - Walkthrough rows E20-01…E20-12 are passed or explicitly marked "not monitored".
-- The 44 rules have run on the founder's normal work for a week, with no critical false positive left untriaged.
+- The 44 rules have run during five consecutive working days of real agent work, including at least one lease renewal and one restart or reboot, with no critical false positive left untriaged.
 - AGENTS.md §9 items 9 and 11 are rewritten to match the evidence.
 
 ## 5. Sessions and file ownership
@@ -234,6 +234,28 @@ flowchart TB
 
 ## 7. Integration and founder-live evidence
 
+**Task20j fixed build and install baseline (2026-11-17):** GitAI fork `main` at `e6bfe77b66ee70396a08632a23868030b208b16c`; Intel macOS debug Endpoint `1.6.19`, Numbat `v0.2.0-trackai.1` built with Go `1.26.9`. The unsigned development-trust package is `trackai-endpoint-macos-x64-debug.pkg`, SHA-256 `34ccd4cd60f079d4d6e863d2a8de58f4214f859099aba7af3e7c159eadb69c74`. The installer succeeded; the installed `com.git-ai.git-ai` receipt reports `1.6.19`, matching the installed Endpoint. All five managed hooks reported `installed`, the rule pointer remained `placeholder`, the Company A machine credential was available, and the daemon reported running. The kept local PostgreSQL, auth, API and web health checks passed; Company A/B and one Company A machine were seeded. The signed monitor lease, four health layers, local record and upload remain untested, so E20-01 is not yet passed and no agent is claimed monitored.
+
+**Day-one scan consent and rule-suite check:** On 2026-11-17 the founder explicitly consented to a one-time scan of the everyday account's prior agent session history into the kept local stack. The pinned Numbat `packaging/numbat/test-pin.sh` passed (`numbat-tests: ok 17 packages`). This establishes only E20-R's pinned-suite portion; the compiled-bundle checks and live group triggers remain pending. The consent does not establish a completed scan or signed monitor lease.
+
+The initial Company A security settings dry run reported zero rule overrides, off → monitor, a first bundle at version 1/epoch 1, and one active machine; it wrote nothing. The founder's publish and Endpoint acknowledgement remain pending.
+
+**Day-1 activation, partial observation:** The founder published the development-signed monitor setting and bundle v1/epoch 1, digest `393ac27e8ac0799ccf20a59b484505e84c5213d1fc80a188d228e1249099c29f`. After a hard daemon restart, the rule pointer named `1-393ac27e8ac0`, and `numbat rules check` passed with **44 compiled** rules in each of the five agent folders. Company A Coverage reported monitor lease expiring `2026-11-20T09:02:54.277Z`, an `applied` acknowledgement, `hook_status=ok`, `local_record=ok`, `agent_effective_view=unavailable` (requires hand checks), and `forwarder_ack=unavailable` at its first status. The day-one scan marker was still pending at this observation. Three Company A findings were counted (`exec.download_pipe_shell`/Codex, `lateral.workload_exec`/Codex, `tamper.guardrails_off`/Claude Code); their at-rest status, severity and triage remain pending. Do not mark E20-01, E20-09 or E20-W passed from this snapshot.
+
+The first scan attempt left `day-one-scan-attempts` at one failed attempt for Cursor; the done marker is absent. The Endpoint retries no sooner than the next hourly attempt, up to its bounded 24-attempt cap. Diagnose Cursor locally without recording session content; other agent summaries and the three findings do not turn this into an E20-09 pass.
+
+The manual Cursor diagnostic scan returned exit 1, a scan summary with `status=error`, zero artifacts and zero findings, and two diagnostics (one informational parsing notice and one no-artifacts error). The Endpoint's current zero-artifact exception expects exactly one diagnostic with a different message prefix, so this result cannot be counted as a successful no-files scan. Keep Cursor's E20-09 result open; no session content or diagnostic text is copied here.
+
+The founder confirmed the three findings appear in the local console but does not recall the underlying activity. Database metadata confirms all three are `found_at_rest=true`, with severities high, medium and low respectively. Their triage is **uncertain**, not classified as false or true positives; review the high finding's local historical context and timestamps before disposition. No critical finding is in this set.
+
+A proposed harmless Cursor action coincided with the local Numbat file growing from 108 to 113 lines, but the five trailing records at inspection were labelled `source_agent=codex`. The count-only comparison cannot prove Cursor execution in the everyday account; its live-hook check remains pending a Cursor-filtered before/after count. The earlier Task20h-a guest-account Cursor live pass is separate evidence.
+
+A subsequent Cursor-filtered comparison rose from **5 to 9** local Numbat records around the founder's harmless Cursor Agent action. This establishes that the managed Cursor hook emitted records in the everyday account. The action's completion without a hook error still needs the founder's explicit observation; a Cursor rule finding, server upload, E20-09 scan summary and full monitored claim remain unproven.
+
+**Day-one scan delivery update:** The local done marker was written at 2026-11-17T11:04:16Z with `partial=false` and no failed agents. The founder queried the kept database: five scan summaries, all `complete`. The prior two Cursor attempts remain retry history. This establishes the day-one scan delivery observation; E20-09's later off/on no-repeat check, E20-R live triggers and per-agent E20 claims remain open. The Admin → Security findings null-repository crash was fixed in the web code and the founder confirmed the view now renders the same rows as Security → Findings.
+
+**Task20 lead Checkpoint 2 review (2026-11-17):** The failed zero-artifact Cursor scan with two diagnostics is an E20-09 mismatch even though a later retry completed. The successful retry followed a real Cursor action, but its artifact count is still needed to confirm why the outcome changed. After the fixed-build week, GitAI should accept Numbat's actual zero-artifact Cursor diagnostics, with a regression fixture. Do not rebuild the installed package during E20-W. E20-R live group triggers move to working days 1–2: prove `found_at_rest=false` and matching local/server record IDs for Claude Code, Codex and Cursor before relying on normal-work observations.
+
 | ID | What it proves | In plain words | Prerequisites | Gating | Status |
 |---|---|---|---|---|---|
 | IT-T20b-01 | Two builds of the mirror tag give identical bytes; Numbat's tests pass at the pin | We can rebuild the same detector and get the same program. | Go toolchain | Blocking: Task20b | ⬜ |
@@ -243,7 +265,7 @@ flowchart TB
 | IT-T20f-02 | The same with the platform `policy_bundle` and `activation_lease` KMS keys | Production keys sign and verify the same settings as the development test. | Task15n root ceremony and keys | Blocking: first customer build | ⬜ |
 | IT-T20g-01 | Intel Mac: tampered, expired, replayed and broken bundle and lease never activate; last-known-good kept; off means nothing uploaded | A Mac refuses invalid instructions and stops uploads when off. | founder's Mac, throwaway tenant | Blocking: Task20g merge | ⬜ |
 | IT-T20h-01 | Intel Mac: PKG installs Numbat and managed hooks (Claude Code, Codex), the four-layer health check is green, offboarding removes them | The Mac package installs, reports health and can be removed. | founder's Mac | Blocking: Task20h merge | 🟡 2026-10-20 Intel debug run passed install, Claude finding, off and manual offboard; Codex CLI absent, Claude/Cursor lists omitted Numbat despite execution, and unattended locked-Keychain cleanup unproven. Repeat on Task20j build. |
-| E20-01…E20-12, E20-R/W | Acceptance walkthrough per agent: monitor, off, offline, lease expiry, restart, tampered bundle, data settings, day-one scan, inventory, console, Company A/B; rule proof and seven-day noise run | Real work on the Mac turns an installed hook into a bounded monitoring claim. | Task20h (+ Task20i) merged; [runbook](TASK20_ACCEPTANCE.md) | Blocking: any "monitored" claim | ⬜ |
+| E20-01…E20-12, E20-R/W | Acceptance walkthrough per agent: monitor, off, offline, lease expiry, restart, tampered bundle, data settings, day-one scan, inventory, console, Company A/B; rule proof and five-working-day noise run | Real work on the Mac turns an installed hook into a bounded monitoring claim. | Task20h (+ Task20i) merged; [runbook](TASK20_ACCEPTANCE.md) | Blocking: any "monitored" claim | ⬜ |
 | IT-M20-01 | Task15o signs v2 findings; Task19c answers S rows from v2 tables | Security findings reach both signed evidence and Questions. | Task15o, Task19c | Cross-Task | ⬜ |
 | IT-M20-02 | The same Endpoint against the real Task20d route on `scripts/it-db.sh` | The Endpoint sends real detector records to the real server route. | Task20d and Task20e merged | Blocking: Task20h merge | ⬜ |
 
@@ -255,7 +277,7 @@ Task20 is complete when Task20a–Task20j have merged and E20 has passed for at 
 
 | Platform | Claude Code | Codex | Cursor | Gemini CLI | Copilot CLI | Build / evidence |
 |---|---|---|---|---|---|---|
-| Intel macOS | not monitored | not monitored | not monitored | not monitored | not monitored | E20 founder sitting and seven-day run pending |
+| Intel macOS | not monitored | not monitored | not monitored | not monitored | not monitored | E20 founder sitting and five-working-day run pending |
 | Apple Silicon macOS | not monitored | not monitored | not monitored | not monitored | not monitored | Task9f second-Mac gate pending |
 | Windows, Linux, WSL | not monitored | not monitored | not monitored | not monitored | not monitored | Task9g and Linux wave pending |
 
@@ -270,6 +292,8 @@ Task20 is complete when Task20a–Task20j have merged and E20 has passed for at 
 Task20k and Task20l start on the founder's go, not on the calendar.
 
 ## 9. Founder decisions
+
+**2026-11-17 acceptance duration:** The founder set E20-W to five consecutive working days with real agent work, at least one lease renewal and one restart or reboot. Day 1 is Tuesday 2026-11-17 and day 5 is Monday 2026-11-23; the joint sitting follows, with E20-07 last. The fixed package remains unchanged throughout.
 
 1. **2026-10-16:** review §10 Q1–Q10 and §13 approved (decision record).
 2. **2026-10-16 (round 2):**
