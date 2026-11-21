@@ -1,21 +1,22 @@
 # Task14b Handoff — Supabase Data API policy closure
 
-> Status: 🟡 prepared locally; live change requires separate founder approval.
+> Status: ✅ migration 0029 applied to the approved live project on 2026-11-21;
+> database postflight and founder-reported Okta/dashboard smoke passed.
 
 Branch `task/Task14b-data-api-policies` includes `origin/main` through
 merged Task20 test fix [PR #110](https://github.com/mahamannu-ux/TrackAI-V1/pull/110).
-The Task14b diff contains only this session's changes. No live SQL,
-project setting, or Auth setting was changed by Task14b.
+PR #109 is merged. The founder separately approved the exact 0029 live apply.
+No Auth setting or Data API exposed-schema setting was changed.
 
 ## At a glance
 
 | Item | Status |
 |---|---|
-| Policy closure | 🟡 Drizzle migration 0029 removes the seven policies found live and the four that fresh 0000 can create, guarded by the existence of `authenticated` for plain PostgreSQL. Live apply pending. |
-| Login and API | 🟡 Disposable role probe preserved a synthetic anonymous `sso_tenants` lookup and privileged API read. No application code changed. |
-| Live Data API | 🟡 Read-only zero-row requests to `public.sso_tenants` and `public.ai_sessions` both returned HTTP 200 with empty arrays on 2026-10-24. The founder chose local evidence only for now; the configured exposed-schema list and safe authenticated-account read are deferred. |
+| Policy closure | ✅ Founder-approved 0029 applied live in 3.5 seconds. Ledger 30, zero legacy policies; RLS and anonymous login configuration unchanged. |
+| Login and API | ✅ Founder completed fresh Company A Okta sign-in and reported dashboard data loading through the protected API after apply. No application code changed. |
+| Live Data API | 🟡 Pre-apply zero-row probes confirmed `public` was reachable. Post-apply catalog check shows the eleven legacy policy names gone; a safe authenticated-account Data API probe and configured exposed-schema inspection remain deferred. |
 | Quality | ✅ Revised 0029: Drizzle check, typecheck and lint passed. Founder ran both disposable database gates on November 21. After merging PR #110 into this branch, `npm test` passed 1,265/1,265 (100 suites, zero failures). |
-| Review | 🟡 Task20 lead reviewed `61c5527` as ready to push after the revised disposable gates; both passed. PR #109 is open. |
+| Review | ✅ Task20 lead reviewed `61c5527` as ready after the revised disposable gates; both passed. PR #109 merged before live apply. |
 
 ## Implemented interfaces
 
@@ -36,8 +37,9 @@ legacy policy names; no catalog component reduces its scope or risk.
 ## Founder-approved decisions
 
 Task20 directed that the four absent live policies stay absent. Task14a's
-prompt assigned a new forward migration to Task14b. There is **no** founder
-approval yet to apply 0029 or alter any live setting.
+prompt assigned a new forward migration to Task14b. On 2026-11-21 the founder
+approved applying the exact reviewed 0029 SQL to the live project after a fresh
+encrypted backup. The apply helper required a second typed confirmation.
 
 ## Deviations from spec
 
@@ -55,8 +57,7 @@ onto the merge. Only Task14b's status row and registry row were edited.
 
 | Status | Limitation | Impact |
 |---|---|---|
-| ⬜ **FOUNDER:** | When resuming live validation, confirm the dashboard Data API exposed-schema list and run a safe test-account pre/post 0029 read probe without copying a token or tenant data into logs/chat. | Deferred by founder for now; blocking: effective authenticated Data API closure claim. |
-| ⬜ **FOUNDER:** | Review and approve the exact 0029 SQL separately before live apply; preserve `public` while pre-login `sso_tenants` routing uses it. | Blocking: live policy closure. |
+| ⬜ **FOLLOW-UP:** | Confirm the dashboard Data API exposed-schema list and run a safe test-account post-0029 read probe without copying a token or tenant data into logs/chat. | Deferred by founder; catalog/RLS checks and protected API browser smoke passed, but hosted authenticated Data API behavior has not been directly probed. |
 | 🟡 | Policies are removed while existing `authenticated` table SELECT grants may remain. RLS with no replacement policy denies browser rows, but a later permissive policy could reopen them. | Review future policy additions and consider a separate grant cleanup only with a role/dependency audit. |
 | 🟡 | Task17 owns the Task2/4/5/6 regression, and Task14b changes no API or web code. | Task17's regression remains a separate gate. |
 | ⬜ **FOLLOW-UP:** | `anon` has effective SELECT access to `public.sso_tenants`; a public anon key can enumerate tenant domains. The pre-login frontend lookup depends on this access. | Replace the broad table SELECT with a rate-limited first-party login lookup accepting one normalized domain and returning only whether SSO is enabled; handle provider-specific redirect server-side so provider IDs and the tenant list are not exposed. Then revoke `anon` SELECT and remove the broad policy in a separately reviewed change. Do not change this login path in Task14b. |
@@ -110,17 +111,39 @@ scripts/it-db.sh sh -c 'test "$(psql "$DATABASE_URL" -X -tA -v ON_ERROR_STOP=1 -
 
 ## Integration notes
 
+### Live apply, 2026-11-21
+
+Read-only preflight found 29 ledger entries, exactly seven live legacy
+policies, none of the four other names, RLS on all eleven tables, and both
+anonymous `sso_tenants` login columns readable. The founder ran
+`task14b_backup_live.py` after a preflight-query correction; it verified a
+fresh encrypted full dump and authenticated readback. The archive SHA-256 is
+`4fdd71ee3e246f890d0264a6c1b10755f99145f288a5763f6fd1e3eb657f71b5`.
+The encrypted archive and key are private local files under
+`~/AIProjects/_task14b_backup_20261121/`; they are currently on the same Mac
+and should be copied to separate private storage for durable recovery.
+
+After separate founder approval and typed project-specific confirmation,
+`task14b_apply_live.py --apply` verified the reviewed 0029 SHA-256, backup,
+0028 ledger, seven policies, RLS and login configuration. Drizzle exited 0 in
+3.5 seconds. Read-only postflight found ledger 30, zero legacy policies, and
+unchanged RLS and anonymous login configuration. The founder then completed
+fresh Company A Okta login at the live web origin and reported dashboard data
+loading through the protected API. An initial attempt on localhost:3000 hit
+Task20j's synthetic Auth server; the live smoke ran separately on web 3002
+and API 8082 using the live Supabase project and transaction pooler. No Task20j
+or Task15n port/database was altered. Auth and Data API settings were not changed.
+
 The live 0000 ledger hash is historical and must not be changed. Apply only
-new migration 0029 after independent review and separate founder approval.
-Before approval, inspect the live ledger at 0028, exact seven policy names,
-RLS and `sso_tenants` login policy/privilege; compare 0029's SHA-256
+new migration 0029 after independent review and separate founder approval
+(completed above). The reviewed 0029 SHA-256 was
 `b3b9cb300c6c893d8491b26998f3151ec66a215177e66349406866c24c0055c1`.
-After any separately approved live apply, confirm ledger 0029, zero legacy
-policies, `sso_tenants` anonymous login lookup, authenticated direct-read
-denial, and protected API dashboard behavior. Do not disable `public` Data API
-exposure or alter Auth settings as part of this change.
+Do not disable `public` Data API exposure until the anonymous login lookup is
+redesigned. The hosted authenticated Data API denial remains a follow-up probe.
 
 ## Effort (estimate vs actual)
 
-Estimate about 0.10× T6; actual about 0.10× T6 plus pending live/founder
-review. The local work stayed within one session.
+Estimate about 0.10× T6; actual about 0.15× T6 including live preflight,
+encrypted backup, guarded apply, and browser smoke. The first backup helper
+query failed before any dump or database write and was corrected before the
+successful run.
