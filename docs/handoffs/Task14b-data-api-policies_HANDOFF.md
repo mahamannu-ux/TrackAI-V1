@@ -15,8 +15,8 @@ project setting, or Auth setting was changed by Task14b.
 | Policy closure | 🟡 Drizzle migration 0029 removes the seven policies found live and the four that fresh 0000 can create, guarded by the existence of `authenticated` for plain PostgreSQL. Live apply pending. |
 | Login and API | 🟡 Disposable role probe preserved a synthetic anonymous `sso_tenants` lookup and privileged API read. No application code changed. |
 | Live Data API | 🟡 Read-only zero-row requests to `public.sso_tenants` and `public.ai_sessions` both returned HTTP 200 with empty arrays on 2026-10-24. The founder chose local evidence only for now; the configured exposed-schema list and safe authenticated-account read are deferred. |
-| Quality | 🟡 Earlier revision: `drizzle-kit check`, typecheck, lint, 1,265 unit tests, web production build and disposable PostgreSQL 17 verification passed separately. Revised 0029: Drizzle check, typecheck and lint passed on November 21; disposable rerun is blocked by Docker socket and local shared-memory permissions in this sandbox. |
-| Review | 🟡 Independent read-only re-review found no actionable issue on the preceding revision; revised 0029 needs review. |
+| Quality | 🟡 Revised 0029: Drizzle check, typecheck and lint passed. Founder ran both disposable database gates on November 21; `npm test` at `61c5527` passed 1,264/1,265, failing only Task20's aged fixed-date fixture. Task20 fixed that test in merged PR #110; rerun after syncing main. |
+| Review | 🟡 Task20 lead reviewed `61c5527` as ready to push after the revised disposable gates; both passed. PR #109 is open. |
 
 ## Implemented interfaces
 
@@ -84,18 +84,21 @@ after 0029 in the disposable test. The test now builds the live-shaped state
 before Drizzle applies 0029, fingerprints the login policy and privileges
 across the migration, and queries all seven formerly readable tables. The
 re-review found no remaining actionable findings.
-The November 21 role guard changes 0029 after that review. `drizzle-kit check`,
-typecheck and lint passed. Docker rehearsal failed before startup due to socket
-permission; local `initdb` failed at shared-memory allocation. Rerun the
-disposable test and independent review against this revision before live consideration.
-The standard `scripts/it-db.sh` migration on a plain PostgreSQL install without
-`authenticated` is an additional gate for the new guard.
+The November 21 role guard changes 0029 after that earlier review. `drizzle-kit check`,
+typecheck and lint passed. The founder's Docker disposable role/policy gate passed
+on throwaway port 54367, and `scripts/it-db.sh` applied the migrations on plain
+PostgreSQL without `authenticated` on throwaway port 54394. Neither used the
+Task20j or Task15n database. Task20 lead reviewed commit `61c5527` as ready
+after those gates. The founder's `npm test` then passed 1,264/1,265; the one
+failure was Task20i-a's fixed October 10 fixture outside the default rolling
+30-day read window. Task20 fixed the test with an explicit fixture date range
+in merged PR #110. Sync main and rerun `npm test` before closing Task14b.
 
 ## Integration test impact
 
 | ID | What it proves | Gating | Status |
 |---|---|---|---|
-| IT-T14b-01 | Disposable migration and role/policy behavior | Blocking: Task14b merge and live apply consideration | 🟡 preceding revision agent-verified on 2026-10-24; revised 0029 and founder live authenticated probe pending |
+| IT-T14b-01 | Disposable migration and role/policy behavior | Blocking: Task14b merge and live apply consideration | ✅ revised 0029 role/policy and plain-PostgreSQL gates founder-verified 2026-11-21; live authenticated probe deferred to post-apply checks |
 
 Disposable command (it creates and removes its own database):
 
