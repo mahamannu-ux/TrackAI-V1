@@ -33,6 +33,10 @@ import {
 
 const TENANT = randomUUID();
 const NOW = new Date('2026-10-10T12:00:00Z');
+// Route requests otherwise default to the 30 days before the real clock, so
+// fixtures dated at NOW would age out of the list. Pin the window around NOW.
+const FIXTURE_WINDOW = `from=${encodeURIComponent(new Date(NOW.getTime() - 86_400_000).toISOString())}`
+  + `&to=${encodeURIComponent(new Date(NOW.getTime() + 86_400_000).toISOString())}`;
 
 function findingRow(overrides: Record<string, unknown> = {}): Parameters<typeof toFindingItem>[0] {
   return {
@@ -368,17 +372,19 @@ test('Task20i-a: every filter selects, paging is stable with equal timestamps', 
   state.findings.push(memoryItem({ machine_id: machineB, agent: 'codex', rule_severity: 'low' }));
   const ctx = await startServer('tenant_admin', state);
   try {
-    const first = await get(ctx, '/api/admin/security/v2/findings?limit=2');
+    const first = await get(ctx, `/api/admin/security/v2/findings?limit=2&${FIXTURE_WINDOW}`);
     assert.equal(first.status, 200);
     assert.equal((first.body as { items: unknown[] }).items.length, 2);
     assert.ok((first.body as { next_cursor: string }).next_cursor);
     const ids = new Set<string>();
-    let path: string | null = '/api/admin/security/v2/findings?limit=2';
+    let path: string | null = `/api/admin/security/v2/findings?limit=2&${FIXTURE_WINDOW}`;
     while (path) {
       const page = await get(ctx, path);
       for (const item of (page.body as { items: SecurityFindingItem[] }).items) ids.add(item.id);
       const cursor = (page.body as { next_cursor: string | null }).next_cursor;
-      path = cursor ? `/api/admin/security/v2/findings?limit=2&cursor=${encodeURIComponent(cursor)}` : null;
+      path = cursor
+        ? `/api/admin/security/v2/findings?limit=2&${FIXTURE_WINDOW}&cursor=${encodeURIComponent(cursor)}`
+        : null;
     }
     assert.equal(ids.size, 7, 'paging over equal timestamps returns every row once');
     for (const [filter, expected] of [
@@ -387,7 +393,7 @@ test('Task20i-a: every filter selects, paging is stable with equal timestamps', 
       [`repository_id=${repository}`, 1], ['agent=codex', 1], ['category=execution', 1],
       ['rule_id=trackai.exec.reverse_shell', 1],
     ] as const) {
-      const filtered = await get(ctx, `/api/admin/security/v2/findings?${filter}`);
+      const filtered = await get(ctx, `/api/admin/security/v2/findings?${filter}&${FIXTURE_WINDOW}`);
       assert.equal((filtered.body as { items: unknown[] }).items.length, expected, filter);
     }
     const audits = state.audits;

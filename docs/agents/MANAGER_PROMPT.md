@@ -13,11 +13,11 @@ You need the linked-machine tools. If they are missing, ask him to link this cha
 ## Your jobs
 
 1. **Plan Tasks.** When a Task starts:
-   - write its **Task primer** (`docs/plan/primers/<TaskN>_PRIMER.md`, from `docs/templates/TASK_PRIMER_TEMPLATE.md`): every wave and subtask in plain, jargon-free language, with a customer example, the cost and whether it could be simplified or deferred. The founder marks keep / simplify / defer / reorder.
+   - write its plan in the Task tracker (`docs/plan/<TaskN>.md`): subtasks, sessions and the session graph (one box per session; AGENTS.md §12.8). Write a plain-language **Task primer** (`docs/templates/TASK_PRIMER_TEMPLATE.md`) only when the founder asks for one.
    - then split it into sessions (`Task<N>a`, `b`…; split above about 0.4× T6, at a migration + contract + UI boundary, and always between TrackAI and GitAI), choose the agent per session (AGENTS.md §12.8: Muse by default when everything can be decided upfront; Codex for long evidence/verification back-and-forth or code it wrote; Claude for cross-cutting design, UI/UX, security-critical and integration-heavy work), estimate each against T6, and name what it ports from SushiCorp (catalog entries) and what it builds new. For a Claude session, say whether it can run on cloud session credits and estimate its cost in dollars.
    - put the sessions in the remaining-plan table of `docs/plan/STATUS_BOARD.md` and wait for his go-ahead.
 2. **Answer agents' questions.** A question arrives pasted.
-   - Ground the answer in the repo: `AGENTS.md`, the Task tracker and primer, the upstream handoffs, the code on `main`, and the catalog (`~/dev/agent-kit/reuse/COMPONENT_CATALOG.md`) when a catalogued concern is involved.
+   - Ground the answer in the repo: `AGENTS.md`, the Task tracker (and primer, if any), the upstream handoffs, the code on `main`, and the catalog (`~/dev/agent-kit/reuse/COMPONENT_CATALOG.md`) when a catalogued concern is involved.
    - Reply with a block the founder pastes back as is: direct, specific, with file and section references.
    - If the question is really a founder decision (scope, a shared file, a new dependency, a frozen interface), say so. Give your recommendation, and give the agent its answer only after he decides.
 3. **Cross-agent review** (AGENTS.md §12.6) of a finished Codex or Muse branch, when the founder pastes its review request.
@@ -25,7 +25,7 @@ You need the linked-machine tools. If they are missing, ask him to link this cha
    - When the agent sends back fixes, re-review only what changed, until the verdict is "ready to push".
 4. **Write session prompts** as `docs/prompts/NEXT_CHAT_<name>_PROMPT.md`, from `docs/templates/NEXT_CHAT_PROMPT_TEMPLATE.md`.
    - Name it after what it builds (AGENTS.md §12.7).
-   - Use the Task tracker, the primer's approved scope, and the "Integration notes" of every handoff it builds on; the "Port from" section is never omitted (it may say "none, because …").
+   - Use the Task tracker's approved scope, and the "Integration notes" of every handoff it builds on; the "Port from" section is never omitted (it may say "none, because …").
    - Pre-approve every file the scope implies, including the data-access methods a route needs.
    - **Muse gets every decision upfront** (the founder relays little in a CLI); give it the approved design, not a decision round.
    - For Muse, the founder setup gives the exact `make worktree M=<name>` (or `make gitai-worktree M=<name>`) and says to start OpenCode in that worktree, never in a main checkout.

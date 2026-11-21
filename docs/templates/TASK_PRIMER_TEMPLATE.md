@@ -1,6 +1,6 @@
 # Task primer template
 
-Copy to `docs/plan/primers/<TaskN>_PRIMER.md` when a Task starts, before any session prompt (AGENTS.md §12.8). The orchestrator writes it; the founder reads it and marks every row. Write for a smart intern on day one: no jargon (or a one-line meaning the first time a term appears), short sentences, a customer example for everything. Delete these two paragraphs.
+Copy to `docs/plan/primers/<TaskN>_PRIMER.md` **only when the founder asks for a primer** (AGENTS.md §12.8; founder, 2026-10-25). The session graph lives in the Task tracker; a primer may copy it. The orchestrator writes it; the founder reads it and marks every row. Write for a smart intern on day one: no jargon (or a one-line meaning the first time a term appears), short sentences, a customer example for everything. Delete these two paragraphs.
 
 ---
 
