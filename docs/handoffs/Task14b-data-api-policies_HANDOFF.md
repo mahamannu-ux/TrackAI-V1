@@ -2,9 +2,8 @@
 
 > Status: 🟡 prepared locally; live change requires separate founder approval.
 
-Branch `task/Task14b-data-api-policies` is rebased onto `origin/main` at
-`df001a1`, the merge of Task14a
-[PR #106](https://github.com/mahamannu-ux/TrackAI-V1/pull/106).
+Branch `task/Task14b-data-api-policies` includes `origin/main` through
+merged Task20 test fix [PR #110](https://github.com/mahamannu-ux/TrackAI-V1/pull/110).
 The Task14b diff contains only this session's changes. No live SQL,
 project setting, or Auth setting was changed by Task14b.
 
@@ -15,7 +14,7 @@ project setting, or Auth setting was changed by Task14b.
 | Policy closure | 🟡 Drizzle migration 0029 removes the seven policies found live and the four that fresh 0000 can create, guarded by the existence of `authenticated` for plain PostgreSQL. Live apply pending. |
 | Login and API | 🟡 Disposable role probe preserved a synthetic anonymous `sso_tenants` lookup and privileged API read. No application code changed. |
 | Live Data API | 🟡 Read-only zero-row requests to `public.sso_tenants` and `public.ai_sessions` both returned HTTP 200 with empty arrays on 2026-10-24. The founder chose local evidence only for now; the configured exposed-schema list and safe authenticated-account read are deferred. |
-| Quality | 🟡 Revised 0029: Drizzle check, typecheck and lint passed. Founder ran both disposable database gates on November 21; `npm test` at `61c5527` passed 1,264/1,265, failing only Task20's aged fixed-date fixture. Task20 fixed that test in merged PR #110; rerun after syncing main. |
+| Quality | ✅ Revised 0029: Drizzle check, typecheck and lint passed. Founder ran both disposable database gates on November 21. After merging PR #110 into this branch, `npm test` passed 1,265/1,265 (100 suites, zero failures). |
 | Review | 🟡 Task20 lead reviewed `61c5527` as ready to push after the revised disposable gates; both passed. PR #109 is open. |
 
 ## Implemented interfaces
@@ -92,7 +91,8 @@ Task20j or Task15n database. Task20 lead reviewed commit `61c5527` as ready
 after those gates. The founder's `npm test` then passed 1,264/1,265; the one
 failure was Task20i-a's fixed October 10 fixture outside the default rolling
 30-day read window. Task20 fixed the test with an explicit fixture date range
-in merged PR #110. Sync main and rerun `npm test` before closing Task14b.
+in merged PR #110. After merging that fix into this branch, the founder reran
+`npm test`: 1,265 tests passed, zero failed, in 36.2 seconds.
 
 ## Integration test impact
 
