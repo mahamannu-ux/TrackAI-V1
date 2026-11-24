@@ -345,7 +345,7 @@ Task20j’s **documented session** can close while acceptance gaps and E20-07 re
 |---|---|
 | Cursor, Gemini CLI or Copilot CLI | "not monitored" for that agent (phase 2) |
 | Apple Silicon, Windows, Linux | "not monitored" for that platform (Task9 and Task9g, the Linux wave) |
-| Task15n keys | Production signing waits; engineering is complete; IT-T20f-02 stays ⬜ |
+| Rust verification of live KMS artifacts | IT-T20f-02 stays 🟡; blocks the first customer build (GitAI Endpoint-fixes session). Task15n test-key root and KMS gate merged in PR #112; production keys belong to Task14. |
 | ACL spike (Q1) not adopted | Record file stays in the profile |
 | Root helper (Q2) | Task20k waits |
 
