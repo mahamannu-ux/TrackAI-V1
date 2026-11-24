@@ -85,7 +85,7 @@ Columns:
 | 4 | S4 | ⬜ ⬜ ⬜ | secrets, exfiltration and chain rules in Task20's first wave (G9 cancelled) | after Task20d | after Task15o | Task20d |
 | 5 | S5 | 🟡 ⬜ ⬜ | partly; G10 session key → Task13 after Task20 (founder, review §13 item 10) | T19.4 partly | A16.13b partly | Task13 revisit |
 | 6 | S6 | 🟡 ⬜ ⬜ | stored in commit statements (partial link) | T19.4 | A16.13b | — |
-| 7 | S7 | ✅ ⬜ ⬜ | stored | T19.4 | A16.13b via Task15p | — |
+| 7 | S7 | ✅ ✅ ⬜ | stored; Company A live answer passed T19.9 step 8 on 2026-11-25 after web breakdown correction | T19.4 | A16.13b via Task15p | — |
 | 8 | S8 | 🟡 ⬜ ⬜ | agent stored; model on Numbat's finding, stored by Task20d (G10, model part) | T19.4 | A16.13b | Task20d |
 | 9 | S9 | 🟡 ⬜ ⬜ | stored; macOS only (Windows and Linux with Task9g and the Linux wave) | T19.4 | A16.13b | — |
 | 10 | S10 | 🟡 ⬜ ⬜ | partly; G7 → Task20 (rule bundle digest and Numbat version per machine and day) | T19.4 partly | A16.13b partly | Task20h, Task20i |
@@ -97,8 +97,8 @@ Columns:
 | 16 | S16 | ⬜ ⬜ ⬜ | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
 | 17 | S17 | 🟡 ⬜ n/a | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
 | 18 | S18 | 🟡 ⬜ n/a | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
-| 19 | S19 | 🟡 🟡 ⬜ | Endpoint inventory stored (Task20h-b); approved-list comparison waits for G2 | Task19h (live) | later | G2 |
-| 20 | S20 | ✅ 🟡 ⬜ | day-one scan summaries and at-rest findings stored (Task20h-b) | Task19h (live; ✅ after T19.9) | later | T19.9 |
+| 19 | S19 | 🟡 ✅ ⬜ | Endpoint inventory stored (Task20h-b); Company A live inventory passed T19.9 step 9 on 2026-11-24; approved-list comparison waits for G2 | Task19h (live) | later | G2 |
+| 20 | S20 | ✅ ✅ ⬜ | day-one scan summaries and at-rest findings stored (Task20h-b); Company A live answer passed T19.9 step 10 on 2026-11-25 | Task19h (live) | later | T19.9 |
 | 21 | S26 | ✅ 🟡 ⬜ | permission events stored | Task19f live | later | founder IT-T19f-01 |
 | 22 | S23 | 🟡 🟡 ⬜ | indicators stored only when `urls` enabled | Task19f live, settings-aware | later | founder IT-T19f-01 |
 | 23 | S21 | 🟡 🟡 ⬜ | guardrails-off findings stored; bypass flags G16 | Task19f partial | later | Task20 wave 2 |
@@ -270,8 +270,12 @@ A solid arrow means "must merge before"; the dotted arrow means the security row
 5. **2026-10-21 (Task20 lead request):** T19.9 runs in the same founder sitting as Task20j's E20, from one runbook (`docs/plan/TASK20_ACCEPTANCE.md`, to be written by Task20j) that links to `docs/plan/TASK19_WALKTHROUGH.md`. The ten questions are five code (Q3, Q1, Q4, Q11, Q7) and five security (S1, S7, S19, S20, S26). A day-one scan that found no session files (status `error`, nothing scanned) is shown as "scans with no session files found for this agent", never as a failure.
 
 ## 8. T19.9 results
-Filled in after the sitting: one line per step of `docs/plan/TASK19_WALKTHROUGH.md` that did not match (question, role, what was seen), then the §3 cells moved to ✅.
+Record each verified step of `docs/plan/TASK19_WALKTHROUGH.md` and any mismatch with its question, role and observation. Move §3 cells to ✅ only for the audience whose step passed. The Task20 lead re-scoped the joint sitting on 2026-11-25: the kept Task20j database has no reconciled GitHub PR or Attesta statements/period report. Steps 1–7 and 15, plus the Q3 portion of step 14, are **deferred: needs a GitHub test repo and Attesta evidence** in a separate short Task19 session after Task20j; they do not block Task20 close-out. The security steps 8–14 still run during Task20j.
 
 | Date | Steps passed | Mismatches |
 |---|---|---|
-| — | — | ⬜ not run yet |
+| 2026-11-24/25 | Step 9 (Company A admin, S19 Live): 1 reporting machine, 10 agents detected, 5 wired, 4 detected but not wired, 1 unknown/not supported, versions unavailable. Step 10 (Company A admin, S20 Live): 1 machine, 5 complete, 0 partial, 0 no-session-files, 0 failed, 6778 artifacts, 3 at-rest findings; founder confirmed “Requested actions are not confirmed outcomes.” Step 8 (Company A admin, S7 Live): 29 findings vs 0 previous period, “Observed in monitor mode; nothing was blocked.” | Step 8 **UI mismatch before repair:** severity selected and answer refreshed but no breakdown bars appeared. Web client omitted `breakdown` from answer requests. Web-only correction and focused test passed locally; founder recheck of live browser pending before step 8 passes. |
+| 2026-11-25 lead decision | Steps 1–7 and 15, and Q3 half of step 14 deferred to short Task19 follow-up; no retained database GitHub PR or Attesta evidence exists. | Deferred by missing prerequisites, not a failed answer. |
+| 2026-11-25 | Step 8 S7 Live browser recheck after web-only answer-request fix: 29 findings vs previous 0; severity high 24, medium 4, low 1; repository `unknown` 29; rule-category bars render (including secrets 18), with monitor-only caveat. | Original absent-breakdown web mismatch fixed and confirmed in the kept console; all three requested breakdown dimensions now observed. |
+| 2026-11-25 | Step 11 S26 Company A Live: 18 permission requests, 0 approved, 0 denied; approval rate correctly unavailable for zero decisions; linked finding/approval sessions partial 0 and monitor/requested-action caveats. Step 13 S3: the Questions UI presents Live and Verifiable under “Answers not built yet” (G8/G9), without a fabricated zero. | Step 11 does **not** meet its ≥1 approved and ≥1 denied requirement; Numbat's first-wave hook-only paths report requests but final decisions require an agent-reported source (for Claude/Codex, OTLP) or a verified supported permission decision. Step 13 uses “Not built yet” in the answer picker rather than the runbook's literal “Unavailable / This answer has not been built yet”; Task19 lead to decide whether that wording difference needs a fix. |
+| 2026-11-25 | Step 12 passed: Company A auditor saw “Live answers are for administrators” for S19, S20 and S26; direct `kind=live` requests each returned **403 QA_KIND_NOT_ALLOWED**. Step 14 security half: Company B admin saw only Company B's zero/unavailable S19 and S26 values, no Company A rows. | Q3 half of step 14 remains deferred with the GitHub test repository. |

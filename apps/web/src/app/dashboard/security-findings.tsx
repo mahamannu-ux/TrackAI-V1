@@ -87,7 +87,7 @@ function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function findingRepository(item: SecurityFindingItem, repositories: Repository[]): string {
-  if (item.repository_kind === 'not_enrolled') return 'Machine-wide (not enrolled)';
+  if (item.repository_kind === 'not_enrolled') return 'Not in an enrolled repository';
   if (!item.repository_id) return 'Not reported';
   return repositories.find(repository => repository.id === item.repository_id)?.name ?? item.repository_id;
 }
@@ -232,7 +232,7 @@ export function FindingsTab({ repositories }: { repositories: Repository[] }) {
           <select value={repositoryId} onChange={event => setRepositoryId(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200">
             <option value="">All repositories</option>
             {repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name}</option>)}
-            <option value="not_enrolled">Machine-wide (not enrolled)</option>
+            <option value="not_enrolled">Not in an enrolled repository</option>
           </select>
         </label>
         <label className="space-y-1 text-xs text-slate-400">Generation

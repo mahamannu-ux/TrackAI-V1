@@ -304,10 +304,10 @@ export type AdminGitHubResources = { installations: Array<{
 }> };
 
 export type AdminSecurityFindingResources = { findings: Array<{
-  id: string; machineId: string; repositoryId: string; findingId: string;
-  ruleId: 'trackai.exec.destructive_recursive_delete' | 'trackai.exec.download_pipe_shell' | 'trackai.exec.reverse_shell';
-  ruleVersion: string; ruleSeverity: 'high' | 'critical'; effect: 'monitor';
-  phase: 'requested' | 'observed_result' | 'partial' | 'unavailable';
+  id: string; machineId: string; repositoryId: string | null; findingId: string;
+  ruleId: string;
+  ruleVersion: string; ruleSeverity: string; effect: string | null;
+  phase: string | null;
   operatingSystem: 'macos' | 'linux' | 'windows' | 'wsl' | 'unavailable';
   occurredAt: string; receivedAt: string;
 }> };
@@ -618,7 +618,7 @@ export function getQaAnswer(
 ): Promise<QaEnvelope | QaDrilldownPage> {
   const parameters = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== '' && (drilldown || key !== 'breakdown')) {
+    if (value !== undefined && value !== '') {
       parameters.set(key, String(value));
     }
   });
