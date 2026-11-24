@@ -44,67 +44,63 @@ The session graph, including Task20's and Task15's sessions that Task19 waits fo
 
 ## 3. Delivery matrix (the to-do list; confirmed in T19.1)
 
+**Status lives in `docs/plan/CUSTOMER_AUDITOR_QA.md`** (the founder's status page: Live, Verifiable and Signed per question, with evidence and what is left). This table keeps only the plan: what must be captured and which session builds each answer. It holds no status, so the two cannot drift (Task19i, 2026-11-25).
+
 Columns:
-- **Status (capture · live · auditor):** the running status, three symbols in that order (AGENTS.md §11): ✅ done, 🟡 partly or waiting on a live gate, ⬜ not done, n/a not applicable or deferred.
-  - **Capture** follows "Data today" in `CUSTOMER_AUDITOR_QA.md`. Q7, Q8 and Q16 stay 🟡 until Task15n proves Attesta on real KMS, Rekor and TSA.
-  - **Live** turns ✅ when the admin answer ships through the Q&A contract (T19.3–T19.5).
-  - **Auditor** turns ✅ when the verifiable or signed answer ships (A16.13, Task15 reports).
-  - A row is answered when every applicable symbol is ✅ (at least one applies); a row with all three n/a, today only Q17, is out of scope and not counted. The lead updates the symbols after each merge, together with the matching row in `CUSTOMER_AUDITOR_QA.md`.
-  - S15 is answered outside the Q&A contract today (Task16c's audit read API and Audit view; Task16e's sealed, signed export), so it is 🟡 until it joins the contract (T19.4, A16.13b). T19.1 confirms every symbol against the code.
 - **Capture:** what must be stored first (gap → owner), or "stored".
 - **Live:** the admin answer (T19.3–T19.5).
 - **Auditor:** the verifiable or signed answer (A16.13; reports in Task15).
 
-**Running total (2026-10-16):** 0 of 36 rows answered (Q17 is phase 2 and S14 is shelved, so neither is counted). Capture: 10 ✅, 20 🟡, 6 ⬜, 2 n/a. S19–S26 (review §6) join after the founder ranks them (Task20 T20.18).
+Running totals: see the summary at the top of `CUSTOMER_AUDITOR_QA.md`.
 
-| Rank | Q | Status (capture · live · auditor) | Capture | Live | Auditor | Next step |
-|---|---|---|---|---|---|---|
-| 1 | Q3 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's merged-lines-by-tool-and-model figure | T19.2 |
-| 2 | Q1 | 🟡 ⬜ ⬜ | changed lines: stored; whole repository: G1 → Task2 + GitAI | T19.3 (changed lines) | A16.13a via the Task15i4 period report; repository share after G1 | G1 prompt |
-| 3 | Q4 | 🟡 ⬜ ⬜ | models: stored; approval: G2 → shelved with `customerPolicyForDataAccess` (ex-Task6.b) | T19.3 (models) | A16.13a (models); approval `Unavailable` | customer trigger (§5) |
-| 4 | Q11 | 🟡 ⬜ ⬜ | stored (session link is a text join, G10; the session key waits for Task13 after Task20) | T19.4 (moved from T19.3) | A16.13a partly | Task20d, then Task19c |
-| 5 | Q7 | 🟡 n/a ⬜ | Attesta built | n/a | A16.13a; production proof Task15n | Task15n |
-| 6 | Q16 | 🟡 n/a ⬜ | Attesta built | n/a | A16.13a; clean machine Task15n | Task15n |
-| 7 | Q5 | ⬜ ⬜ ⬜ | G3 → Task2 (semantics), Task4 (delivery) | after G3 | after G3 (predicate field ready) | G3 prompt (before production) |
-| 8 | Q13 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's unknown-lines figure | T19.2 |
-| 9 | Q9 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a; signed: the Task15i4 period report's production-deployments figure | T19.2 |
-| 10 | Q14 | ✅ ⬜ ⬜ | stored | T19.3 | A16.13a | T19.2 |
-| 11 | Q12 | 🟡 ⬜ ⬜ | partly; org policy G2 shelved; the rule bundle and lease in force come from Task20 | T19.3 (partly) | partly | Task20f |
-| 12 | Q2 | 🟡 🟡 ⬜ | GitHub blame line walk and lineage mapping built in Task19g; exact origin only at requested commit, older origin partial; founder-live App check passed 2026-10-20 on a disposable database; branch release pending | Task19g (ex-Task19d) | later (file paths are hashed in the predicate) | IT-T19g-01 step 4 |
-| 13 | Q6 | 🟡 ✅ ⬜ | merger G4 capture and dry-run-first backfill built in Task19g; unknown pre-backfill remains partial | Task19g | `pr_merged` merger field for Task15 | IT-T19g-01 steps 1–3 |
-| 14 | Q8 | 🟡 n/a ⬜ | stored + Attesta | n/a | A16.13a | — |
-| 15 | Q15 | 🟡 ✅ ⬜ | managed rejection audit capture from deployment, Q15 counts; unmanaged legacy uploads excluded | Task19g | rejection count in Task15 batch statement | IT-T19g-01 steps 1–3 |
-| 16 | Q10 | ✅ ⬜ n/a | stored (Churned always `Unavailable`) | T19.3 | n/a (count only) | T19.2 |
-| 17 | Q19 | ✅ ⬜ n/a | stored | T19.3 | n/a | T19.2 |
-| 18 | Q18 | 🟡 ⬜ n/a | stored; vendor gaps permanent | T19.3 | n/a | T19.2 |
-| 19 | Q20 | 🟡 ⬜ n/a | identity linking partial (T2.20); **no team mapping exists** (no team table or column), so by-team is `unavailable` and the answer is by repository | T19.3 aggregated | n/a | team mapping: open issue (§3.1) |
-| 20 | Q17 | n/a n/a n/a | phase 2 (SCANOSS) | phase 2 | phase 2 | customer trigger |
-| 1 | S1 | 🟡 ⬜ ⬜ | stored for 3 rules; 44 rules with Task20 (G9 cancelled); signing G6 → Task15o (redesigned on Numbat's finding schema) | T19.4 | A16.13b via Task15p | Task20d, then Task15o |
-| 2 | S2 | 🟡 ⬜ ⬜ | G7 → Task20 (lease history in Task20f; Endpoint status reported in Task20h, stored per day in Task20i) | after G7 | after G7 (coverage figures in Task15p) | Task20f, Task20h, Task20i |
-| 3 | S3 | ⬜ ⬜ ⬜ | G8 → Task20f (settings writer, audit event reserved in Task16b); tamper rules in Task20's first wave | after Task20d/20f | after Task15o | Task20d, Task20f |
-| 4 | S4 | ⬜ ⬜ ⬜ | secrets, exfiltration and chain rules in Task20's first wave (G9 cancelled) | after Task20d | after Task15o | Task20d |
-| 5 | S5 | 🟡 ⬜ ⬜ | partly; G10 session key → Task13 after Task20 (founder, review §13 item 10) | T19.4 partly | A16.13b partly | Task13 revisit |
-| 6 | S6 | 🟡 ⬜ ⬜ | stored in commit statements (partial link) | T19.4 | A16.13b | — |
-| 7 | S7 | ✅ ⬜ ⬜ | stored | T19.4 | A16.13b via Task15p | — |
-| 8 | S8 | 🟡 ⬜ ⬜ | agent stored; model on Numbat's finding, stored by Task20d (G10, model part) | T19.4 | A16.13b | Task20d |
-| 9 | S9 | 🟡 ⬜ ⬜ | stored; macOS only (Windows and Linux with Task9g and the Linux wave) | T19.4 | A16.13b | — |
-| 10 | S10 | 🟡 ⬜ ⬜ | partly; G7 → Task20 (rule bundle digest and Numbat version per machine and day) | T19.4 partly | A16.13b partly | Task20h, Task20i |
-| 11 | S11 | ✅ ⬜ ⬜ | stored | T19.4 | A16.13b | — |
-| 12 | S12 | ✅ ⬜ ⬜ | stored ("none blocked"); "denied by request" after the Task20k pilot | T19.4 | A16.13b | — |
-| 13 | S13 | ⬜ ⬜ ⬜ | activation lease part: G11 → Task20f/20g; organization policy G2 shelved | lease part after Task20g | lease part after Task15o | Task20f, Task20g |
-| 14 | S14 | n/a n/a n/a | G12 shelved with `customerPolicyForDataAccess` (no exceptions object) | n/a | n/a | customer trigger |
-| 15 | S15 | ✅ 🟡 🟡 | stored (audit events) | Task16 audit read API | Task16e (sealed) | Task16 |
-| 16 | S16 | ⬜ ⬜ ⬜ | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
-| 17 | S17 | 🟡 ⬜ n/a | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
-| 18 | S18 | 🟡 ⬜ n/a | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
-| 19 | S19 | 🟡 🟡 ⬜ | Endpoint inventory stored (Task20h-b); approved-list comparison waits for G2 | Task19h (live) | later | G2 |
-| 20 | S20 | ✅ 🟡 ⬜ | day-one scan summaries and at-rest findings stored (Task20h-b) | Task19h (live; ✅ after T19.9) | later | T19.9 |
-| 21 | S26 | ✅ 🟡 ⬜ | permission events stored | Task19f live | later | founder IT-T19f-01 |
-| 22 | S23 | 🟡 🟡 ⬜ | indicators stored only when `urls` enabled | Task19f live, settings-aware | later | founder IT-T19f-01 |
-| 23 | S21 | 🟡 🟡 ⬜ | guardrails-off findings stored; bypass flags G16 | Task19f partial | later | Task20 wave 2 |
-| 24 | S22 | ⬜ ⬜ ⬜ | G15: MCP configuration and per-call identity | after G15 | later | Task20 later |
-| 25 | S24 | ⬜ ⬜ ⬜ | G17: opt-in blocking pilot | after Task20k | later | Task20k |
-| 26 | S25 | n/a n/a ⬜ | case bundle signing deferred | n/a | Task15 case bundle, phase 2 | later |
+| Rank | Q | Capture | Live | Auditor | Next step |
+|---|---|---|---|---|---|
+| 1 | Q3 | stored | T19.3 | A16.13a; signed: the Task15i4 period report's merged-lines-by-tool-and-model figure | T19.2 |
+| 2 | Q1 | changed lines: stored; whole repository: G1 → Task2 + GitAI | T19.3 (changed lines) | A16.13a via the Task15i4 period report; repository share after G1 | G1 prompt |
+| 3 | Q4 | models: stored; approval: G2 → shelved with `customerPolicyForDataAccess` (ex-Task6.b) | T19.3 (models) | A16.13a (models); approval `Unavailable` | customer trigger (§5) |
+| 4 | Q11 | stored (session link is a text join, G10; the session key waits for Task13 after Task20) | T19.4 (moved from T19.3) | A16.13a partly | Task20d, then Task19c |
+| 5 | Q7 | Attesta built | n/a | A16.13a; production proof Task15n | Task15n |
+| 6 | Q16 | Attesta built | n/a | A16.13a; clean machine Task15n | Task15n |
+| 7 | Q5 | G3 → Task2 (semantics), Task4 (delivery) | after G3 | after G3 (predicate field ready) | G3 prompt (before production) |
+| 8 | Q13 | stored | T19.3 | A16.13a; signed: the Task15i4 period report's unknown-lines figure | T19.2 |
+| 9 | Q9 | stored | T19.3 | A16.13a; signed: the Task15i4 period report's production-deployments figure | T19.2 |
+| 10 | Q14 | stored | T19.3 | A16.13a | T19.2 |
+| 11 | Q12 | partly; org policy G2 shelved; the rule bundle and lease in force come from Task20 | T19.3 (partly) | partly | Task20f |
+| 12 | Q2 | GitHub blame line walk and lineage mapping built in Task19g; exact origin only at requested commit, older origin partial; founder-live App check passed 2026-10-20 on a disposable database; branch release pending | Task19g (ex-Task19d) | later (file paths are hashed in the predicate) | IT-T19g-01 step 4 |
+| 13 | Q6 | merger G4 capture and dry-run-first backfill built in Task19g; unknown pre-backfill remains partial | Task19g | `pr_merged` merger field for Task15 | IT-T19g-01 steps 1–3 |
+| 14 | Q8 | stored + Attesta | n/a | A16.13a | — |
+| 15 | Q15 | managed rejection audit capture from deployment, Q15 counts; unmanaged legacy uploads excluded | Task19g | rejection count in Task15 batch statement | IT-T19g-01 steps 1–3 |
+| 16 | Q10 | stored (Churned always `Unavailable`) | T19.3 | n/a (count only) | T19.2 |
+| 17 | Q19 | stored | T19.3 | n/a | T19.2 |
+| 18 | Q18 | stored; vendor gaps permanent | T19.3 | n/a | T19.2 |
+| 19 | Q20 | identity linking partial (T2.20); **no team mapping exists** (no team table or column), so by-team is `unavailable` and the answer is by repository | T19.3 aggregated | n/a | team mapping: open issue (§3.1) |
+| 20 | Q17 | phase 2 (SCANOSS) | phase 2 | phase 2 | customer trigger |
+| 1 | S1 | stored for 3 rules; 44 rules with Task20 (G9 cancelled); signing G6 → Task15o (redesigned on Numbat's finding schema) | T19.4 | A16.13b via Task15p | Task20d, then Task15o |
+| 2 | S2 | G7 → Task20 (lease history in Task20f; Endpoint status reported in Task20h, stored per day in Task20i) | after G7 | after G7 (coverage figures in Task15p) | Task20f, Task20h, Task20i |
+| 3 | S3 | G8 → Task20f (settings writer, audit event reserved in Task16b); tamper rules in Task20's first wave | after Task20d/20f | after Task15o | Task20d, Task20f |
+| 4 | S4 | secrets, exfiltration and chain rules in Task20's first wave (G9 cancelled) | after Task20d | after Task15o | Task20d |
+| 5 | S5 | partly; G10 session key → Task13 after Task20 (founder, review §13 item 10) | T19.4 partly | A16.13b partly | Task13 revisit |
+| 6 | S6 | stored in commit statements (partial link) | T19.4 | A16.13b | — |
+| 7 | S7 | stored | T19.4 | A16.13b via Task15p | — |
+| 8 | S8 | agent stored; model on Numbat's finding, stored by Task20d (G10, model part) | T19.4 | A16.13b | Task20d |
+| 9 | S9 | stored; macOS only (Windows and Linux with Task9g and the Linux wave) | T19.4 | A16.13b | — |
+| 10 | S10 | partly; G7 → Task20 (rule bundle digest and Numbat version per machine and day) | T19.4 partly | A16.13b partly | Task20h, Task20i |
+| 11 | S11 | stored | T19.4 | A16.13b | — |
+| 12 | S12 | stored ("none blocked"); "denied by request" after the Task20k pilot | T19.4 | A16.13b | — |
+| 13 | S13 | activation lease part: G11 → Task20f/20g; organization policy G2 shelved | lease part after Task20g | lease part after Task15o | Task20f, Task20g |
+| 14 | S14 | G12 shelved with `customerPolicyForDataAccess` (no exceptions object) | n/a | n/a | customer trigger |
+| 15 | S15 | stored (audit events) | Task16 audit read API | Task16e (sealed) | Task16 |
+| 16 | S16 | G13 → Task6 + Task16 (event reserved) | after G13 | after G13 | phase 2 unless a customer asks |
+| 17 | S17 | machines stored; **no team mapping** (as Q20) | T19.4 (by machine) | n/a (partly) | team mapping: open issue (§3.1) |
+| 18 | S18 | counts stored; disposition G13 | T19.4 counts | n/a | after G13 |
+| 19 | S19 | Endpoint inventory stored (Task20h-b); approved-list comparison waits for G2 | Task19h (live) | later | G2 |
+| 20 | S20 | day-one scan summaries and at-rest findings stored (Task20h-b) | Task19h (live; ✅ after T19.9) | later | T19.9 |
+| 21 | S26 | permission events stored | Task19f live | later | founder IT-T19f-01 |
+| 22 | S23 | indicators stored only when `urls` enabled | Task19f live, settings-aware | later | founder IT-T19f-01 |
+| 23 | S21 | guardrails-off findings stored; bypass flags G16 | Task19f partial | later | Task20 wave 2 |
+| 24 | S22 | G15: MCP configuration and per-call identity | after G15 | later | Task20 later |
+| 25 | S24 | G17: opt-in blocking pilot | after Task20k | later | Task20k |
+| 26 | S25 | case bundle signing deferred | n/a | Task15 case bundle, phase 2 | later |
 
 ### 3.1 Answer sources (T19.1, confirmed against `main` at `67c903f`, 2026-10-15)
 
@@ -201,7 +197,7 @@ Written 2026-10-15 in Task19's phase 2 (`docs/agents/TASK_LEAD_PROCEDURE.md`). E
 | 6 | `Task19f-qa-numbat-questions` | S19–S26 in the registry (version 2; reasons `data_setting_off`, `zero_denominator`; gaps G14–G17; founder ranking 2026-10-19: S19, S20, S26, S23, S21, S22, S24, S25); live answers S26, S23, S21 (requested by the Task20 lead, T20.18) | Codex | about 0.10× | now (Task20d merged) | `docs/contracts/qa/` (additive), `features/qa/registry.ts`, `security-read.ts`, `security-answerers.ts`, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19f-01 agent-passed 2026-10-19; handoff `docs/handoffs/Task19f-qa-numbat-questions_HANDOFF.md` |
 | 7 | `Task19g-merged-by-rejections-line-blame` | G4 (merged-by, Task2) → Q6; G5 (rejection audit event, Task4) → Q15; Q2 line walk (ex-Task19d) | Codex | about 0.25× | now | migration 0028; SCM merger capture/backfill and blame; rejection audit; Q2/Q6/Q15 live answers; additive Q&A contract | 🟡 built locally; IT-T19g-01 and founder-live Q2 gate in `docs/handoffs/Task19g-merged-by-rejections-line-blame_HANDOFF.md` |
 | 8 | `Task19h-qa-inventory-scan-walkthrough` | S19 (agent inventory) and S20 (day-one scan) live answers, requested by the Task20 lead after Task20h-b; the T19.9 walkthrough (`docs/plan/TASK19_WALKTHROUGH.md`) for the joint sitting with Task20j | Claude (lead) | about 0.04× | Task19g merged (registry v3 → v4) | `features/qa/` (security-read, security-answerers, registry), `docs/contracts/qa/questions.md` (regenerated), `questions-presentation.tsx` (one label), this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19h-01 agent-passed 2026-10-21; handoff `docs/handoffs/Task19h-qa-inventory-scan-walkthrough_HANDOFF.md` |
-| 9 | `Task19i-qa-walkthrough-and-status` | Finish T19.9 (steps 1–7, 15, Q3 half of 14) as a repeatable Playwright walkthrough on a seeded stack (IT-T19i-01); make `CUSTOMER_AUDITOR_QA.md` the per-question status page (rank, Live/Verifiable/Signed status, evidence, what is left) and point §3 at it | Claude | about 0.15× | Task20j sitting (2026-11-24/25) | `docs/prompts/Task19/NEXT_CHAT_Task19i-qa-walkthrough-and-status_PROMPT.md` |
+| 9 | `Task19i-qa-walkthrough-and-status` | Finish T19.9 (steps 1–7, 15, Q3 half of 14) as a repeatable Playwright walkthrough on a seeded stack (IT-T19i-01); make `CUSTOMER_AUDITOR_QA.md` the per-question status page and point §3 at it | Claude | about 0.15× | Task20j sitting (2026-11-24/25) | `features/qa/testing/` (seed, sign-in stub), `apps/web/e2e/`, `apps/web/playwright.config.ts`, `CUSTOMER_AUDITOR_QA.md` | 🟡 built; IT-T19i-01 agent-passed 2026-11-25 (15 of 17 on `main`; 17 of 17 with Task20j's web breakdown fix), founder run ⬜; handoff `docs/handoffs/Task19i-qa-walkthrough-and-status_HANDOFF.md` |
 | — | Lead work | T19.6 prompts and reviews, T19.7, T19.8 | Claude (lead chat) | about 0.05× | ongoing | prompts, this file, `CUSTOMER_AUDITOR_QA.md` | 🟡 plan written |
 | — | Founder walkthrough | T19.9, run with Task20j's E20 from `docs/plan/TASK20_ACCEPTANCE.md` (written by Task20j); steps in `docs/plan/TASK19_WALKTHROUGH.md` | founder-live | about 0.02× | Task19e, Task19h and A16.13a merged | — | ⬜ |
 
@@ -270,8 +266,14 @@ A solid arrow means "must merge before"; the dotted arrow means the security row
 5. **2026-10-21 (Task20 lead request):** T19.9 runs in the same founder sitting as Task20j's E20, from one runbook (`docs/plan/TASK20_ACCEPTANCE.md`, to be written by Task20j) that links to `docs/plan/TASK19_WALKTHROUGH.md`. The ten questions are five code (Q3, Q1, Q4, Q11, Q7) and five security (S1, S7, S19, S20, S26). A day-one scan that found no session files (status `error`, nothing scanned) is shown as "scans with no session files found for this agent", never as a failure.
 
 ## 8. T19.9 results
-Filled in after the sitting: one line per step of `docs/plan/TASK19_WALKTHROUGH.md` that did not match (question, role, what was seen), then the §3 cells moved to ✅.
+Record each verified step of `docs/plan/TASK19_WALKTHROUGH.md` and any mismatch with its question, role and observation. Move §3 cells to ✅ only for the audience whose step passed. The Task20 lead re-scoped the joint sitting on 2026-11-25: the kept Task20j database has no reconciled GitHub PR or Attesta statements/period report. Steps 1–7 and 15, plus the Q3 portion of step 14, are **deferred: needs a GitHub test repo and Attesta evidence** in a separate short Task19 session after Task20j; they do not block Task20 close-out. The security steps 8–14 still run during Task20j.
 
 | Date | Steps passed | Mismatches |
 |---|---|---|
-| — | — | ⬜ not run yet |
+| 2026-11-24/25 | Step 9 (Company A admin, S19 Live): 1 reporting machine, 10 agents detected, 5 wired, 4 detected but not wired, 1 unknown/not supported, versions unavailable. Step 10 (Company A admin, S20 Live): 1 machine, 5 complete, 0 partial, 0 no-session-files, 0 failed, 6778 artifacts, 3 at-rest findings; founder confirmed “Requested actions are not confirmed outcomes.” Step 8 (Company A admin, S7 Live): 29 findings vs 0 previous period, “Observed in monitor mode; nothing was blocked.” | Step 8 **UI mismatch before repair:** severity selected and answer refreshed but no breakdown bars appeared. Web client omitted `breakdown` from answer requests. Web-only correction and focused test passed locally; founder recheck of live browser pending before step 8 passes. |
+| 2026-11-25 lead decision | Steps 1–7 and 15, and Q3 half of step 14 deferred to short Task19 follow-up; no retained database GitHub PR or Attesta evidence exists. | Deferred by missing prerequisites, not a failed answer. |
+| 2026-11-25 | Step 8 S7 Live browser recheck after web-only answer-request fix: 29 findings vs previous 0; severity high 24, medium 4, low 1; repository `unknown` 29; rule-category bars render (including secrets 18), with monitor-only caveat. | Original absent-breakdown web mismatch fixed and confirmed in the kept console; all three requested breakdown dimensions now observed. |
+| 2026-11-25 | Step 11 S26 Company A Live: 18 permission requests, 0 approved, 0 denied; approval rate correctly unavailable for zero decisions; linked finding/approval sessions partial 0 and monitor/requested-action caveats. Step 13 S3: the Questions UI presents Live and Verifiable under “Answers not built yet” (G8/G9), without a fabricated zero. | Step 11 does **not** meet its ≥1 approved and ≥1 denied requirement; Numbat's first-wave hook-only paths report requests but final decisions require an agent-reported source (for Claude/Codex, OTLP) or a verified supported permission decision. Step 13 uses “Not built yet” in the answer picker rather than the runbook's literal “Unavailable / This answer has not been built yet”; Task19 lead to decide whether that wording difference needs a fix. |
+| 2026-11-25 | Step 12 passed: Company A auditor saw “Live answers are for administrators” for S19, S20 and S26; direct `kind=live` requests each returned **403 QA_KIND_NOT_ALLOWED**. Step 14 security half: Company B admin saw only Company B's zero/unavailable S19 and S26 values, no Company A rows. | Q3 half of step 14 remains deferred with the GitHub test repository. |
+| 2026-11-25 (Task19i, agent) | **IT-T19i-01**, all 15 steps on a seeded throwaway stack (`npm run e2e:task19-walkthrough`): steps 1–7, 9–15 and the "throughout" content check passed in the Questions screen and the API. Q3 live 40 merged AI lines with the `claude::claude-sonnet-4-5` model bar; Q3 verifiable with 1 signed evidence record and signed with the period report digest; Q1 changed-lines ratio with G1 unavailable; Q4 with G2 unavailable; Q11 partial-link note; Q7 recorded, 0 breaks; S1 verifiable and signed (4 high or critical); S19, S20, S26 (1 approved, 1 denied, rate 1 / 2); auditor 403 `QA_KIND_NOT_ALLOWED`; S3 under "Answers not built yet"; Company B sees none of A; A's repository id is 404 `QA_SCOPE_NOT_FOUND`, identical to an unknown id. | Steps 1 and 8 fail on `main`: the web client drops `breakdown` from answer requests (`apps/web/src/lib/api.ts:621`), so no breakdown bars appear. Task20j's one-line fix (unmerged, `task/Task20j-acceptance`) makes them pass (17 of 17 with it built in). |
+| 2026-11-25 (Task19i findings for the lead) | — | (1) Company B's Q3 `merged_ai_lines` with no merged PR is unavailable with reason `answer_not_built` ("This answer has not been built yet."), which misleads: Task2's unavailable lifecycle value gets the generic code (`apps/api/src/features/qa/answers/common.ts:91`); a better code needs a contract change. (2) The registry still marks G6 (delivered by Task15op-a/b) and G9 (cancelled 2026-10-16) open, so S1 and S3 show stale gap pills (`apps/api/src/features/qa/registry.ts:135,143,147,240`); updating it regenerates `docs/contracts/qa/questions.md`. (3) Step 13's wording: the screen lists S3 live under "Answers not built yet" and sends no request; the API says `answer_not_built`. Walkthrough step 13 corrected to match. |

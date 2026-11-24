@@ -1,5 +1,98 @@
 # Customer and auditor Q&A
 
+*The founder's single status page for every customer and auditor question (Task19, `docs/plan/TASK19.md`). Rewritten 2026-11-25 by Task19i (Claude) as a status page; the earlier design text, the Task2 interview, the decisions and the gap list are kept unchanged under [Archive](#archive). The old path `ATTESTA_QUESTIONS.md` still points here.*
+
+**Keeping it in sync (rule):** Task19 sessions and the Task20 lead update the rows they change, in the same PR as the change. `TASK19.md` §3 points here and holds no status of its own, so the two can never drift.
+
+**What changed since the last update (2026-11-25):** the founder's T19.9 sitting (Task20j, 2026-11-24/25) proved S7, S19 and S20 live and showed S26's approvals and denials are not observable on the hook-only paths; IT-T19a-01, IT-T19c-01 and IT-T19f-01 passed in the founder's sweep (2026-11-25); the whole T19.9 walkthrough now runs as one Playwright regression on a seeded stack (IT-T19i-01, agent-passed 2026-11-25, founder run pending).
+
+## Summary
+
+Questions by status for each kind of answer (from the two tables below):
+
+| Family | Kind | ✅ | 🟡 | ⬜ | n/a |
+|---|---|---|---|---|---|
+| Code (Q1–Q20) | Live | 10 | 4 | 2 | 4 |
+| Code (Q1–Q20) | Verifiable | 0 | 10 | 5 | 5 |
+| Code (Q1–Q20) | Signed | 0 | 4 | 0 | 16 |
+| Security (S1–S26) | Live | 10 | 6 | 9 | 1 |
+| Security (S1–S26) | Verifiable | 0 | 8 | 8 | 10 |
+| Security (S1–S26) | Signed | 0 | 7 | 1 | 18 |
+
+## How to read the tables
+
+- **Rank**: customer priority, 1 = asked first. Code questions keep their customer ranks (2026-10-11). Security questions: S1–S18 keep the Task16 lead's ranking of 2026-10-14, then S19–S26 follow in the founder's ranking of 2026-10-19 (S19, S20, S26, S23, S21, S22, S24, S25) as ranks 19–26, exactly as the question registry stores them (`apps/api/src/features/qa/registry.ts`).
+- **Auditor**: "yes" means an auditor would ask it, so it needs a verifiable or signed answer.
+- **Live / Verifiable / Signed**: the three kinds of answer (Archive, "Three kinds of answer"). Live is for administrators; verifiable and signed are for auditors.
+  - ✅ working and verified by the founder or on live data (AGENTS.md §11). What it cannot answer yet is shown as unavailable on screen, never zero, and listed under "What is left".
+  - 🟡 built but verified only by an agent (sandbox, unit tests), or the founder's run found it falls short.
+  - ⬜ offered but not built.
+  - n/a: not offered for this question, by design (for example, no live answer to "prove the records were not changed").
+- **Evidence**: the integration test (`docs/plan/STATUS_BOARD.md` registry) or T19.9 step (`docs/plan/TASK19_WALKTHROUGH.md`, results in `TASK19.md` §8) and its date. "founder" = the founder's own run; "agent" = an agent's run.
+- **What is left and why**: the gap id (gap list in the Archive) and owner, or "phase 2 by design".
+
+## Code questions (Q1–Q20)
+
+| Rank | Id | Question | Auditor | Live | Verifiable | Signed | Evidence | What is left and why | Owner |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Q3 | Share of merged changes that were AI-assisted, by tool and model | yes | ✅ | 🟡 | 🟡 | Live: IT-T19b-01 (founder 2026-10-17). Verifiable, signed: IT-T16h-01 (agent 2026-10-19), IT-T19i-01 T19.9 steps 1–2 (agent 2026-11-25) | Founder run of IT-T19i-01 (steps 1–2) | Founder |
+| 2 | Q1 | Share of a repository's code that was AI-generated (today: share of changed lines) | yes | 🟡 | 🟡 | 🟡 | IT-T19i-01 step 3 (agent 2026-11-25); verifiable and signed: IT-T16h-01 (agent) | Founder run of IT-T19i-01; whole-repository share needs G1 (repository line-count snapshot) | Founder; G1 Task2 + GitAI |
+| 3 | Q4 | AI tools and models that touched production, and whether each was approved | yes | 🟡 | 🟡 | n/a | IT-T19i-01 step 4 (agent 2026-11-25); verifiable: unit tests (Task16h) | Founder run of IT-T19i-01; "approved at the time" needs G2 (organization policy, shelved) | Founder; G2 shelved |
+| 4 | Q11 | Did the AI sessions behind this code raise security findings | yes | ✅ | 🟡 | n/a | Live: IT-T19c-01 (founder 2026-11-25). Verifiable: IT-T19i-01 step 5 (agent 2026-11-25) | Session link stays partial until G10 (session key, Task13 after Task20) | Task13 |
+| 5 | Q7 | Proof the records were not changed after the fact | yes | n/a | 🟡 | n/a | IT-T19i-01 step 6 (agent 2026-11-25); Attesta live gates IT-T15n-01…05 (founder 2026-11-24) | Founder run of IT-T19i-01 (step 6). Live: n/a by design (auditor only) | Founder |
+| 6 | Q16 | Export everything for a repository and period, verifiable offline | yes | n/a | 🟡 | n/a | Verifiable: unit tests (Task16h); offline pack verify IT-T15n-04 (founder 2026-11-24) | A founder run of the Q16 answer in the Questions screen | Task19 |
+| 7 | Q5 | Was AI code reviewed by someone other than its author before merge | yes | ⬜ | ⬜ | n/a | none | G3: pull_request_review capture (before production) | Task2 + Task4 |
+| 8 | Q13 | How complete is the evidence (commits with no AI attribution) | yes | ✅ | 🟡 | 🟡 | Live: IT-T19b-01 (founder 2026-10-17). Verifiable, signed: unit tests (Task16h) | A founder run of the verifiable and signed answers | Task19 |
+| 9 | Q9 | Which AI changes reached production, when, through which deployment | yes | ✅ | 🟡 | 🟡 | Live: IT-T19b-01 (founder 2026-10-17). Verifiable, signed: unit tests (Task16h) | A founder run of the verifiable and signed answers | Task19 |
+| 10 | Q14 | For one PR, the chain prompt → session → commits → PR → merge → deploy | yes | ✅ | 🟡 | n/a | Live drill-down: IT-T19b-01 (d) (founder 2026-10-17). Verifiable: unit tests (Task16h) | A founder run of the verifiable answer | Task19 |
+| 11 | Q12 | Which policy was in force for a repository when a change was made | yes | ⬜ | ⬜ | n/a | none | G2: organization policy object (shelved until a customer asks) | customerPolicyForDataAccess |
+| 12 | Q2 | For one line at a commit: AI or not, which agent, model, session | yes | ✅ | ⬜ | n/a | Live: IT-T19g-01 step 4 (founder-live, real GitHub App, 2026-10-20) | Verifiable not built (file paths are hashed in the predicate) | Task19 later |
+| 13 | Q6 | Who committed and who merged each AI change | yes | ✅ | ⬜ | n/a | Live: IT-T19g-01 steps 1–3 (founder 2026-10-20) | Verifiable needs the merger field in the pr_merged predicate | Task15 follow-up |
+| 14 | Q8 | When TrackAI first saw a commit, and was it signed then | yes | n/a | 🟡 | n/a | Verifiable: unit tests (Task16h); signing time and anchors IT-T15n-03 (founder 2026-11-24) | A founder run of the Q8 answer. Live: n/a by design | Task19 |
+| 15 | Q15 | AI code from a machine or repository without a grant, and was it rejected | yes | ✅ | ⬜ | n/a | Live: IT-T19g-01 steps 1–3 (founder 2026-10-20) | Verifiable needs the rejection count in a batch statement | Task15 follow-up |
+| 16 | Q10 | How much AI code was reworked or deleted before merge, by AI or human | partly | 🟡 | n/a | n/a | Unit tests (Task19b) | A founder run of the live answer; Churned stays unavailable (never written) | Task19 |
+| 17 | Q19 | AI acceptance rate (generated, kept, committed) | no | ✅ | n/a | n/a | IT-T19b-01 (founder 2026-10-17) | none | — |
+| 18 | Q18 | AI cost (tokens, money) per repository, PR and model | no | 🟡 | n/a | n/a | Unit tests (Task19b) | A founder run; vendors that report no usage stay unavailable (permanent) | Task19 |
+| 19 | Q20 | Which teams use AI most, and how it is changing | no | ✅ | n/a | n/a | IT-T19b-01 (c) (founder 2026-10-17) | By team unavailable: no team mapping exists (open issue); by repository works | open issue |
+| 20 | Q17 | Did AI bring open-source snippets in (licence risk) | yes | n/a | n/a | n/a | none | Phase 2 by design (SCANOSS, opt-in) | customer trigger |
+
+## Security questions (S1–S26)
+
+| Rank | Id | Question | Auditor | Live | Verifiable | Signed | Evidence | What is left and why | Owner |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | S1 | Register of every high/critical finding in a period, provably complete | yes | ⬜ | 🟡 | 🟡 | IT-T16h-01 (d) (agent 2026-10-19); IT-T19i-01 step 7 (agent 2026-11-25) | Founder run of IT-T19i-01 (step 7). Live register not built; registry still cites G6 and G9, both closed (see TASK19 §8) | Founder; Task19 |
+| 2 | S2 | Was monitoring actually on, and where were the coverage gaps | yes | ⬜ | ⬜ | ⬜ | none | G7: coverage history per machine and day | Task20 |
+| 3 | S3 | Did anyone switch off or tamper with the guardrails | yes | ⬜ | ⬜ | n/a | T19.9 step 13 (founder 2026-11-25): shown as not built, never zero; IT-T19i-01 step 13 (agent) | G8 settings-change audit; tamper rules are in Task20's first wave, so the answer itself is now the gap | Task20 + Task19 |
+| 4 | S4 | Did an agent read secrets, and did data leave the machine afterwards | yes | ⬜ | ⬜ | n/a | none | Secrets and exfiltration rules ship with Task20 (G9 cancelled); the answer is not built | Task19 |
+| 5 | S5 | For one finding, the chain machine → session → model → repo → commits → deploy | yes | ✅ | ⬜ | n/a | Live: IT-T19c-01 (f) (founder 2026-11-25) | Session link partial until G10 (Task13); verifiable not built | Task13; Task19 |
+| 6 | S6 | Did code from a session with a high/critical finding get merged or deployed | yes | ✅ | ⬜ | n/a | Live: IT-T19c-01 (f) (founder 2026-11-25) | Session link partial until G10; verifiable not built | Task13; Task19 |
+| 7 | S7 | Which repositories were most affected, by category and severity, vs the previous period | yes | ✅ | 🟡 | 🟡 | Live: T19.9 step 8 (founder-live 2026-11-25, after the Task20j web fix); IT-T19c-01 (a) (founder 2026-11-25). Verifiable, signed: IT-T16h-01 (c) (agent) | Founder run of the verifiable and signed answers | Task19 |
+| 8 | S8 | Which agent or tool, and which model, produced the most findings | yes | ✅ | 🟡 | 🟡 | Live: IT-T19c-01 (c) (founder 2026-11-25). Verifiable, signed: unit tests (Task16h) | Task6.a-era rows have no model (shown as unknown) | Task19 |
+| 9 | S9 | Which platforms produced the most findings, in which categories | yes | ✅ | 🟡 | 🟡 | Live: IT-T19c-01 (d) (founder 2026-11-25). Verifiable, signed: unit tests (Task16h) | Linux and Windows show "not monitored" until their Endpoint waves | Task9g, Linux wave |
+| 10 | S10 | Which rule-pack and detector versions were in force per machine | yes | 🟡 | 🟡 | 🟡 | Unit tests (Task19c, Task16h) | Machines with no finding need G7 (coverage history); a founder run | Task20; Task19 |
+| 11 | S11 | Which findings were confirmed outcomes, which only requested actions | yes | 🟡 | 🟡 | 🟡 | Unit tests (Task19c, Task16h) | A founder run | Task19 |
+| 12 | S12 | Was anything blocked, under which policy version | yes | ✅ | 🟡 | 🟡 | Live: IT-T19c-01 (e) (founder 2026-11-25). Verifiable, signed: unit tests (Task16h) | "None blocked" until the Task20k blocking pilot | Task20k |
+| 13 | S13 | Which organization policy and activation lease were in force | yes | ⬜ | ⬜ | n/a | none | G11 lease part (Task20f/20g), then the answer; G2 policy part shelved | Task19; shelved |
+| 14 | S14 | Which policy exceptions or waivers were granted | yes | ⬜ | ⬜ | n/a | none | G12 shelved with customerPolicyForDataAccess | customer trigger |
+| 15 | S15 | Who looked at findings and raw evidence, and is that trail tamper-evident | yes | 🟡 | 🟡 | n/a | Audit read API IT-T16c-01 and seals IT-T16e-01 (founder 2026-10-15); Q&A answers: IT-T16h-01 (e) (agent) | A founder run of the Q&A answers | Task19 |
+| 16 | S16 | How fast were findings triaged and remediated | partly | ⬜ | ⬜ | n/a | none | G13: triage state (phase 2 unless a customer asks) | Task6 + Task16 + Task10 |
+| 17 | S17 | Which machines (or teams) generate repeated findings | partly | 🟡 | n/a | n/a | Unit tests (Task19c) | A founder run; by team unavailable (no team mapping) | Task19; open issue |
+| 18 | S18 | Which rules fire most, and which are noisy | no | 🟡 | n/a | n/a | Unit tests (Task19c) | Counts only; "noisy" needs G13 disposition | Task6 + Task16 |
+| 19 | S19 | Which AI agents are installed on machines, and which are not approved | yes | ✅ | n/a | n/a | T19.9 step 9 (founder-live 2026-11-24/25); IT-T19i-01 step 9 (agent) | Approved-list half needs G2 (shelved); versions: provider does not report | shelved |
+| 20 | S20 | What did the day-one scan of existing agent sessions find | yes | ✅ | n/a | n/a | T19.9 step 10 (founder-live 2026-11-24/25); IT-T19i-01 step 10 (agent) | none | — |
+| 21 | S26 | How often agents ask permission, how often developers approve or deny | yes | 🟡 | n/a | n/a | IT-T19f-01 (founder 2026-11-25, seeded); T19.9 step 11 (founder-live 2026-11-25): 18 requests, approvals and denials not observed; IT-T19i-01 step 11 (agent) | Approvals and denials are not observable on the hook-only Claude Code and Codex paths; their final decisions need OTLP | Task20 / Task13 |
+| 22 | S23 | Which external domains, URLs and addresses agents reached | partly | ✅ | n/a | n/a | IT-T19f-01 (founder 2026-11-25) | Only with the `urls` data setting on (by design) | — |
+| 23 | S21 | Which agents ran in reduced-approval or bypass modes | yes | ✅ | n/a | n/a | IT-T19f-01 (founder 2026-11-25) | Bypass-flag launches wait for G16 (rule wave 2) | Task20 wave 2 |
+| 24 | S22 | Which MCP servers are configured and used, and did any send data out | yes | ⬜ | n/a | n/a | none | G15: MCP configuration and per-call identity | Task20 later |
+| 25 | S24 | What did we block, under which settings version, what happened next | yes | ⬜ | n/a | n/a | none | G17: opt-in blocking pilot | Task20k |
+| 26 | S25 | A signed incident case for one session | yes | n/a | n/a | n/a | none | Phase 2 by design (Task15 case bundle) | Task15 later |
+
+---
+
+## Archive
+
+*Everything below is this page as it stood on 2026-11-24 (before Task19i), moved here unchanged: the design notes, the original question tables with their "Data today" columns, the Task2 interview and its answers, the A15.0 decisions, the gap list, Task6.a's status and the Task15/Task16 plan. Status in these sections is historical; the tables above are current.*
+
 *Renamed 2026-10-14 from `ATTESTA_QUESTIONS.md`; the old path is now a one-line pointer here, because frozen contracts and old handoffs link it. Written 2026-10-11 by the Task15 lead (Claude), working backwards from the customer and the auditor, as the founder asked. Task2's answers added by Codex on 2026-10-12 (audited against `main` at `bb617f6`). Security and policy questions S1–S18 added 2026-10-14 by the Task16 lead. **Owner from 2026-10-14: Task19** (`docs/plan/TASK19.md`), which turns every row to answerable. Input to A15.0, to the admin Q&A (T10.9, now Task19 T19.5) and to the auditor Q&A (Task16 A16.13). A new question is added here first, with its rank, auditor flag, data check and owner. Symbols per AGENTS.md §11.*
 
 ## How to read this
