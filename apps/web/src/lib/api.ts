@@ -618,7 +618,7 @@ export function getQaAnswer(
 ): Promise<QaEnvelope | QaDrilldownPage> {
   const parameters = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== '' && (drilldown || key !== 'breakdown')) {
+    if (value !== undefined && value !== '') {
       parameters.set(key, String(value));
     }
   });

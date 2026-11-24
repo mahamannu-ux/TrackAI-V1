@@ -2,6 +2,8 @@
 
 *Task20j runbook for the founder's Intel Mac. Record E20 results in `TASK20.md` §7–§8. The [Task19 T19.9 walkthrough](TASK19_WALKTHROUGH.md) runs in the same sitting; record its results separately in `TASK19.md` §8. This runbook replaces the removed Task15n gate 6. Status symbols follow `AGENTS.md` §11.*
 
+**Close-out change (founder and Task20 lead, 2026-11-25):** Task20j stops its E20-07 outage before lease expiry; restore the week API and continue the nonblocking soak. The pre-expiry offline action and four locally queued record IDs are partial evidence only. **E20-07 moves to the next installed Endpoint build and runs separately**; this run does not pass E20-07 or the full per-agent E20 claim. The historical wait-to-expiry instructions below describe that later run, not a command to keep the present API down.
+
 ## Claim and evidence rule
 
 An agent on a platform is **monitored** only when its complete E20 row passes with a real installed Endpoint, real managed hook, accepted signed monitor lease, local Numbat record, accepted upload, and correct TrackAI view. Run the row separately for Claude Code, Codex, Cursor, Gemini CLI and Copilot CLI. **Run Copilot CLI first** for steps that change rules, the binary or hooks. Codex CLI must be installed for its row. Mark every unrun agent **not monitored**. A pass on Intel macOS says nothing about Apple Silicon, Windows, Linux, IDE, remote or cloud routes. Monitor mode means *observed*; it never means an action was prevented. Task20k owns the later blocking pilot.
@@ -57,13 +59,17 @@ export SECURITY_POLICY_BUNDLE_CREDENTIAL_ID=dev:task20f-policy-bundle
 export SECURITY_DEV_POLICY_BUNDLE_KEY_FILE="$TASK20J_PRIVATE_DIR/private/policy.pem"
 export SECURITY_ACTIVATION_LEASE_CREDENTIAL_ID=dev:task20f-activation-lease
 export SECURITY_DEV_ACTIVATION_LEASE_KEY_FILE="$TASK20J_PRIVATE_DIR/private/lease.pem"
+umask 077
+node -e 'const fs=require("node:fs"); const p=process.env.TASK20J_PRIVATE_DIR+"/private/preview-master-keyring.json"; if(!fs.existsSync(p)) fs.writeFileSync(p, JSON.stringify({"task20j-local-v1":require("node:crypto").randomBytes(32).toString("base64")}), {flag:"wx",mode:0o600})'
+export MASTER_ENCRYPTION_KEY_ACTIVE_VERSION=task20j-local-v1
+export MASTER_ENCRYPTION_KEYS_JSON="$(cat "$TASK20J_PRIVATE_DIR/private/preview-master-keyring.json")"
 node --import tsx apps/api/src/features/security/testing/task20j-week-setup.ts auth "$TASK20J_PRIVATE_DIR" > "$TASK20J_PRIVATE_DIR/auth.log" 2>&1 &
 PORT=8080 node --import tsx apps/api/src/index.ts > "$TASK20J_PRIVATE_DIR/api.log" 2>&1 &
 echo $! > "$TASK20J_PRIVATE_DIR/private/api.pid"
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 NEXT_PUBLIC_SUPABASE_ANON_KEY=task20j-local-public-placeholder NEXT_PUBLIC_API_URL=http://127.0.0.1:8080 npm run dev -w apps/web
 ```
 
-Expected: `task20j_week_seed=ready`, `task20j_week_auth=ready` in the private auth log, API `/health` OK, and the console at `http://localhost:3000/login`. On restart, export the same database URL and restart auth/API/web with the same private directory. Do not rerun `seed`: it refuses an existing directory. Confirm the API PID listening on 8080 and its `DATABASE_URL` in that process's environment locally before generating records. The seed's Company A machine is the only Endpoint enrolment; Company B has no machine until the isolation test explicitly gives it one.
+Expected: `task20j_week_seed=ready`, `task20j_week_auth=ready` in the private auth log, API `/health` OK, and the console at `http://localhost:3000/login`. The private preview master keyring must persist across API restarts; never replace it while encrypted previews exist, print it or commit it. On restart, export the same database URL, signing variables and both `MASTER_ENCRYPTION_*` variables, then restart auth/API/web with the same private directory. Do not rerun `seed`: it refuses an existing directory. Confirm the API PID listening on 8080 and its `DATABASE_URL` in that process's environment locally before generating records. The seed's Company A machine is the only Endpoint enrolment; Company B has no machine until the isolation test explicitly gives it one.
 
 ### Build under test, after GitAI Stage 0 merges
 
@@ -86,7 +92,7 @@ shasum -a 256 /Users/Shared/trackai-endpoint-macos-x64-debug.pkg
 
 Expected: the audited pin/checksum and architecture checks pass, the PKG exists, and the final line is its SHA-256. Record the GitAI main SHA, package version and digest in `TASK20.md` §7 before installation. Use GitAI [`packaging/macos/FOUNDER_WALKTHROUGH.md`](https://github.com/mahamannu-ux/git-ai/blob/main/packaging/macos/FOUNDER_WALKTHROUGH.md) §§3–5 for the exact install, hook status, bootstrap, monitor and off commands, substituting this package name and Task20j's private directory. E20's extra rule, privacy, offline, expiry, tamper, scan, inventory and console checks below extend that prior walkthrough.
 
-**Fixed build recorded 2026-11-17:** GitAI `e6bfe77b6`; Endpoint `1.6.19 (debug)`; Numbat `v0.2.0-trackai.1` (`b80672486b0e05b4eb13033b0546fddddde71c7792a6e1cceb9cd19240771667`); package SHA-256 `34ccd4cd60f079d4d6e863d2a8de58f4214f859099aba7af3e7c159eadb69c74`. The package's `PackageInfo` identifier is `com.git-ai.git-ai` and its receipt version is `1.6.19`; verify the *installed* `pkgutil` receipt after installation. GitAI `main` may receive merges, but do not reinstall or replace the installed Endpoint on the Intel Mac's everyday account until the sitting and E20-07 finish. Record each later installed build change in the soak log.
+**Fixed build recorded 2026-11-17:** GitAI `e6bfe77b6`; Endpoint `1.6.19 (debug)`; Numbat `v0.2.0-trackai.1` (`b80672486b0e05b4eb13033b0546fddddde71c7792a6e1cceb9cd19240771667`); package SHA-256 `34ccd4cd60f079d4d6e863d2a8de58f4214f859099aba7af3e7c159eadb69c74`. The package's `PackageInfo` identifier is `com.git-ai.git-ai` and its receipt version is `1.6.19`; verify the *installed* `pkgutil` receipt after installation. GitAI `main` may receive merges; they do not change the installed Endpoint. The founder subsequently moved E20-07 to the next installed build. Record each later installed build change in the soak log.
 
 ## Rule proof, sitting and ongoing soak
 
@@ -94,8 +100,8 @@ Expected: the audited pin/checksum and architecture checks pass, the PKG exists,
 
 1. **Day 1 (completed):** install the exact debug package, obtain the signed monitor lease, record E20-01's install/health baseline, obtain the founder's consent to scan prior history, and run E20-09 day-one scan. The eight-group live proof with matching IDs and `found_at_rest=false` and the 200-run hook latency measurements remain separate accepted evidence.
 2. **Before the sitting:** record the observed Nov 19 07:09 IST Mac reboot and Nov 19–20 status gap (see handoff), and verify the recovered stack and current lease. Status uploads are hourly when the shipper is active, not change-only. The available logs cannot establish the daemon's post-reboot uptime; if later evidence establishes it ran silently with a reachable API, record an E20-01/06 defect. Collect E20-W noise data every 2–3 days during real work; a consecutive-day run is not a close-out gate.
-3. **Joint sitting (date to reschedule; still pending Nov 24):** with the API running, recheck E20-01 and complete E20-02…06 and E20-08…12, including E20-09's off/on no-repeat check. Then run Task19's T19.9 walkthrough and the disposable-database IT sweep. Record each verdict in its own tracker.
-4. **Last, E20-07 immediately after the sitting and sweep:** stop the local API and verify `/health` is unreachable. Keep it down until the signed lease expires, up to 72 hours; this can overlap a weekend or time away. Record the queue count before and after the outage and verify eligible queued records deliver once after API restart. Only then close E20-07, IT-T20g-01 and the complete E20 claim; write the Stage 5 close-out afterward.
+3. **Joint sitting (recorded Nov 24/25):** E20-01…06 and E20-08…12 were exercised on the Intel debug package; E20-06 login start and E20-09 Cursor empty history were mismatches, and E20-08 cached-rule recovery remained inconclusive. Task19's available security steps and the disposable-database sweep were recorded with their separate verdicts. See the handoff and `TASK19.md` §8.
+4. **Close-out decision:** the founder stopped the API for E20-07 and recorded a pre-expiry offline action, then chose to restart it before the signed expiry. E20-07 is **deferred to the next installed build**. Continue the soak on the restored stack and record the four queued IDs' delivery if observed; that delivery is not an expiry pass. Full E20 and IT-T20g-01 expiry claims stay open.
 
 ### Day-1 signed monitor lease and consented scan
 
@@ -161,7 +167,7 @@ node --import tsx apps/api/src/features/security/testing/task20j-daily-triage.ts
 
 | Installed date | Source revision | Endpoint / Numbat | Package SHA-256 | Reason |
 |---|---|---|---|---|
-| 2026-11-17 | GitAI `e6bfe77b6` | Endpoint `1.6.19 (debug)` / Numbat `v0.2.0-trackai.1` | `34ccd4cd60f079d4d6e863d2a8de58f4214f859099aba7af3e7c159eadb69c74` | Initial Task20j fixed-build install; no replacement before sitting and E20-07 |
+| 2026-11-17 | GitAI `e6bfe77b6` | Endpoint `1.6.19 (debug)` / Numbat `v0.2.0-trackai.1` | `34ccd4cd60f079d4d6e863d2a8de58f4214f859099aba7af3e7c159eadb69c74` | Initial Task20j fixed-build install; E20-07 moved to next installed build |
 
 ## E20 checks
 
@@ -198,7 +204,7 @@ readlink "$HOME/.git-ai/internal/security/rules/current"
 
 The pointer must name the new bundle. Confirm the new digest and severity in the next Copilot finding and `applied` in Coverage. Restore the noisy rule to disabled after proof, again selecting **Review changes** and **Apply** with a reason.
 
-**E20-04:** In the same Settings screen, turn on **Command previews**, select **Review changes** and **Apply**; make one harmless action and inspect its finding locally. Turn **Command previews** off, again select **Review changes** and **Apply**, make another action, and check that its finding lacks `observed_command`. With previews off, run the machine-credential negative probe below. It reads the credential locally, sends one synthetic upload, and prints only the refusal code:
+**E20-04:** In the same Settings screen, turn on **Command previews**, select **Review changes** and **Apply**; make one harmless action and inspect its finding locally. This data-setting-only change increments the lease/data-settings version; it does **not** publish a new rule bundle or change the active rules pointer. Confirm the setting in the signed lease/coverage before the action. Turn **Command previews** off, again select **Review changes** and **Apply**, make another action, and check that its finding lacks `observed_command`. With previews off, run the machine-credential negative probe below. It reads the credential locally, sends one synthetic upload, and prints only the refusal code:
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
@@ -210,6 +216,8 @@ Expected: `SECURITY_V2_FIELD_NOT_PERMITTED`. The script fails if the record is a
 **E20-05:** In Settings, switch Monitor mode to **Off**, select **Review changes** and **Apply**. On the Mac, run `"$ENDPOINT" bg restart --hard`; `readlink "$SECURITY_DIR/rules/current"` must say `placeholder`. Repeat a harmless agent action; `wc -l "$HOME/.numbat/records.ndjson"` may rise, while the Company A Findings count must not. Restore **Monitor** in Settings with **Review changes** and **Apply** before E20-06.
 
 **E20-06 / IT-T20e-01 / IT-M20-02:** On the Mac first record `wc -l "$HOME/.numbat/records.ndjson"` and the Company A Findings count in the console. This week API is on **loopback**, so disabling Wi-Fi alone cannot take the Endpoint offline from it. Stop the saved API process, verify that `/health` is unreachable, make synthetic agent actions, and restart the same API against the kept database. `networksetup -setnetworkserviceenabled "Wi-Fi" off`/`on` may additionally simulate a network outage if the active service is Wi-Fi, but the API stop is required for this local topology.
+
+**Restart prerequisite after E20-04:** The API must retain the private persistent preview master keyring and the development signing settings on every restart. An API lacking `MASTER_ENCRYPTION_*` returned HTTP 500 when storing encrypted command previews; the installed GitAI uploader misleadingly labelled 5xx retries `SECURITY_V2_LEASE_REQUIRED`. Verify the private keyring file exists, then export `MASTER_ENCRYPTION_KEY_ACTIVE_VERSION=task20j-local-v1` and `MASTER_ENCRYPTION_KEYS_JSON="$(cat "$TASK20J_PRIVATE_DIR/private/preview-master-keyring.json")"` together with the database URL and both development signers **before** stopping the working API. Never print the keyring or the API's process environment.
 
 **Existing reboot mismatch to retain:** After the Nov 19 07:09 IST reboot, `~/Library/LaunchAgents/com.usegitai.bg.plist` and `launchctl` service `gui/502/com.usegitai.bg` were absent. The Endpoint did not resume automatically at login; Task9/Task20 own the fix after the sitting. Six local Nov 19–20 session events were *not* eligible v2 security uploads, so they do not prove queue delivery. Record the reboot finding as an E20-06 mismatch even if the synthetic manual-restart/queue test below passes. Do not install login-start or replace the installed Endpoint before the sitting and E20-07.
 
@@ -224,7 +232,7 @@ if curl --silent --max-time 2 http://127.0.0.1:8080/health >/dev/null; then echo
 # Perform two harmless monitored agent actions here.
 "$ENDPOINT" bg restart --hard
 wc -l "$HOME/.numbat/records.ndjson"
-PORT=8080 node --import tsx apps/api/src/index.ts > "$TASK20J_PRIVATE_DIR/api.log" 2>&1 &
+PORT=8080 NODE_ENV=development TASK20J_WEEK_DATABASE=1 node --import tsx apps/api/src/index.ts >> "$TASK20J_PRIVATE_DIR/api.log" 2>&1 &
 echo $! > "$TASK20J_PRIVATE_DIR/private/api.pid"
 for E20_READY in 1 2 3 4 5; do
   if curl --fail --silent http://127.0.0.1:8080/health >/dev/null; then break; fi
@@ -236,21 +244,23 @@ sleep 15
 "$ENDPOINT" bg tail -n 80
 ```
 
-Compare local record IDs and the server's received IDs/count after reconnect; each eligible ID must arrive once. To prove file rotation, while the daemon is stopped with `"$ENDPOINT" bg shutdown --hard`, move only the synthetic `~/.numbat/records.ndjson` to a dated local backup, create a new empty file with `touch "$HOME/.numbat/records.ndjson"`, run `"$ENDPOINT" bg restart --hard`, make another harmless action, then compare IDs/counts again. Preserve the rotated file until the proof is recorded; an absent record or duplicate fails IT-T20e-01.
+Compare local record IDs and the server's received IDs/count after reconnect; each eligible ID must arrive once. To prove file rotation, stop the daemon, make one harmless monitored agent action that Numbat writes into the **old active file** while it is not being tailed, then move that active file to an unoccupied **`records.ndjson.YYYY-MM-DD.N`** filename in the same directory. Create a new owner-only active file, restart the Endpoint, make a second harmless action in the **new** active file, and compare both locally derived finding IDs with Company A exactly once. Confirm the daemon remained stopped and the queue did not advance after the first action, so the rotated file actually held an unread entry. The real-account active file can contain earlier ordinary agent history; preserve its rotated copy and never delete it for this test. GitAI's tailer looks for filenames beginning `records.ndjson.` when following a saved inode; a name such as `records.e20-06-before-rotation.ndjson` does not test that rotation path. An absent record or duplicate fails IT-T20e-01.
 
 ```bash
 cd /Users/manishmahajan/AIProjects/TrackAI-wt/Task20j-acceptance
 ENDPOINT="$HOME/.git-ai/bin/git-ai"
 "$ENDPOINT" bg shutdown --hard
-test ! -e "$HOME/.numbat/records.e20-06-before-rotation.ndjson" || exit 1
-mv "$HOME/.numbat/records.ndjson" "$HOME/.numbat/records.e20-06-before-rotation.ndjson"
+# Make one harmless monitored agent action before the move; confirm the daemon stayed down.
+test ! -e "$HOME/.numbat/records.ndjson.2026-11-24.99" || exit 1
+mv "$HOME/.numbat/records.ndjson" "$HOME/.numbat/records.ndjson.2026-11-24.99"
+umask 077
 touch "$HOME/.numbat/records.ndjson"
 "$ENDPOINT" bg restart --hard
 # Make one harmless monitored action and compare its record ID with Company A Findings.
-wc -l "$HOME/.numbat/records.e20-06-before-rotation.ndjson" "$HOME/.numbat/records.ndjson"
+wc -l "$HOME/.numbat/records.ndjson.2026-11-24.99" "$HOME/.numbat/records.ndjson"
 ```
 
-**E20-07 / IT-T20g-01:** Start this immediately after the joint sitting, T19.9 and IT sweep; complete it last. The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage and record the local queued-record count before disconnecting. Stop the local API using the E20-06 PID and `/health` checks, and keep it stopped until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Make a harmless monitored action before expiry to exercise the offline queue, then another after expiry. Check `readlink "$SECURITY_DIR/rules/current"` is `placeholder` after expiry. Restart the API using the E20-06 start command, verify no expired-lease upload arrived, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. Compare queued and server record IDs/counts: each eligible pre-expiry record must deliver once after restart. The bundle digest should stay the same. This outage can overlap a weekend or time away.
+**E20-07 / IT-T20g-01 (next installed build only):** The present debug build's outage ended before expiry by founder decision; apply this procedure in the separately scheduled next-build run. The Task19 lead's 2026-11-25 decision defers GitHub/Attesta-dependent T19.9 steps to a separate Task19 session, and records the S26 approval/denial mismatch in `TASK19.md` §8; neither is silently counted as passed. The server issues a **72-hour lease** (`SECURITY_V2_DEFAULT_LEASE_VALIDITY_HOURS=72`); it normally renews after one hour. There is no development environment switch to shorten that signed lifetime. Read the actual expiry from Coverage and record the local queued-record count before disconnecting. Stop the local API using the E20-06 PID and `/health` checks, and keep it stopped until **after that exact expiry** (up to 72 hours from issuance); do not alter the Mac clock or signed lease. Make a harmless monitored action before expiry to exercise the offline queue, then another after expiry. Check `readlink "$SECURITY_DIR/rules/current"` is `placeholder` after expiry. Restart the API using the E20-06 start command, verify no expired-lease upload arrived, run `"$ENDPOINT" bg restart --hard`, and check the new lease id, acknowledgement and restored pointer. Compare queued and server record IDs/counts: each eligible pre-expiry record must deliver once after restart. The bundle digest should stay the same. This outage can overlap a weekend or time away.
 
 On the Mac, run this at outage start, after the pre-expiry action and after API restart; record only the counts. Match the queued record IDs to Company A Findings locally before calling delivery complete.
 
@@ -307,7 +317,7 @@ test -f "$SECURITY_DIR/day-one-scan-done"
 jq '{partial,failed_agents}' "$SECURITY_DIR/day-one-scan-done"
 ```
 
-**E20-10:** On the Mac run `/Library/Application\ Support/TrackAI/Endpoint/bin/numbat agents --all --format json` and compare its detected/wired agents and versions with Company A Coverage's inventory row and S19. Include an installed but unmanaged agent in the comparison; it must remain visible as inventory, never described as monitored. Unknown versions remain unavailable. The Endpoint inventory refresh is lease-gated, so wait for a current monitor lease and the next reported inventory before comparing.
+**E20-10:** On the Mac run `/Library/Application\ Support/TrackAI/Endpoint/bin/numbat agents --all --format json` and compare its detected/wired agents with Company A's latest stored inventory snapshot and S19 live answer. Coverage shows only the status report's **wired agents** and health layers; it does not render the full inventory. Include an installed but unmanaged agent in the S19 detected/unwired comparison; it must remain visible as inventory, never described as monitored. Unknown versions remain unavailable. The Endpoint inventory refresh is lease-gated, so wait for a current monitor lease and the next reported inventory before comparing.
 
 **E20-11:** Open the three Security tabs at the console paths above as Company A admin. In Findings, filter to the test rule/agent and open the drawer; in Coverage inspect all four health layers and acknowledgement. In Settings, select **Review changes**, then **Apply** with a reason. Open two tabs on the same initial settings version, apply a change in the first and attempt the stale plan in the second; expect `SECURITY_SETTINGS_CONFLICT`. Sign out and use the Company A auditor login from `private/auth.json`; Settings must be read-only. Record the literal “Not checked by the Endpoint” and “Failed” labels where the corresponding health states are present, without manufacturing those states in production data.
 
@@ -347,7 +357,7 @@ Copy the completed rows into `TASK20.md` §7–§8. A row is **passed** only aft
 | — | Intel macOS | Copilot CLI | ⬜ not run | ⬜ not run | not monitored | — |
 | — | Apple Silicon / Windows / Linux | all agents | ⬜ not run | ⬜ not run | not monitored | Separate Task9/Task9g and Linux gates |
 
-| Date | Package / SHA-256 | Tenant A/B and machine aliases | Wave-one tests | Five-working-day normal-work interval | Untriaged critical false positives | E20 mismatches / disposition | T19.9 result |
+| Date | Package / SHA-256 | Tenant A/B and machine aliases | Wave-one tests | Ongoing E20-W soak (nonblocking) | Untriaged critical false positives | E20 mismatches / disposition | T19.9 result |
 |---|---|---|---|---|---|---|---|
 | — | — | — | ⬜ | ⬜ | unknown | ⬜ not run | ⬜ see `TASK19.md` §8 |
 
