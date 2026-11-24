@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --import tsx --test src/app/dashboard/admin-security-finding-row.test.tsx src/lib/qa-answer-request.test.ts"
   },
   "dependencies": {
     "@supabase/auth-ui-react": "^0.4.7",

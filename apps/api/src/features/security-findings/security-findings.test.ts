@@ -659,17 +659,14 @@ test('task6_ui presents findings as monitor-only metadata to authorized roles', 
   assert.match(apiSource, /getAdminSecurityFindings/);
   assert.match(dashboardSource, /Security findings/);
   assert.match(dashboardSource, /Monitor only/);
-  assert.match(dashboardSource, /TrackAI did not block this action/);
+  assert.match(dashboardSource, /TrackAI did not block these actions/);
+  assert.match(dashboardSource, /A finding records a detected pattern; it does not prove the action completed/);
   assert.match(dashboardSource, /loadSecurityFindings/);
   assert.match(dashboardSource, /Refresh findings/);
   assert.match(dashboardSource, /Contact your administrator if you need access/);
   assert.match(dashboardSource, /Support details/);
   assert.match(dashboardSource, /Account identifier \(not a secret\)/);
-  assert.match(dashboardSource, /Verified route: OpenCode terminal\/TUI on macOS/);
-  assert.match(
-    dashboardSource,
-    /Other agents, surfaces and operating systems are not yet verified for Task6 Security monitoring/,
-  );
+  assert.doesNotMatch(dashboardSource, /Verified route: OpenCode terminal\/TUI on macOS/);
   assert.doesNotMatch(dashboardSource, /Verified JWT subject|Give this exact subject/);
   assert.doesNotMatch(
     dashboardSource,
