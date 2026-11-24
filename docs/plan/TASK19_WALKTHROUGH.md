@@ -1,6 +1,6 @@
 # Task19 founder walkthrough (T19.9)
 
-*Written 2026-10-21 by the Task19 lead (Claude) for the joint sitting with Task20j. Task20j's runbook, `docs/plan/TASK20_ACCEPTANCE.md` (to be written by Task20j), links here. Symbols per AGENTS.md §11. **Results are recorded in `docs/plan/TASK19.md`** (§3 status symbols and §8 "T19.9 results"), not in this file.*
+*Written 2026-10-21 by the Task19 lead (Claude) for the joint sitting with Task20j. Task20j's runbook, `docs/plan/TASK20_ACCEPTANCE.md` (to be written by Task20j), links here. Symbols per AGENTS.md §11. **Results are recorded in `docs/plan/TASK19.md`** (§8 "T19.9 results"; per-question status in `docs/plan/CUSTOMER_AUDITOR_QA.md`), not in this file.*
 
 ## What T19.9 covers
 
@@ -58,4 +58,4 @@ Throughout, check: no prompt, command, file path, URL, domain, login or email ap
 - **Repeatable run:** all fifteen steps run on a seeded throwaway stack with `npm run e2e:task19-walkthrough` (IT-T19i-01, Task19i). It does not replace the founder-live sitting on real Endpoint data, whose results stay in `TASK19.md` §8.
 - **Pass:** all fifteen steps match.
 - A step that does not match is recorded in `TASK19.md` §8 with the question, the role and what was seen. The lead turns it into a fix.
-- Each passed question's **Live** or **Auditor** cell in `TASK19.md` §3 moves to ✅ only for the audience the step checked (live for admins; verifiable or signed for auditors).
+- Each passed question's **Live**, **Verifiable** or **Signed** cell in `docs/plan/CUSTOMER_AUDITOR_QA.md` moves to ✅ only for the audience the step checked (live for admins; verifiable or signed for auditors).

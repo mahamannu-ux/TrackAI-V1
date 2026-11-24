@@ -3,12 +3,17 @@
  * the real API and a production build of the real web app, each on a free port.
  *
  * Runs only inside scripts/it-db.sh (DATABASE_URL on 127.0.0.1 and both ephemeral flags);
- * the seed and the stub refuse anything else too. Every process starts in a temporary
- * directory, so no developer `.env` file is loaded (dotenv never overrides, but a stray
- * setting must not change what the walkthrough sees). Printed lines carry no secrets.
+ * the seed and the stub refuse anything else too. The seed, stub and API start in a temporary
+ * directory, so no developer `apps/api/.env` is loaded; the web build reads `apps/web/.env.local`
+ * if one exists, but the explicit NEXT_PUBLIC_* values below win. Inherited Supabase, GitHub App
+ * and Attesta variables are dropped. Printed lines carry no secrets.
+ *
+ * The production build needs `apps/web/.next` (next.config.mjs). An existing `.next` is moved
+ * aside first and put back at teardown, so the developer's own build is unchanged afterwards;
+ * stop any `next start` serving from `.next` before a run (`next dev` uses `.next-dev`).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,6 +23,16 @@ const REPO = resolve(WEB, '../..');
 const API = join(REPO, 'apps/api');
 const TSX = join(REPO, 'node_modules/.bin/tsx');
 const NEXT = join(REPO, 'node_modules/.bin/next');
+const BUILD = join(WEB, '.next');
+
+/** The caller's environment without settings that would point the stack at real services. */
+function cleanEnv(): NodeJS.ProcessEnv {
+  const env: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!/^(SUPABASE_|NEXT_PUBLIC_|GITHUB_|ATTESTA_|TRACKAI_|FRONTEND_URL$|PORT$)/.test(key)) env[key] = value;
+  }
+  return env as NodeJS.ProcessEnv;
+}
 
 function freePort(): Promise<number> {
   return new Promise((done, fail) => {
@@ -56,6 +71,38 @@ function start(name: string, command: string, args: string[], env: NodeJS.Proces
   return child;
 }
 
+/**
+ * Manual mode (TASK19I_HOLD=1): keep the seeded stack up for a person to click through the
+ * walkthrough, print where to sign in, and run no test. Ctrl-C stops everything, and
+ * scripts/it-db.sh then removes the database. The passwords are the stub's local-only ones.
+ */
+async function hold(manifestPath: string, webOrigin: string, teardown: () => Promise<void>): Promise<never> {
+  const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    companyA: { repositoryName: string; repositoryId: string };
+    codeReport: { from: string; to: string }; securityReport: { from: string; to: string };
+    users: Record<string, { email: string; password: string }>;
+  };
+  const local = (iso: string) => new Date(iso).toLocaleString();
+  const link = (q: string, period: { from: string; to: string }, repository?: string) => `${webOrigin}/dashboard?${new URLSearchParams({
+    view: 'questions', qaQuestion: q, qaKind: 'signed', qaPeriod: 'custom', qaFrom: period.from, qaTo: period.to,
+    qaScope: repository ? 'repository' : 'tenant', ...(repository ? { qaRepository: repository } : {}) }).toString()}`;
+  console.log([
+    '',
+    `IT-T19i-01 manual mode: open ${webOrigin}/login`,
+    ...Object.entries(m.users).map(([who, u]) => `  ${who.padEnd(9)} ${u.email}  password: ${u.password}`),
+    `  Company A repository: ${m.companyA.repositoryName}`,
+    `  Q3 signed (step 2): Custom range ${local(m.codeReport.from)} to ${local(m.codeReport.to)}, scope Repository, or open (as auditor A)`,
+    `    ${link('Q3', m.codeReport, m.companyA.repositoryId)}`,
+    `  S1 signed (step 7): Custom range ${local(m.securityReport.from)} to ${local(m.securityReport.to)}, scope Entire tenant, or open`,
+    `    ${link('S1', m.securityReport)}`,
+    '  Press Ctrl-C to stop; the throwaway database is removed.',
+  ].join('\n'));
+  const stop = () => { void teardown().finally(() => process.exit(130)); };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+  return new Promise<never>(() => undefined);
+}
+
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const databaseUrl = process.env.DATABASE_URL;
   if (process.env.TASK5_EPHEMERAL_DATABASE !== '1' || process.env.TASK6_EPHEMERAL_DATABASE !== '1' || !databaseUrl
@@ -73,10 +120,16 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const apiUrl = `http://127.0.0.1:${apiPort}`;
   const children: ChildProcess[] = [];
   const log: string[] = [];
+  let movedBuild: string | null = null;
   const teardown = async () => {
     for (const child of children) if (child.exitCode === null) child.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 2000));
     for (const child of children) if (child.exitCode === null) child.kill('SIGKILL');
+    if (movedBuild) {
+      rmSync(BUILD, { recursive: true, force: true });
+      renameSync(movedBuild, BUILD);
+      movedBuild = null;
+    }
     rmSync(work, { recursive: true, force: true });
   };
 
@@ -84,14 +137,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     // 1. Seed (synchronous: the steps need the whole world).
     console.log('IT-T19i-01 setup: seeding the throwaway database');
     const seed = spawnSync(TSX, [join(API, 'src/features/qa/testing/task19i-walkthrough-seed.ts'), manifestPath, join(work, 'attesta')],
-      { cwd: work, env: process.env, encoding: 'utf8', timeout: 170_000 });
+      { cwd: work, env: cleanEnv(), encoding: 'utf8', timeout: 170_000 });
     const seedLines = `${seed.stdout ?? ''}${seed.stderr ?? ''}`.split('\n').filter((l) => /IT-T19i-01|failed|Error/.test(l));
     for (const line of seedLines) console.log(`  ${line}`);
     if (seed.status !== 0) throw new Error('IT-T19i-01 setup: the seed failed (lines above)');
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { apiEnv: Record<string, string> };
 
     // 2. The sign-in stub, then the API that trusts it.
-    const base: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'test' };
+    const base: NodeJS.ProcessEnv = { ...cleanEnv(), NODE_ENV: 'test' };
     const auth = start('auth', TSX, [join(API, 'src/features/qa/testing/task19i-walkthrough-auth.ts')],
       { ...base, TASK19I_AUTH_PORT: String(authPort), TASK19I_WEB_ORIGIN: webOrigin }, work, log);
     children.push(auth);
@@ -103,9 +156,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await waitFor(`${apiUrl}/health`, 'the API', api);
 
     // 3. The web app: a production build pointing at the stub and this API.
-    const webEnv: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
+    const webEnv: NodeJS.ProcessEnv = { ...cleanEnv(), NODE_ENV: 'production', NEXT_TELEMETRY_DISABLED: '1',
       NEXT_PUBLIC_SUPABASE_URL: authUrl, NEXT_PUBLIC_SUPABASE_ANON_KEY: 'task19i-local-placeholder', NEXT_PUBLIC_API_URL: apiUrl };
     if (process.env.TASK19I_SKIP_WEB_BUILD !== '1') {
+      if (existsSync(BUILD)) {
+        movedBuild = join(WEB, `.next-before-task19i-${process.pid}`);
+        renameSync(BUILD, movedBuild);
+      }
       console.log('IT-T19i-01 setup: building the web app (about two minutes)');
       const build = spawnSync(NEXT, ['build'], { cwd: WEB, env: webEnv, encoding: 'utf8', timeout: 600_000 });
       if (build.status !== 0) {
@@ -121,6 +178,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       TASK19I_MANIFEST: manifestPath, TASK19I_WEB_URL: webOrigin, TASK19I_API_URL: apiUrl, TASK19I_AUTH_URL: authUrl,
     });
     console.log('IT-T19i-01 setup: ready (stub, API and web app on free local ports)');
+    if (process.env.TASK19I_HOLD === '1') await hold(manifestPath, webOrigin, teardown);
     return async () => {
       if (process.env.TASK19I_SHOW_LOGS === '1') console.log(log.join('\n'));
       await teardown();

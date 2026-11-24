@@ -156,14 +156,10 @@ test.describe('Admin A', () => {
     expect(['Recorded', 'Partial']).toContain(await answerLoaded(page));
     const merged = Number((await figureValue(page, 'merged ai lines')).replace(/,/g, ''));
     expect(merged).toBeGreaterThan(0);
+    // The seed records a known model, so its bar must be there (never only `Unknown`).
     const bars = figure(page, 'merged ai lines').locator('[aria-label="merged_ai_lines breakdown"]');
-    const knownModel = bars.getByText(m.companyA.model, { exact: false });
-    if (await knownModel.count() === 0) {
-      await expect(bars.getByText('Unknown')).toBeVisible();
-      await expect(caveats(page)).toContainText('Some model identities are unknown.');
-    } else {
-      await expect(knownModel).toBeVisible();
-    }
+    await expect(bars).toBeVisible();
+    await expect(bars.getByText(m.companyA.model, { exact: false })).toBeVisible();
   });
 
   test('step 3: Q1 live, changed-lines share; repository share not captured (G1)', async () => {
@@ -230,7 +226,7 @@ test.describe('Admin A', () => {
     await openQuestion(page, { question: 'S20', kind: 'live' });
     await answerLoaded(page);
     expect(Number(await figureValue(page, 'machines scanned'))).toBeGreaterThanOrEqual(1);
-    await expect(figure(page, 'findings at rest').locator('div.text-2xl')).toBeVisible();
+    expect(Number(await figureValue(page, 'findings at rest'))).toBe(1);
     // A scan that found no session files is its own figure, never a failure.
     expect(Number(await figureValue(page, 'scans with no session files found for this agent'))).toBe(1);
     expect(Number(await figureValue(page, 'scans failed'))).toBe(0);
@@ -255,6 +251,8 @@ test.describe('Admin A', () => {
     await expect(notBuilt.getByText('live', { exact: true })).toBeVisible();
     await expect(notBuilt.getByText('Not built yet').first()).toBeVisible();
     await expect(answerCard(page).locator('article')).toHaveCount(0);
+    await page.waitForTimeout(1000);
+    expect(answerBodies(manifest().users.adminA.subject).some((b) => b.includes('"question_id":"S3"'))).toBe(false);
     // The API, asked directly, says so with the reason, and carries no figure at all.
     const direct = await apiAnswer(manifest().users.adminA, 'S3', { kind: 'live', ...last30() });
     expect(direct.status).toBe(200);
@@ -305,6 +303,7 @@ test.describe('Auditor A', () => {
     const m = manifest();
     await openQuestion(page, { question: 'S1', kind: 'verifiable' });
     await answerLoaded(page);
+    expect(Number(await figureValue(page, 'high or critical findings'))).toBeGreaterThanOrEqual(m.expected.highOrCriticalInReport);
     await expect(figure(page, 'high or critical findings').getByText(/^\d+ signed evidence records$/)).toBeVisible();
     await expect(caveats(page)).toContainText('Observed in monitor mode; nothing was blocked.');
 
@@ -339,6 +338,8 @@ test.describe('Admin B', () => {
     await answerLoaded(page);
     await expect(answerCard(page).getByText(m.companyA.repositoryName)).toHaveCount(0);
     // Company B merged nothing: unavailable, never a zero.
+    await expect(figure(page, 'merged ai lines')).toHaveCount(1);
+    await expect(figure(page, 'merged ai lines').locator('h4 + span')).toHaveText('Not available');
     await expect(figure(page, 'merged ai lines').locator('div.text-2xl')).toHaveCount(0);
 
     await openQuestion(page, { question: 'S19', kind: 'live' });

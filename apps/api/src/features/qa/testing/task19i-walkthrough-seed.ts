@@ -232,6 +232,9 @@ async function webhook(base: string, secret: string, event: string, payload: unk
   check(res.status === 200, `${event} webhook: HTTP ${res.status}`);
 }
 
+/** Whole minutes, so a person can type the report's period into the screen's custom range. */
+const minute = (d: Date) => new Date(Math.floor(d.getTime() / MIN) * MIN).toISOString();
+
 const hex40 = () => randomUUID().replaceAll('-', '').padEnd(40, '0').slice(0, 40);
 
 async function builderPass(w: Trust, stampAgeMin: number, t0: number): Promise<void> {
@@ -385,7 +388,7 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
     const r = await runAnchorPass(db, { anchor: w.anchoring.anchor, now: () => new Date() }, { tenantId: t.tenantId, partialAfterMs: 0, maxBatchesPerTenant: 100 });
     check(r.tenantErrors === 0, `anchoring ${t.company.label}: ${JSON.stringify(r)}`);
   }
-  const codeScope = { repository_id: a.repositoryId, from: ago(2 * 60 * MIN).toISOString(), to: ago(20 * MIN).toISOString() };
+  const codeScope = { repository_id: a.repositoryId, from: minute(ago(2 * 60 * MIN)), to: minute(ago(20 * MIN)) };
   const store = pgReportStore(db as unknown as ReportDatabase, { clock: () => new Date(t0 - 15 * MIN) });
   const { job } = await store.createOrGet({ tenantId: a.tenantId, idempotencyKey: `task19i-${randomUUID().slice(0, 8)}`,
     request: { scope: { ...codeScope, basis: 'recorded_at' } }, requestedBy: 'task19i-operator', requestId: `task19i-${randomUUID()}` });
@@ -399,7 +402,7 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
     { tenantIds: [t.tenantId], now: true });
     check(r.length >= 1 && r.every((x) => x.outcome === 'sealed'), `security seal ${t.company.label}: ${JSON.stringify(r.map((x) => x.outcome + (x.code ? `:${x.code}` : '')))}`);
   }
-  const secScope = { from: ago(2 * 60 * MIN).toISOString(), to: ago(10 * MIN).toISOString() };
+  const secScope = { from: minute(ago(2 * 60 * MIN)), to: minute(ago(10 * MIN)) };
   const sec = await buildSecurityReport({ store: pgSecurityReportStore(db as unknown as SealDatabase), resolver: w.resolver,
     builderVersion: BUILDER_VERSION, actor: { type: 'system_operator', id: 'attesta:security-report:task19i-operator' }, log: () => undefined },
   { tenant_id: a.tenantId, repository_id: null, ...secScope, basis: 'received_at' });
