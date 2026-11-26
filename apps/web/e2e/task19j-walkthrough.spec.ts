@@ -14,6 +14,8 @@ import {
   last30, manifest, openQuestion, signIn,
 } from './walkthrough-helpers';
 
+/** The S2 continuity figure's screen label (QA_FIGURE_LABELS): a missing day is unverified, not off. */
+const MACHINE_DAYS = 'machine-days with a status report \\(a day without one is unverified, not known to be off\\)';
 const num = async (page: Page, label: string): Promise<number> => Number((await figureValue(page, label)).replace(/,/g, ''));
 const evidenceLine = /^\d+ signed evidence records$/;
 /** The screen's reason lines (questions-presentation.tsx QA_REASON_MESSAGES): one must explain every unavailable figure. */
@@ -158,18 +160,21 @@ test.describe('Admin A, Task19j: new answers from the Task20 coverage data', () 
     expect(await num(page, 'machines reporting')).toBe(c.machinesReporting);
     expect(await num(page, 'machines not reporting')).toBe(c.machinesNotReporting);
     expect(await num(page, 'machines monitoring on')).toBe(c.machinesMonitoringOn);
+    expect(await num(page, 'machines monitoring off')).toBe(0);
+    // A2 is on an unvalidated platform and A3 never reported: neither is "unverified on".
+    expect(await num(page, 'machines reporting, monitoring unverified')).toBe(0);
     expect(await num(page, 'machines health failed')).toBe(c.machinesHealthFailed);
     expect(await num(page, 'machines on unvalidated platforms')).toBe(c.machinesOnUnvalidatedPlatforms);
     // Not reported is never healthy: the continuity is a partial ratio, with the reason shown.
     const days = expectedDays(c.enrolledAt);
     const reported = c.reportedDaysByMachine.reduce((sum, n) => sum + n, 0);
     const expected = days * c.machines;
-    expect(await figureValue(page, 'machine days reported'))
+    expect(await figureValue(page, MACHINE_DAYS))
       .toBe(`${reported} / ${expected} (${new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format((reported / expected) * 100)}%)`);
-    expect(await figureBadge(page, 'machine days reported')).toBe('Partial');
-    await expect(figure(page, 'machine days reported')).toContainText('This platform or activity is not monitored.');
+    expect(await figureBadge(page, MACHINE_DAYS)).toBe('Partial');
+    await expect(figure(page, MACHINE_DAYS)).toContainText('This platform or activity is not monitored.');
     // The machine that never reported shows 0 of its days, as a fact.
-    const bars = figure(page, 'machine days reported').locator('[aria-label="machine_days_reported breakdown"]');
+    const bars = figure(page, MACHINE_DAYS).locator('[aria-label="machine_days_reported breakdown"]');
     await expect(bars.locator('div', { hasText: c.machineIds[2] }).first()).toContainText(`0 / ${days} (0%)`);
     expect(await num(page, 'monitoring switched off')).toBe(c.monitoringSwitchedOff);
     await expect(caveats(page)).toContainText('Observed in monitor mode; nothing was blocked.');
@@ -222,7 +227,8 @@ test.describe('Admin A, Task19j: new answers from the Task20 coverage data', () 
     expect(await num(page, 'bundles in force')).toBe(c.bundlesInForce);
     expect(await num(page, 'lease refusals')).toBe(c.leaseRefusals);
     expect(await num(page, 'findings under lease')).toBe(m.expected.findingsInPeriod);
-    expect(await num(page, 'findings without lease')).toBe(0);
+    expect(await figureBadge(page, 'findings under lease')).toBe('Recorded'); // every finding's own lease matched
+    expect(await num(page, 'findings whose lease cannot be confirmed')).toBe(0);
     await expectUnavailableFigure(page, 'organization policy in force', 'This information is not being captured yet.');
     await expect(figure(page, 'organization policy in force').getByRole('link', { name: 'G2' })).toBeVisible();
   });

@@ -52,7 +52,7 @@ const NOW = '2026-10-15T09:30:00.000Z';
 function finding(over: Partial<SecurityFindingRow> = {}): SecurityFindingRow {
   return {
     id: '00000000-0000-4000-8000-0000000000f1',
-    generation: 'task6a', ruleId: 'trackai.exec.reverse_shell', ruleCategory: 'execution',
+    generation: 'task6a', leaseId: null, ruleId: 'trackai.exec.reverse_shell', ruleCategory: 'execution',
     ruleSeverity: 'high', repositoryId: REPO_A, repositoryKind: 'enrolled', machineId: MACHINE_A,
     sessionId: EXT_SESSION, occurredAt: new Date('2026-10-01T00:00:00.000Z'),
     rulePackVersion: 'rules-2026.10', agent: 'opencode', model: null, phase: 'requested',
@@ -140,7 +140,7 @@ describe('Task19c: no preview column is read', () => {
 
   test('the metadata allowlist excludes title, tags and every preview', () => {
     assert.deepEqual([...SECURITY_FINDING_METADATA_COLUMNS].sort(), [
-      'agent', 'generation', 'id', 'machineId', 'model', 'occurredAt', 'phase', 'repositoryId',
+      'agent', 'generation', 'id', 'leaseId', 'machineId', 'model', 'occurredAt', 'phase', 'repositoryId',
       'repositoryKind', 'resultCategory', 'ruleCategory', 'ruleId', 'rulePackVersion', 'ruleSeverity', 'sessionId',
     ]);
     const row = toFindingRow({
@@ -723,7 +723,8 @@ describe('Task19j: S4 secrets and egress afterwards', () => {
 describe('Task19j: S10 for machines with no finding', () => {
   test('up to date against the newest signed bundle; a machine with no report makes it partial', () => {
     const e = computeS10({ ctx: ctxFor('S10', 'tenant', null, FIVE_DAYS), security: coverageContext({ findings: [] }) });
-    assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').value, { type: 'count', count: 0 });
+    // No finding at all, yet two packs are in force: the bundles the reporting machines name.
+    assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').value, { type: 'count', count: 2 });
     assert.deepEqual(figureOf(e, 'machines_up_to_date').value, { type: 'count', count: 1 });
     assert.equal(figureOf(e, 'machines_up_to_date').availability, 'partial');
     assert.deepEqual(figureOf(e, 'machines_not_up_to_date').value, { type: 'count', count: 1 });
@@ -738,7 +739,7 @@ describe('Task19j: S10 for machines with no finding', () => {
 describe('Task19j: S13 lease half', () => {
   test('leases and bundles in force, findings under a lease, refusals; organization policy stays G2', () => {
     const security = coverageContext({ findings: [
-      finding({ id: 'f-a', generation: 'v2', occurredAt: day('2026-10-12') }),
+      finding({ id: 'f-a', generation: 'v2', leaseId: 'lease-c1', occurredAt: day('2026-10-12') }),
       finding({ id: 'f-c', generation: 'v2', machineId: MACHINE_C, occurredAt: day('2026-10-12') }),
     ] });
     const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, FIVE_DAYS), security });
@@ -748,7 +749,8 @@ describe('Task19j: S13 lease half', () => {
     assert.deepEqual(figureOf(e, 'bundles_in_force').value, { type: 'count', count: 1 });
     assert.deepEqual(figureOf(e, 'lease_refusals').value, { type: 'count', count: 1 });
     assert.deepEqual(figureOf(e, 'findings_under_lease').value, { type: 'count', count: 1 });
-    assert.deepEqual(figureOf(e, 'findings_without_lease').value, { type: 'count', count: 1 });
+    assert.equal(figureOf(e, 'findings_under_lease').availability, 'partial');
+    assert.deepEqual(figureOf(e, 'findings_lease_unknown').value, { type: 'count', count: 1 });
     assert.deepEqual(figureOf(e, 'organization_policy_in_force').reasons, [{ code: 'not_captured_yet', gap: 'G2' }]);
     valid(e);
     valid(computeS13({ ctx: ctxFor('S13', 'tenant', 'machine', FIVE_DAYS), security }));
@@ -871,5 +873,67 @@ describe('Task19j review: platform, enrolment, repository scope, overlapping lea
     const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, FIVE_DAYS), security });
     assert.deepEqual(figureOf(e, 'bundles_in_force').value, { type: 'count', count: 1 });
     assert.deepEqual(figureOf(e, 'machines_with_lease_in_force').value, { type: 'count', count: 1 });
+  });
+});
+
+describe('Task19j Codex review: monitoring state, revocation, recorded leases, packs in force', () => {
+  test('S2: a newer off lease is "off", an unavailable layer is "unverified", an unknown platform is never "on"', () => {
+    const enrolledAt = new Date('2026-09-01T00:00:00.000Z');
+    const security = coverageContext({
+      machines: [MACHINE_A, MACHINE_B, MACHINE_C].map((machineId) => ({ machineId, enrolledAt, revokedAt: null })),
+      machinePlatforms: new Map([[MACHINE_A, 'macos'], [MACHINE_B, 'macos']]), // C's platform unknown
+      statusReports: [
+        report(MACHINE_A, day('2026-10-14')),
+        report(MACHINE_B, day('2026-10-14'), { health: { ...ok, view: 'unavailable' } }),
+        report(MACHINE_C, day('2026-10-14')),
+      ],
+      leases: [
+        lease(MACHINE_A, { id: 'a-old', issuedAt: new Date('2026-10-01T00:00:00.000Z') }),
+        lease(MACHINE_A, { id: 'a-off', mode: 'off', issuedAt: new Date('2026-10-13T00:00:00.000Z') }),
+        lease(MACHINE_B), lease(MACHINE_C),
+      ],
+    });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machines_monitoring_on').value, { type: 'count', count: 0 });
+    assert.deepEqual(figureOf(e, 'machines_monitoring_off').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_monitoring_unverified').value, { type: 'count', count: 2 });
+    valid(e);
+  });
+
+  test('S2: no days are expected after a machine is revoked', () => {
+    const security = coverageContext({
+      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: new Date('2026-10-13T10:00:00.000Z') }],
+      statusReports: ['2026-10-11', '2026-10-12', '2026-10-13'].map((d) => report(MACHINE_A, day(d))),
+    });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machine_days_reported').value, { type: 'ratio', numerator: 3, denominator: 3 });
+    assert.equal(figureOf(e, 'machine_days_reported').availability, 'recorded');
+  });
+
+  test('S13: a finding is under a lease only through its own valid recorded lease', () => {
+    const security = coverageContext({ findings: [
+      finding({ id: 'ok', generation: 'v2', leaseId: 'lease-c1', occurredAt: day('2026-10-12') }),
+      // Another machine's lease id: never assigned, even though A has a lease then.
+      finding({ id: 'wrong', generation: 'v2', leaseId: 'lease-c2', occurredAt: day('2026-10-12') }),
+      // A recorded lease that had not been issued yet when the finding occurred.
+      finding({ id: 'early', generation: 'v2', leaseId: 'lease-c1', occurredAt: new Date('2026-09-05T00:00:00.000Z') }),
+      // Task6.a: no lease reference, unknown rather than "without".
+      finding({ id: 'legacy', occurredAt: day('2026-10-12') }),
+    ] });
+    const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, { from: '2026-09-01T00:00:00.000Z', to: FIVE_DAYS.to }), security });
+    assert.deepEqual(figureOf(e, 'findings_under_lease').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'findings_lease_unknown').value, { type: 'count', count: 3 });
+    valid(e);
+  });
+
+  test('S10: by machine, packs come from findings and reported bundles in one identity', () => {
+    const security = coverageContext({ findings: [
+      finding({ id: 'p', generation: 'v2', rulePackVersion: `bundle:${BUNDLE_NEW.digest.slice(0, 16)}` }),
+    ] });
+    const e = computeS10({ ctx: ctxFor('S10', 'tenant', 'machine', FIVE_DAYS), security });
+    // A's finding and A's reports name the same pack: one, not two.
+    assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').breakdown?.find((i) => i.key === MACHINE_A)?.value,
+      { type: 'count', count: 1 });
+    valid(e);
   });
 });

@@ -63,6 +63,8 @@ export interface SecurityFindingRow {
   sessionId: string | null;
   occurredAt: Date;
   rulePackVersion: string;
+  /** v2 only: the verified lease the record was uploaded under (security-v2 README); null for Task6.a. */
+  leaseId: string | null;
   /** Task6.a `agent_family`, or v2 `source_agent`; null when neither is set. */
   agent: string | null;
   /** v2 `model`; null for every Task6.a row (the model is not captured there, G10). */
@@ -77,7 +79,7 @@ export interface SecurityFindingRow {
 export const SECURITY_FINDING_METADATA_COLUMNS = [
   'id', 'generation', 'ruleId', 'ruleCategory', 'ruleSeverity', 'repositoryId',
   'repositoryKind', 'machineId', 'sessionId', 'occurredAt', 'rulePackVersion',
-  'agent', 'model', 'phase', 'resultCategory',
+  'agent', 'model', 'phase', 'resultCategory', 'leaseId',
 ] as const satisfies readonly (keyof SecurityFindingRow)[];
 
 export interface EnforcementDecisionRow {
@@ -288,6 +290,7 @@ export function toFindingRow(row: FindingSelect): SecurityFindingRow {
     sessionId: row.sessionId,
     occurredAt: row.occurredAt,
     rulePackVersion: row.rulePackVersion,
+    leaseId: row.recordGeneration === 'v2' ? row.leaseId ?? null : null,
     agent: generation === 'v2' ? row.sourceAgent : row.agentFamily,
     model: generation === 'v2' ? row.model : null,
     phase: row.phase,

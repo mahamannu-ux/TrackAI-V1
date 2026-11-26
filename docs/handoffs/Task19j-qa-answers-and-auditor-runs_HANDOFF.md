@@ -19,7 +19,7 @@ Builds the live answers Task20's coverage data made possible: S2, S3, S4, S13's 
 | Acceptance | IT-T19j-01: Q13, Q9, Q14, Q16, Q8, Q1 signed, Q10, Q18, S8–S12 (verifiable and signed), S17, S18 and the five new answers on screen | 🟡 agent run 16 of 16 (33 of 33 with IT-T19i-01) · ⬜ founder run |
 | Acceptance | Status page rows and recounted summary; TASK19 §6/§8; status board rows | ✅ |
 | Quality | `npm run check` (1 275 API tests, 3 web tests, typecheck, lint, web build) | ✅ |
-| Review | Independent review subagent · cross-agent review (Codex) | ✅ 1 must-fix, 9 should-fixes addressed · ⬜ Codex |
+| Review | Independent review subagent · cross-agent review (Codex) | ✅ 1 must-fix, 9 should-fixes addressed · ✅ Codex "fix first": 4 fixes applied |
 
 ## Implemented interfaces
 ```text
@@ -31,7 +31,7 @@ features/qa/registry.ts        QA_REGISTRY_VERSION 5; G6 G7 G8 G9 G11 open:false
 apps/web/e2e/task19j-walkthrough.spec.ts, e2e/walkthrough-helpers.ts (moved from the Task19i spec)
 npm run e2e:task19-walkthrough   (unchanged; now runs IT-T19i-01 and IT-T19j-01)
 ```
-New figure keys (live only): S2 `machines_enrolled`, `machines_reporting`, `machines_not_reporting`, `machines_monitoring_on`, `machines_health_failed`, `machines_on_unvalidated_platforms`, `machine_days_reported` (ratio), `monitoring_switched_off`. S3 `monitor_mode_changes`, `monitoring_switched_off`, `settings_changes`, `tamper_findings`, `lease_refusals`. S4 `secret_read_findings`, `exfiltration_findings`, `secret_read_then_egress_sequences`. S10 adds `machines_not_up_to_date`, `machines_not_reporting`, `bundle_digests_in_force`, `numbat_versions_in_force` (`machines_up_to_date` now computed). S13 `machines_with_lease_in_force`, `machines_without_lease_in_force`, `bundles_in_force`, `leases_issued`, `lease_refusals`, `findings_under_lease`, `findings_without_lease`, `organization_policy_in_force` (G2).
+New figure keys (live only): S2 `machines_enrolled`, `machines_reporting`, `machines_not_reporting`, `machines_monitoring_on`, `machines_health_failed`, `machines_monitoring_off`, `machines_monitoring_unverified`, `machines_on_unvalidated_platforms`, `machine_days_reported` (ratio), `monitoring_switched_off`. S3 `monitor_mode_changes`, `monitoring_switched_off`, `settings_changes`, `tamper_findings`, `lease_refusals`. S4 `secret_read_findings`, `exfiltration_findings`, `secret_read_then_egress_sequences`. S10 adds `machines_not_up_to_date`, `machines_not_reporting`, `bundle_digests_in_force`, `numbat_versions_in_force` (`machines_up_to_date` now computed). S13 `machines_with_lease_in_force`, `machines_without_lease_in_force`, `bundles_in_force`, `leases_issued`, `lease_refusals`, `findings_under_lease` (only through the finding's own recorded lease, valid for its machine when it occurred), `findings_lease_unknown` (Task6.a rows and unmatched references; never "without a lease"), `organization_policy_in_force` (G2). S10's `rule_pack_versions_in_force` now counts reported bundles too: `bundle:` plus the first 16 hex digits of the digest, the same identity v2 findings store.
 
 ## Gap closures (registry v5, approved by the Task20 lead and founder 2026-11-26)
 | Gap | Closing evidence |
@@ -46,7 +46,12 @@ G1, G2, G3, G10, G12, G13, G15, G16 and G17 are untouched.
 ## Deviations from spec
 1. **No new reason code.** A machine-day with no report and a platform outside the validated set both use `not_monitored` ("This platform or activity is not monitored."). The closed list has no `not_reported` code, and adding one would change the frozen schema.
 2. **Repository scope** for S2, S10 and S13 covers the machines whose findings name the repository in the period, because status reports and leases never name a repository. Every machine figure there is `partial` with `partial_linkage`, so a repository with no findings never reads as "covered, no gaps". Enrolment is judged over the period (enrolled by its end, not revoked before its start). A machine on an unvalidated platform is never "monitoring on", and its presence makes continuity partial.
-3. **"Monitoring on"** means the machine's latest report has all four health layers `ok` and a lease in a mode other than `off` was in force at that time. That is an observation of those layers, not a claim that anything was prevented.
+3. **Monitoring state** is judged from each reporting machine's latest report and the newest lease in force at that report time (Codex review):
+   - **on:** a validated platform, all four health layers `ok`, and the lease mode isn't `off`;
+   - **off:** that signed lease says `off`;
+   - **unverified:** any layer `unavailable` or `failed`, no lease, or an unknown platform. Task20j's real agent-view layer reports `unavailable`, so real machines may show as unverified rather than on.
+
+   Unvalidated platforms are counted on their own. Expected machine-days end at revocation. On screen, the continuity figure is labelled so that a day without a report reads as unverified, not known to be off. The `not_monitored` reason code stays, because the closed list has nothing closer.
 4. **Fixes found by the walkthrough**, all in Task19 files and each under 30 lines:
    - The screen showed Task16h's auditor reason codes raw (`not_sealed_yet`, `evidence_broken`, `report_not_built`, `evidence_truncated`). They now have plain messages, with a test driven by the contract's closed list.
    - S1 verifiable no longer cites the cancelled G9.
@@ -94,6 +99,14 @@ Independent review subagent: no blocker, and all ten findings addressed.
   - seeded values asserted for Q13, Q9 and S8–S12 verifiable;
   - S4 wording and the Q8 seed note recorded above.
 - **Not changed:** S10's existing `machines_reporting_status` stays tenant-wide (the Task19c figure, unchanged), and the new S10 figures beside it say `partial_linkage` at repository scope.
+
+Codex cross-review: "fix first" on four edge cases, all fixed, each with a unit test.
+1. S2 state: newest lease at report time; a validated platform is required; `unavailable` or `failed` layers count as unverified, not on; a confirmed off is counted separately.
+2. S2 machine-days end at revocation; the screen wording says unverified, not off.
+3. S13 counts a finding under a lease only through its own recorded lease; legacy rows and unmatched references are unknown.
+4. S10 packs in force include the bundles that reporting machines name.
+
+The seed now uploads Company A's findings under A1's real lease id. IT-T19i-01 and IT-T19j-01 pass 33 of 33 again.
 
 ## Effort (estimate vs actual)
 | Estimate (× T6) | Actual (× T6) | Agent turns or prompts | Wall-clock | Tokens or cost, if the tool shows it |

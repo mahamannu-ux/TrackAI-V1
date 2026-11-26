@@ -192,6 +192,8 @@ function qaFindingOf(row: SealedRow): SecurityFindingRow {
   return {
     id: row.id,
     generation,
+    // Seals cover the record, not its upload lease; no auditor answer reads it (S13 is live only).
+    leaseId: null,
     ruleId: row.rule_id,
     ruleCategory: row.rule_category,
     ruleSeverity: row.rule_severity,
