@@ -17,7 +17,7 @@ import type {
   QaBuilder, QaDimension, QaGap, QaGapId, QaKind, QaQuestion, QaQuestionKind, QaScopeLevel, QaWordingCode,
 } from './types';
 
-export const QA_REGISTRY_VERSION = 4;
+export const QA_REGISTRY_VERSION = 5;
 
 const k = (kind: QaKind, builder: QaBuilder | null): QaQuestionKind => ({ kind, builder });
 
@@ -144,7 +144,7 @@ export const QA_QUESTIONS: readonly QaQuestion[] = [
   security({ id: 'S4', rank: 4, auditor: 'yes',
     title: 'Did any AI agent read secrets or credentials, and did data leave the machine afterwards?',
     kinds: [k('live', 'T19.4'), k('verifiable', 'A16.13b')],
-    gaps: ['G9'], scopes: TENANT_REPO, dimensions: ['rule', 'machine', 'repository'] }),
+    gaps: ['G9'], scopes: TENANT_REPO, dimensions: ['rule', 'machine', 'repository'], wording: ['requested_not_confirmed'] }),
   security({ id: 'S5', rank: 5, auditor: 'yes',
     title: 'For one finding, show the chain: machine, session, agent and model, repository, the commits and pull requests it produced, deployed?',
     kinds: [k('live', 'T19.4'), k('verifiable', 'A16.13b')],
@@ -234,12 +234,12 @@ export const QA_GAPS: readonly QaGap[] = [
   { id: 'G3', title: 'Pull request review and approval capture', owner: 'Task2 (semantics), Task7 (other providers), Task4 (delivery)', open: true, questions: ['Q5'] },
   { id: 'G4', title: 'merged_by on pull requests', owner: 'Task2', open: false, questions: ['Q6'] },
   { id: 'G5', title: 'Content-free rejection audit event for refused uploads', owner: 'Task4 (capture), Task16 (expose), Task15 (count)', open: false, questions: ['Q15'] },
-  { id: 'G6', title: 'Security findings signed on their own (finding_observed)', owner: 'Task15 (Task15o), Task6 (outbox row)', open: true, questions: ['S1', 'S5', 'S7', 'S10', 'S11', 'S12'] },
-  { id: 'G7', title: 'Monitoring coverage history', owner: 'Task6 + Task9 (capture), Task15 (signed)', open: true, questions: ['S2', 'S10'] },
-  { id: 'G8', title: 'Security-monitor setting writer and audit event', owner: 'Task6 (writer), Task16 (event)', open: true, questions: ['S3'] },
-  { id: 'G9', title: 'Rule coverage beyond three execution rules', owner: 'Task6.a (rule selection overseen by T19.7)', open: true, questions: ['S1', 'S3', 'S4'] },
+  { id: 'G6', title: 'Security findings signed on their own (finding_observed)', owner: 'Task15 (Task15o), Task6 (outbox row)', open: false, questions: ['S1', 'S5', 'S7', 'S10', 'S11', 'S12'] },
+  { id: 'G7', title: 'Monitoring coverage history', owner: 'Task6 + Task9 (capture), Task15 (signed)', open: false, questions: ['S2', 'S10'] },
+  { id: 'G8', title: 'Security-monitor setting writer and audit event', owner: 'Task6 (writer), Task16 (event)', open: false, questions: ['S3'] },
+  { id: 'G9', title: 'Rule coverage beyond three execution rules', owner: 'Task6.a (rule selection overseen by T19.7)', open: false, questions: ['S1', 'S3', 'S4'] },
   { id: 'G10', title: 'Model and session key on a finding', owner: 'Task6 + Task2', open: true, questions: ['Q11', 'S5', 'S6', 'S8'] },
-  { id: 'G11', title: 'D6.1 activation lease issue and refuse events', owner: 'Task6.b', open: true, questions: ['S13'] },
+  { id: 'G11', title: 'D6.1 activation lease issue and refuse events', owner: 'Task6.b', open: false, questions: ['S13'] },
   { id: 'G12', title: 'Policy exceptions and waivers', owner: 'Task6.b', open: true, questions: ['S14'] },
   { id: 'G13', title: 'Finding triage, disposition and remediation state', owner: 'Task6 (state), Task16 (event), Task10 (UI)', open: true, questions: ['S16', 'S18'] },
   { id: 'G14', title: 'Agent inventory and day-one scan uploads from the endpoint', owner: 'Task20 (Task20h-b)', open: false, questions: ['S19', 'S20'] },

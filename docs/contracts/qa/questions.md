@@ -2,7 +2,7 @@
 
 <!-- Generated from apps/api/src/features/qa/registry.ts by `npm run qa:registry -w apps/api`. Do not edit by hand: a unit test fails when this file is out of date. -->
 
-Registry version 4. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
+Registry version 5. 46 questions, 17 gaps. Rules: `README.md` in this folder; the source catalogue is `docs/plan/CUSTOMER_AUDITOR_QA.md`.
 Every security answer carries `monitor_only_observed`. No scope or dimension names a person.
 
 ## Code questions
@@ -37,7 +37,7 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | S1 | 1 | 1 | Give me the register of every high or critical security finding in a period, across all repositories, and prove none was added, changed or removed afterwards. | yes | live (T19.4), verifiable (A16.13b), signed (Task15p) | G6, G9 | tenant, repository | rule, rule_category, severity, repository | no | monitor_only_observed |
 | S2 | 2 | 1 | Was monitoring actually on? Which machines and repositories were covered in a period, and where were the gaps? | yes | live (T19.4), verifiable (A16.13b), signed (Task15p) | G7 | tenant, repository | machine, repository, operating_system | no | monitor_only_observed |
 | S3 | 3 | 1 | Did anyone switch off or tamper with the guardrails in a period? | yes | live (T19.4), verifiable (A16.13b) | G8, G9 | tenant | machine, repository | no | monitor_only_observed |
-| S4 | 4 | 1 | Did any AI agent read secrets or credentials, and did data leave the machine afterwards? | yes | live (T19.4), verifiable (A16.13b) | G9 | tenant, repository | rule, machine, repository | no | monitor_only_observed |
+| S4 | 4 | 1 | Did any AI agent read secrets or credentials, and did data leave the machine afterwards? | yes | live (T19.4), verifiable (A16.13b) | G9 | tenant, repository | rule, machine, repository | no | monitor_only_observed, requested_not_confirmed |
 | S5 | 5 | 1 | For one finding, show the chain: machine, session, agent and model, repository, the commits and pull requests it produced, deployed? | yes | live (T19.4), verifiable (A16.13b) | G6, G10 | tenant, repository | — | no | monitor_only_observed, session_link_partial, metadata_only |
 | S6 | 6 | 1 | Did code from a session that raised a high or critical finding get merged or reach production? | yes | live (T19.4), verifiable (A16.13b) | G10 | tenant, repository | repository, severity | no | monitor_only_observed, session_link_partial |
 | S7 | 7 | 1 | Which repositories were most affected, by category and severity, and how does the period compare with the previous one? | yes | live (T19.4), verifiable (A16.13b), signed (Task15p) | G6 | tenant | repository, rule_category, severity | yes | monitor_only_observed |
@@ -70,12 +70,12 @@ Every security answer carries `monitor_only_observed`. No scope or dimension nam
 | G3 | Pull request review and approval capture | Task2 (semantics), Task7 (other providers), Task4 (delivery) | yes | Q5 |
 | G4 | merged_by on pull requests | Task2 | no | Q6 |
 | G5 | Content-free rejection audit event for refused uploads | Task4 (capture), Task16 (expose), Task15 (count) | no | Q15 |
-| G6 | Security findings signed on their own (finding_observed) | Task15 (Task15o), Task6 (outbox row) | yes | S1, S5, S7, S10, S11, S12 |
-| G7 | Monitoring coverage history | Task6 + Task9 (capture), Task15 (signed) | yes | S2, S10 |
-| G8 | Security-monitor setting writer and audit event | Task6 (writer), Task16 (event) | yes | S3 |
-| G9 | Rule coverage beyond three execution rules | Task6.a (rule selection overseen by T19.7) | yes | S1, S3, S4 |
+| G6 | Security findings signed on their own (finding_observed) | Task15 (Task15o), Task6 (outbox row) | no | S1, S5, S7, S10, S11, S12 |
+| G7 | Monitoring coverage history | Task6 + Task9 (capture), Task15 (signed) | no | S2, S10 |
+| G8 | Security-monitor setting writer and audit event | Task6 (writer), Task16 (event) | no | S3 |
+| G9 | Rule coverage beyond three execution rules | Task6.a (rule selection overseen by T19.7) | no | S1, S3, S4 |
 | G10 | Model and session key on a finding | Task6 + Task2 | yes | Q11, S5, S6, S8 |
-| G11 | D6.1 activation lease issue and refuse events | Task6.b | yes | S13 |
+| G11 | D6.1 activation lease issue and refuse events | Task6.b | no | S13 |
 | G12 | Policy exceptions and waivers | Task6.b | yes | S14 |
 | G13 | Finding triage, disposition and remediation state | Task6 (state), Task16 (event), Task10 (UI) | yes | S16, S18 |
 | G14 | Agent inventory and day-one scan uploads from the endpoint | Task20 (Task20h-b) | no | S19, S20 |

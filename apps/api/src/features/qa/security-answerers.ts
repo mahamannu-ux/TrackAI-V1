@@ -4,8 +4,9 @@
  *
  * Every figure is metadata only, every answer is worded `monitor_only_observed`
  * (the registry adds it) and nothing is ever called "blocked" without an
- * enforcement `deny` — and even then it is "denied by request". S1, S2, S3, S4,
- * S13, S14 and S16 stay `answer_not_built` until their gaps close.
+ * enforcement `deny` — and even then it is "denied by request". S1, S14 and S16
+ * stay `answer_not_built` until their gaps close. Task19j added S2, S3, S4 and the
+ * lease half of S13, and extended S10, from the Task20 coverage data (G7, G8, G11).
  *
  * The pure `computeSn` functions read the SecurityContext built by
  * security-read.ts (plus Task2's context for the S6/Q11 session link) and never
@@ -30,7 +31,9 @@ import { previousPeriod } from './service';
 import { unionReasons, type QaContext } from './answers/common';
 import { loadContext, pullRequestIntelligence } from '../telemetry/task2-lifecycle-read';
 import { registerAnswerer } from './answerers';
-import { loadSecurityContext, type SecurityContext, type SecurityFindingRow } from './security-read';
+import {
+  loadSecurityContext, type LeaseRow, type SecurityContext, type SecurityFindingRow, type StatusReportRow,
+} from './security-read';
 import type {
   QaAnswerContext,
   QaAnswerer,
@@ -202,20 +205,55 @@ export function computeS9(input: SecurityInput): QaEnvelope {
   return finishSecurity(ctx, [countFigure('findings', security.findings.length)]);
 }
 
-// --- S10: rule-pack versions in force, machines reporting status, up-to-date (G7) ---
+// --- S10: rule-pack versions in force, machines reporting status, up to date (Task19j: G7 data) ---
 
 export function computeS10(input: SecurityInput): QaEnvelope {
   const { ctx, security } = input;
   const findings = scopedFindings(ctx, security.findings);
   const versions = distinct(findings, (row) => row.rulePackVersion);
   const reporting = distinct(security.statusSnapshots, (row) => row.machineId);
-  const machineBreakdown = ctx.breakdown === 'machine'
+  const byMachine = ctx.breakdown === 'machine';
+  const machineBreakdown = byMachine
     ? distinctPerBucket('machine', findings, (row) => row.machineId, (row) => row.rulePackVersion)
     : [];
+  const machines = machinesInScope(ctx, security);
+  const reports = security.statusReports.filter((row) => machines.has(row.machineId));
+  const latest = latestReports(reports);
+  const notReporting = [...machines].filter((id) => !latest.has(id));
+  const bundle = latestBundle(security, Date.parse(ctx.scope.to));
+  /** Distinct reported values per machine (a machine reporting two digests in the period counts 2). */
+  const perMachine = (value: (row: StatusReportRow) => string | null): QaBreakdownItem[] => {
+    if (!byMachine) return [];
+    const sets = new Map<string, Set<string>>();
+    for (const row of reports) {
+      const v = value(row);
+      if (v === null) continue;
+      const set = sets.get(row.machineId) ?? new Set<string>();
+      set.add(v);
+      sets.set(row.machineId, set);
+    }
+    return [...sets.entries()].sort(([x], [y]) => (x < y ? -1 : 1))
+      .map(([key, set]) => ({ dimension: 'machine' as const, key, value: { type: 'count' as const, count: set.size } }));
+  };
+  const upToDate = [...latest.values()].filter((row) => bundle !== null && row.activeBundleDigest === bundle.digest);
+  const notUpToDate = [...latest.values()].filter((row) => bundle !== null && row.activeBundleDigest !== bundle.digest);
+  const gap: QaReason[] = [{ code: 'not_monitored' }];
+  const upToDateFigure = (key: string, rows: StatusReportRow[]): QaFigure => {
+    if (bundle === null || machines.size === 0 || latest.size === 0) return unavailableFigure(key, gap);
+    const breakdown = byMachine ? bucketCounts('machine', rows.map((row) => row.machineId)) : [];
+    return notReporting.length > 0 ? partialCountFigure(key, rows.length, gap, breakdown) : countFigure(key, rows.length, breakdown);
+  };
   return finishSecurity(ctx, [
     countFigure('rule_pack_versions_in_force', versions.size, machineBreakdown),
     countFigure('machines_reporting_status', reporting.size),
-    unavailableFigure('machines_up_to_date', notCaptured('G7')),
+    upToDateFigure('machines_up_to_date', upToDate),
+    upToDateFigure('machines_not_up_to_date', notUpToDate),
+    countFigure('machines_not_reporting', notReporting.length, byMachine ? bucketCounts('machine', notReporting) : []),
+    reports.length === 0 ? unavailableFigure('bundle_digests_in_force', gap)
+      : countFigure('bundle_digests_in_force', distinct(reports.filter((r) => r.activeBundleDigest !== null), (r) => r.activeBundleDigest ?? '').size,
+        perMachine((row) => row.activeBundleDigest)),
+    reports.length === 0 ? unavailableFigure('numbat_versions_in_force', gap)
+      : countFigure('numbat_versions_in_force', distinct(reports, (r) => r.numbatVersion).size, perMachine((row) => row.numbatVersion)),
   ]);
 }
 
@@ -510,6 +548,202 @@ export function computeS20({ ctx, security }: SecurityInput): QaEnvelope {
   ]);
 }
 
+// --- Task19j: S2, S3, S4 and S13 from the Task20 coverage data ---
+
+/** The platforms monitoring is validated on (D6.2; as S9). */
+const VALIDATED_PLATFORMS = new Set(['macos']);
+const DAY_MS = 86_400_000;
+
+/**
+ * The machines an answer covers. Tenant: every enrolled machine. Repository: the
+ * machines whose findings name the repository in the period, because an Endpoint
+ * status report or lease never names a repository.
+ */
+function machinesInScope(ctx: QaAnswerContext, security: SecurityContext): Set<string> {
+  if (ctx.scope.repository_id) {
+    return new Set(security.findings.filter((row) => row.repositoryId === ctx.scope.repository_id).map((row) => row.machineId));
+  }
+  return new Set(security.machines.map((row) => row.machineId));
+}
+
+/** Each machine's latest status report in the period. */
+function latestReports(rows: StatusReportRow[]): Map<string, StatusReportRow> {
+  const latest = new Map<string, StatusReportRow>();
+  for (const row of rows) {
+    const current = latest.get(row.machineId);
+    if (!current || row.observedAt.getTime() > current.observedAt.getTime()) latest.set(row.machineId, row);
+  }
+  return latest;
+}
+
+/** The tenant's newest signed bundle issued by `atMs` (highest epoch, then version). */
+function latestBundle(security: SecurityContext, atMs: number): SecurityContext['bundles'][number] | null {
+  return security.bundles.filter((row) => row.issuedAt.getTime() <= atMs)
+    .sort((a, b) => (b.epoch - a.epoch) || (b.bundleVersion - a.bundleVersion))[0] ?? null;
+}
+
+const healthOk = (row: StatusReportRow): boolean =>
+  row.health.hook === 'ok' && row.health.view === 'ok' && row.health.local === 'ok' && row.health.forwarder === 'ok';
+const healthFailed = (row: StatusReportRow): boolean => Object.values(row.health).includes('failed');
+const leaseCovers = (lease: LeaseRow, atMs: number): boolean =>
+  lease.issuedAt.getTime() <= atMs && lease.expiresAt.getTime() >= atMs;
+
+/** UTC days that overlap [fromMs, toMs], as day numbers. */
+function utcDays(fromMs: number, toMs: number): number[] {
+  const days: number[] = [];
+  for (let day = Math.floor(fromMs / DAY_MS); day <= Math.floor(toMs / DAY_MS); day += 1) days.push(day);
+  return days;
+}
+
+/**
+ * S2: was monitoring on, and where were the gaps. A machine-day with no status
+ * report is "not reported": counted as such, never as healthy and never as zero;
+ * continuity is `partial` whenever any is missing (founder decision, 2026-11-26:
+ * answer from what is captured, never block on a complete daily history). A
+ * machine outside the validated platforms is "not monitored". "Monitoring on" means
+ * the machine's latest report has all four health layers `ok` and a lease in force
+ * then, in a mode other than off: an observation of the layers, not a claim that
+ * anything was prevented.
+ */
+export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
+  const fromMs = Date.parse(ctx.scope.from);
+  const toMs = Date.parse(ctx.scope.to);
+  const machines = machinesInScope(ctx, security);
+  const enrolled = security.machines.filter((row) => machines.has(row.machineId));
+  const reports = security.statusReports.filter((row) => machines.has(row.machineId));
+  const latest = latestReports(reports);
+  const notReporting = enrolled.map((row) => row.machineId).filter((id) => !latest.has(id));
+  const leasesOf = (machineId: string) => security.leases.filter((lease) => lease.machineId === machineId);
+  const monitoringOn = [...latest.values()].filter((row) => healthOk(row)
+    && leasesOf(row.machineId).some((lease) => lease.mode !== 'off' && leaseCovers(lease, row.observedAt.getTime())));
+  const failed = [...latest.values()].filter(healthFailed);
+  const platformOf = (id: string) => security.machinePlatforms.get(id) ?? 'unavailable';
+  const notMonitoredPlatform = enrolled.filter((row) => {
+    const platform = security.machinePlatforms.get(row.machineId);
+    return platform !== undefined && platform !== null && !VALIDATED_PLATFORMS.has(platform);
+  });
+  // Machine-days: from the later of the period start and enrolment.
+  const reportedDays = new Set(reports.map((row) => `${row.machineId}:${Math.floor(row.observedAt.getTime() / DAY_MS)}`));
+  const perMachine = enrolled.map((row) => {
+    const days = utcDays(Math.max(fromMs, row.enrolledAt.getTime()), toMs);
+    return { machineId: row.machineId, expected: days.length,
+      reported: days.filter((day) => reportedDays.has(`${row.machineId}:${day}`)).length };
+  });
+  const expected = perMachine.reduce((sum, row) => sum + row.expected, 0);
+  const reported = perMachine.reduce((sum, row) => sum + row.reported, 0);
+  const gap: QaReason[] = [{ code: 'not_monitored' }];
+  const byMachine = ctx.breakdown === 'machine';
+  const byOs = ctx.breakdown === 'operating_system';
+  const machineBuckets = (ids: string[]): QaBreakdownItem[] => byMachine ? bucketCounts('machine', ids)
+    : byOs ? bucketCounts('operating_system', ids.map(platformOf)) : [];
+  const continuity: QaFigure = expected === 0
+    ? unavailableFigure('machine_days_reported', gap)
+    : {
+      key: 'machine_days_reported',
+      availability: reported < expected ? 'partial' : 'recorded',
+      reasons: reported < expected ? gap : [],
+      value: { type: 'ratio', numerator: reported, denominator: expected },
+      ...(byMachine ? { breakdown: perMachine.filter((row) => row.expected > 0).sort((a, b) => (a.machineId < b.machineId ? -1 : 1))
+        .map((row) => ({ dimension: 'machine' as const, key: row.machineId,
+          value: { type: 'ratio' as const, numerator: row.reported, denominator: row.expected } })) } : {}),
+    };
+  return finishSecurity(ctx, [
+    countFigure('machines_enrolled', enrolled.length, machineBuckets(enrolled.map((row) => row.machineId))),
+    countFigure('machines_reporting', latest.size, machineBuckets([...latest.keys()])),
+    countFigure('machines_not_reporting', notReporting.length, machineBuckets(notReporting)),
+    countFigure('machines_monitoring_on', monitoringOn.length, machineBuckets(monitoringOn.map((row) => row.machineId))),
+    countFigure('machines_health_failed', failed.length, machineBuckets(failed.map((row) => row.machineId))),
+    countFigure('machines_on_unvalidated_platforms', notMonitoredPlatform.length,
+      machineBuckets(notMonitoredPlatform.map((row) => row.machineId))),
+    continuity,
+    countFigure('monitoring_switched_off', security.securityAudit
+      .filter((row) => row.action === 'security.monitor.changed' && row.mode === 'off').length),
+  ]);
+}
+
+/**
+ * S3: did anyone switch off or tamper with the guardrails. Settings and monitor-mode
+ * changes come from the audited settings writer (Task20f, G8); who made them is
+ * never shown. Tamper findings are Numbat's `tamper.*` rules (first wave; G9
+ * cancelled). A refused lease is counted because a machine refusing its signed
+ * policy is one sign of tampering, never proof of it.
+ */
+export function computeS3({ ctx, security }: SecurityInput): QaEnvelope {
+  const audit = security.securityAudit;
+  const tamper = security.findings.filter((row) => row.ruleCategory === 'tamper');
+  const refusals = audit.filter((row) => row.action === 'fleet.lease.refused');
+  const findingBuckets = (rows: SecurityFindingRow[]): QaBreakdownItem[] =>
+    ctx.breakdown === 'machine' ? tally('machine', rows, (row) => row.machineId)
+      : ctx.breakdown === 'repository' ? tally('repository', rows, repositoryBucket) : [];
+  return finishSecurity(ctx, [
+    countFigure('monitor_mode_changes', audit.filter((row) => row.action === 'security.monitor.changed').length),
+    countFigure('monitoring_switched_off', audit.filter((row) => row.action === 'security.monitor.changed' && row.mode === 'off').length),
+    countFigure('settings_changes', audit.filter((row) => row.action === 'security.settings.changed').length),
+    countFigure('tamper_findings', tamper.length, findingBuckets(tamper)),
+    countFigure('lease_refusals', refusals.length,
+      ctx.breakdown === 'machine' ? bucketCounts('machine', refusals.map((row) => row.machineId ?? 'unknown')) : []),
+  ]);
+}
+
+/** The sequence rules in which a secret read is followed by egress (Numbat's first-wave chains). */
+export const SECRET_THEN_EGRESS_RULES = new Set(['chain.secret_read_then_egress', 'chain.secret_manager_read_then_egress']);
+
+/**
+ * S4: did an agent read secrets, and did data leave the machine afterwards.
+ * "Afterwards" is answered only from Numbat's sequence (chain) findings, which see
+ * the read and the egress in one session; it is never inferred from timing alone.
+ * Every finding is a requested action, not a confirmed outcome.
+ */
+export function computeS4({ ctx, security }: SecurityInput): QaEnvelope {
+  const findings = scopedFindings(ctx, security.findings);
+  const buckets = (rows: SecurityFindingRow[]): QaBreakdownItem[] =>
+    ctx.breakdown === 'rule' ? tally('rule', rows, (row) => row.ruleId)
+      : ctx.breakdown === 'machine' ? tally('machine', rows, (row) => row.machineId)
+        : ctx.breakdown === 'repository' ? tally('repository', rows, repositoryBucket) : [];
+  const secrets = findings.filter((row) => row.ruleCategory === 'secrets');
+  const exfil = findings.filter((row) => row.ruleCategory === 'exfil');
+  const sequences = findings.filter((row) => SECRET_THEN_EGRESS_RULES.has(row.ruleId));
+  return finishSecurity(ctx, [
+    countFigure('secret_read_findings', secrets.length, buckets(secrets)),
+    countFigure('exfiltration_findings', exfil.length, buckets(exfil)),
+    countFigure('secret_read_then_egress_sequences', sequences.length, buckets(sequences)),
+  ]);
+}
+
+/**
+ * S13, the lease half: which signed activation lease and rule bundle were in force
+ * on each machine (Task20f signed lease history, issued and refused events; G11).
+ * The organization-policy half stays unbuilt: G2 is shelved.
+ */
+export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
+  const fromMs = Date.parse(ctx.scope.from);
+  const toMs = Date.parse(ctx.scope.to);
+  const machines = machinesInScope(ctx, security);
+  const leases = security.leases.filter((lease) => machines.has(lease.machineId));
+  const inForceAtEnd = leases.filter((lease) => leaseCovers(lease, toMs));
+  const withLease = new Set(inForceAtEnd.map((lease) => lease.machineId));
+  const without = [...machines].filter((id) => !withLease.has(id));
+  const findings = scopedFindings(ctx, security.findings).filter((row) => machines.has(row.machineId));
+  const covered = findings.filter((row) => leases.some((lease) => lease.machineId === row.machineId
+    && leaseCovers(lease, row.occurredAt.getTime())));
+  const uncovered = findings.filter((row) => !covered.includes(row));
+  const refusals = security.securityAudit.filter((row) => row.action === 'fleet.lease.refused'
+    && row.machineId !== null && machines.has(row.machineId));
+  const issued = leases.filter((lease) => lease.issuedAt.getTime() >= fromMs && lease.issuedAt.getTime() <= toMs);
+  const byMachine = ctx.breakdown === 'machine';
+  const machineBuckets = (ids: string[]) => (byMachine ? bucketCounts('machine', ids) : []);
+  return finishSecurity(ctx, [
+    countFigure('machines_with_lease_in_force', withLease.size, machineBuckets([...withLease])),
+    countFigure('machines_without_lease_in_force', without.length, machineBuckets(without)),
+    countFigure('bundles_in_force', new Set(inForceAtEnd.map((lease) => lease.bundleDigest)).size),
+    countFigure('leases_issued', issued.length, machineBuckets(issued.map((lease) => lease.machineId))),
+    countFigure('lease_refusals', refusals.length, machineBuckets(refusals.map((row) => row.machineId ?? 'unknown'))),
+    countFigure('findings_under_lease', covered.length, byMachine ? tally('machine', covered, (row) => row.machineId) : []),
+    countFigure('findings_without_lease', uncovered.length, byMachine ? tally('machine', uncovered, (row) => row.machineId) : []),
+    unavailableFigure('organization_policy_in_force', notCaptured('G2')),
+  ]);
+}
+
 // --- Thin answerers ---
 
 /** Loads a tenant's security context for a period; injectable so tests need no database. */
@@ -580,6 +814,10 @@ export function registerSecurityAnswerers(): void {
   registerAnswerer('S21', 'live', securityAnswer(computeS21));
   registerAnswerer('S19', 'live', securityAnswer(computeS19));
   registerAnswerer('S20', 'live', securityAnswer(computeS20));
+  registerAnswerer('S2', 'live', securityAnswer(computeS2));
+  registerAnswerer('S3', 'live', securityAnswer(computeS3));
+  registerAnswerer('S4', 'live', securityAnswer(computeS4));
+  registerAnswerer('S13', 'live', securityAnswer(computeS13));
   registerAnswerer('Q11', 'live', linkedAnswer(computeQ11));
 }
 
