@@ -243,17 +243,19 @@ export function computeS10(input: SecurityInput): QaEnvelope {
     const breakdown = byMachine ? bucketCounts('machine', rows.map((row) => row.machineId)) : [];
     return notReporting.length > 0 ? partialCountFigure(key, rows.length, gap, breakdown) : countFigure(key, rows.length, breakdown);
   };
+  const q = (figure: QaFigure) => scopeQualified(ctx, figure);
   return finishSecurity(ctx, [
     countFigure('rule_pack_versions_in_force', versions.size, machineBreakdown),
+    // Unchanged since Task19c: every machine reporting in the period, tenant-wide.
     countFigure('machines_reporting_status', reporting.size),
-    upToDateFigure('machines_up_to_date', upToDate),
-    upToDateFigure('machines_not_up_to_date', notUpToDate),
-    countFigure('machines_not_reporting', notReporting.length, byMachine ? bucketCounts('machine', notReporting) : []),
-    reports.length === 0 ? unavailableFigure('bundle_digests_in_force', gap)
+    q(upToDateFigure('machines_up_to_date', upToDate)),
+    q(upToDateFigure('machines_not_up_to_date', notUpToDate)),
+    q(countFigure('machines_not_reporting', notReporting.length, byMachine ? bucketCounts('machine', notReporting) : [])),
+    q(reports.length === 0 ? unavailableFigure('bundle_digests_in_force', gap)
       : countFigure('bundle_digests_in_force', distinct(reports.filter((r) => r.activeBundleDigest !== null), (r) => r.activeBundleDigest ?? '').size,
-        perMachine((row) => row.activeBundleDigest)),
-    reports.length === 0 ? unavailableFigure('numbat_versions_in_force', gap)
-      : countFigure('numbat_versions_in_force', distinct(reports, (r) => r.numbatVersion).size, perMachine((row) => row.numbatVersion)),
+        perMachine((row) => row.activeBundleDigest))),
+    q(reports.length === 0 ? unavailableFigure('numbat_versions_in_force', gap)
+      : countFigure('numbat_versions_in_force', distinct(reports, (r) => r.numbatVersion).size, perMachine((row) => row.numbatVersion))),
   ]);
 }
 
@@ -560,10 +562,47 @@ const DAY_MS = 86_400_000;
  * status report or lease never names a repository.
  */
 function machinesInScope(ctx: QaAnswerContext, security: SecurityContext): Set<string> {
+  const enrolled = new Set(enrolledInPeriod(ctx, security).map((row) => row.machineId));
   if (ctx.scope.repository_id) {
-    return new Set(security.findings.filter((row) => row.repositoryId === ctx.scope.repository_id).map((row) => row.machineId));
+    return new Set(security.findings.filter((row) => row.repositoryId === ctx.scope.repository_id && enrolled.has(row.machineId))
+      .map((row) => row.machineId));
   }
-  return new Set(security.machines.map((row) => row.machineId));
+  return enrolled;
+}
+
+/** Machines enrolled at some time in the period: enrolled by its end, not revoked before its start. */
+function enrolledInPeriod(ctx: QaAnswerContext, security: SecurityContext): SecurityContext['machines'] {
+  const fromMs = Date.parse(ctx.scope.from);
+  const toMs = Date.parse(ctx.scope.to);
+  return security.machines.filter((row) => row.enrolledAt.getTime() <= toMs
+    && (row.revokedAt === null || row.revokedAt.getTime() >= fromMs));
+}
+
+/**
+ * At repository scope a machine belongs to the repository only through its findings, so
+ * machines that worked there without one are not seen: every machine figure is then
+ * `partial` with `partial_linkage`, never a clean "no gaps" (review, Task19j).
+ */
+function scopeQualified(ctx: QaAnswerContext, figure: QaFigure): QaFigure {
+  if (!ctx.scope.repository_id || figure.availability === 'unavailable') return figure;
+  const reasons = figure.reasons.some((r) => r.code === 'partial_linkage') ? figure.reasons : [...figure.reasons, { code: 'partial_linkage' as const }];
+  return { ...figure, availability: 'partial', reasons };
+}
+
+/** The validated platform rule (D6.2): a known platform outside the set is not monitored. */
+function onUnvalidatedPlatform(security: SecurityContext, machineId: string): boolean {
+  const platform = security.machinePlatforms.get(machineId);
+  return platform !== undefined && platform !== null && !VALIDATED_PLATFORMS.has(platform);
+}
+
+/** Each machine's newest lease in force at `atMs` (a new lease can overlap the old one). */
+function newestLeaseInForce(leases: LeaseRow[], atMs: number): Map<string, LeaseRow> {
+  const out = new Map<string, LeaseRow>();
+  for (const lease of leases.filter((row) => leaseCovers(row, atMs))) {
+    const current = out.get(lease.machineId);
+    if (!current || lease.issuedAt.getTime() > current.issuedAt.getTime()) out.set(lease.machineId, lease);
+  }
+  return out;
 }
 
 /** Each machine's latest status report in the period. */
@@ -609,19 +648,17 @@ export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
   const fromMs = Date.parse(ctx.scope.from);
   const toMs = Date.parse(ctx.scope.to);
   const machines = machinesInScope(ctx, security);
-  const enrolled = security.machines.filter((row) => machines.has(row.machineId));
+  const enrolled = enrolledInPeriod(ctx, security).filter((row) => machines.has(row.machineId));
   const reports = security.statusReports.filter((row) => machines.has(row.machineId));
   const latest = latestReports(reports);
   const notReporting = enrolled.map((row) => row.machineId).filter((id) => !latest.has(id));
   const leasesOf = (machineId: string) => security.leases.filter((lease) => lease.machineId === machineId);
-  const monitoringOn = [...latest.values()].filter((row) => healthOk(row)
+  // A machine on an unvalidated platform is never "monitoring on", however healthy it reports.
+  const monitoringOn = [...latest.values()].filter((row) => !onUnvalidatedPlatform(security, row.machineId) && healthOk(row)
     && leasesOf(row.machineId).some((lease) => lease.mode !== 'off' && leaseCovers(lease, row.observedAt.getTime())));
   const failed = [...latest.values()].filter(healthFailed);
   const platformOf = (id: string) => security.machinePlatforms.get(id) ?? 'unavailable';
-  const notMonitoredPlatform = enrolled.filter((row) => {
-    const platform = security.machinePlatforms.get(row.machineId);
-    return platform !== undefined && platform !== null && !VALIDATED_PLATFORMS.has(platform);
-  });
+  const notMonitoredPlatform = enrolled.filter((row) => onUnvalidatedPlatform(security, row.machineId));
   // Machine-days: from the later of the period start and enrolment.
   const reportedDays = new Set(reports.map((row) => `${row.machineId}:${Math.floor(row.observedAt.getTime() / DAY_MS)}`));
   const perMachine = enrolled.map((row) => {
@@ -634,14 +671,19 @@ export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
   const gap: QaReason[] = [{ code: 'not_monitored' }];
   const byMachine = ctx.breakdown === 'machine';
   const byOs = ctx.breakdown === 'operating_system';
+  // By repository: the repositories each machine's findings name in the period (the only link there is).
+  const reposOf = (id: string) => [...new Set(security.findings.filter((row) => row.machineId === id).map(repositoryBucket))];
   const machineBuckets = (ids: string[]): QaBreakdownItem[] => byMachine ? bucketCounts('machine', ids)
-    : byOs ? bucketCounts('operating_system', ids.map(platformOf)) : [];
+    : byOs ? bucketCounts('operating_system', ids.map(platformOf))
+      : ctx.breakdown === 'repository' ? bucketCounts('repository', ids.flatMap(reposOf)) : [];
+  // Missing days, or days on an unvalidated platform, make continuity partial: neither is "monitored".
+  const continuityPartial = reported < expected || notMonitoredPlatform.length > 0;
   const continuity: QaFigure = expected === 0
     ? unavailableFigure('machine_days_reported', gap)
     : {
       key: 'machine_days_reported',
-      availability: reported < expected ? 'partial' : 'recorded',
-      reasons: reported < expected ? gap : [],
+      availability: continuityPartial ? 'partial' : 'recorded',
+      reasons: continuityPartial ? gap : [],
       value: { type: 'ratio', numerator: reported, denominator: expected },
       ...(byMachine ? { breakdown: perMachine.filter((row) => row.expected > 0).sort((a, b) => (a.machineId < b.machineId ? -1 : 1))
         .map((row) => ({ dimension: 'machine' as const, key: row.machineId,
@@ -656,9 +698,10 @@ export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
     countFigure('machines_on_unvalidated_platforms', notMonitoredPlatform.length,
       machineBuckets(notMonitoredPlatform.map((row) => row.machineId))),
     continuity,
+    // A tenant-wide setting: at repository scope it cannot be tied to the repository.
     countFigure('monitoring_switched_off', security.securityAudit
       .filter((row) => row.action === 'security.monitor.changed' && row.mode === 'off').length),
-  ]);
+  ].map((figure) => scopeQualified(ctx, figure)));
 }
 
 /**
@@ -720,7 +763,7 @@ export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
   const toMs = Date.parse(ctx.scope.to);
   const machines = machinesInScope(ctx, security);
   const leases = security.leases.filter((lease) => machines.has(lease.machineId));
-  const inForceAtEnd = leases.filter((lease) => leaseCovers(lease, toMs));
+  const inForceAtEnd = [...newestLeaseInForce(leases, toMs).values()];
   const withLease = new Set(inForceAtEnd.map((lease) => lease.machineId));
   const without = [...machines].filter((id) => !withLease.has(id));
   const findings = scopedFindings(ctx, security.findings).filter((row) => machines.has(row.machineId));
@@ -732,6 +775,7 @@ export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
   const issued = leases.filter((lease) => lease.issuedAt.getTime() >= fromMs && lease.issuedAt.getTime() <= toMs);
   const byMachine = ctx.breakdown === 'machine';
   const machineBuckets = (ids: string[]) => (byMachine ? bucketCounts('machine', ids) : []);
+  const q = (figure: QaFigure) => scopeQualified(ctx, figure);
   return finishSecurity(ctx, [
     countFigure('machines_with_lease_in_force', withLease.size, machineBuckets([...withLease])),
     countFigure('machines_without_lease_in_force', without.length, machineBuckets(without)),
@@ -741,7 +785,7 @@ export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
     countFigure('findings_under_lease', covered.length, byMachine ? tally('machine', covered, (row) => row.machineId) : []),
     countFigure('findings_without_lease', uncovered.length, byMachine ? tally('machine', uncovered, (row) => row.machineId) : []),
     unavailableFigure('organization_policy_in_force', notCaptured('G2')),
-  ]);
+  ].map(q));
 }
 
 // --- Thin answerers ---

@@ -179,10 +179,11 @@ export interface BundleRow {
   issuedAt: Date;
 }
 
-/** An enrolled machine (`developer_machines`, status active). */
+/** An enrolled machine (`developer_machines`), revoked ones included: answers judge enrolment over the period. */
 export interface EnrolledMachineRow {
   machineId: string;
   enrolledAt: Date;
+  revokedAt: Date | null;
 }
 
 /** The security audit actions a Q&A answer may count (docs/contracts/audit/catalog.md, Task20). */
@@ -362,7 +363,9 @@ export function buildSecurityContext(input: {
     bundles: (input.bundles ?? []).map((row) => ({
       digest: row.digest, bundleVersion: row.bundleVersion, epoch: row.epoch, numbatPin: row.numbatPin, issuedAt: row.issuedAt,
     })),
-    machines: (input.machines ?? []).filter((row) => row.status === 'active').map((row) => ({ machineId: row.id, enrolledAt: row.createdAt })),
+    machines: (input.machines ?? []).map((row) => ({
+      machineId: row.id, enrolledAt: row.createdAt, revokedAt: row.status === 'revoked' ? row.revokedAt ?? row.updatedAt : null,
+    })),
     securityAudit: (input.securityAudit ?? []).flatMap((row) => {
       const projected = toSecurityAuditRow(row);
       return projected ? [projected] : [];

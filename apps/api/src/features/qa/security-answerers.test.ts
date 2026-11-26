@@ -594,7 +594,7 @@ const lease = (machineId: string, over: Partial<SecurityContext['leases'][number
 function coverageContext(over: Partial<SecurityContext> = {}): SecurityContext {
   const enrolledAt = new Date('2026-09-01T00:00:00.000Z');
   return securityContext({
-    machines: [{ machineId: MACHINE_A, enrolledAt }, { machineId: MACHINE_B, enrolledAt }, { machineId: MACHINE_C, enrolledAt }],
+    machines: [{ machineId: MACHINE_A, enrolledAt, revokedAt: null }, { machineId: MACHINE_B, enrolledAt, revokedAt: null }, { machineId: MACHINE_C, enrolledAt, revokedAt: null }],
     machinePlatforms: new Map([[MACHINE_A, 'macos'], [MACHINE_B, 'windows']]),
     statusReports: [
       ...['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15'].map((d) => report(MACHINE_A, day(d))),
@@ -648,7 +648,7 @@ describe('Task19j: S2 coverage from status reports and leases', () => {
 
   test('every machine reporting every day is recorded; no machine at all is unavailable, never zero', () => {
     const full = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: coverageContext({
-      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z') }] }) });
+      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: null }] }) });
     assert.equal(figureOf(full, 'machine_days_reported').availability, 'recorded');
     const none = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: securityContext() });
     assert.equal(figureOf(none, 'machine_days_reported').availability, 'unavailable');
@@ -659,7 +659,7 @@ describe('Task19j: S2 coverage from status reports and leases', () => {
 
   test('a machine enrolled mid-period is expected only from its enrolment day', () => {
     const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: coverageContext({
-      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-10-14T08:00:00.000Z') }] }) });
+      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-10-14T08:00:00.000Z'), revokedAt: null }] }) });
     assert.deepEqual(figureOf(e, 'machine_days_reported').value, { type: 'ratio', numerator: 2, denominator: 2 });
   });
 });
@@ -759,7 +759,7 @@ describe('Task19j: S13 lease half', () => {
 describe('Task19j: through the real service and router', () => {
   const load = async (tenantId: string) => tenantId === A
     ? coverageContext({ findings: [finding({ id: 's1', generation: 'v2', ruleId: 'secrets.read_private_key', ruleCategory: 'secrets' })] })
-    : securityContext({ findings: [], machines: [{ machineId: MACHINE_B, enrolledAt: new Date('2026-09-01T00:00:00.000Z') }] });
+    : securityContext({ findings: [], machines: [{ machineId: MACHINE_B, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: null }] });
   const answerers = () => {
     const r = createAnswererRegistry();
     for (const [id, compute] of [['S2', computeS2], ['S3', computeS3], ['S4', computeS4], ['S10', computeS10], ['S13', computeS13]] as const) {
@@ -821,5 +821,55 @@ describe('Task19j: through the real service and router', () => {
     } finally {
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
+  });
+});
+
+describe('Task19j review: platform, enrolment, repository scope, overlapping leases', () => {
+  test('a healthy machine on an unvalidated platform is never "monitoring on"; continuity is partial', () => {
+    const enrolledAt = new Date('2026-10-11T00:00:00.000Z');
+    const security = coverageContext({
+      machines: [{ machineId: MACHINE_B, enrolledAt, revokedAt: null }],
+      statusReports: ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15'].map((d) => report(MACHINE_B, day(d))),
+      leases: [lease(MACHINE_B)],
+    });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machines_monitoring_on').value, { type: 'count', count: 0 });
+    assert.equal(figureOf(e, 'machine_days_reported').availability, 'partial');
+    assert.deepEqual(figureOf(e, 'machine_days_reported').reasons, [{ code: 'not_monitored' }]);
+  });
+
+  test('enrolment is judged over the period: enrolled after it is out, revoked during it is in', () => {
+    const security = coverageContext({ machines: [
+      { machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: new Date('2026-10-13T00:00:00.000Z') },
+      { machineId: MACHINE_C, enrolledAt: new Date('2026-10-20T00:00:00.000Z'), revokedAt: null },
+    ] });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machines_enrolled').value, { type: 'count', count: 1 });
+  });
+
+  test('at repository scope machine figures are partial_linkage, never a clean "no gaps"', () => {
+    const security = coverageContext({ findings: [finding({ id: 'r1', generation: 'v2', machineId: MACHINE_A })] });
+    const scope = { ...FIVE_DAYS, repository_id: REPO_A };
+    for (const [id, compute] of [['S2', computeS2], ['S13', computeS13]] as const) {
+      const e = compute({ ctx: ctxFor(id, 'repository', null, scope), security });
+      for (const f of e.figures.filter((x) => x.availability !== 'unavailable')) {
+        assert.equal(f.availability, 'partial', `${id} ${f.key}`);
+        assert.ok(f.reasons.some((r) => r.code === 'partial_linkage'), `${id} ${f.key}`);
+      }
+      valid(e);
+    }
+    const byRepo = computeS2({ ctx: ctxFor('S2', 'repository', 'repository', scope), security });
+    assert.deepEqual(figureOf(byRepo, 'machines_enrolled').breakdown?.map((i) => i.key), [REPO_A]);
+    valid(byRepo);
+  });
+
+  test('S13: an overlapping newer lease replaces the old one (one bundle in force, not two)', () => {
+    const security = coverageContext({ leases: [
+      lease(MACHINE_A, { id: 'old', bundleDigest: BUNDLE_OLD.digest, issuedAt: new Date('2026-10-01T00:00:00.000Z') }),
+      lease(MACHINE_A, { id: 'new', bundleDigest: BUNDLE_NEW.digest, issuedAt: new Date('2026-10-14T00:00:00.000Z') }),
+    ] });
+    const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'bundles_in_force').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_with_lease_in_force').value, { type: 'count', count: 1 });
   });
 });

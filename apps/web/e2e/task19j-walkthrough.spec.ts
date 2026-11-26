@@ -22,7 +22,8 @@ const REASON_LINE = new RegExp([
   'The provider does not report this information', 'This value is never written by the current system',
   'Some related records cannot be linked with confidence', 'This answer has not been built yet',
   'This question is planned for a later phase', 'security data settings keep this information',
-  'No approval decisions were recorded', 'not sealed yet', 'report',
+  'No approval decisions were recorded', 'Part of this period is not sealed yet', 'A seal or chain check found a break',
+  'No signed report exists', 'signed records stand behind this figure',
 ].join('|'));
 
 /** Every figure card: a number, or "Not available" with a reason line and no number. */
@@ -68,11 +69,16 @@ test.describe('Admin A, Task19j: built answers', () => {
 
   test('Q13 and Q9 live: evidence completeness and production', async () => {
     const m = manifest();
-    for (const question of ['Q13', 'Q9']) {
-      await openQuestion(page, { question, kind: 'live', repositoryId: m.companyA.repositoryId });
-      await answerLoaded(page);
-      await everyFigureHonest(page);
-    }
+    await openQuestion(page, { question: 'Q13', kind: 'live', repositoryId: m.companyA.repositoryId });
+    expect(await answerLoaded(page)).toBe('Recorded');
+    expect(await num(page, 'commits')).toBe(2);
+    expect(await num(page, 'commits without git ai note')).toBe(1); // the human commit carries no Git AI note
+    await everyFigureHonest(page);
+    await openQuestion(page, { question: 'Q9', kind: 'live', repositoryId: m.companyA.repositoryId });
+    expect(await answerLoaded(page)).toBe('Recorded');
+    expect(await num(page, 'production deployments')).toBe(1);
+    expect(await num(page, 'production ai lines')).toBe(40);
+    await everyFigureHonest(page);
   });
 
   test('Q14 live: the chain for one PR, prompt to deploy', async () => {
@@ -229,9 +235,10 @@ test.describe('Auditor A, Task19j: verifiable and signed answers', () => {
 
   test('Q13, Q9, Q1: verifiable with evidence, then signed with the period report', async () => {
     const m = manifest();
-    for (const question of ['Q13', 'Q9']) {
+    for (const [question, label, value] of [['Q13', 'commits observed', 2], ['Q9', 'production deployments', 1]] as const) {
       await openQuestion(page, { question, kind: 'verifiable', repositoryId: m.companyA.repositoryId });
       await answerLoaded(page);
+      expect(await num(page, label)).toBe(value);
       await everyFigureHonest(page);
       await everyFigureHasEvidence(page);
     }
@@ -268,9 +275,16 @@ test.describe('Auditor A, Task19j: verifiable and signed answers', () => {
 
   test('S8, S9, S10, S11, S12: verifiable with seal evidence, then signed with the security report', async () => {
     const m = manifest();
+    // Sealed findings: the current ones plus the day-one (at-rest) one received in the period.
+    const sealed = m.expected.findingsInPeriod + 1;
+    const expected: Record<string, [string, number]> = {
+      S8: ['findings', sealed], S9: ['findings', sealed], S10: ['rule pack versions in force', 1],
+      S11: ['v2 unclassified', sealed], S12: ['policy versions', 1],
+    };
     for (const question of ['S8', 'S9', 'S10', 'S11', 'S12']) {
       await openQuestion(page, { question, kind: 'verifiable' });
       await answerLoaded(page);
+      expect(await num(page, expected[question][0]), question).toBe(expected[question][1]);
       await everyFigureHonest(page);
       await everyFigureHasEvidence(page);
       if (question === 'S10') {
