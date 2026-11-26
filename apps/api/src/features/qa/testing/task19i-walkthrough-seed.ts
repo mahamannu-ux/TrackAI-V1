@@ -210,7 +210,8 @@ function fakeGitHub(t: Tenant, commits: Array<{ sha: string; parent: string | nu
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    if (!url.startsWith('https://api.github.com/')) return real(input, init);
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (!url.startsWith('https://api.github.com/') || method !== 'GET') return real(input, init);
     const u = new URL(url);
     const path = `https://api.github.com${u.pathname}`;
     if (path === `${prefix}/pulls/${prNumber}/commits`) return json(u.searchParams.get('page') === '1' || !u.searchParams.get('page') ? commits.map(asGitHub) : []);

@@ -13,7 +13,7 @@
  * stop any `next start` serving from `.next` before a run (`next dev` uses `.next-dev`).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -60,8 +60,14 @@ async function waitFor(url: string, what: string, child: ChildProcess, timeoutMs
   throw new Error(`IT-T19i-01 setup: ${what} did not answer within ${timeoutMs / 1000} s`);
 }
 
+function stopGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return;
+  try { process.kill(-child.pid, signal); } catch { /* already gone */ }
+}
+
 function start(name: string, command: string, args: string[], env: NodeJS.ProcessEnv, cwd: string, log: string[]): ChildProcess {
-  const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Own process group, so stopping it also stops what tsx or next start spawned.
+  const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   const keep = (chunk: Buffer) => {
     for (const line of chunk.toString().split('\n')) if (line.trim()) log.push(`[${name}] ${line}`);
     if (log.length > 400) log.splice(0, log.length - 400);
@@ -109,6 +115,17 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     || !['127.0.0.1', 'localhost'].includes(new URL(databaseUrl).hostname)) {
     throw new Error('IT-T19i-01 runs only inside scripts/it-db.sh: use `npm run e2e:task19-walkthrough` from the repository root');
   }
+  // A run killed before teardown leaves the developer's build aside: never move `.next`
+  // again on top of it, and never delete a build we cannot identify.
+  const orphans = readdirSync(WEB).filter((name) => name.startsWith('.next-before-task19i-'));
+  if (orphans.length > 0) {
+    throw new Error([
+      `IT-T19i-01 setup: found ${orphans.map((o) => `apps/web/${o}`).join(', ')} from an interrupted earlier run.`,
+      'Each is the web build that existed before that run; apps/web/.next (if any) is the walkthrough\'s own build.',
+      'Check dates with `ls -ld apps/web/.next*`. To restore yours: rm -rf apps/web/.next && mv apps/web/<oldest .next-before-task19i-*> apps/web/.next',
+      'Delete any other copy only once you know it is not a build you want, then run again.',
+    ].join('\n'));
+  }
   const work = mkdtempSync(join(tmpdir(), 'trackai-task19i-'));
   const manifestPath = join(work, 'manifest.json');
   // Free ports by default; fixed ones only when re-running against an earlier web build
@@ -121,15 +138,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const children: ChildProcess[] = [];
   const log: string[] = [];
   let movedBuild: string | null = null;
+  /** Synchronous, so it also runs from an 'exit' handler when Ctrl-C ends the process first. */
+  const restoreBuild = () => {
+    if (!movedBuild) return;
+    rmSync(BUILD, { recursive: true, force: true });
+    renameSync(movedBuild, BUILD);
+    movedBuild = null;
+  };
+  process.on('exit', () => {
+    for (const child of children) stopGroup(child, 'SIGKILL');
+    restoreBuild();
+  });
   const teardown = async () => {
-    for (const child of children) if (child.exitCode === null) child.kill('SIGTERM');
+    for (const child of children) stopGroup(child, 'SIGTERM');
     await new Promise((r) => setTimeout(r, 2000));
-    for (const child of children) if (child.exitCode === null) child.kill('SIGKILL');
-    if (movedBuild) {
-      rmSync(BUILD, { recursive: true, force: true });
-      renameSync(movedBuild, BUILD);
-      movedBuild = null;
-    }
+    for (const child of children) stopGroup(child, 'SIGKILL');
+    restoreBuild();
     rmSync(work, { recursive: true, force: true });
   };
 
