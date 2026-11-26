@@ -21,14 +21,17 @@ import {
   SECURITY_FINDING_METADATA_COLUMNS,
   toFindingRow,
   latestInventory,
+  toSecurityAuditRow,
   type SecurityContext,
   type SecurityFindingRow,
+  type StatusReportRow,
 } from './security-read';
 import {
   comparisonAnswer, linkedAnswer, securityAnswer,
   computeS5, computeS6, computeS7, computeS8, computeS9, computeS10, computeS11,
   computeS12, computeS15, computeS17, computeS18, computeQ11,
   computeS26, computeS23, computeS21, computeS19, computeS20,
+  computeS2, computeS3, computeS4, computeS13,
 } from './security-answerers';
 import type { QaContext } from './answers/common';
 import type { QaAnswerContext, QaEnvelope, QaFigure } from './types';
@@ -83,6 +86,11 @@ function securityContext(over: Partial<SecurityContext> = {}): SecurityContext {
     inventory: over.inventory ?? [],
     scanSummaries: over.scanSummaries ?? [],
     atRestFindings: over.atRestFindings ?? [],
+    statusReports: over.statusReports ?? [],
+    leases: over.leases ?? [],
+    bundles: over.bundles ?? [],
+    machines: over.machines ?? [],
+    securityAudit: over.securityAudit ?? [],
   };
 }
 
@@ -197,11 +205,11 @@ describe('Task19c: S8/S9/S10/S11/S12/S17/S18', () => {
     ]);
   });
 
-  test('S10 versions, reporting machines, up-to-date unavailable G7', () => {
+  test('S10 versions, reporting machines; up to date unavailable with no bundle or report', () => {
     const e = computeS10({ ctx: ctx('S10', 'machine'), security: securityContext() });
     assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').value, { type: 'count', count: 2 });
     assert.deepEqual(figureOf(e, 'machines_reporting_status').value, { type: 'count', count: 1 });
-    assert.deepEqual(figureOf(e, 'machines_up_to_date').reasons, [{ code: 'not_captured_yet', gap: 'G7' }]);
+    assert.deepEqual(figureOf(e, 'machines_up_to_date').reasons, [{ code: 'not_monitored' }]); // no bundle or report in this context
     assert.equal(figureOf(e, 'rule_pack_versions_in_force').breakdown?.length, 2);
   });
 
@@ -565,5 +573,303 @@ describe('Task19h: S19 inventory and S20 day-one scan', () => {
     assert.equal(e.availability, 'unavailable');
     assert.ok(e.figures.every((figure) => figure.value === null));
     valid(e);
+  });
+});
+
+// --- Task19j: S2, S3, S4, S13 and the S10 extension (Task20 coverage data) ---
+
+const day = (d: string) => new Date(`${d}T12:00:00.000Z`);
+const ok = { hook: 'ok', view: 'ok', local: 'ok', forwarder: 'ok' };
+function report(machineId: string, at: Date, over: Partial<StatusReportRow> = {}): StatusReportRow {
+  return { machineId, observedAt: at, numbatVersion: '0.5.0', activeBundleDigest: 'b'.repeat(64), leaseId: 'lease-1', health: ok, ...over };
+}
+const BUNDLE_OLD = { digest: 'a'.repeat(64), bundleVersion: 1, epoch: 1, numbatPin: '20a5a52', issuedAt: new Date('2026-09-01T00:00:00.000Z') };
+const BUNDLE_NEW = { digest: 'b'.repeat(64), bundleVersion: 2, epoch: 2, numbatPin: '20a5a52', issuedAt: new Date('2026-09-20T00:00:00.000Z') };
+const MACHINE_C = '00000000-0000-4000-8000-0000000000c3';
+const lease = (machineId: string, over: Partial<SecurityContext['leases'][number]> = {}) => ({
+  id: `lease-${machineId.slice(-2)}`, machineId, issuedAt: new Date('2026-09-10T00:00:00.000Z'),
+  expiresAt: new Date('2026-10-20T00:00:00.000Z'), mode: 'monitor', bundleDigest: BUNDLE_NEW.digest, ...over,
+});
+/** A over five days: A reports every day and is healthy; B (Windows) reports once with a failure; C never reports. */
+function coverageContext(over: Partial<SecurityContext> = {}): SecurityContext {
+  const enrolledAt = new Date('2026-09-01T00:00:00.000Z');
+  return securityContext({
+    machines: [{ machineId: MACHINE_A, enrolledAt, revokedAt: null }, { machineId: MACHINE_B, enrolledAt, revokedAt: null }, { machineId: MACHINE_C, enrolledAt, revokedAt: null }],
+    machinePlatforms: new Map([[MACHINE_A, 'macos'], [MACHINE_B, 'windows']]),
+    statusReports: [
+      ...['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15'].map((d) => report(MACHINE_A, day(d))),
+      report(MACHINE_B, day('2026-10-12'), { activeBundleDigest: BUNDLE_OLD.digest, numbatVersion: '0.4.9',
+        health: { ...ok, forwarder: 'failed' } }),
+    ],
+    leases: [lease(MACHINE_A), lease(MACHINE_B, { mode: 'off' })],
+    bundles: [BUNDLE_OLD, BUNDLE_NEW],
+    securityAudit: [
+      { action: 'security.monitor.changed', occurredAt: day('2026-10-12'), mode: 'off', refusal: null, machineId: null },
+      { action: 'security.monitor.changed', occurredAt: day('2026-10-13'), mode: 'monitor', refusal: null, machineId: null },
+      { action: 'security.settings.changed', occurredAt: day('2026-10-13'), mode: null, refusal: null, machineId: null },
+      { action: 'fleet.lease.refused', occurredAt: day('2026-10-14'), mode: null, refusal: 'SIGNATURE_REJECTED', machineId: MACHINE_B },
+    ],
+    ...over,
+  });
+}
+const FIVE_DAYS = { from: '2026-10-11T00:00:00.000Z', to: '2026-10-15T23:59:59.000Z' };
+const valid = (e: QaEnvelope) => assert.equal(checkEnvelope(e).ok, true, JSON.stringify(checkEnvelope(e)));
+
+describe('Task19j: S2 coverage from status reports and leases', () => {
+  test('not reported is its own count, never healthy; continuity is partial; unvalidated platforms are counted', () => {
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: coverageContext() });
+    assert.equal(e.availability, 'partial');
+    assert.deepEqual(figureOf(e, 'machines_enrolled').value, { type: 'count', count: 3 });
+    assert.deepEqual(figureOf(e, 'machines_reporting').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'machines_not_reporting').value, { type: 'count', count: 1 });
+    // B's lease is off and its forwarder failed: only A has monitoring on.
+    assert.deepEqual(figureOf(e, 'machines_monitoring_on').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_health_failed').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_on_unvalidated_platforms').value, { type: 'count', count: 1 });
+    const continuity = figureOf(e, 'machine_days_reported');
+    assert.equal(continuity.availability, 'partial');
+    assert.deepEqual(continuity.reasons, [{ code: 'not_monitored' }]);
+    assert.deepEqual(continuity.value, { type: 'ratio', numerator: 6, denominator: 15 });
+    assert.deepEqual(figureOf(e, 'monitoring_switched_off').value, { type: 'count', count: 1 });
+    valid(e);
+  });
+
+  test('by machine: per-machine report ratios, C at 0 of 5 (a fact, not a hidden zero)', () => {
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', 'machine', FIVE_DAYS), security: coverageContext() });
+    const items = figureOf(e, 'machine_days_reported').breakdown ?? [];
+    assert.deepEqual(items.map((i) => [i.key, i.value]), [
+      [MACHINE_A, { type: 'ratio', numerator: 5, denominator: 5 }],
+      [MACHINE_B, { type: 'ratio', numerator: 1, denominator: 5 }],
+      [MACHINE_C, { type: 'ratio', numerator: 0, denominator: 5 }],
+    ]);
+    valid(e);
+    valid(computeS2({ ctx: ctxFor('S2', 'tenant', 'operating_system', FIVE_DAYS), security: coverageContext() }));
+  });
+
+  test('every machine reporting every day is recorded; no machine at all is unavailable, never zero', () => {
+    const full = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: coverageContext({
+      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: null }] }) });
+    assert.equal(figureOf(full, 'machine_days_reported').availability, 'recorded');
+    const none = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: securityContext() });
+    assert.equal(figureOf(none, 'machine_days_reported').availability, 'unavailable');
+    assert.equal(figureOf(none, 'machine_days_reported').value, null);
+    valid(full);
+    valid(none);
+  });
+
+  test('a machine enrolled mid-period is expected only from its enrolment day', () => {
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security: coverageContext({
+      machines: [{ machineId: MACHINE_A, enrolledAt: new Date('2026-10-14T08:00:00.000Z'), revokedAt: null }] }) });
+    assert.deepEqual(figureOf(e, 'machine_days_reported').value, { type: 'ratio', numerator: 2, denominator: 2 });
+  });
+});
+
+describe('Task19j: S3 settings changes and tamper findings', () => {
+  test('counts monitor-mode and settings changes, switch-offs, tamper findings and lease refusals; never names who', () => {
+    const security = coverageContext({ findings: [
+      finding({ id: 't1', generation: 'v2', ruleId: 'tamper.guardrails_off', ruleCategory: 'tamper' }),
+      finding({ id: 't2', generation: 'v2', ruleId: 'tamper.detector_state_write', ruleCategory: 'tamper', machineId: MACHINE_B }),
+      finding({ id: 'x1', generation: 'v2', ruleId: 'exec.reverse_shell', ruleCategory: 'exec' }),
+    ] });
+    const e = computeS3({ ctx: ctxFor('S3', 'tenant', null, FIVE_DAYS), security });
+    assert.equal(e.availability, 'recorded');
+    assert.deepEqual(figureOf(e, 'monitor_mode_changes').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'monitoring_switched_off').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'settings_changes').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'tamper_findings').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'lease_refusals').value, { type: 'count', count: 1 });
+    assert.ok(e.wording.includes('monitor_only_observed'));
+    valid(e);
+    valid(computeS3({ ctx: ctxFor('S3', 'tenant', 'machine', FIVE_DAYS), security }));
+    valid(computeS3({ ctx: ctxFor('S3', 'tenant', 'repository', FIVE_DAYS), security }));
+  });
+
+  test('the audit projection keeps only the allowlisted actions and never the actor or reason', () => {
+    const row = toSecurityAuditRow({ action: 'security.monitor.changed', occurredAt: day('2026-10-12'), targetId: A,
+      details: { mode: 'off', previous_mode: 'monitor', reason: 'free text', actor: 'someone' } });
+    assert.deepEqual(row, { action: 'security.monitor.changed', occurredAt: day('2026-10-12'), mode: 'off', refusal: null, machineId: null });
+    assert.equal(toSecurityAuditRow({ action: 'security_findings.read', occurredAt: day('2026-10-12'), targetId: A, details: {} }), null);
+  });
+});
+
+describe('Task19j: S4 secrets and egress afterwards', () => {
+  const security = coverageContext({ findings: [
+    finding({ id: 's1', generation: 'v2', ruleId: 'secrets.read_private_key', ruleCategory: 'secrets' }),
+    finding({ id: 's2', generation: 'v2', ruleId: 'secrets.cloud_credential_read', ruleCategory: 'secrets', repositoryId: REPO_B }),
+    finding({ id: 'e1', generation: 'v2', ruleId: 'exfil.curl_post_file', ruleCategory: 'exfil' }),
+    finding({ id: 'c1', generation: 'v2', ruleId: 'chain.secret_read_then_egress', ruleCategory: 'chain' }),
+    // Another chain: never counted as "data left after a secret read".
+    finding({ id: 'c2', generation: 'v2', ruleId: 'chain.guardrails_off_then_egress', ruleCategory: 'chain' }),
+  ] });
+
+  test('"data left afterwards" comes only from secret-then-egress sequence findings, never from timing', () => {
+    const e = computeS4({ ctx: ctxFor('S4', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'secret_read_findings').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'exfiltration_findings').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'secret_read_then_egress_sequences').value, { type: 'count', count: 1 });
+    assert.ok(e.wording.includes('requested_not_confirmed'));
+    valid(e);
+  });
+
+  test('repository scope and breakdowns', () => {
+    const e = computeS4({ ctx: ctxFor('S4', 'repository', 'rule', { ...FIVE_DAYS, repository_id: REPO_A }), security });
+    assert.deepEqual(figureOf(e, 'secret_read_findings').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'secret_read_findings').breakdown?.map((i) => i.key), ['secrets.read_private_key']);
+    valid(e);
+    valid(computeS4({ ctx: ctxFor('S4', 'tenant', 'machine', FIVE_DAYS), security }));
+  });
+});
+
+describe('Task19j: S10 for machines with no finding', () => {
+  test('up to date against the newest signed bundle; a machine with no report makes it partial', () => {
+    const e = computeS10({ ctx: ctxFor('S10', 'tenant', null, FIVE_DAYS), security: coverageContext({ findings: [] }) });
+    assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').value, { type: 'count', count: 0 });
+    assert.deepEqual(figureOf(e, 'machines_up_to_date').value, { type: 'count', count: 1 });
+    assert.equal(figureOf(e, 'machines_up_to_date').availability, 'partial');
+    assert.deepEqual(figureOf(e, 'machines_not_up_to_date').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_not_reporting').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'bundle_digests_in_force').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'numbat_versions_in_force').value, { type: 'count', count: 2 });
+    valid(e);
+    valid(computeS10({ ctx: ctxFor('S10', 'tenant', 'machine', FIVE_DAYS), security: coverageContext() }));
+  });
+});
+
+describe('Task19j: S13 lease half', () => {
+  test('leases and bundles in force, findings under a lease, refusals; organization policy stays G2', () => {
+    const security = coverageContext({ findings: [
+      finding({ id: 'f-a', generation: 'v2', occurredAt: day('2026-10-12') }),
+      finding({ id: 'f-c', generation: 'v2', machineId: MACHINE_C, occurredAt: day('2026-10-12') }),
+    ] });
+    const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, FIVE_DAYS), security });
+    assert.equal(e.availability, 'partial');
+    assert.deepEqual(figureOf(e, 'machines_with_lease_in_force').value, { type: 'count', count: 2 });
+    assert.deepEqual(figureOf(e, 'machines_without_lease_in_force').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'bundles_in_force').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'lease_refusals').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'findings_under_lease').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'findings_without_lease').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'organization_policy_in_force').reasons, [{ code: 'not_captured_yet', gap: 'G2' }]);
+    valid(e);
+    valid(computeS13({ ctx: ctxFor('S13', 'tenant', 'machine', FIVE_DAYS), security }));
+    valid(computeS13({ ctx: ctxFor('S13', 'repository', null, { ...FIVE_DAYS, repository_id: REPO_A }), security }));
+  });
+});
+
+describe('Task19j: through the real service and router', () => {
+  const load = async (tenantId: string) => tenantId === A
+    ? coverageContext({ findings: [finding({ id: 's1', generation: 'v2', ruleId: 'secrets.read_private_key', ruleCategory: 'secrets' })] })
+    : securityContext({ findings: [], machines: [{ machineId: MACHINE_B, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: null }] });
+  const answerers = () => {
+    const r = createAnswererRegistry();
+    for (const [id, compute] of [['S2', computeS2], ['S3', computeS3], ['S4', computeS4], ['S10', computeS10], ['S13', computeS13]] as const) {
+      r.register(id, 'live', securityAnswer(compute, async (t) => load(t)));
+    }
+    return r;
+  };
+
+  test('every offered scope and breakdown validates', async () => {
+    const base = `from=${encodeURIComponent(FIVE_DAYS.from)}&to=${encodeURIComponent(FIVE_DAYS.to)}`;
+    const cases: Array<[string, string]> = [
+      ['S2', 'kind=live'], ['S2', 'kind=live&breakdown=machine'], ['S2', 'kind=live&breakdown=operating_system'],
+      ['S2', `kind=live&repository_id=${REPO_A}`], ['S2', `kind=live&repository_id=${REPO_A}&breakdown=repository`],
+      ['S3', 'kind=live'], ['S3', 'kind=live&breakdown=machine'], ['S3', 'kind=live&breakdown=repository'],
+      ['S4', 'kind=live'], ['S4', 'kind=live&breakdown=rule'], ['S4', `kind=live&repository_id=${REPO_A}&breakdown=machine`],
+      ['S10', 'kind=live&breakdown=machine'], ['S13', 'kind=live&breakdown=machine'], ['S13', `kind=live&repository_id=${REPO_A}`],
+    ];
+    for (const [id, params] of cases) {
+      const query = Object.fromEntries(new URLSearchParams(`${params}&${base}`).entries());
+      const envelope = await answerQuestion({ answerers: answerers(), scopes }, { tenantId: A, role: 'tenant_admin', questionId: id, query, now: new Date(NOW) });
+      assert.equal(envelope.question_id, id);
+      assert.notDeepEqual(envelope.reasons, [{ code: 'answer_not_built' }], `${id} is built`);
+      valid(envelope);
+    }
+  });
+
+  test('Company B sees only its own machines; the auditor gets 403 for live', async () => {
+    const role = (req: import('express').Request) => (req.get('x-test-role') === 'auditor' ? 'tenant_auditor' : 'tenant_admin');
+    const authorize: RequestHandler = (req, _res, next) => {
+      req.tenantId = req.get('x-test-tenant');
+      req.user = { sub: `sub-${req.tenantId}` } as Express.AuthenticatedUser;
+      req.adminRole = role(req);
+      next();
+    };
+    const app = express();
+    app.use('/api/qa', createQaRouter({ authorize, scopes, answerers: answerers(), log: () => undefined, now: () => new Date(NOW) }));
+    const server = await new Promise<import('node:http').Server>((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/qa`;
+    const get = async (id: string, tenant: string, as: 'admin' | 'auditor' = 'admin') => {
+      const res = await fetch(`${url}/questions/${id}/answer?kind=live&from=${encodeURIComponent(FIVE_DAYS.from)}&to=${encodeURIComponent(FIVE_DAYS.to)}`,
+        { headers: { 'x-test-tenant': tenant, 'x-test-role': as } });
+      return { status: res.status, body: await res.json() as QaEnvelope & { code?: string } };
+    };
+    try {
+      const a = await get('S2', A);
+      const b = await get('S2', B);
+      assert.equal(a.status, 200);
+      assert.deepEqual(a.body.figures.find((f) => f.key === 'machines_enrolled')?.value, { type: 'count', count: 3 });
+      assert.deepEqual(b.body.figures.find((f) => f.key === 'machines_enrolled')?.value, { type: 'count', count: 1 });
+      assert.deepEqual(b.body.figures.find((f) => f.key === 'machines_not_reporting')?.value, { type: 'count', count: 1 });
+      assert.ok(!JSON.stringify(b.body).includes(MACHINE_A));
+      const s4b = await get('S4', B);
+      assert.deepEqual(s4b.body.figures.find((f) => f.key === 'secret_read_findings')?.value, { type: 'count', count: 0 });
+      for (const id of ['S2', 'S3', 'S4', 'S10', 'S13']) {
+        const denied = await get(id, A, 'auditor');
+        assert.equal(denied.status, 403, id);
+        assert.equal(denied.body.code, 'QA_KIND_NOT_ALLOWED', id);
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    }
+  });
+});
+
+describe('Task19j review: platform, enrolment, repository scope, overlapping leases', () => {
+  test('a healthy machine on an unvalidated platform is never "monitoring on"; continuity is partial', () => {
+    const enrolledAt = new Date('2026-10-11T00:00:00.000Z');
+    const security = coverageContext({
+      machines: [{ machineId: MACHINE_B, enrolledAt, revokedAt: null }],
+      statusReports: ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15'].map((d) => report(MACHINE_B, day(d))),
+      leases: [lease(MACHINE_B)],
+    });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machines_monitoring_on').value, { type: 'count', count: 0 });
+    assert.equal(figureOf(e, 'machine_days_reported').availability, 'partial');
+    assert.deepEqual(figureOf(e, 'machine_days_reported').reasons, [{ code: 'not_monitored' }]);
+  });
+
+  test('enrolment is judged over the period: enrolled after it is out, revoked during it is in', () => {
+    const security = coverageContext({ machines: [
+      { machineId: MACHINE_A, enrolledAt: new Date('2026-09-01T00:00:00.000Z'), revokedAt: new Date('2026-10-13T00:00:00.000Z') },
+      { machineId: MACHINE_C, enrolledAt: new Date('2026-10-20T00:00:00.000Z'), revokedAt: null },
+    ] });
+    const e = computeS2({ ctx: ctxFor('S2', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'machines_enrolled').value, { type: 'count', count: 1 });
+  });
+
+  test('at repository scope machine figures are partial_linkage, never a clean "no gaps"', () => {
+    const security = coverageContext({ findings: [finding({ id: 'r1', generation: 'v2', machineId: MACHINE_A })] });
+    const scope = { ...FIVE_DAYS, repository_id: REPO_A };
+    for (const [id, compute] of [['S2', computeS2], ['S13', computeS13]] as const) {
+      const e = compute({ ctx: ctxFor(id, 'repository', null, scope), security });
+      for (const f of e.figures.filter((x) => x.availability !== 'unavailable')) {
+        assert.equal(f.availability, 'partial', `${id} ${f.key}`);
+        assert.ok(f.reasons.some((r) => r.code === 'partial_linkage'), `${id} ${f.key}`);
+      }
+      valid(e);
+    }
+    const byRepo = computeS2({ ctx: ctxFor('S2', 'repository', 'repository', scope), security });
+    assert.deepEqual(figureOf(byRepo, 'machines_enrolled').breakdown?.map((i) => i.key), [REPO_A]);
+    valid(byRepo);
+  });
+
+  test('S13: an overlapping newer lease replaces the old one (one bundle in force, not two)', () => {
+    const security = coverageContext({ leases: [
+      lease(MACHINE_A, { id: 'old', bundleDigest: BUNDLE_OLD.digest, issuedAt: new Date('2026-10-01T00:00:00.000Z') }),
+      lease(MACHINE_A, { id: 'new', bundleDigest: BUNDLE_NEW.digest, issuedAt: new Date('2026-10-14T00:00:00.000Z') }),
+    ] });
+    const e = computeS13({ ctx: ctxFor('S13', 'tenant', null, FIVE_DAYS), security });
+    assert.deepEqual(figureOf(e, 'bundles_in_force').value, { type: 'count', count: 1 });
+    assert.deepEqual(figureOf(e, 'machines_with_lease_in_force').value, { type: 'count', count: 1 });
   });
 });

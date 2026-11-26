@@ -17,12 +17,22 @@
  * `rule_severity`, `repository_id` (null for v2 `not_enrolled`), `machine_id`,
  * `session_id`, `occurred_at`; the agent is Task6.a `agent_family` or v2
  * `source_agent`; the model is v2 `model` or null for Task6.a.
+ *
+ * Task19j adds the Task20 coverage data (G7, G8, G11 closed): every Endpoint status
+ * report in the period with its health fields, the activation leases that overlap
+ * the period, the tenant's signed rule bundles, the enrolled machines, and the
+ * security-settings and lease audit events. Each is projected to an allowlist: no
+ * actor id, no reason text, no envelope bytes are ever read into an answer.
  */
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../core/db';
 import {
   aiSessions,
+  developerMachines,
   fleetMachineStates,
+  securityActivationLeases,
+  securityAuditEvents,
+  securityRuleBundles,
   securityEnforcementDecisions,
   securityPermissionEvents,
   securityAgentInventorySnapshots,
@@ -139,6 +149,62 @@ export interface AtRestFindingRow {
   ruleSeverity: string;
 }
 
+/** One Endpoint `security_status` report (security-v2 README), health fields as reported. */
+export interface StatusReportRow {
+  machineId: string;
+  observedAt: Date;
+  numbatVersion: string;
+  activeBundleDigest: string | null;
+  leaseId: string | null;
+  /** `ok`, `failed` or `unavailable`, in Numbat's rollout order. */
+  health: { hook: string; view: string; local: string; forwarder: string };
+}
+
+/** One signed activation lease (Task20f); the envelope itself is never read. */
+export interface LeaseRow {
+  id: string;
+  machineId: string;
+  issuedAt: Date;
+  expiresAt: Date;
+  mode: string;
+  bundleDigest: string;
+}
+
+/** One signed rule bundle (Task20f), by digest. */
+export interface BundleRow {
+  digest: string;
+  bundleVersion: number;
+  epoch: number;
+  numbatPin: string;
+  issuedAt: Date;
+}
+
+/** An enrolled machine (`developer_machines`), revoked ones included: answers judge enrolment over the period. */
+export interface EnrolledMachineRow {
+  machineId: string;
+  enrolledAt: Date;
+  revokedAt: Date | null;
+}
+
+/** The security audit actions a Q&A answer may count (docs/contracts/audit/catalog.md, Task20). */
+export const SECURITY_AUDIT_ACTIONS = [
+  'security.monitor.changed', 'security.settings.changed', 'policy.bundle.published',
+  'fleet.lease.issued', 'fleet.lease.refused',
+] as const;
+export type SecurityAuditAction = typeof SECURITY_AUDIT_ACTIONS[number];
+
+/** A security audit event, projected: never the actor, never the reason text. */
+export interface SecurityAuditRow {
+  action: SecurityAuditAction;
+  occurredAt: Date;
+  /** `security.monitor.changed` only: the new mode. */
+  mode: string | null;
+  /** `fleet.lease.refused` only: the refusal code. */
+  refusal: string | null;
+  /** Lease events only: the machine (the target id). */
+  machineId: string | null;
+}
+
 /** Everything a pure security answer reads: period-filtered by the loader. */
 export interface SecurityContext {
   findings: SecurityFindingRow[];
@@ -153,6 +219,29 @@ export interface SecurityContext {
   inventory: InventorySnapshotRow[];
   scanSummaries: ScanSummaryRow[];
   atRestFindings: AtRestFindingRow[];
+  /** Task19j: every status report in the period (statusSnapshots keeps the old shape). */
+  statusReports: StatusReportRow[];
+  /** Task19j: leases whose validity overlaps the period. */
+  leases: LeaseRow[];
+  bundles: BundleRow[];
+  machines: EnrolledMachineRow[];
+  securityAudit: SecurityAuditRow[];
+}
+
+/** Projects one audit row to the allowlist; anything outside SECURITY_AUDIT_ACTIONS is dropped. */
+export function toSecurityAuditRow(row: { action: string; occurredAt: Date; targetId: string; details: unknown }): SecurityAuditRow | null {
+  if (!(SECURITY_AUDIT_ACTIONS as readonly string[]).includes(row.action)) return null;
+  const details = row.details && typeof row.details === 'object' && !Array.isArray(row.details)
+    ? row.details as Record<string, unknown> : {};
+  const action = row.action as SecurityAuditAction;
+  const lease = action === 'fleet.lease.issued' || action === 'fleet.lease.refused';
+  return {
+    action,
+    occurredAt: row.occurredAt,
+    mode: action === 'security.monitor.changed' && typeof details.mode === 'string' ? details.mode : null,
+    refusal: action === 'fleet.lease.refused' && typeof details.refusal === 'string' ? details.refusal : null,
+    machineId: lease ? row.targetId : null,
+  };
 }
 
 /** Keeps each machine's latest snapshot and only the four projected agent fields (no version is claimed). */
@@ -230,6 +319,10 @@ export function buildSecurityContext(input: {
   inventory?: Array<typeof securityAgentInventorySnapshots.$inferSelect>;
   scanSummaries?: Array<typeof securityScanSummaries.$inferSelect>;
   atRestFindings?: FindingSelect[];
+  leases?: Array<typeof securityActivationLeases.$inferSelect>;
+  bundles?: Array<typeof securityRuleBundles.$inferSelect>;
+  machines?: Array<typeof developerMachines.$inferSelect>;
+  securityAudit?: Array<typeof securityAuditEvents.$inferSelect>;
 }): SecurityContext {
   return {
     findings: input.findings.map(toFindingRow),
@@ -259,6 +352,24 @@ export function buildSecurityContext(input: {
     atRestFindings: (input.atRestFindings ?? [])
       .filter((row) => row.recordGeneration === 'v2' && row.foundAtRest === true)
       .map((row) => ({ machineId: row.machineId, ruleCategory: row.ruleCategory, ruleSeverity: row.ruleSeverity })),
+    statusReports: input.statusSnapshots.map((row) => ({
+      machineId: row.machineId, observedAt: row.observedAt, numbatVersion: row.numbatVersion,
+      activeBundleDigest: row.activeBundleDigest, leaseId: row.leaseId,
+      health: { hook: row.hookStatus, view: row.agentEffectiveView, local: row.localRecord, forwarder: row.forwarderAck },
+    })),
+    leases: (input.leases ?? []).map((row) => ({
+      id: row.id, machineId: row.machineId, issuedAt: row.issuedAt, expiresAt: row.expiresAt, mode: row.mode, bundleDigest: row.bundleDigest,
+    })),
+    bundles: (input.bundles ?? []).map((row) => ({
+      digest: row.digest, bundleVersion: row.bundleVersion, epoch: row.epoch, numbatPin: row.numbatPin, issuedAt: row.issuedAt,
+    })),
+    machines: (input.machines ?? []).map((row) => ({
+      machineId: row.id, enrolledAt: row.createdAt, revokedAt: row.status === 'revoked' ? row.revokedAt ?? row.updatedAt : null,
+    })),
+    securityAudit: (input.securityAudit ?? []).flatMap((row) => {
+      const projected = toSecurityAuditRow(row);
+      return projected ? [projected] : [];
+    }),
   };
 }
 
@@ -277,7 +388,7 @@ export async function loadSecurityContext(
   const to = new Date(toMs);
   const tenantDb = withTenant(db, tenantId);
   const [findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents, indicators, dataSettings,
-    inventory, scanSummaries, atRestFindings] = await Promise.all([
+    inventory, scanSummaries, atRestFindings, leases, bundles, machines, securityAudit] = await Promise.all([
     tenantDb.select(securityFindings, and(gte(securityFindings.occurredAt, from), lte(securityFindings.occurredAt, to))),
     tenantDb.select(securityEnforcementDecisions, and(
       gte(securityEnforcementDecisions.occurredAt, from), lte(securityEnforcementDecisions.occurredAt, to))),
@@ -299,7 +410,14 @@ export async function loadSecurityContext(
       gte(securityScanSummaries.receivedAt, from), lte(securityScanSummaries.receivedAt, to))),
     tenantDb.select(securityFindings, and(eq(securityFindings.foundAtRest, true),
       gte(securityFindings.receivedAt, from), lte(securityFindings.receivedAt, to))),
+    // A lease belongs to every period its validity overlaps.
+    tenantDb.select(securityActivationLeases, and(
+      lte(securityActivationLeases.issuedAt, to), gte(securityActivationLeases.expiresAt, from))),
+    tenantDb.select(securityRuleBundles, lte(securityRuleBundles.issuedAt, to)),
+    tenantDb.select(developerMachines),
+    tenantDb.select(securityAuditEvents, and(inArray(securityAuditEvents.action, [...SECURITY_AUDIT_ACTIONS]),
+      gte(securityAuditEvents.occurredAt, from), lte(securityAuditEvents.occurredAt, to))),
   ]);
   return buildSecurityContext({ findings, enforcement, statusSnapshots, machineStates, sessions, permissionEvents,
-    indicators, dataSettings, inventory, scanSummaries, atRestFindings });
+    indicators, dataSettings, inventory, scanSummaries, atRestFindings, leases, bundles, machines, securityAudit });
 }

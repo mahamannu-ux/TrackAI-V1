@@ -224,7 +224,8 @@ function securityFigures(ctx: QaAnswerContext, doc: SecurityReportDocument): Fig
         securitySeed('rule_pack_versions_in_force', f.rule_pack_versions, numberOf, evidence),
         // Status snapshots are not in the report: no seal covers them.
         { key: 'machines_reporting_status', availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null },
-        { key: 'machines_up_to_date', availability: 'unavailable', reasons: [{ code: 'not_captured_yet', gap: 'G7' }], value: null },
+        // G7 is closed, but the signed report carries no status reports (Task19j).
+        { key: 'machines_up_to_date', availability: 'unavailable', reasons: [{ code: 'answer_not_built' }], value: null },
       ];
     case 'S11':
       return [
