@@ -18,6 +18,12 @@
  *    at-rest finding, permission requests with one approved and one denied decision.
  * Company B: its own repository and commit, its own small inventory and one finding.
  *
+ * Task19j (IT-T19j-01) adds, for Company A: two more enrolled machines (three in all,
+ * enrolled five days back), the Task20 coverage data in the stored shape (two signed
+ * rule bundles, activation leases, daily Endpoint status reports, platforms), the
+ * settings and lease audit events through the real `recordAuditEvent`, and tamper,
+ * exfiltration and secret-then-egress sequence findings.
+ *
  * Ported from (helpers copied, never imported, because those files are runnable scripts
  * with a `main`): IT-T16h-01 `task16h-auditor-qa-live-verify.ts` (trust inventory,
  * statements, period and security reports), IT-T15i4 `t15i4-period-report-live-verify.ts`
@@ -36,6 +42,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join, resolve } from 'node:path';
 import { db, pool } from '../../../core/db';
+import { recordAuditEvent } from '../../../core/audit';
 import { ingestMetricsBatch } from '../../telemetry/service';
 import type { GitAiMetricEvent } from '../../telemetry/types';
 import { ATTESTA_PLATFORM_TENANT_ID } from '../../attesta/anchor-contract';
@@ -69,7 +76,7 @@ function check(condition: unknown, message: string): asserts condition {
 /** What the spec needs to know about the seeded world. */
 export interface WalkthroughManifest {
   seededAt: string;
-  companyA: { tenantId: string; repositoryId: string; repositoryName: string; pullRequestId: string; model: string; tool: string };
+  companyA: { tenantId: string; repositoryId: string; repositoryName: string; pullRequestId: string; model: string; tool: string; aiCommitSha: string };
   companyB: { tenantId: string; repositoryId: string };
   /** The exact scope the code and security period reports were built over (Signed answers). */
   codeReport: { from: string; to: string; statementDigest: string };
@@ -79,6 +86,21 @@ export interface WalkthroughManifest {
     permissionApproved: number; permissionDenied: number; permissionRequested: number;
     machinesReporting: number; agentsDetected: number; agentsWired: number;
     findingsInPeriod: number; findingsPreviousPeriod: number; highOrCriticalInReport: number;
+  };
+  /** Task19j: Company A's coverage world (S2, S3, S4, S10, S13). */
+  coverage: {
+    /** Enrolment time of every Company A machine (the spec counts expected machine-days from it). */
+    enrolledAt: string;
+    machines: number;
+    /** Company A's machine ids, A1, A2, A3 (the screen shows a machine bucket by its id). */
+    machineIds: string[];
+    /** Distinct UTC days with a status report, per machine, in seed order (A1, A2, A3). */
+    reportedDaysByMachine: number[];
+    machinesReporting: number; machinesNotReporting: number; machinesMonitoringOn: number; machinesHealthFailed: number;
+    machinesOnUnvalidatedPlatforms: number; machinesUpToDate: number; machinesNotUpToDate: number;
+    monitorModeChanges: number; monitoringSwitchedOff: number; settingsChanges: number; leaseRefusals: number;
+    tamperFindings: number; secretReadFindings: number; exfiltrationFindings: number; secretThenEgressSequences: number;
+    machinesWithLeaseInForce: number; machinesWithoutLeaseInForce: number; bundlesInForce: number;
   };
   /** The four synthetic users (task19i-walkthrough-users.ts), for the browser sign-in. */
   users: typeof WALKTHROUGH_USERS;
@@ -91,7 +113,7 @@ export interface WalkthroughManifest {
 
 interface Tenant { company: WalkthroughCompany; tenantId: string; repoUrl: string; repoName: string; repoExternalId: number; repositoryId: string; machineId: string }
 
-async function seedTenant(company: WalkthroughCompany, repoName: string, repoExternalId: number): Promise<Tenant> {
+async function seedTenant(company: WalkthroughCompany, repoName: string, repoExternalId: number, enrolledAt: Date): Promise<Tenant> {
   const tenantId = randomUUID();
   await pool.query(`insert into sso_tenants (id, company_name, domain, supabase_provider_id, scm_org_identifier)
     values ($1, $2, $3, $4, $5)`, [tenantId, company.name, company.domain, `task19i-${company.label}`, company.githubOrg]);
@@ -99,8 +121,8 @@ async function seedTenant(company: WalkthroughCompany, repoName: string, repoExt
     await pool.query(`insert into tenant_admin_memberships (tenant_id, subject, email, role, status, granted_by)
       values ($1, $2, $3, $4, 'active', 'task19i-seed')`, [tenantId, user.subject, user.email, user.role]);
   }
-  const machine = await pool.query(`insert into developer_machines (tenant_id, installation_id, display_name)
-    values ($1, $2, $3) returning id::text as id`, [tenantId, randomUUID(), `Walkthrough machine ${company.label.toUpperCase()}`]);
+  const machine = await pool.query(`insert into developer_machines (tenant_id, installation_id, display_name, created_at)
+    values ($1, $2, $3, $4) returning id::text as id`, [tenantId, randomUUID(), `Walkthrough machine ${company.label.toUpperCase()}`, enrolledAt]);
   return { company, tenantId, repoUrl: `https://github.com/${company.githubOrg}/${repoName}`, repoName, repoExternalId,
     repositoryId: '', machineId: machine.rows[0].id };
 }
@@ -294,14 +316,100 @@ async function dataSettings(t: Tenant, at: Date): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Task19j: Company A's coverage world, in the stored shape (Task20f/20h/20i tables)
+
+const hex64 = () => `${randomUUID().replace(/-/g, '')}${randomUUID().replace(/-/g, '')}`;
+
+async function addMachine(t: Tenant, name: string, enrolledAt: Date): Promise<string> {
+  const r = await pool.query(`insert into developer_machines (tenant_id, installation_id, display_name, created_at)
+    values ($1, $2, $3, $4) returning id::text as id`, [t.tenantId, randomUUID(), name, enrolledAt]);
+  return r.rows[0].id;
+}
+
+/**
+ * Three machines: A1 (macOS) reports healthy for the last three days on the newest
+ * bundle under a lease in force; A2 (Windows, outside the validated platforms)
+ * reported once, two days back, on the older bundle with a failed forwarder, and its
+ * only lease has expired and a later one was refused; A3 (macOS) never reports.
+ * Monitoring was switched off and back on once, and the settings changed once.
+ */
+async function seedCoverage(a: Tenant, t0: number, enrolledAt: Date, currentRules: readonly string[]): Promise<WalkthroughManifest['coverage']> {
+  const ago = (ms: number) => new Date(t0 - ms);
+  const a1 = a.machineId;
+  const a2 = await addMachine(a, 'Walkthrough machine A2', enrolledAt);
+  const a3 = await addMachine(a, 'Walkthrough machine A3', enrolledAt);
+  for (const [machine, platform] of [[a1, 'macos'], [a2, 'windows'], [a3, 'macos']] as const) {
+    await pool.query(`insert into fleet_machine_states (tenant_id, machine_id, platform) values ($1, $2, $3)`, [a.tenantId, machine, platform]);
+  }
+  const keyid = `sha256:${hex64()}`;
+  const bundles = [] as Array<{ digest: string; epoch: number }>;
+  for (const [version, issuedAgo] of [[1, 4 * DAY], [2, 3 * DAY]] as const) {
+    await pool.query(`insert into security_rule_settings_versions (tenant_id, version, rules, numbat_pin, created_by, reason, created_at)
+      values ($1, $2, '{}'::jsonb, '20a5a52', 'task19i-seed', 'walkthrough', $3)`, [a.tenantId, version, ago(issuedAgo)]);
+    const digest = hex64();
+    await pool.query(`insert into security_rule_bundles (tenant_id, bundle_version, epoch, rule_settings_version, digest, envelope,
+      keyid, compiler_version, numbat_pin, enabled_rule_count, issued_at, created_by)
+      values ($1, $2, $2, $2, $3, $4, $5, 'task19i-walkthrough', '20a5a52', 44, $6, 'task19i-seed')`,
+    [a.tenantId, version, digest, Buffer.from('synthetic walkthrough bundle'), keyid, ago(issuedAgo)]);
+    bundles.push({ digest, epoch: version });
+  }
+  const [older, newest] = bundles;
+  const lease = async (machine: string, issuedAgo: number, expiresIn: number, digest: string) => {
+    const r = await pool.query(`insert into security_activation_leases (tenant_id, machine_id, issued_at, expires_at, mode, bundle_digest,
+      data_settings_version, envelope, keyid) values ($1, $2, $3, $4, 'monitor', $5, 1, $6, $7) returning id::text as id`,
+    [a.tenantId, machine, ago(issuedAgo), new Date(t0 + expiresIn), digest, Buffer.from('synthetic walkthrough lease'), keyid]);
+    return r.rows[0].id as string;
+  };
+  const leaseA1 = await lease(a1, 1 * DAY, 2 * DAY, newest.digest);
+  const leaseA2 = await lease(a2, 4 * DAY, -2 * DAY, older.digest); // expired two days ago
+  const status = async (machine: string, at: Date, digest: string, leaseId: string, forwarder: 'ok' | 'failed') => {
+    await pool.query(`insert into security_status_snapshots (tenant_id, machine_id, record_id, observed_at, numbat_version, wired_agents,
+      active_bundle_digest, lease_id, last_record_at, hook_status, agent_effective_view, local_record, forwarder_ack)
+      values ($1, $2, $3, $4, $5, array['claude-code'], $6, $7, $4, 'ok', 'ok', 'ok', $8)`,
+    [a.tenantId, machine, `sha256:${hex64()}`, at, machine === a1 ? '0.5.0' : '0.4.9', digest, leaseId, forwarder]);
+  };
+  for (const hours of [1, 25, 49]) await status(a1, ago(hours * 60 * MIN), newest.digest, leaseA1, 'ok');
+  await status(a2, ago(50 * 60 * MIN), older.digest, leaseA2, 'failed');
+  // Audit events through the real writer (catalog-checked details); who acted is never read by an answer.
+  const admin = { actorType: 'tenant_admin' as const, actorId: WALKTHROUGH_USERS.adminA.subject };
+  const tenantTarget = { targetType: 'tenant_security_settings', targetId: a.tenantId };
+  await recordAuditEvent(db, a.tenantId, { ...admin, ...tenantTarget, action: 'security.monitor.changed',
+    details: { mode: 'off', previous_mode: 'monitor', version: 2, reason: 'walkthrough switch-off' } });
+  await recordAuditEvent(db, a.tenantId, { ...admin, ...tenantTarget, action: 'security.monitor.changed',
+    details: { mode: 'monitor', previous_mode: 'off', version: 3, reason: 'walkthrough switch-on' } });
+  await recordAuditEvent(db, a.tenantId, { ...admin, ...tenantTarget, action: 'security.settings.changed',
+    details: { rule_settings_version: 2, data_settings_version: 1, bundle_version: 2, epoch: 2, changed_rule_count: 1,
+      enabled_data_settings: [], day_one_scan: true, agents: ['claude-code'], reason: 'walkthrough rule change' } });
+  await recordAuditEvent(db, a.tenantId, { actorType: 'machine', actorId: a1, targetType: 'developer_machine', targetId: a1,
+    action: 'fleet.lease.issued', details: { lease_id: leaseA1, expires_at: new Date(t0 + 2 * DAY).toISOString(), mode: 'monitor',
+      bundle_digest: newest.digest, epoch: newest.epoch } });
+  await recordAuditEvent(db, a.tenantId, { actorType: 'machine', actorId: a2, targetType: 'developer_machine', targetId: a2,
+    action: 'fleet.lease.refused', details: { lease_id: leaseA2, bundle_digest: older.digest, refusal: 'SIGNATURE_REJECTED' } });
+  const count = (prefix: string) => currentRules.filter((rule) => rule.startsWith(prefix)).length;
+  return {
+    enrolledAt: enrolledAt.toISOString(),
+    machines: 3,
+    machineIds: [a1, a2, a3],
+    reportedDaysByMachine: [3, 1, 0],
+    machinesReporting: 2, machinesNotReporting: 1, machinesMonitoringOn: 1, machinesHealthFailed: 1,
+    machinesOnUnvalidatedPlatforms: 1, machinesUpToDate: 1, machinesNotUpToDate: 1,
+    monitorModeChanges: 2, monitoringSwitchedOff: 1, settingsChanges: 1, leaseRefusals: 1,
+    tamperFindings: count('tamper.'), secretReadFindings: count('secrets.'), exfiltrationFindings: count('exfil.'),
+    secretThenEgressSequences: count('chain.secret_read_then_egress'),
+    machinesWithLeaseInForce: 1, machinesWithoutLeaseInForce: 2, bundlesInForce: 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 export async function seedWalkthrough(workDir: string): Promise<WalkthroughManifest> {
   assertEphemeralDatabase('The Task19i walkthrough seed');
   mkdirSync(workDir, { recursive: true, mode: 0o700 });
   const t0 = Date.now();
   const ago = (ms: number) => new Date(t0 - ms);
-  const a = await seedTenant(WALKTHROUGH_COMPANIES.a, 'walkthrough-app', 91901);
-  const b = await seedTenant(WALKTHROUGH_COMPANIES.b, 'company-b-service', 92901);
+  const enrolledAt = new Date(t0 - 5 * DAY);
+  const a = await seedTenant(WALKTHROUGH_COMPANIES.a, 'walkthrough-app', 91901, enrolledAt);
+  const b = await seedTenant(WALKTHROUGH_COMPANIES.b, 'company-b-service', 92901, enrolledAt);
   const w = await trust(workDir, a, b, t0);
 
   // Code, Company A: an AI-assisted commit and a human commit, as Git AI notes.
@@ -319,6 +427,11 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
     const r = await pool.query(`select id::text as id from scm_repositories where tenant_id = $1 and url = $2`, [t.tenantId, t.repoUrl]);
     check(r.rows.length === 1, `${t.company.label}: one repository row`);
     t.repositoryId = r.rows[0].id;
+  }
+  // Ingestion stamps first_seen_at with the real clock, after the back-dated signing time
+  // below; a commit is first seen when its note was written (Task19j, Q8's signing span).
+  for (const [sha, age] of [[aiSha, 70], [humanSha, 65]] as const) {
+    await pool.query(`update scm_commits set first_seen_at = $3 where tenant_id = $1 and sha = $2`, [a.tenantId, sha, ago(age * MIN)]);
   }
   await builderPass(w, 60, t0);
 
@@ -363,10 +476,13 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
 
   // Security, Company A (dataSettings first: the day-one scan is opt-in).
   await dataSettings(a, ago(40 * DAY));
-  for (const [rule, severity, ageMin] of [
+  const current = [
     ['secrets.read_private_key', 'critical', 40], ['secrets.read_env_file', 'high', 38], ['exec.download_pipe_shell', 'high', 36],
     ['exec.destructive_recursive_delete', 'medium', 34], ['network.unexpected_egress', 'low', 32],
-  ] as const) {
+    // Task19j: a guardrails switch-off, a file posted out, and a secret read followed by egress in one session.
+    ['tamper.guardrails_off', 'low', 30], ['exfil.curl_post_file', 'high', 29], ['chain.secret_read_then_egress', 'high', 28],
+  ] as const;
+  for (const [rule, severity, ageMin] of current) {
     await v2Finding(a, { rule, severity, at: ago(ageMin * MIN), repository: true, session });
   }
   await v2Finding(a, { rule: 'secrets.read_env_file', severity: 'high', at: ago(42 * DAY), repository: true, session: null });
@@ -379,6 +495,7 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
   for (const outcome of ['requested', 'requested', 'requested', 'approved', 'denied'] as const) {
     await permission(a, outcome, session, ago(35 * MIN));
   }
+  const coverage = await seedCoverage(a, t0, enrolledAt, current.map(([rule]) => rule));
   // Company B: its own small, distinct data.
   await inventory(b, ago(30 * MIN), [{ agent: 'gemini-cli', wired: 'yes' }]);
   await v2Finding(b, { rule: 'exec.download_pipe_shell', severity: 'high', at: ago(33 * MIN), repository: true, session: null });
@@ -415,15 +532,18 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
 
   return {
     seededAt: new Date(t0).toISOString(),
-    companyA: { tenantId: a.tenantId, repositoryId: a.repositoryId, repositoryName: a.repoName, pullRequestId: pr.rows[0].id, model: MODEL, tool: TOOL },
+    companyA: { tenantId: a.tenantId, repositoryId: a.repositoryId, repositoryName: a.repoName, pullRequestId: pr.rows[0].id, model: MODEL, tool: TOOL, aiCommitSha: aiSha },
     companyB: { tenantId: b.tenantId, repositoryId: b.repositoryId },
     codeReport: { ...codeScope, statementDigest: codeDigest },
     securityReport: { ...secScope, statementDigest: sec.statementDigest ?? '' },
     expected: {
       permissionApproved: 1, permissionDenied: 1, permissionRequested: 3,
       machinesReporting: 1, agentsDetected: 3, agentsWired: 2,
-      findingsInPeriod: 5, findingsPreviousPeriod: 1, highOrCriticalInReport: 4,
+      findingsInPeriod: current.length, findingsPreviousPeriod: 1,
+      // Every current high or critical finding, plus the at-rest one received inside the report's scope.
+      highOrCriticalInReport: current.filter(([, severity]) => severity === 'high' || severity === 'critical').length + 1,
     },
+    coverage,
     users: WALKTHROUGH_USERS,
     apiEnv: w.apiEnv,
   };

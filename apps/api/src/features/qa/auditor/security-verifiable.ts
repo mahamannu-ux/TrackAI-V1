@@ -47,7 +47,7 @@ import { QA_QUESTIONS_BY_ID, QA_REGISTRY_VERSION } from '../registry';
 import type { SecurityContext, SecurityFindingRow } from '../security-read';
 import type {
   QaAnswerContext, QaAnswerer, QaBreakdownItem, QaDimension, QaEnvelope,
-  QaFigure, QaGapId, QaReason, QaValue,
+  QaFigure, QaReason, QaValue,
 } from '../types';
 
 type Reported = 'recorded' | 'partial' | 'unavailable';
@@ -69,7 +69,6 @@ const NOT_BUILT: QaReason[] = [{ code: 'answer_not_built' }];
 const SEALED: QaReason = { code: 'not_sealed_yet' };
 const BROKEN: QaReason = { code: 'evidence_broken' };
 const TRUNCATED: QaReason = { code: 'evidence_truncated' };
-const notCaptured = (gap: QaGapId): QaReason => ({ code: 'not_captured_yet', gap });
 
 // ---------------------------------------------------------------------------
 // Loading a period's sealed rows
@@ -349,10 +348,10 @@ async function answerS1v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnvel
             : [];
   return verifiedEnvelope(ctx, load, [{
     key: 'high_or_critical_findings',
-    // The count is of tokens on the rows; the taxonomy itself is not proven
-    // complete, so G9 (rule coverage) is named even when recorded (prompt item 4).
+    // G9 (rule coverage) was cancelled 2026-10-16: Task20's first wave ships the
+    // rules, and registry v5 closes it, so the recorded count carries no gap (Task19j).
     availability: 'recorded',
-    reasons: [notCaptured('G9')],
+    reasons: [],
     value: count(severe.length),
     ...(breakdown.length > 0 ? { breakdown } : {}),
   }]);
@@ -447,7 +446,8 @@ async function answerS10v(src: SealSource, ctx: QaAnswerContext): Promise<QaEnve
   return verifiedEnvelope(ctx, load, [
     plainCount({ key: 'rule_pack_versions_in_force' }, versions.size, machineBreakdown),
     { key: 'machines_reporting_status', availability: 'unavailable', reasons: NOT_BUILT, value: null },
-    { key: 'machines_up_to_date', availability: 'unavailable', reasons: [notCaptured('G7')], value: null },
+    // G7 is closed (Task20 coverage data), but signed statements carry no status reports (Task19j).
+    { key: 'machines_up_to_date', availability: 'unavailable', reasons: NOT_BUILT, value: null },
   ]);
 }
 

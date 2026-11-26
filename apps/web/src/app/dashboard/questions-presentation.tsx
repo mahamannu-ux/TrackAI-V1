@@ -21,6 +21,11 @@ export const QA_REASON_MESSAGES: Record<string, string> = {
   phase_2: 'This question is planned for a later phase.',
   data_setting_off: "Your organization's security data settings keep this information on the developer machine.",
   zero_denominator: 'No approval decisions were recorded in this period, so the rate is unavailable.',
+  // Task16h's auditor codes (A16.13); the screen showed the raw code until Task19j.
+  not_sealed_yet: 'Part of this period is not sealed yet, so only the sealed part is counted.',
+  evidence_broken: 'A seal or chain check found a break, so this cannot be shown.',
+  report_not_built: 'No signed report exists for exactly this scope; one can be requested.',
+  evidence_truncated: 'More than 50,000 signed records stand behind this figure, so it is partial.',
 };
 
 /** Figure names that need plain words beyond the key itself (otherwise the key is shown with spaces). */

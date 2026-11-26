@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from 'node:test';
 
 test('S7 answer request sends the selected breakdown and receives its buckets', async () => {
@@ -29,5 +31,18 @@ test('S7 answer request sends the selected breakdown and receives its buckets', 
   } finally {
     supabase.auth.getSession = originalGetSession;
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('every closed-list reason code in the Q&A contract has a plain message on the screen (Task19j)', async () => {
+  const schema = JSON.parse(readFileSync(resolve(__dirname, '../../../../docs/contracts/qa/answer-v1.schema.json'), 'utf8')) as {
+    definitions: { reason: { properties: { code: { enum: string[] } } } };
+  };
+  const { QA_REASON_MESSAGES } = await import('../app/dashboard/questions-presentation');
+  const codes = schema.definitions.reason.properties.code.enum;
+  assert.ok(codes.includes('not_sealed_yet'));
+  for (const code of codes) {
+    assert.ok(QA_REASON_MESSAGES[code], `no message for ${code}`);
+    assert.notEqual(QA_REASON_MESSAGES[code], code);
   }
 });

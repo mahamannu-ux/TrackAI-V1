@@ -205,7 +205,7 @@ describe('Task19c: S8/S9/S10/S11/S12/S17/S18', () => {
     ]);
   });
 
-  test('S10 versions, reporting machines, up-to-date unavailable G7', () => {
+  test('S10 versions, reporting machines; up to date unavailable with no bundle or report', () => {
     const e = computeS10({ ctx: ctx('S10', 'machine'), security: securityContext() });
     assert.deepEqual(figureOf(e, 'rule_pack_versions_in_force').value, { type: 'count', count: 2 });
     assert.deepEqual(figureOf(e, 'machines_reporting_status').value, { type: 'count', count: 1 });
