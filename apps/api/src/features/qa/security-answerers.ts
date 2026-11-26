@@ -95,11 +95,11 @@ function tally(dimension: QaDimension, rows: SecurityFindingRow[], bucket: (row:
 }
 
 /** Distinct values per bucket key, sorted, as the *number of values* per key. */
-function distinctPerBucket(
+function distinctPerBucket<T>(
   dimension: QaDimension,
-  rows: SecurityFindingRow[],
-  bucket: (row: SecurityFindingRow) => string,
-  value: (row: SecurityFindingRow) => string,
+  rows: T[],
+  bucket: (row: T) => string,
+  value: (row: T) => string,
 ): QaBreakdownItem[] {
   const sets = new Map<string, Set<string>>();
   for (const row of rows) {
@@ -210,14 +210,23 @@ export function computeS9(input: SecurityInput): QaEnvelope {
 export function computeS10(input: SecurityInput): QaEnvelope {
   const { ctx, security } = input;
   const findings = scopedFindings(ctx, security.findings);
-  const versions = distinct(findings, (row) => row.rulePackVersion);
   const reporting = distinct(security.statusSnapshots, (row) => row.machineId);
   const byMachine = ctx.breakdown === 'machine';
-  const machineBreakdown = byMachine
-    ? distinctPerBucket('machine', findings, (row) => row.machineId, (row) => row.rulePackVersion)
-    : [];
   const machines = machinesInScope(ctx, security);
   const reports = security.statusReports.filter((row) => machines.has(row.machineId));
+  // A rule pack is in force on a machine when a finding names it or a status report names its
+  // bundle: v2 stores rule_pack_version as `bundle:` + the digest's first 16 hex digits
+  // (security-findings/v2-storage.ts), so a report maps exactly; machines with no finding count.
+  const packOfDigest = (digest: string) => `bundle:${digest.slice(0, 16)}`;
+  const packPairs = [
+    ...findings.map((row) => ({ machineId: row.machineId, pack: row.rulePackVersion })),
+    ...reports.filter((row) => row.activeBundleDigest !== null)
+      .map((row) => ({ machineId: row.machineId, pack: packOfDigest(row.activeBundleDigest as string) })),
+  ];
+  const versions = distinct(packPairs, (row) => row.pack);
+  const machineBreakdown = byMachine
+    ? distinctPerBucket('machine', packPairs, (row) => row.machineId, (row) => row.pack)
+    : [];
   const latest = latestReports(reports);
   const notReporting = [...machines].filter((id) => !latest.has(id));
   const bundle = latestBundle(security, Date.parse(ctx.scope.to));
@@ -652,17 +661,28 @@ export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
   const reports = security.statusReports.filter((row) => machines.has(row.machineId));
   const latest = latestReports(reports);
   const notReporting = enrolled.map((row) => row.machineId).filter((id) => !latest.has(id));
-  const leasesOf = (machineId: string) => security.leases.filter((lease) => lease.machineId === machineId);
-  // A machine on an unvalidated platform is never "monitoring on", however healthy it reports.
-  const monitoringOn = [...latest.values()].filter((row) => !onUnvalidatedPlatform(security, row.machineId) && healthOk(row)
-    && leasesOf(row.machineId).some((lease) => lease.mode !== 'off' && leaseCovers(lease, row.observedAt.getTime())));
+  // Each reporting machine's state from its latest report and the newest lease in force then:
+  // on (validated platform, all four layers ok, lease mode not off); off (that lease is off:
+  // confirmed by the signed lease); otherwise unverified (a layer `unavailable` or `failed`, no
+  // lease, or an unknown platform). Unvalidated platforms are counted on their own, never on.
+  const stateOf = (row: StatusReportRow): 'on' | 'off' | 'unverified' | 'unvalidated' => {
+    if (onUnvalidatedPlatform(security, row.machineId)) return 'unvalidated';
+    const lease = newestLeaseInForce(security.leases.filter((l) => l.machineId === row.machineId), row.observedAt.getTime())
+      .get(row.machineId);
+    if (lease?.mode === 'off') return 'off';
+    const platformKnown = VALIDATED_PLATFORMS.has(security.machinePlatforms.get(row.machineId) ?? '');
+    return lease && platformKnown && healthOk(row) ? 'on' : 'unverified';
+  };
+  const inState = (state: ReturnType<typeof stateOf>) => [...latest.values()].filter((row) => stateOf(row) === state);
+  const monitoringOn = inState('on');
   const failed = [...latest.values()].filter(healthFailed);
   const platformOf = (id: string) => security.machinePlatforms.get(id) ?? 'unavailable';
   const notMonitoredPlatform = enrolled.filter((row) => onUnvalidatedPlatform(security, row.machineId));
   // Machine-days: from the later of the period start and enrolment.
   const reportedDays = new Set(reports.map((row) => `${row.machineId}:${Math.floor(row.observedAt.getTime() / DAY_MS)}`));
+  // Expected from the later of the period start and enrolment, to the earlier of its end and revocation.
   const perMachine = enrolled.map((row) => {
-    const days = utcDays(Math.max(fromMs, row.enrolledAt.getTime()), toMs);
+    const days = utcDays(Math.max(fromMs, row.enrolledAt.getTime()), Math.min(toMs, row.revokedAt?.getTime() ?? toMs));
     return { machineId: row.machineId, expected: days.length,
       reported: days.filter((day) => reportedDays.has(`${row.machineId}:${day}`)).length };
   });
@@ -694,6 +714,9 @@ export function computeS2({ ctx, security }: SecurityInput): QaEnvelope {
     countFigure('machines_reporting', latest.size, machineBuckets([...latest.keys()])),
     countFigure('machines_not_reporting', notReporting.length, machineBuckets(notReporting)),
     countFigure('machines_monitoring_on', monitoringOn.length, machineBuckets(monitoringOn.map((row) => row.machineId))),
+    countFigure('machines_monitoring_off', inState('off').length, machineBuckets(inState('off').map((row) => row.machineId))),
+    countFigure('machines_monitoring_unverified', inState('unverified').length,
+      machineBuckets(inState('unverified').map((row) => row.machineId))),
     countFigure('machines_health_failed', failed.length, machineBuckets(failed.map((row) => row.machineId))),
     countFigure('machines_on_unvalidated_platforms', notMonitoredPlatform.length,
       machineBuckets(notMonitoredPlatform.map((row) => row.machineId))),
@@ -767,9 +790,13 @@ export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
   const withLease = new Set(inForceAtEnd.map((lease) => lease.machineId));
   const without = [...machines].filter((id) => !withLease.has(id));
   const findings = scopedFindings(ctx, security.findings).filter((row) => machines.has(row.machineId));
-  const covered = findings.filter((row) => leases.some((lease) => lease.machineId === row.machineId
-    && leaseCovers(lease, row.occurredAt.getTime())));
-  const uncovered = findings.filter((row) => !covered.includes(row));
+  // Under a lease only when the finding's own recorded lease exists, belongs to its machine and
+  // was valid when it occurred; a coincident lease is never assigned. Task6.a rows and unmatched
+  // references are unknown, never "without a lease".
+  const recordedLease = (row: SecurityFindingRow) => row.leaseId === null ? undefined
+    : leases.find((lease) => lease.id === row.leaseId && lease.machineId === row.machineId && leaseCovers(lease, row.occurredAt.getTime()));
+  const covered = findings.filter((row) => recordedLease(row) !== undefined);
+  const unknown = findings.filter((row) => recordedLease(row) === undefined);
   const refusals = security.securityAudit.filter((row) => row.action === 'fleet.lease.refused'
     && row.machineId !== null && machines.has(row.machineId));
   const issued = leases.filter((lease) => lease.issuedAt.getTime() >= fromMs && lease.issuedAt.getTime() <= toMs);
@@ -782,8 +809,11 @@ export function computeS13({ ctx, security }: SecurityInput): QaEnvelope {
     countFigure('bundles_in_force', new Set(inForceAtEnd.map((lease) => lease.bundleDigest)).size),
     countFigure('leases_issued', issued.length, machineBuckets(issued.map((lease) => lease.machineId))),
     countFigure('lease_refusals', refusals.length, machineBuckets(refusals.map((row) => row.machineId ?? 'unknown'))),
-    countFigure('findings_under_lease', covered.length, byMachine ? tally('machine', covered, (row) => row.machineId) : []),
-    countFigure('findings_without_lease', uncovered.length, byMachine ? tally('machine', uncovered, (row) => row.machineId) : []),
+    unknown.length > 0
+      ? partialCountFigure('findings_under_lease', covered.length, [{ code: 'partial_linkage' }],
+        byMachine ? tally('machine', covered, (row) => row.machineId) : [])
+      : countFigure('findings_under_lease', covered.length, byMachine ? tally('machine', covered, (row) => row.machineId) : []),
+    countFigure('findings_lease_unknown', unknown.length, byMachine ? tally('machine', unknown, (row) => row.machineId) : []),
     unavailableFigure('organization_policy_in_force', notCaptured('G2')),
   ].map(q));
 }

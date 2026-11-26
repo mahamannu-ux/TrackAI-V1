@@ -32,6 +32,11 @@ export const QA_REASON_MESSAGES: Record<string, string> = {
 export const QA_FIGURE_LABELS: Record<string, string> = {
   // A day-one scan with status `error` and no artifacts scanned (S20).
   scans_no_session_files: 'scans with no session files found for this agent',
+  // S2 (Task19j): a day with no status report is unverified, not known to be off.
+  machine_days_reported: 'machine-days with a status report (a day without one is unverified, not known to be off)',
+  machines_monitoring_unverified: 'machines reporting, monitoring unverified',
+  // S13 (Task19j): a finding whose recorded lease cannot be matched is unknown, never "without a lease".
+  findings_lease_unknown: 'findings whose lease cannot be confirmed',
 };
 
 export const QA_WORDING_MESSAGES: Record<string, string> = {

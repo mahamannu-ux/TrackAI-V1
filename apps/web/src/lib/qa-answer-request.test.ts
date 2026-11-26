@@ -3,10 +3,25 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 
+/**
+ * supabase-js 2.110 builds its realtime client when the client is created and needs a
+ * built-in WebSocket, which Node 20 (the CI runtime) does not have. This test never opens a
+ * realtime connection, so a bare stand-in is enough; it is installed only when missing and
+ * removed again, and the app itself always runs where WebSocket exists (the browser).
+ */
+function withWebSocketStandIn(): () => void {
+  const scope = globalThis as { WebSocket?: unknown };
+  if (scope.WebSocket !== undefined) return () => undefined;
+  scope.WebSocket = class WebSocketStandIn {};
+  return () => { delete scope.WebSocket; };
+}
+
 test('S7 answer request sends the selected breakdown and receives its buckets', async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-public-placeholder';
+  const restoreWebSocket = withWebSocketStandIn();
   const { supabase } = await import('./supabase');
+  restoreWebSocket();
   const { getQaAnswer } = await import('./api');
   const originalGetSession = supabase.auth.getSession;
   const originalFetch = globalThis.fetch;

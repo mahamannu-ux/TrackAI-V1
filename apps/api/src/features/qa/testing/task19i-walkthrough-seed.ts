@@ -274,7 +274,7 @@ async function builderPass(w: Trust, stampAgeMin: number, t0: number): Promise<v
 const digest = () => `sha256:${randomUUID().replace(/-/g, '')}${'a'.repeat(32)}`;
 const BUNDLE = 'e'.repeat(64);
 
-async function v2Finding(t: Tenant, f: { rule: string; severity: string; at: Date; receivedAt?: Date; repository: boolean; session: string | null; atRest?: boolean }): Promise<void> {
+async function v2Finding(t: Tenant, f: { rule: string; severity: string; at: Date; receivedAt?: Date; repository: boolean; session: string | null; atRest?: boolean; leaseId?: string }): Promise<void> {
   await pool.query(`insert into security_findings
     (tenant_id, machine_id, record_generation, rule_id, rule_version, rule_category,
      rule_severity, effect, occurred_at, rule_pack_version, repository_id, session_id,
@@ -282,10 +282,10 @@ async function v2Finding(t: Tenant, f: { rule: string; severity: string; at: Dat
      numbat_schema_version, bundle_digest, lease_id, found_at_rest, repository_kind, received_at)
     values ($1, $2, 'v2', $3, '2.0', split_part($3, '.', 1), $4, 'monitor', $5,
       $6, $7, $8, $9, 'claude-code', $10, $11, 'high', 'Synthetic walkthrough finding', $5,
-      '0.5.0', $12, 'task19i-lease', $13, $14, $15)`,
+      '0.5.0', $12, $16, $13, $14, $15)`,
   [t.tenantId, t.machineId, f.rule, f.severity, f.at, `bundle:${BUNDLE.slice(0, 16)}`,
     f.repository ? t.repositoryId : null, f.session, digest(), f.atRest ? 'artifact' : 'hook', f.atRest ? null : MODEL,
-    BUNDLE, Boolean(f.atRest), f.repository ? 'enrolled' : 'not_enrolled', f.receivedAt ?? f.at]);
+    BUNDLE, Boolean(f.atRest), f.repository ? 'enrolled' : 'not_enrolled', f.receivedAt ?? f.at, f.leaseId ?? 'task19i-unmatched-lease']);
 }
 
 async function inventory(t: Tenant, at: Date, agents: Array<{ agent: string; wired: 'yes' | 'no' }>): Promise<void> {
@@ -333,7 +333,7 @@ async function addMachine(t: Tenant, name: string, enrolledAt: Date): Promise<st
  * only lease has expired and a later one was refused; A3 (macOS) never reports.
  * Monitoring was switched off and back on once, and the settings changed once.
  */
-async function seedCoverage(a: Tenant, t0: number, enrolledAt: Date, currentRules: readonly string[]): Promise<WalkthroughManifest['coverage']> {
+async function seedCoverage(a: Tenant, t0: number, enrolledAt: Date, currentRules: readonly string[]): Promise<{ manifest: WalkthroughManifest['coverage']; leaseA1: string }> {
   const ago = (ms: number) => new Date(t0 - ms);
   const a1 = a.machineId;
   const a2 = await addMachine(a, 'Walkthrough machine A2', enrolledAt);
@@ -386,7 +386,7 @@ async function seedCoverage(a: Tenant, t0: number, enrolledAt: Date, currentRule
   await recordAuditEvent(db, a.tenantId, { actorType: 'machine', actorId: a2, targetType: 'developer_machine', targetId: a2,
     action: 'fleet.lease.refused', details: { lease_id: leaseA2, bundle_digest: older.digest, refusal: 'SIGNATURE_REJECTED' } });
   const count = (prefix: string) => currentRules.filter((rule) => rule.startsWith(prefix)).length;
-  return {
+  return { leaseA1, manifest: {
     enrolledAt: enrolledAt.toISOString(),
     machines: 3,
     machineIds: [a1, a2, a3],
@@ -397,7 +397,7 @@ async function seedCoverage(a: Tenant, t0: number, enrolledAt: Date, currentRule
     tamperFindings: count('tamper.'), secretReadFindings: count('secrets.'), exfiltrationFindings: count('exfil.'),
     secretThenEgressSequences: count('chain.secret_read_then_egress'),
     machinesWithLeaseInForce: 1, machinesWithoutLeaseInForce: 2, bundlesInForce: 1,
-  };
+  } };
 }
 
 // ---------------------------------------------------------------------------
@@ -482,8 +482,10 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
     // Task19j: a guardrails switch-off, a file posted out, and a secret read followed by egress in one session.
     ['tamper.guardrails_off', 'low', 30], ['exfil.curl_post_file', 'high', 29], ['chain.secret_read_then_egress', 'high', 28],
   ] as const;
+  // The coverage world first: Company A's current findings were uploaded under A1's lease.
+  const { manifest: coverage, leaseA1 } = await seedCoverage(a, t0, enrolledAt, current.map(([rule]) => rule));
   for (const [rule, severity, ageMin] of current) {
-    await v2Finding(a, { rule, severity, at: ago(ageMin * MIN), repository: true, session });
+    await v2Finding(a, { rule, severity, at: ago(ageMin * MIN), repository: true, session, leaseId: leaseA1 });
   }
   await v2Finding(a, { rule: 'secrets.read_env_file', severity: 'high', at: ago(42 * DAY), repository: true, session: null });
   await inventory(a, ago(30 * MIN), [{ agent: 'claude-code', wired: 'yes' }, { agent: 'codex', wired: 'yes' }, { agent: 'cursor', wired: 'no' }]);
@@ -495,7 +497,6 @@ export async function seedWalkthrough(workDir: string): Promise<WalkthroughManif
   for (const outcome of ['requested', 'requested', 'requested', 'approved', 'denied'] as const) {
     await permission(a, outcome, session, ago(35 * MIN));
   }
-  const coverage = await seedCoverage(a, t0, enrolledAt, current.map(([rule]) => rule));
   // Company B: its own small, distinct data.
   await inventory(b, ago(30 * MIN), [{ agent: 'gemini-cli', wired: 'yes' }]);
   await v2Finding(b, { rule: 'exec.download_pipe_shell', severity: 'high', at: ago(33 * MIN), repository: true, session: null });
