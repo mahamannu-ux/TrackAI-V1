@@ -10,6 +10,7 @@
     "build:web": "npm run build --workspace=apps/web",
     "build:api": "npm run build --workspace=apps/api",
     "build": "npm run build --workspaces --if-present",
+    "e2e:task19-walkthrough": "scripts/it-db.sh npm exec -w apps/web -- playwright test",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm test --workspace=apps/api",
     "typecheck": "tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
